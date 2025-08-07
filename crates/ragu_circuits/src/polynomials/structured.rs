@@ -60,6 +60,26 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         }
     }
 
+    /// Iterate over the coefficients of this polynomial in ascending order of
+    /// degree.
+    pub fn iter(&self) -> impl Iterator<Item = F> {
+        use core::iter::repeat_n;
+
+        assert!(self.u.len() <= R::n());
+        assert!(self.v.len() <= R::n());
+        assert!(self.w.len() <= R::n());
+        assert!(self.d.len() <= R::n());
+
+        self.w
+            .iter()
+            .cloned()
+            .chain(repeat_n(F::ZERO, self.first_padding()))
+            .chain(self.v.iter().rev().cloned())
+            .chain(self.u.iter().cloned())
+            .chain(repeat_n(F::ZERO, self.second_padding()))
+            .chain(self.d.iter().rev().cloned())
+    }
+
     /// Inner product of `self` with the reversed `other`.
     pub fn revdot(&self, other: &Self) -> F {
         self.u
@@ -197,24 +217,8 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Reduce this polynomial into its unstructured representation,
     pub fn unstructured(&self) -> super::unstructured::Polynomial<F, R> {
-        use core::iter::repeat_n;
-
-        assert!(self.u.len() <= R::n());
-        assert!(self.v.len() <= R::n());
-        assert!(self.w.len() <= R::n());
-        assert!(self.d.len() <= R::n());
-
         super::unstructured::Polynomial {
-            coeffs: self
-                .w
-                .iter()
-                .cloned()
-                .chain(repeat_n(F::ZERO, self.first_padding()))
-                .chain(self.v.iter().rev().cloned())
-                .chain(self.u.iter().cloned())
-                .chain(repeat_n(F::ZERO, self.second_padding()))
-                .chain(self.d.iter().rev().cloned())
-                .collect(),
+            coeffs: self.iter().collect(),
             _marker: core::marker::PhantomData,
         }
     }
