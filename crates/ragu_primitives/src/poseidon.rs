@@ -38,19 +38,20 @@ enum Mode<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
 /// The [Poseidon](https://eprint.iacr.org/2019/458) sponge function.
 pub struct Sponge<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> {
     mode: Mode<'dr, D, P>,
+    params: &'dr P,
 }
 
 impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Buffer<'dr, D>
-    for (&mut Sponge<'dr, D, P>, &'dr P)
+    for Sponge<'dr, D, P>
 {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
-        self.0.absorb(self.1, dr, value)
+        self.absorb(dr, value)
     }
 }
 
 impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, D, P> {
     /// Initialize the sponge in absorb mode with a fixed initial state.
-    pub fn new(dr: &mut D) -> Self {
+    pub fn new(dr: &mut D, params: &'dr P) -> Self {
         Sponge {
             mode: Mode::Absorb {
                 values: vec![],
@@ -60,13 +61,14 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
                         .expect("P::T is the state length"),
                 },
             },
+            params,
         }
     }
 
-    fn permute(&mut self, params: &'dr P, dr: &mut D) -> Result<()> {
+    fn permute(&mut self, dr: &mut D) -> Result<()> {
         match &mut self.mode {
             Mode::Squeeze { values, state } => {
-                *state = dr.routine(Permutation::from(params), state.clone())?;
+                *state = dr.routine(Permutation::from(self.params), state.clone())?;
                 *values = state.get_rate();
             }
             Mode::Absorb { values, state } => {
@@ -74,7 +76,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
                     *state = state.add(dr, v);
                 }
                 values.clear();
-                *state = dr.routine(Permutation::from(params), state.clone())?;
+                *state = dr.routine(Permutation::from(self.params), state.clone())?;
             }
         }
 
@@ -82,12 +84,12 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
     }
 
     /// Squeeze a value from the sponge.
-    pub fn squeeze(&mut self, params: &'dr P, dr: &mut D) -> Result<Element<'dr, D>> {
+    pub fn squeeze(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
         match &mut self.mode {
             Mode::Squeeze { values, .. } => {
                 if values.is_empty() {
                     // Nothing to squeeze, we need to permute first
-                    self.permute(params, dr)?;
+                    self.permute(dr)?;
                 } else {
                     // Squeeze a value and return it
                     return Ok(values.pop().unwrap());
@@ -103,16 +105,16 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
                     };
                 } else {
                     // Before we can switch to squeeze mode, we need to permute
-                    self.permute(params, dr)?;
+                    self.permute(dr)?;
                 }
             }
         }
 
-        self.squeeze(params, dr)
+        self.squeeze(dr)
     }
 
     /// Absorb a value into the sponge.
-    pub fn absorb(&mut self, params: &'dr P, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
+    pub fn absorb(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
         match &mut self.mode {
             Mode::Squeeze { state, .. } => {
                 // Switch to absorb mode with the same state
@@ -124,7 +126,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
             Mode::Absorb { values, .. } => {
                 if values.len() == P::RATE {
                     // We've absorbed too much, time to permute
-                    self.permute(params, dr)?;
+                    self.permute(dr)?;
                 } else {
                     // Directly absorb and complete
                     values.push(value.clone());
@@ -134,7 +136,7 @@ impl<'dr, D: Driver<'dr>, P: arithmetic::PoseidonPermutation<D::F>> Sponge<'dr, 
         }
 
         // Second attempt, which always succeeds
-        self.absorb(params, dr, value)
+        self.absorb(dr, value)
     }
 }
 
@@ -271,10 +273,11 @@ fn test_permutation_constraints() -> Result<()> {
     let params = Pasta::baked();
 
     let sim = Simulator::simulate(Fp::from(1), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(dr);
+        let mut sponge =
+            Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(dr, params.circuit_poseidon());
         let value = Element::alloc(dr, value)?;
-        sponge.absorb(params.circuit_poseidon(), dr, &value)?;
-        sponge.squeeze(params.circuit_poseidon(), dr)?;
+        sponge.absorb(dr, &value)?;
+        sponge.squeeze(dr)?;
 
         Ok(())
     })?;
