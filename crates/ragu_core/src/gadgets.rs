@@ -174,7 +174,7 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
 /// for common gadget types.
 ///
 /// This only works for structs with named fields, as `enum`s likely break the
-/// observational equivalence requirement of gadgets.
+/// fungibility requirement of gadgets.
 ///
 /// ## Example
 ///
