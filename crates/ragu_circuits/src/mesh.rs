@@ -83,23 +83,22 @@ impl<'params, F: PrimeField, R: Rank> Mesh<'params, F, R> {
     }
 
     /// Evaluate the mesh polynomial unrestricted at $W$.
-    pub fn xyz(&self, x: F, y: F, z: F) -> unstructured::Polynomial<F, R> {
+    pub fn xy(&self, x: F, y: F) -> unstructured::Polynomial<F, R> {
         let mut coeffs = unstructured::Polynomial::default();
         for (circuit, lc) in self.circuits.iter().zip(coeffs.iter_mut()) {
             *lc = circuit.sxy(x, y);
         }
         // Convert from the Lagrange basis.
         self.domain.ifft(&mut coeffs[..self.domain.n()]);
-        coeffs[0] += R::txz(x, z);
 
         coeffs
     }
 
     /// Evaluate the mesh polynomial unrestricted at $X$.
-    pub fn wyz(&self, w: F, y: F, z: F) -> structured::Polynomial<F, R> {
+    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
         self.w(
             w,
-            || R::tz(z),
+            || structured::Polynomial::new(),
             |circuit, circuit_coeff, poly| {
                 let mut tmp = circuit.sy(y);
                 tmp.scale(circuit_coeff);
@@ -109,14 +108,10 @@ impl<'params, F: PrimeField, R: Rank> Mesh<'params, F, R> {
     }
 
     /// Evaluate the mesh polynomial unrestricted at $Y$.
-    pub fn wxz(&self, w: F, x: F, z: F) -> unstructured::Polynomial<F, R> {
+    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
         self.w(
             w,
-            || {
-                let mut poly = unstructured::Polynomial::default();
-                poly[0] = R::txz(x, z);
-                poly
-            },
+            || unstructured::Polynomial::default(),
             |circuit, circuit_coeff, poly| {
                 let mut tmp = circuit.sx(x);
                 tmp.scale(circuit_coeff);
@@ -125,22 +120,11 @@ impl<'params, F: PrimeField, R: Rank> Mesh<'params, F, R> {
         )
     }
 
-    /// Evaluate the mesh polynomial unrestricted at $Z$.
-    pub fn wxy(&self, w: F, x: F, y: F) -> structured::Polynomial<F, R> {
-        self.w(
-            w,
-            || R::tx(x),
-            |circuit, circuit_coeff, poly| {
-                *poly.constant_term() += circuit.sxy(x, y) * circuit_coeff;
-            },
-        )
-    }
-
     /// Evaluate the mesh polynomial at the provided point.
-    pub fn wxyz(&self, w: F, x: F, y: F, z: F) -> F {
+    pub fn wxy(&self, w: F, x: F, y: F) -> F {
         self.w(
             w,
-            || R::txz(x, z),
+            || F::ZERO,
             |circuit, circuit_coeff, poly| {
                 *poly += circuit.sxy(x, y) * circuit_coeff;
             },
@@ -240,33 +224,28 @@ fn test_mesh_circuit_consistency() {
     let w = Fp::random(thread_rng());
     let x = Fp::random(thread_rng());
     let y = Fp::random(thread_rng());
-    let z = Fp::random(thread_rng());
 
-    let xyz_poly = mesh.xyz(x, y, z);
-    let wyz_poly = mesh.wyz(w, y, z);
-    let wxz_poly = mesh.wxz(w, x, z);
-    let wxy_poly = mesh.wxy(w, x, y);
+    let xy_poly = mesh.xy(x, y);
+    let wy_poly = mesh.wy(w, y);
+    let wx_poly = mesh.wx(w, x);
 
-    let wxyz_value = mesh.wxyz(w, x, y, z);
+    let wxy_value = mesh.wxy(w, x, y);
 
-    assert_eq!(wxyz_value, xyz_poly.eval(w));
-    assert_eq!(wxyz_value, wyz_poly.eval(x));
-    assert_eq!(wxyz_value, wxz_poly.eval(y));
-    assert_eq!(wxyz_value, wxy_poly.eval(z));
+    assert_eq!(wxy_value, xy_poly.eval(w));
+    assert_eq!(wxy_value, wy_poly.eval(x));
+    assert_eq!(wxy_value, wx_poly.eval(y));
 
     let mut w = Fp::ONE;
     for _ in 0..mesh.domain.n() {
-        let xyz_poly = mesh.xyz(x, y, z);
-        let wyz_poly = mesh.wyz(w, y, z);
-        let wxz_poly = mesh.wxz(w, x, z);
-        let wxy_poly = mesh.wxy(w, x, y);
+        let xy_poly = mesh.xy(x, y);
+        let wy_poly = mesh.wy(w, y);
+        let wx_poly = mesh.wx(w, x);
 
-        let wxyz_value = mesh.wxyz(w, x, y, z);
+        let wxy_value = mesh.wxy(w, x, y);
 
-        assert_eq!(wxyz_value, xyz_poly.eval(w));
-        assert_eq!(wxyz_value, wyz_poly.eval(x));
-        assert_eq!(wxyz_value, wxz_poly.eval(y));
-        assert_eq!(wxyz_value, wxy_poly.eval(z));
+        assert_eq!(wxy_value, xy_poly.eval(w));
+        assert_eq!(wxy_value, wy_poly.eval(x));
+        assert_eq!(wxy_value, wx_poly.eval(y));
 
         w *= mesh.domain.omega();
     }
