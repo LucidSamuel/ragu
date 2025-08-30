@@ -65,16 +65,16 @@ pub fn derive_gadget(input: TokenStream) -> TokenStream {
 
 #[cfg(test)]
 #[allow(unused_imports)]
-use ragu_primitives::io::GadgetSerialize as _;
+use ragu_primitives::io::Write as _;
 
-// Documentation for the `GadgetSerialize` derive macro is in `derive@ragu_primitives::io::GadgetSerialize`.
+// Documentation for the `Write` derive macro is in `derive@ragu_primitives::io::Write`.
 #[allow(missing_docs)]
-#[proc_macro_derive(GadgetSerialize, attributes(ragu))]
-pub fn derive_gadget_serialize(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Write, attributes(ragu))]
+pub fn derive_write(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
         let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::gadgetserialize::derive(input, ragu_core_path, ragu_primitives_path)
+        derive::gadgetwrite::derive(input, ragu_core_path, ragu_primitives_path)
     })
 }

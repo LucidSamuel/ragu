@@ -6,7 +6,7 @@ use ragu_core::{
     drivers::{Driver, Simulator, Witness},
     gadgets::GadgetKind,
 };
-use ragu_primitives::io::GadgetSerialize;
+use ragu_primitives::io::Write;
 
 use alloc::boxed::Box;
 
@@ -91,7 +91,7 @@ pub trait StagedCircuit<F: Field, R: Rank>: Sized + Send + Sync {
     type Witness<'source>: Send;
 
     /// Represents the output of a circuit computation which can be serialized.
-    type Output: GadgetSerialize<F>;
+    type Output: Write<F>;
 
     /// Auxillary data produced during the computation of the
     /// [`witness`](StagedCircuit::witness) method that may be useful, such as

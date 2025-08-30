@@ -20,7 +20,7 @@ use ragu_core::{
     drivers::{Driver, Witness},
     gadgets::GadgetKind,
 };
-use ragu_primitives::io::GadgetSerialize;
+use ragu_primitives::io::Write;
 
 use alloc::{boxed::Box, vec::Vec};
 
@@ -50,7 +50,7 @@ pub trait Circuit<F: Field>: Sized + Send + Sync {
 
     /// Represents a gadget that can be serialized and represents the output of
     /// a circuit computation.
-    type Output: GadgetSerialize<F>;
+    type Output: Write<F>;
 
     /// Auxillary data produced during the computation of the
     /// [`witness`](Circuit::witness) method that may be useful, such as

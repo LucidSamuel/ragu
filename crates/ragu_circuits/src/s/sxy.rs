@@ -155,7 +155,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(circuit: &C, x: F, y: F) -> Result
     let mut outputs = vec![];
 
     let (io, _) = circuit.witness(&mut dr, Empty)?;
-    io.serialize(&mut dr, &mut outputs)?;
+    io.write(&mut dr, &mut outputs)?;
     for output in outputs {
         dr.enforce_zero(|lc| lc.add(output.wire()))?;
     }

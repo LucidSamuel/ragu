@@ -53,7 +53,7 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C, instance: C::Instance<'_>) -> 
     let mut pubinputs = vec![];
     circuit
         .instance(&mut collector, Always::maybe_just(|| instance))?
-        .serialize(&mut collector, &mut pubinputs)?;
+        .write(&mut collector, &mut pubinputs)?;
 
     Ok(pubinputs
         .into_iter()

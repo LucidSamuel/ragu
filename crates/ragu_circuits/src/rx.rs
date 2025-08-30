@@ -96,7 +96,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
         };
         dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
         let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
-        io.serialize(&mut dr, &mut ())?;
+        io.write(&mut dr, &mut ())?;
 
         if dr.rx.a.len() > R::n() || dr.rx.b.len() > R::n() || dr.rx.c.len() > R::n() {
             return Err(Error::MultiplicationBoundExceeded(R::n()));

@@ -32,7 +32,7 @@ pub fn derive(
     if let Some(wc) = where_clause {
         return Err(Error::new(
             wc.span(),
-            "GadgetSerialize derive does not yet support where clauses",
+            "Write derive does not yet support where clauses",
         ));
     }
     let impl_generics = {
@@ -60,7 +60,7 @@ pub fn derive(
                 _ => {
                     return Err(Error::new(
                         s.struct_token.span(),
-                        "GadgetSerialize derive only works on structs with named fields",
+                        "Write derive only works on structs with named fields",
                     ));
                 }
             };
@@ -84,7 +84,7 @@ pub fn derive(
         _ => {
             return Err(Error::new(
                 Span::call_site(),
-                "GadgetSerialize derive only works on structs",
+                "Write derive only works on structs",
             ));
         }
     };
@@ -114,7 +114,7 @@ pub fn derive(
 
     let serialize_calls = fields.iter().filter_map(|(id, ty)| match ty {
         FieldType::Serialize => {
-            Some(quote! { #ragu_primitives_path::GadgetExt::serialize(&this.#id, dr, buf)?; })
+            Some(quote! { #ragu_primitives_path::GadgetExt::write(&this.#id, dr, buf)?; })
         }
         FieldType::Skip => None,
     });
@@ -124,8 +124,8 @@ pub fn derive(
         let driver_lifetime = &driver.lifetime;
         quote! {
             #[automatically_derived]
-            impl #gadget_kind_generic_params #ragu_primitives_path::io::GadgetSerialize<#driverfield_ident> for #struct_ident #kind_subst_arguments {
-                fn serialize_gadget<#driver_lifetime, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, B: #ragu_primitives_path::io::Buffer<#driver_lifetime, #driver_ident> >(
+            impl #gadget_kind_generic_params #ragu_primitives_path::io::Write<#driverfield_ident> for #struct_ident #kind_subst_arguments {
+                fn write_gadget<#driver_lifetime, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, B: #ragu_primitives_path::io::Buffer<#driver_lifetime, #driver_ident> >(
                     this: &<Self as #ragu_core_path::gadgets::GadgetKind<#driverfield_ident>>::Rebind<#driver_lifetime, #driver_ident>,
                     dr: &mut #driver_ident,
                     buf: &mut B
@@ -148,7 +148,7 @@ fn test_gadget_serialize_derive() {
     use syn::parse_quote;
 
     let input: DeriveInput = parse_quote! {
-        #[derive(GadgetSerialize)]
+        #[derive(Write)]
         pub struct MyGadget<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>, C: CurveAffine, const N: usize> {
             field1: Element<'my_dr, MyD>,
             field2: Boolean<'my_dr, MyD>,
@@ -163,16 +163,16 @@ fn test_gadget_serialize_derive() {
         result.to_string(),
         quote!(
             #[automatically_derived]
-            impl<C: CurveAffine, const N: usize, DriverField: ::ff::Field> ::ragu_primitives::io::GadgetSerialize<DriverField>
+            impl<C: CurveAffine, const N: usize, DriverField: ::ff::Field> ::ragu_primitives::io::Write<DriverField>
                 for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
             {
-                fn serialize_gadget<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, B: ::ragu_primitives::io::Buffer<'my_dr, MyD> >(
+                fn write_gadget<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, B: ::ragu_primitives::io::Buffer<'my_dr, MyD> >(
                     this: &<Self as ::ragu_core::gadgets::GadgetKind<DriverField>>::Rebind<'my_dr, MyD>,
                     dr: &mut MyD,
                     buf: &mut B
                 ) -> ::ragu_core::Result<()> {
-                    ::ragu_primitives::GadgetExt::serialize(&this.field1, dr, buf)?;
-                    ::ragu_primitives::GadgetExt::serialize(&this.field2, dr, buf)?;
+                    ::ragu_primitives::GadgetExt::write(&this.field1, dr, buf)?;
+                    ::ragu_primitives::GadgetExt::write(&this.field2, dr, buf)?;
                     Ok(())
                 }
             }

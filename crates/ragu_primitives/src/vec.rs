@@ -29,7 +29,7 @@
 //!
 //! Finally, [`FixedVec<G, L>`] implements [`Gadget`] if `G` implements
 //! `Gadget`. [`FixedVec<G, L>`] also can be [serialized](crate::io) if
-//! `G::Kind` implements [`GadgetSerialize`].
+//! `G::Kind` implements [`Write`].
 
 use ff::Field;
 use ragu_core::{
@@ -44,7 +44,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::io::{Buffer, GadgetSerialize};
+use crate::io::{Buffer, Write};
 
 /// A type that statically determines the length of a [`FixedVec`].
 pub trait Len: Send + Sync + 'static {
@@ -129,14 +129,14 @@ impl<T: Clone, L: Len> Clone for FixedVec<T, L> {
     }
 }
 
-impl<F: Field, G: GadgetSerialize<F>, L: Len> GadgetSerialize<F> for FixedVec<PhantomData<G>, L> {
-    fn serialize_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+impl<F: Field, G: Write<F>, L: Len> Write<F> for FixedVec<PhantomData<G>, L> {
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &FixedVec<G::Rebind<'dr, D>, L>,
         dr: &mut D,
         buf: &mut B,
     ) -> Result<()> {
         for item in &this.v {
-            G::serialize_gadget(item, dr, buf)?;
+            G::write_gadget(item, dr, buf)?;
         }
         Ok(())
     }

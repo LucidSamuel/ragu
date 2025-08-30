@@ -35,18 +35,18 @@ pub use poseidon::Sponge;
 
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
-use io::{Buffer, GadgetSerialize};
+use io::{Buffer, Write};
 use promotion::Demoted;
 
 /// Primitive extension trait for all gadgets.
 pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
-    /// Serialize this gadget into a buffer, assuming the gadget's
-    /// [`Kind`](Gadget::Kind) implements [`GadgetSerialize`].
-    fn serialize<B: Buffer<'dr, D>>(&self, dr: &mut D, buf: &mut B) -> Result<()>
+    /// Write this gadget into a buffer, assuming the gadget's
+    /// [`Kind`](Gadget::Kind) implements [`Write`].
+    fn write<B: Buffer<'dr, D>>(&self, dr: &mut D, buf: &mut B) -> Result<()>
     where
-        Self::Kind: GadgetSerialize<D::F>,
+        Self::Kind: Write<D::F>,
     {
-        <Self::Kind as GadgetSerialize<D::F>>::serialize_gadget(self, dr, buf)
+        <Self::Kind as Write<D::F>>::write_gadget(self, dr, buf)
     }
 
     /// Demote this gadget by stripping its witness data.

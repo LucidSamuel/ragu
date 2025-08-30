@@ -108,7 +108,7 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
     let mut degree_ky = 0usize;
     collector.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
     let (io, _) = circuit.witness(&mut collector, Empty)?;
-    io.serialize(&mut collector, &mut degree_ky)?;
+    io.write(&mut collector, &mut degree_ky)?;
 
     Ok(CircuitMetrics {
         num_linear_constraints: collector.num_linear_constraints + degree_ky + 1,

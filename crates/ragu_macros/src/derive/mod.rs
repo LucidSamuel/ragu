@@ -2,7 +2,7 @@ use proc_macro2::Span;
 use syn::{AngleBracketedGenericArguments, GenericArgument, Lifetime, Type, parse_quote};
 
 pub mod gadget;
-pub mod gadgetserialize;
+pub mod gadgetwrite;
 
 use crate::helpers::GenericDriver;
 

@@ -9,10 +9,10 @@ use ragu_core::{
 
 use core::marker::PhantomData;
 
-use crate::{Boolean, Element, io::GadgetSerialize};
+use crate::{Boolean, Element, io::Write};
 
 /// Represents an affine point on a curve defined over the circuit's field.
-#[derive(Gadget, GadgetSerialize)]
+#[derive(Gadget, Write)]
 pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine> {
     #[ragu(gadget)]
     x: Element<'dr, D>,

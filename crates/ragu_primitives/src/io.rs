@@ -1,6 +1,6 @@
 //! Traits for serializing gadgets into buffers.
 //!
-//! The [`GadgetSerialize`] trait allows compatible [`Gadget`](crate::Gadget)s
+//! The [`Write`] trait allows compatible [`Gadget`](crate::Gadget)s
 //! to write [`Element`]s to a [`Buffer`] for serialization purposes. Because
 //! gadgets are just containers for wires and witness data, they can usually
 //! reconstitute their encapsulated [`Element`]s via promotion.
@@ -23,16 +23,16 @@ use crate::Element;
 /// Gadget serialization is implemented as a subtrait of [`GadgetKind`] to
 /// satisfy Rust language restrictions and keep interfaces ergonomic. Concrete
 /// [`Gadget`](crate::Gadget)s can be serialized using the
-/// [`GadgetExt::serialize`](crate::GadgetExt::serialize) helper method.
+/// [`GadgetExt::write`](crate::GadgetExt::write) helper method.
 ///
 /// ### Automatic Derivation
 ///
 /// Gadgets that consist mainly of other gadgets are candidates for [automatic
-/// derivation](derive@GadgetSerialize) of this trait.
-pub trait GadgetSerialize<F: Field>: GadgetKind<F> {
-    /// Serialize this gadget into wires that are written the provided buffer,
+/// derivation](derive@Write) of this trait.
+pub trait Write<F: Field>: GadgetKind<F> {
+    /// Write this gadget into wires that are written the provided buffer,
     /// using the driver to synthesize the elements if needed.
-    fn serialize_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &Self::Rebind<'dr, D>,
         dr: &mut D,
         buf: &mut B,
@@ -46,7 +46,7 @@ pub trait Buffer<'dr, D: Driver<'dr>> {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()>;
 }
 
-/// Automatically derives the [`GadgetSerialize`] trait for gadgets that merely
+/// Automatically derives the [`Write`] trait for gadgets that merely
 /// contain other gadgets.
 ///
 /// This only works for structs with named fields. Similar to the
@@ -59,9 +59,9 @@ pub trait Buffer<'dr, D: Driver<'dr>> {
 /// ```rust
 /// # use arithmetic::CurveAffine;
 /// # use ragu_core::{drivers::{Driver, Witness}, gadgets::Gadget};
-/// # use ragu_primitives::{Element, io::GadgetSerialize};
+/// # use ragu_primitives::{Element, io::Write};
 /// # use core::marker::PhantomData;
-/// #[derive(Gadget, GadgetSerialize)]
+/// #[derive(Gadget, Write)]
 /// pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine> {
 ///     #[ragu(gadget)]
 ///     x: Element<'dr, D>,
@@ -71,4 +71,4 @@ pub trait Buffer<'dr, D: Driver<'dr>> {
 ///     _marker: PhantomData<C>,
 /// }
 /// ```
-pub use ragu_macros::GadgetSerialize;
+pub use ragu_macros::Write;

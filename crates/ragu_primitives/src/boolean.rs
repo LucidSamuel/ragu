@@ -11,7 +11,7 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     Element, GadgetExt,
-    io::{Buffer, GadgetSerialize},
+    io::{Buffer, Write},
     promotion::{Demoted, Promotion},
     util::InternalMaybe,
 };
@@ -95,13 +95,13 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     }
 }
 
-impl<F: Field> GadgetSerialize<F> for Kind![F; @Boolean<'_, _>] {
-    fn serialize_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+impl<F: Field> Write<F> for Kind![F; @Boolean<'_, _>] {
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &Boolean<'dr, D>,
         dr: &mut D,
         buf: &mut B,
     ) -> Result<()> {
-        this.element().serialize(dr, buf)
+        this.element().write(dr, buf)
     }
 }
 

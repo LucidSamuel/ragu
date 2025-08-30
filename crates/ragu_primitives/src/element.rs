@@ -9,12 +9,12 @@ use ragu_core::{
 
 use alloc::vec::Vec;
 
-use crate::io::{Buffer, GadgetSerialize};
+use crate::io::{Buffer, Write};
 
 /// Represents a wire and its corresponding field element value, but generally
 /// does not guarantee any particular constraint has been imposed on the wire.
 /// Also represents the fundamental code unit of serialization using the
-/// [`GadgetSerialize`] trait.
+/// [`Write`] trait.
 ///
 /// ## Usage
 ///
@@ -281,8 +281,8 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 }
 
-impl<F: Field> GadgetSerialize<F> for Kind![F; @Element<'_, _>] {
-    fn serialize_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+impl<F: Field> Write<F> for Kind![F; @Element<'_, _>] {
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &Element<'dr, D>,
         dr: &mut D,
         buf: &mut B,
