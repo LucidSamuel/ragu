@@ -37,15 +37,15 @@ use crate::io::{Buffer, Write};
 /// As with all gadgets, an [`Element`] can be [demoted](crate::promotion) but
 /// because it only represents a wire it is preferable to demote by extracting
 /// the wire using [`Element::wire`]. Promotion via [`Element::promote`] takes a
-/// wire instead of a demoted gadget to encourage this.
+/// bare wire instead of a demoted gadget to encourage this.
 #[derive(Gadget)]
 pub struct Element<'dr, D: Driver<'dr>> {
     /// A wire created by the driver
     #[ragu(wire)]
     wire: D::Wire,
 
-    #[ragu(witness)]
     /// The witness value for the assignment of this wire
+    #[ragu(witness)]
     value: Witness<D, D::F>,
 }
 
@@ -62,8 +62,8 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         })
     }
 
-    /// Allocates an element with the provided witness assignment and squares it
-    /// in a single step.
+    /// Allocates an element $a$ with the provided witness assignment and
+    /// squares it in a single step. Returns $(a, a^2)$.
     ///
     /// This costs one multiplication constraint.
     pub fn alloc_square(dr: &mut D, assignment: Witness<D, D::F>) -> Result<(Self, Self)> {

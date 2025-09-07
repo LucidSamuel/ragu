@@ -33,8 +33,11 @@ use crate::{
 /// Represents a challenge used to scale elliptic curve points.
 #[derive(Gadget)]
 pub struct Endoscalar<'dr, D: Driver<'dr>> {
+    /// The bits of this endoscalar in little-endian order.
     #[ragu(gadget)]
     bits: FixedVec<Demoted<'dr, D, Boolean<'dr, D>>, ConstLen<{ Uendo::BITS as usize }>>,
+
+    /// The represented endoscalar witness value in compact representation.
     #[ragu(witness)]
     value: Witness<D, Uendo>,
 }
