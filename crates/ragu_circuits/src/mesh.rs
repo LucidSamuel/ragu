@@ -214,15 +214,15 @@ impl<F: PrimeField, R: Rank> Mesh<'_, F, R> {
     }
 }
 
-/// Returns the omega value for a given circuit ID in the maximal field domain.    
-pub fn compute_circuit_omega<F: PrimeField>(id: u32) -> F {
+/// Returns $\omega^j$ that corresponds to the $i$th circuit added to a Mesh.
+pub fn omega_j<F: PrimeField>(id: u32) -> F {
     let bit_reversal_id = bitreverse(id, F::S);
     F::ROOT_OF_UNITY.pow([bit_reversal_id as u64])
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MeshBuilder, OmegaKey, compute_circuit_omega};
+    use super::{MeshBuilder, OmegaKey, omega_j};
     use crate::{Circuit, polynomials::R};
     use alloc::collections::btree_map::BTreeMap;
     use arithmetic::{Domain, bitreverse};
@@ -362,13 +362,13 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_circuit_omega_consistency() -> Result<()> {
+    fn test_omega_j_consistency() -> Result<()> {
         for num_circuits in [2usize, 3, 7, 8, 15, 16, 32] {
             let log2_circuits = num_circuits.next_power_of_two().trailing_zeros();
             let domain = Domain::<Fp>::new(log2_circuits);
 
             for id in 0..num_circuits {
-                let omega_from_function = compute_circuit_omega::<Fp>(id as u32);
+                let omega_from_function = omega_j::<Fp>(id as u32);
 
                 let bit_reversal_id = bitreverse(id as u32, Fp::S);
                 let position = ((bit_reversal_id as u64) >> (Fp::S - log2_circuits)) as usize;
