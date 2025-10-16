@@ -70,34 +70,28 @@ impl<'params, F: PrimeField, R: Rank> MeshBuilder<'params, F, R> {
         let mut omega_lsb_lookup =
             HashMap::with_capacity_and_hasher(domain_size, RandomState::new());
 
-        for (id, circuit) in self.circuits.into_iter().enumerate() {
-            // Omega values are precomputed in the maximal field domain 2^S (where S = F::S), independent of final domain 2^k.
-            // The key property is circuit synthesis can compute omega^i for the jth circuit at
-            // compile-time as: "omega^i where i = bit_reverse(j, S)". This is a pure function that doesn't
-            // rely on a mesh construction.
-            //
-            // During finalization, when 'k' is determined, the circuit's position becomes:
-            // "position = bit_reverse(j, S) >> (S - k)".
-            //
-            // We perform a mapping to the actual position in the smaller domain, effectively compressing
-            // the 2^S-slot domain to 2^k-slot domain (where k = log2_circuits).
-            let bit_reversal_id = bitreverse(id as u32, F::S);
-
-            // Cast to u64 to avoid overflow: in a single circuit mesh setting (log2_circuits = 0),
-            // right shifting by (F::S - log2_circuits) = 32 overflows a u32.
-            let position = ((bit_reversal_id as u64) >> (F::S - log2_circuits)) as usize;
+        for (i, circuit) in self.circuits.into_iter().enumerate() {
+            // Rather than assigning the `i`th circuit to `omega^i` in the final
+            // domain, we will assign it to `omega^j` where `j` is the
+            // `log2_circuits` bit-reversal of `i`. This has the property that
+            // `omega^j` = `F::ROOT_OF_UNITY^m` where `m` is the `F::S` bit
+            // reversal of `i`, which can be computed independently of `omega`
+            // and the actual (ideal) choice of `log2_circuits`. In effect, this
+            // is *implicitly* performing domain extensions as smaller domains
+            // become exhausted.
+            let j = bitreverse(i as u32, log2_circuits) as usize;
 
             // Builds O(1) omega lookup table.
-            let omega_at_position = domain.omega().pow([position as u64]);
-            let omega_lsb = Mesh::<F, R>::field_to_lsb(&omega_at_position);
-            omega_lsb_lookup.insert(omega_lsb, position);
+            let omega_j = domain.omega().pow([j as u64]);
+            let omega_lsb = Mesh::<F, R>::field_to_lsb(&omega_j);
+            omega_lsb_lookup.insert(omega_lsb, j);
 
             // TODO: By virtue of the reindexed vector being typed "Option<Box<_>>", it contains
             // gaps (that can be collapsed) when # circuits < domain size. These are inherently
             // sparse indices right now.
 
             // Shuffle the circuit by moving each circuit to it's bit-reversed position.
-            reordered[position] = Some(circuit);
+            reordered[j] = Some(circuit);
         }
 
         Ok(Mesh {
