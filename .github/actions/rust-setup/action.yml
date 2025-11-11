@@ -13,6 +13,10 @@ inputs:
     description: Install gcc-multilib for 32-bit compilation
     required: false
     default: 'false'
+  tools: 
+    description: Cargo tools to install
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -67,6 +71,12 @@ runs:
           cargo clean -p "$p" --release || true
           cargo clean -p "$p" || true
         done
+
+    - name: Install cargo tools 
+      if: inputs.tools != ''
+      uses: taiki-e/install-action@v2
+      with:
+        tool: ${{ inputs.tools }}
 
     - name: Show toolchain
       shell: bash
