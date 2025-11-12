@@ -74,11 +74,6 @@ impl<'params, F: PrimeField, R: Rank> MeshBuilder<'params, F, R> {
     where
         F: PrimeField<Repr = [u8; 32]>,
     {
-        // Guard against empty meshes.
-        if self.circuits.is_empty() {
-            return Err(Error::CircuitBoundExceeded(0));
-        }
-
         // Compute the smallest power-of-2 domain size that fits all circuits.
         let log2_circuits = self.circuits.len().next_power_of_two().trailing_zeros();
         let domain = Domain::<F>::new(log2_circuits);
@@ -487,34 +482,6 @@ mod tests {
     }
 
     #[test]
-    fn test_non_power_of_two_mesh_sizes() -> Result<()> {
-        type TestRank = crate::polynomials::R<8>;
-        for num_circuits in 0..21 {
-            let mut builder = MeshBuilder::<Fp, TestRank>::new();
-
-            for i in 0..num_circuits {
-                builder = builder.register_circuit(SquareCircuit { times: i })?;
-            }
-
-            let mesh = builder.finalize()?;
-
-            // Verify domain size is next power of 2
-            let expected_domain_size = num_circuits.next_power_of_two();
-            assert_eq!(mesh.domain.n(), expected_domain_size);
-
-            let w = Fp::random(thread_rng());
-            let x = Fp::random(thread_rng());
-            let y = Fp::random(thread_rng());
-
-            let wxy = mesh.wxy(w, x, y);
-            let xy = mesh.xy(x, y);
-            assert_eq!(wxy, xy.eval(w), "Failed for num_circuits={}", num_circuits);
-        }
-
-        Ok(())
-    }
-
-    #[test]
     fn test_mesh_key_zero_handling() -> Result<()> {
         let poseidon = Pasta::baked().circuit_poseidon();
 
@@ -546,5 +513,35 @@ mod tests {
             );
             seen_keys.insert(key);
         }
+    }
+
+    #[test]
+    fn test_non_power_of_two_mesh_sizes() -> Result<()> {
+        let poseidon = Pasta::baked().circuit_poseidon();
+
+        type TestRank = crate::polynomials::R<8>;
+        for num_circuits in 0..21 {
+            let mut builder = MeshBuilder::<Fp, TestRank>::new();
+
+            for i in 0..num_circuits {
+                builder = builder.register_circuit(SquareCircuit { times: i })?;
+            }
+
+            let mesh = builder.finalize(poseidon)?;
+
+            // Verify domain size is next power of 2
+            let expected_domain_size = num_circuits.next_power_of_two();
+            assert_eq!(mesh.domain.n(), expected_domain_size);
+
+            let w = Fp::random(thread_rng());
+            let x = Fp::random(thread_rng());
+            let y = Fp::random(thread_rng());
+
+            let wxy = mesh.wxy(w, x, y);
+            let xy = mesh.xy(x, y);
+            assert_eq!(wxy, xy.eval(w), "Failed for num_circuits={}", num_circuits);
+        }
+
+        Ok(())
     }
 }
