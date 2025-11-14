@@ -111,8 +111,9 @@
 use ff::Field;
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverValue, Simulator},
+    drivers::{Driver, DriverValue, emulator::Emulator},
     gadgets::GadgetKind,
+    maybe::{Always, MaybeKind},
 };
 use ragu_primitives::io::Write;
 
@@ -124,7 +125,6 @@ use crate::{
 };
 
 mod builder;
-mod extractor;
 mod object;
 
 pub use builder::StageBuilder;
@@ -294,17 +294,9 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// Compute the (partial) witness polynomial $r(X)$ for this stage.
     fn rx(witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>> {
         let values = {
-            // TODO(ebfull): This simulator checks multiplication and linear
-            // constraints are satisfied, but we just need the wire values.
-            // Perhaps we need something other than a Simulator, or we need the
-            // Simulator to be more configurable.
-            let mut out = None;
-            Simulator::simulate(witness, |dr, witness| {
-                out = Some(Self::witness(dr, witness)?);
-
-                Ok(())
-            })?;
-            extractor::wires(&out.unwrap())?
+            let mut dr = Emulator::extractor();
+            let out = Self::witness(&mut dr, Always::maybe_just(|| witness))?;
+            dr.wires(&out)?
         };
 
         if values.len() > Self::values() {
