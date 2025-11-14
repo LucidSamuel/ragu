@@ -15,11 +15,11 @@
 //!   assignments are not needed, but circuit synthesis code may need to be
 //!   executed over a witness depending on the context, such as _within_ the
 //!   execution of a generic driver.
-//! * `Emulator::execute()` is a special case of [`Emulator::wireless()`] that
+//! * [`Emulator::execute()`] is a special case of [`Emulator::wireless()`] that
 //!   _always_ has a witness. This is used for executing computations written as
 //!   circuit synthesis code; the interstitial wire assignments don't matter, so
 //!   we don't need to compute or track them.
-//! * `Emulator::extractor()` is an emulator that always has both a wire
+//! * [`Emulator::extractor()`] is an emulator that always has both a wire
 //!   assignment and a witness. This is used for extracting the wire values, for
 //!   example using [`Emulator::wires()`].
 //!
@@ -72,12 +72,20 @@ pub enum MaybeWired<M: MaybeKind, F: Field> {
     Arbitrary(M::Rebind<F>),
 }
 
-impl<F: Field> MaybeWired<Always<()>, F> {
+impl<M: MaybeKind, F: Field> MaybeWired<M, F> {
     /// Retrieves the underlying wire value.
     pub fn value(self) -> F {
         match self {
             MaybeWired::One => F::ONE,
             MaybeWired::Arbitrary(value) => value.take(),
+        }
+    }
+
+    /// Retrieves a reference to the underlying wire value.
+    pub fn snag<'a>(&'a self, one: &'a F) -> &'a F {
+        match self {
+            MaybeWired::One => one,
+            MaybeWired::Arbitrary(value) => value.snag(),
         }
     }
 }
@@ -97,13 +105,7 @@ pub struct MaybeDirectSum<M: MaybeKind, F: Field>(M::Rebind<DirectSum<F>>);
 
 impl<M: MaybeKind, F: Field> LinearExpression<MaybeWired<M, F>, F> for MaybeDirectSum<M, F> {
     fn add_term(self, wire: &MaybeWired<M, F>, coeff: Coeff<F>) -> Self {
-        MaybeDirectSum(self.0.map(|sum| {
-            let wire = match wire {
-                MaybeWired::One => &F::ONE,
-                MaybeWired::Arbitrary(wire) => wire.snag(),
-            };
-            sum.add_term(wire, coeff)
-        }))
+        MaybeDirectSum(self.0.map(|sum| sum.add_term(wire.snag(&F::ONE), coeff)))
     }
 
     fn gain(self, coeff: Coeff<F>) -> Self {
@@ -111,35 +113,18 @@ impl<M: MaybeKind, F: Field> LinearExpression<MaybeWired<M, F>, F> for MaybeDire
     }
 
     fn extend(self, with: impl IntoIterator<Item = (MaybeWired<M, F>, Coeff<F>)>) -> Self {
-        MaybeDirectSum(self.0.map(|sum| {
-            sum.extend(with.into_iter().map(|(wire, coeff)| {
-                let wire = match wire {
-                    MaybeWired::One => F::ONE,
-                    MaybeWired::Arbitrary(wire) => wire.take(),
-                };
-                (wire, coeff)
-            }))
-        }))
+        MaybeDirectSum(
+            self.0
+                .map(|sum| sum.extend(with.into_iter().map(|(wire, coeff)| (wire.value(), coeff)))),
+        )
     }
 
     fn add(self, wire: &MaybeWired<M, F>) -> Self {
-        MaybeDirectSum(self.0.map(|sum| {
-            let wire = match wire {
-                MaybeWired::One => &F::ONE,
-                MaybeWired::Arbitrary(wire) => wire.snag(),
-            };
-            sum.add(wire)
-        }))
+        MaybeDirectSum(self.0.map(|sum| sum.add(wire.snag(&F::ONE))))
     }
 
     fn sub(self, wire: &MaybeWired<M, F>) -> Self {
-        MaybeDirectSum(self.0.map(|sum| {
-            let wire = match wire {
-                MaybeWired::One => &F::ONE,
-                MaybeWired::Arbitrary(wire) => wire.snag(),
-            };
-            sum.sub(wire)
-        }))
+        MaybeDirectSum(self.0.map(|sum| sum.sub(wire.snag(&F::ONE))))
     }
 }
 
