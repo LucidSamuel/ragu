@@ -9,3 +9,45 @@
 
 extern crate alloc;
 
+use arithmetic::Cycle;
+use ragu_circuits::polynomials::Rank;
+use ragu_core::Result;
+
+use core::marker::PhantomData;
+
+/// Builder for an [`Application`](crate::Application) for proof-carrying data.
+pub struct ApplicationBuilder<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+    _marker: PhantomData<(C, R, [(); HEADER_SIZE], &'params ())>,
+}
+
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Default
+    for ApplicationBuilder<'_, C, R, HEADER_SIZE>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
+    ApplicationBuilder<'params, C, R, HEADER_SIZE>
+{
+    /// Create an empty [`ApplicationBuilder`] for proof-carrying data.
+    pub fn new() -> Self {
+        ApplicationBuilder {
+            _marker: PhantomData,
+        }
+    }
+
+    /// Perform finalization and optimization steps to produce the
+    /// [`Application`].
+    pub fn finalize(self, _params: &C) -> Result<Application<'params, C, R, HEADER_SIZE>> {
+        Ok(Application {
+            _marker: PhantomData,
+        })
+    }
+}
+
+/// The recursion context that is used to create and verify proof-carrying data.
+pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+    _marker: PhantomData<(C, R, [(); HEADER_SIZE], &'params ())>,
+}
