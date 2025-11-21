@@ -10,9 +10,9 @@ use super::header::Header;
 pub use encoder::{Encoded, Encoder};
 
 pub(crate) mod adapter;
-pub(crate) mod rerandomize;
 mod encoder;
 mod padded;
+pub(crate) mod rerandomize;
 
 /// Internal representation of a [`Step`] index distinguishing internal vs.
 /// application steps.
