@@ -10,6 +10,7 @@ use super::header::Header;
 pub use encoder::{Encoded, Encoder};
 
 pub(crate) mod adapter;
+pub(crate) mod rerandomize;
 mod encoder;
 mod padded;
 
