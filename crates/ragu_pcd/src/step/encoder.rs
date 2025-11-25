@@ -64,11 +64,12 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     }
 
     /// Returns a reference to the gadget if this is a `Gadget` encoding.
-    /// Returns `None` if this is a `Raw` encoding.
-    pub fn as_gadget(&self) -> Option<&<H::Output as GadgetKind<D::F>>::Rebind<'dr, D>> {
+    pub fn as_gadget(&self) -> &<H::Output as GadgetKind<D::F>>::Rebind<'dr, D> {
         match self {
-            Encoded::Gadget(g) => Some(g),
-            Encoded::Raw(_) => None,
+            Encoded::Gadget(g) => g,
+            Encoded::Raw(_) => unreachable!(
+                "as_gadget should not be called on a raw encoding; raw encodings are only used internally"
+            ),
         }
     }
 
