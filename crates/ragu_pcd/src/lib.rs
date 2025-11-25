@@ -227,8 +227,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         Ok((
             Proof {
                 circuit_id,
-                left_header,
-                right_header,
+                left_header: left_header.into_inner(),
+                right_header: right_header.into_inner(),
                 rx,
                 _marker: PhantomData,
             },

@@ -54,7 +54,10 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
     );
     type Output = Kind![C::CircuitField; FixedVec<Element<'_, _>, TripleConstLen<HEADER_SIZE>>];
     type Aux<'source> = (
-        (Vec<C::CircuitField>, Vec<C::CircuitField>),
+        (
+            FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
+            FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
+        ),
         S::Aux<'source>,
     );
 
@@ -111,12 +114,14 @@ impl<C: Cycle, S: Step<C>, R: Rank, const HEADER_SIZE: usize> Circuit<C::Circuit
             let left_header = elements[HEADER_SIZE..HEADER_SIZE * 2]
                 .iter()
                 .map(|e| *e.value().take())
-                .collect();
+                .collect::<Vec<_>>();
+            let left_header = FixedVec::try_from(left_header).expect("correct length");
 
             let right_header = elements[HEADER_SIZE * 2..HEADER_SIZE * 3]
                 .iter()
                 .map(|e| *e.value().take())
-                .collect();
+                .collect::<Vec<_>>();
+            let right_header = FixedVec::try_from(right_header).expect("correct length");
 
             ((left_header, right_header), aux.take())
         });
