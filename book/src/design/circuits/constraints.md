@@ -24,7 +24,7 @@ By the definition of $\v{r}$ (as a [structured vector](../structured.md)) we can
 $$\revdot{\v{r}}{\v{r} \circ \v{z^{4n}}} =
 
 \sum\limits_{i = 0}^{n - 1} \left(
-  \v{a}_i \v{b}_i  \big( \underline{z^{2n - 1 - i} + z^{2n + i} } \big)
+  \v{a}_i \v{b}_i  \big( \textcolor{green}{z^{2n - 1 - i} + z^{2n + i} } \big)
 + \v{c}_i \v{d}_i  \big( z^{i} + z^{4n - 1 - i} \big)
 \right)
 
@@ -33,7 +33,7 @@ $$
 and notice that for all $z \in \F$ and for any choice of $\v{r}$ there exists a unique vector $\v{t}$ such that
 
 $$
-\revdot{\v{r}}{\v{t}} = -\sum_{i = 0}^{n - 1} \v{c}_i \big( \underline{ z^{2n - 1 - i} + z^{2n + i} } \big).
+\revdot{\v{r}}{\v{t}} = -\sum_{i = 0}^{n - 1} \v{c}_i \big( \textcolor{green}{ z^{2n - 1 - i} + z^{2n + i} } \big).
 $$
 
 and so if for a random challenge $z$
