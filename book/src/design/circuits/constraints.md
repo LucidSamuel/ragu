@@ -13,13 +13,14 @@ for some (sparse) public input vector $\v{k} \in \F^{4n}$ and fixed matrices $\v
 
 ## Multiplication Constraints
 
-The multiplication constraints over the witness can be rewritten as $\v{a} \circ \v{b} = \v{c}$. It is possible to probabilistically reduce this to a dot product claim using a random challenge $z \in \F$, using the "folded" claim
+The multiplication constraints over the witness can be rewritten as $\v{a} \circ \v{b} = \v{c}$. It is possible to _probabilistically_ reduce this to a dot product claim using a random challenge $z \in \F$:
 
 $$
-\sum_{i=0}^{n-1} z^{i}\,\big(\mathbf a_i \mathbf b_i - \mathbf c_i\big) = 0 \;\Longleftrightarrow\; \dot{\v{a}}{\v{z^{n}} \circ \v{b}} - \dot{\v{c}}{\v{z^{n}}} = 0.
+\v{a} \circ \v{b} = \v{c} \;\Longleftrightarrow\; \sum_{i=0}^{n-1} z^{i}\,\big(\mathbf a_i \mathbf b_i - \mathbf c_i\big) = 0 \;\Longleftrightarrow\; \dot{\v{a}}{\v{z^{n}} \circ \v{b}} - \dot{\v{c}}{\v{z^{n}}} = 0.
 $$
 
-By the definition of $\v{r}$ (as a [structured vector](../structured.md)) we can do something mathematically identical. Observe the expansion
+By the definition of $\v{r}$ (as a [structured vector](../structured.md)) we can
+do something identical. Observe the expansion
 
 $$\revdot{\v{r}}{\v{r} \circ \v{z^{4n}}} =
 
@@ -42,7 +43,13 @@ $$
 \revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}} + \v{t}} = 0
 $$
 
-holds, then $\v{a} \circ \v{b} = \v{c}$ holds with high probability.
+holds, then $\v{a} \circ \v{b} = \v{c}$ holds with high probability.[^cduseless] The vector $\v{t}$ represents the coefficient vector of the polynomial
+
+$$
+t(X) = -\sum_{i=0}^{n - 1} X^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})
+$$
+
+which can be evaluated efficiently at an arbitrary point via a geometric sum.
 
 ## Linear Constraints
 
@@ -75,3 +82,5 @@ $$
 
 because $\v{r} \circ \v{z^{4n}} - \v{t}$ is made independent of $\v{s}$ by random $z$ except at $\v{r}_0$, where $\v{s}_0 = 0$.
 
+[^cduseless]: This also implies the equality $\v{c} \circ \v{d} = \v{0^n}$, which is
+unimportant for witness vectors since $\v{d} = \v{0^n}$.
