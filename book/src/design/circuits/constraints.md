@@ -16,7 +16,7 @@ for some (sparse) public input vector $\v{k} \in \F^{4n}$ and fixed matrices $\v
 The multiplication constraints over the witness can be rewritten as $\v{a} \circ \v{b} = \v{c}$. It is possible to _probabilistically_ reduce this to a dot product claim using a random challenge $z \in \F$:
 
 $$
-\v{a} \circ \v{b} = \v{c} \;\Longleftrightarrow\; \sum_{i=0}^{n-1} z^{i}\,\big(\mathbf a_i \mathbf b_i - \mathbf c_i\big) = 0 \;\Longleftrightarrow\; \dot{\v{a}}{\v{z^{n}} \circ \v{b}} - \dot{\v{c}}{\v{z^{n}}} = 0.
+\boxed{\v{a} \circ \v{b} = \v{c}} \;\Longleftrightarrow\; \boxed{\sum_{i=0}^{n-1} z^{i}\,\big(\mathbf a_i \mathbf b_i - \mathbf c_i\big) = 0} \;\Longleftrightarrow\; \boxed{\dot{\v{a}}{\v{z^{n}} \circ \v{b}} - \dot{\v{c}}{\v{z^{n}}} = 0}.
 $$
 
 By the definition of $\v{r}$ (as a [structured vector](../structured.md)) we can
@@ -24,73 +24,36 @@ do something identical. Observe the expansion
 
 $$\revdot{\v{r}}{\v{r} \circ \v{z^{4n}}} =
 
-\sum\limits_{i = 0}^{n - 1} \left(
+\sum\limits_{i = 0}^{n - 1} \Big(
   \v{a}_i \v{b}_i  \big( \textcolor{green}{z^{2n - 1 - i} + z^{2n + i} } \big)
-+ \v{c}_i \v{d}_i  \big( z^{i} + z^{4n - 1 - i} \big)
-\right)
++ \v{c}_i \v{d}_i  \big( \textcolor{red}{z^{i} + z^{4n - 1 - i}} \big)
+\Big)
 
 $$
 
-and notice that for all $z \in \F$ and for any choice of $\v{r}$ there exists a unique vector $\v{t}$ such that
+and notice that for all $z \in \F$ and for any choice of $\v{r}$ there exists a unique vector[^tvectorcomputation] $\v{t} \in \F^{4n}$ such that
 
 $$
-\revdot{\v{r}}{\v{t}} = -\sum_{i = 0}^{n - 1} \v{c}_i \big( \textcolor{green}{ z^{2n - 1 - i} + z^{2n + i} } \big). \\
-$$
-Where $\v{t}$ is computed like:
-$$
-\v{t} =  
-\begin{bmatrix}
-0 \\ 
-0 \\
-\dots \\
-0
-\end{bmatrix} ||
-\begin{bmatrix}
-0 \\ 
-0 \\
-\dots \\
-0
-\end{bmatrix} ||
-\begin{bmatrix}
-0 \\ 
-0 \\
-\dots \\
-0
-\end{bmatrix} ||
-\begin{bmatrix}
--1(z^{2n-1-(n-1)} + z^{2n+(n-1)}) \\
--1(z^{2n-1-(n-2)} + z^{2n+(n-2)}) \\
-\dots \\
--1(z^{2n-1} + z^{2n})
-\end{bmatrix}
+\revdot{\v{r}}{\v{t}} = -\sum_{i = 0}^{n - 1} \v{c}_i \Big( \textcolor{green}{ z^{2n - 1 - i} + z^{2n + i} } \Big)
 $$
 
-for a random challenge $z$, we have
+and so by adding the two equalities, we get
 
 $$
 \revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}} + \v{t}} = 
-\sum\limits_{i = 0}^{n - 1} \left(
-  (\v{a}_i \v{b}_i - \v{c}_i)  \big( \underline{z^{2n - 1 - i} + z^{2n + i} } \big)
-\right) + \sum\limits_{i = 0}^{n - 1} \v{c}_i \v{d}_i  \big( z^{i} + z^{4n - 1 - i} \big)
+\sum\limits_{i = 0}^{n - 1} \Big(
+  (\textcolor{blue}{\v{a}_i \v{b}_i - \v{c}_i})  \big( \textcolor{green}{z^{2n - 1 - i} + z^{2n + i} } \big)
+ + \textcolor{orange}{\v{c}_i \v{d}_i}  \big( \textcolor{red}{z^{i} + z^{4n - 1 - i}} \big)
+\Big)
 $$
-Since the $\v{d} \in F^{n}$ component of the structured vector for a witness $= (0, 0, \dots, 0)$:
-$$
-\sum\limits_{i = 0}^{n - 1} \left(
-  (\v{a}_i \v{b}_i - \v{c}_i)  \big( \underline{z^{2n - 1 - i} + z^{2n + i} } \big)
-\right) + \xcancel{\sum\limits_{i = 0}^{n - 1} \v{c}_i \v{d}_i  \big( z^{i} + z^{4n - 1 - i} \big)}
-$$
-and thus if the expression
+
+Therefore, if the expression
+
 $$
 \revdot{\v{r}}{\v{r} \circ{\v{z^{4n}}} + \v{t}} = 0
 $$
 
-holds, then $\v{a} \circ \v{b} = \v{c}$ holds with high probability.[^cduseless] The vector $\v{t}$ represents the coefficient vector of the polynomial
-
-$$
-t(X) = -\sum_{i=0}^{n - 1} X^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})
-$$
-
-which can be evaluated efficiently at an arbitrary point via a geometric sum.
+holds for a random $z$, then $\textcolor{blue}{\v{a} \circ \v{b} = \v{c}}$ and $\textcolor{orange}{\v{c} \circ \v{d} = \v{0^n}}$ each hold with high probability. (The latter claim is useless and redundant for our purposes, since $\v{d} = \v{0^n}$ for [witness vectors](witness.md) anyway.)
 
 ## Linear Constraints
 
@@ -123,5 +86,4 @@ $$
 
 because $\v{r} \circ \v{z^{4n}} - \v{t}$ is made independent of $\v{s}$ by random $z$ except at $\v{r}_0$, where $\v{s}_0 = 0$.
 
-[^cduseless]: This also implies the equality $\v{c} \circ \v{d} = \v{0^n}$, which is
-unimportant for witness vectors since $\v{d} = \v{0^n}$.
+[^tvectorcomputation]: $\v{t} \in \F^{4n}$ is defined such that $\v{t}_i = 0$ for all $i$ except that $\v{t}_{4n - 1 - i} = - (z^{2n - 1 - i} + z^{2n + i} )$ for $i$ between $0$ and $n -1$ inclusive.
