@@ -89,7 +89,6 @@ impl<'dr, D: Driver<'dr>> FromDriver<'dr, 'dr, D> for EnforcingInjector<'_, 'dr,
 }
 
 /// `FromDriver` that injects pre-allocated stage wires into a gadget.
-/// Used by `StageGuard::unenforced` to substitute stage wires without enforcement.
 struct StageWireInjector<'a, 'dr, D: Driver<'dr>, M: MaybeKind, F: Field> {
     stage_wires: core::slice::Iter<'a, D::Wire>,
     _marker: PhantomData<(&'dr (), M, F)>,
@@ -131,7 +130,10 @@ impl<'dr, D: Driver<'dr>, R: Rank, Next: Stage<D::F, R>> StageGuard<'dr, D, R, N
         self,
         driver: &'a mut D,
         witness: DriverValue<D, Next::Witness<'source>>,
-    ) -> Result<<Next::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>>
+    ) -> Result<(
+        <Next::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>,
+        Vec<D::Wire>,
+    )>
     where
         Next: 'dr,
     {
@@ -145,7 +147,9 @@ impl<'dr, D: Driver<'dr>, R: Rank, Next: Stage<D::F, R>> StageGuard<'dr, D, R, N
             _marker: PhantomData,
         };
 
-        computed_gadget.map(&mut injector)
+        let gadget = computed_gadget.map(&mut injector)?;
+
+        Ok((gadget, self.stage_wires))
     }
 
     /// Inject stage wires without enforcing constraints.
@@ -156,7 +160,10 @@ impl<'dr, D: Driver<'dr>, R: Rank, Next: Stage<D::F, R>> StageGuard<'dr, D, R, N
     pub fn unenforced<'source: 'dr>(
         self,
         witness: DriverValue<D, Next::Witness<'source>>,
-    ) -> Result<<Next::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>>
+    ) -> Result<(
+        <Next::OutputKind as GadgetKind<D::F>>::Rebind<'dr, D>,
+        Vec<D::Wire>,
+    )>
     where
         Next: 'dr,
     {
@@ -169,7 +176,9 @@ impl<'dr, D: Driver<'dr>, R: Rank, Next: Stage<D::F, R>> StageGuard<'dr, D, R, N
             _marker: PhantomData,
         };
 
-        computed_gadget.map(&mut injector)
+        let gadget = computed_gadget.map(&mut injector)?;
+
+        Ok((gadget, self.stage_wires))
     }
 }
 

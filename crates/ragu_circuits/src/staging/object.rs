@@ -607,7 +607,7 @@ mod tests {
             DriverValue<D, Self::Aux<'source>>,
         )> {
             let (gaurd, builder) = builder.add_stage::<ConstrainedStage>()?;
-            let gadget = gaurd.enforced(builder.finish(), witness)?;
+            let (gadget, _stage_wires) = gaurd.enforced(builder.finish(), witness)?;
             Ok((gadget, D::just(|| ())))
         }
     }
