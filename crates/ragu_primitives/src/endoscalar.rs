@@ -283,13 +283,14 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::useless_conversion)]
     fn test_endoscaling_consistency() {
         use group::prime::PrimeCurveAffine;
         use ragu_pasta::{EpAffine, Fq};
 
         let p = EpAffine::generator();
         let e = EndoscalarTest {
-            value: 206786806484900909362154774549736492353u128,
+            value: Uendo::from(206786806484900909362154774549736492353u128),
         };
         let scaled = e.scale(&p);
         let expected: EpAffine = (p * e.compute_scalar::<Fq>()).into();
