@@ -13,7 +13,8 @@ use rand::Rng;
 use core::marker::PhantomData;
 
 use crate::{
-    Pcd, Proof, internal_circuits, stages,
+    internal_circuits,
+    proof::{Pcd, Proof},
     step::{Step, adapter::Adapter},
 };
 
@@ -32,13 +33,15 @@ pub fn merge<'source, C: Cycle, R: Rank, RNG: Rng, S: Step<C>, const HEADER_SIZE
     let circuit_poseidon = params.circuit_poseidon();
 
     // Compute the preamble (just a stub)
-    let preamble_rx = stages::native::preamble::Stage::<C, R>::rx(())?;
+    let preamble_rx = internal_circuits::stages::native::preamble::Stage::<C, R>::rx(())?;
     let preamble_blind = C::CircuitField::random(&mut *rng);
     let preamble_commitment = preamble_rx.commit(host_generators, preamble_blind);
 
     // Compute nested preamble
     let nested_preamble_rx =
-        stages::nested::preamble::Stage::<C::HostCurve, R>::rx(preamble_commitment)?;
+        internal_circuits::stages::nested::preamble::Stage::<C::HostCurve, R>::rx(
+            preamble_commitment,
+        )?;
     let nested_preamble_blind = C::ScalarField::random(&mut *rng);
     let nested_preamble_commitment =
         nested_preamble_rx.commit(nested_generators, nested_preamble_blind);

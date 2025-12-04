@@ -1,5 +1,6 @@
 pub mod c;
 pub mod dummy;
+pub mod stages;
 pub mod unified;
 
 const DUMMY_CIRCUIT_ID: usize = 0;
