@@ -8,10 +8,13 @@ use arithmetic::Cycle;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::Gadget,
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, Point, io::Write};
+
+#[allow(type_alias_bounds)]
+pub type OutputKind<C: Cycle> = Kind![C::CircuitField; Output<'_, _, C>];
 
 #[derive(Gadget, Write)]
 pub struct Output<'dr, D: Driver<'dr>, C: Cycle> {

@@ -6,7 +6,6 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{GadgetKind, Kind},
     maybe::Maybe,
 };
 use ragu_primitives::{GadgetExt, Sponge};
@@ -41,17 +40,14 @@ impl<C: Cycle, R: Rank> StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R> 
 
     type Instance<'source> = &'source unified::Instance<C>;
     type Witness<'source> = Witness<'source, C>;
-    type Output = Kind![C::CircuitField; unified::Output<'_, _, C>];
+    type Output = unified::OutputKind<C>;
     type Aux<'source> = ();
 
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'source>>,
-    ) -> Result<<Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>>
-    where
-        Self: 'dr,
-    {
+    ) -> Result<unified::Output<'dr, D, C>> {
         OutputBuilder::new().finish(dr, &instance)
     }
 
@@ -60,7 +56,7 @@ impl<C: Cycle, R: Rank> StagedCircuit<C::CircuitField, R> for Circuit<'_, C, R> 
         builder: StageBuilder<'a, 'dr, D, R, (), Self::Final>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<(
-        <Self::Output as GadgetKind<C::CircuitField>>::Rebind<'dr, D>,
+        unified::Output<'dr, D, C>,
         DriverValue<D, Self::Aux<'source>>,
     )>
     where
