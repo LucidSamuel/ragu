@@ -1,4 +1,4 @@
-//! Proof-carrying data verification.
+//! This module provides the [`Application::verify`] method implementation.
 
 use arithmetic::{Cycle, eval};
 use ff::PrimeField;
@@ -23,6 +23,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: &Pcd<'_, C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
+        // The `Verifier` helper struct holds onto a verification context to
+        // simplify performing revdot claims on different polynomials in the
+        // proof.
         let verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, &mut rng);
 
         // Preamble verification

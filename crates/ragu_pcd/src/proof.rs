@@ -23,23 +23,28 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) application: ApplicationProof<C, R>,
 }
 
-pub struct ApplicationProof<C: Cycle, R: Rank> {
+pub(crate) struct ApplicationProof<C: Cycle, R: Rank> {
     pub(crate) circuit_id: usize,
     pub(crate) left_header: Vec<C::CircuitField>,
     pub(crate) right_header: Vec<C::CircuitField>,
     pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
 }
 
-pub struct PreambleProof<C: Cycle, R: Rank> {
+pub(crate) struct PreambleProof<C: Cycle, R: Rank> {
     pub(crate) native_preamble_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) native_preamble_commitment: C::HostCurve,
     pub(crate) native_preamble_blind: C::CircuitField,
-    pub(crate) nested_preamble_rx: structured::Polynomial<C::ScalarField, R>,
-    pub(crate) nested_preamble_commitment: C::NestedCurve,
+    /// This can be computed using native_preamble_rx / native_preamble_blind
+    pub(crate) native_preamble_commitment: C::HostCurve,
+
     pub(crate) nested_preamble_blind: C::ScalarField,
+    /// This can be computed using native_preamble_commitment
+    pub(crate) nested_preamble_rx: structured::Polynomial<C::ScalarField, R>,
+    /// This can be computed using nested_preamble_rx / nested_preamble_blind
+    pub(crate) nested_preamble_commitment: C::NestedCurve,
 }
 
-pub struct InternalCircuits<C: Cycle, R: Rank> {
+pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
+    /// This can be computed using PreambleProof::nested_preamble_commitment
     pub(crate) w: C::CircuitField,
     pub(crate) c_rx: structured::Polynomial<C::CircuitField, R>,
 }
