@@ -1,14 +1,17 @@
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{
-    mesh::Mesh,
+    CircuitExt,
     polynomials::{Rank, structured},
+    staging::StageExt,
 };
-use ragu_core::maybe::Maybe;
+use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
+use ragu_primitives::{GadgetExt, Point, Sponge};
 
 use alloc::{vec, vec::Vec};
 
-use super::{
+use crate::{
+    Application,
     header::Header,
     internal_circuits::{self, dummy},
 };
@@ -20,23 +23,28 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) application: ApplicationProof<C, R>,
 }
 
-pub struct ApplicationProof<C: Cycle, R: Rank> {
+pub(crate) struct ApplicationProof<C: Cycle, R: Rank> {
     pub(crate) circuit_id: usize,
     pub(crate) left_header: Vec<C::CircuitField>,
     pub(crate) right_header: Vec<C::CircuitField>,
     pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
 }
 
-pub struct PreambleProof<C: Cycle, R: Rank> {
+pub(crate) struct PreambleProof<C: Cycle, R: Rank> {
     pub(crate) native_preamble_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) native_preamble_commitment: C::HostCurve,
     pub(crate) native_preamble_blind: C::CircuitField,
-    pub(crate) nested_preamble_rx: structured::Polynomial<C::ScalarField, R>,
-    pub(crate) nested_preamble_commitment: C::NestedCurve,
+    /// This can be computed using native_preamble_rx / native_preamble_blind
+    pub(crate) native_preamble_commitment: C::HostCurve,
+
     pub(crate) nested_preamble_blind: C::ScalarField,
+    /// This can be computed using native_preamble_commitment
+    pub(crate) nested_preamble_rx: structured::Polynomial<C::ScalarField, R>,
+    /// This can be computed using nested_preamble_rx / nested_preamble_blind
+    pub(crate) nested_preamble_commitment: C::NestedCurve,
 }
 
-pub struct InternalCircuits<C: Cycle, R: Rank> {
+pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
+    /// This can be computed using PreambleProof::nested_preamble_commitment
     pub(crate) w: C::CircuitField,
     pub(crate) c_rx: structured::Polynomial<C::CircuitField, R>,
 }
@@ -110,75 +118,74 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Clone for Pcd<'_, C, R, H> {
     }
 }
 
-pub fn trivial<C: Cycle, R: Rank, const HEADER_SIZE: usize>(
-    num_application_steps: usize,
-    mesh: &Mesh<'_, C::CircuitField, R>,
-    params: &C,
-) -> Proof<C, R> {
-    use internal_circuits::stages;
-    use ragu_circuits::{CircuitExt, staging::StageExt};
-    use ragu_core::drivers::emulator::Emulator;
-    use ragu_primitives::{GadgetExt, Point, Sponge};
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+    /// Creates a trivial proof for the empty [`Header`] implementation `()`.
+    /// This may or may not be identical to any previously constructed (trivial)
+    /// proof, and so is not guaranteed to be freshly randomized.
+    pub fn trivial(&self) -> Proof<C, R> {
+        use internal_circuits::stages;
 
-    // Preamble rx polynomial
-    let native_preamble_rx =
-        stages::native::preamble::Stage::<C, R>::rx(()).expect("preamble rx should not fail");
-    let native_preamble_blind = C::CircuitField::ONE;
-    let native_preamble_commitment =
-        native_preamble_rx.commit(params.host_generators(), native_preamble_blind);
+        // Preamble rx polynomial
+        let native_preamble_rx =
+            stages::native::preamble::Stage::<C, R>::rx(()).expect("preamble rx should not fail");
+        let native_preamble_blind = C::CircuitField::ONE;
+        let native_preamble_commitment =
+            native_preamble_rx.commit(self.params.host_generators(), native_preamble_blind);
 
-    // Nested preamble rx polynomial
-    let nested_preamble_rx =
-        stages::nested::preamble::Stage::<C::HostCurve, R>::rx(native_preamble_commitment)
-            .expect("nested preamble rx should not fail");
-    let nested_preamble_blind = C::ScalarField::ONE;
-    let nested_preamble_commitment =
-        nested_preamble_rx.commit(params.nested_generators(), nested_preamble_blind);
+        // Nested preamble rx polynomial
+        let nested_preamble_rx =
+            stages::nested::preamble::Stage::<C::HostCurve, R>::rx(native_preamble_commitment)
+                .expect("nested preamble rx should not fail");
+        let nested_preamble_blind = C::ScalarField::ONE;
+        let nested_preamble_commitment =
+            nested_preamble_rx.commit(self.params.nested_generators(), nested_preamble_blind);
 
-    // Compute w = H(nested_preamble_commitment)
-    let circuit_poseidon = params.circuit_poseidon();
-    let w: C::CircuitField = Emulator::emulate_wireless(nested_preamble_commitment, |dr, comm| {
-        let point = Point::alloc(dr, comm)?;
-        let mut sponge = Sponge::new(dr, circuit_poseidon);
-        point.write(dr, &mut sponge)?;
-        Ok(*sponge.squeeze(dr)?.value().take())
-    })
-    .expect("w computation should not fail");
+        // Compute w = H(nested_preamble_commitment)
+        let circuit_poseidon = self.params.circuit_poseidon();
+        let w: C::CircuitField =
+            Emulator::emulate_wireless(nested_preamble_commitment, |dr, comm| {
+                let point = Point::alloc(dr, comm)?;
+                let mut sponge = Sponge::new(dr, circuit_poseidon);
+                point.write(dr, &mut sponge)?;
+                Ok(*sponge.squeeze(dr)?.value().take())
+            })
+            .expect("w computation should not fail");
 
-    // Create unified instance and compute c_rx
-    let unified_instance = internal_circuits::unified::Instance {
-        nested_preamble_commitment,
-        w,
-    };
-    let internal_circuit_c = internal_circuits::c::Circuit::<C, R>::new(circuit_poseidon);
-    let internal_circuit_c_witness = internal_circuits::c::Witness {
-        unified_instance: &unified_instance,
-    };
-    let (c_rx, _) = internal_circuit_c
-        .rx::<R>(internal_circuit_c_witness, mesh.get_key())
-        .expect("c_rx computation should not fail");
-
-    // Application rx polynomial
-    let application_rx = dummy::Circuit
-        .rx((), mesh.get_key())
-        .expect("should not fail")
-        .0;
-
-    Proof {
-        preamble: PreambleProof {
-            native_preamble_rx,
-            native_preamble_commitment,
-            native_preamble_blind,
-            nested_preamble_rx,
+        // Create unified instance and compute c_rx
+        let unified_instance = internal_circuits::unified::Instance {
             nested_preamble_commitment,
-            nested_preamble_blind,
-        },
-        internal_circuits: InternalCircuits { w, c_rx },
-        application: ApplicationProof {
-            rx: application_rx,
-            circuit_id: internal_circuits::index(num_application_steps, dummy::CIRCUIT_ID),
-            left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-            right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-        },
+            w,
+        };
+        let internal_circuit_c = internal_circuits::c::Circuit::<C, R>::new(circuit_poseidon);
+        let internal_circuit_c_witness = internal_circuits::c::Witness {
+            unified_instance: &unified_instance,
+        };
+        let (c_rx, _) = internal_circuit_c
+            .rx::<R>(internal_circuit_c_witness, self.circuit_mesh.get_key())
+            .expect("c_rx computation should not fail");
+
+        // Application rx polynomial
+        let application_rx = dummy::Circuit
+            .rx((), self.circuit_mesh.get_key())
+            .expect("should not fail")
+            .0;
+
+        Proof {
+            preamble: PreambleProof {
+                native_preamble_rx,
+                native_preamble_commitment,
+                native_preamble_blind,
+                nested_preamble_rx,
+                nested_preamble_commitment,
+                nested_preamble_blind,
+            },
+            internal_circuits: InternalCircuits { w, c_rx },
+            application: ApplicationProof {
+                rx: application_rx,
+                circuit_id: internal_circuits::index(self.num_application_steps, dummy::CIRCUIT_ID),
+                left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+                right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+            },
+        }
     }
 }

@@ -1,4 +1,4 @@
-//! Proof-carrying data verification.
+//! This module provides the [`Application::verify`] method implementation.
 
 use arithmetic::{Cycle, eval};
 use ff::PrimeField;
@@ -11,10 +11,76 @@ use ragu_core::{Error, Result};
 use ragu_primitives::vec::{ConstLen, FixedVec};
 use rand::Rng;
 
-use crate::{Pcd, header::Header, internal_circuits, step::adapter::Adapter};
+use crate::{Application, Pcd, header::Header, internal_circuits, step::adapter::Adapter};
 
 mod stub_step;
 use stub_step::StubStep;
+
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+    /// Verifies some [`Pcd`] for the provided [`Header`].
+    pub fn verify<RNG: Rng, H: Header<C::CircuitField>>(
+        &self,
+        pcd: &Pcd<'_, C, R, H>,
+        mut rng: RNG,
+    ) -> Result<bool> {
+        // The `Verifier` helper struct holds onto a verification context to
+        // simplify performing revdot claims on different polynomials in the
+        // proof.
+        let verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, &mut rng);
+
+        // Preamble verification
+        let preamble_valid = verifier.check_stage(
+            &pcd.proof.preamble.native_preamble_rx,
+            internal_circuits::stages::native::preamble::STAGING_ID,
+        );
+
+        // Internal circuit c verification
+        let c_stage_valid = verifier.check_stage(
+            &pcd.proof.internal_circuits.c_rx,
+            internal_circuits::c::STAGED_ID,
+        );
+
+        let unified_instance = internal_circuits::unified::Instance {
+            nested_preamble_commitment: pcd.proof.preamble.nested_preamble_commitment,
+            w: pcd.proof.internal_circuits.w,
+        };
+        let c = internal_circuits::c::Circuit::<C, R>::new(self.params.circuit_poseidon());
+        let unified_ky = c.ky(&unified_instance)?;
+
+        let mut combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
+        combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
+
+        let c_circuit_valid = verifier.check_internal_circuit(
+            &combined_rx,
+            internal_circuits::c::CIRCUIT_ID,
+            &unified_ky,
+        );
+
+        // Application verification
+        let left_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
+            pcd.proof.application.left_header.clone(),
+        )
+        .map_err(|_| Error::MalformedEncoding("left_header has incorrect size".into()))?;
+        let right_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
+            pcd.proof.application.right_header.clone(),
+        )
+        .map_err(|_| Error::MalformedEncoding("right_header has incorrect size".into()))?;
+
+        let application_ky = {
+            let adapter = Adapter::<C, StubStep<H>, R, HEADER_SIZE>::new(StubStep::new());
+            let instance = (left_header, right_header, pcd.data.clone());
+            adapter.ky(instance)?
+        };
+
+        let application_valid = verifier.check_circuit(
+            &pcd.proof.application.rx,
+            pcd.proof.application.circuit_id,
+            &application_ky,
+        );
+
+        Ok(preamble_valid && c_stage_valid && c_circuit_valid && application_valid)
+    }
+}
 
 struct Verifier<'a, F: PrimeField, R: Rank> {
     circuit_mesh: &'a Mesh<'a, F, R>,
@@ -88,65 +154,4 @@ impl<'a, F: PrimeField, R: Rank> Verifier<'a, F, R> {
 
         rx.revdot(&rhs) == eval(ky.iter(), self.y)
     }
-}
-
-/// Verifies some [`Pcd`] for the provided [`Header`].
-pub fn verify<C: Cycle, R: Rank, RNG: Rng, H: Header<C::CircuitField>, const HEADER_SIZE: usize>(
-    circuit_mesh: &Mesh<'_, C::CircuitField, R>,
-    pcd: &Pcd<'_, C, R, H>,
-    num_application_steps: usize,
-    params: &C,
-    mut rng: RNG,
-) -> Result<bool> {
-    let verifier = Verifier::new(circuit_mesh, num_application_steps, &mut rng);
-
-    // Preamble verification
-    let preamble_valid = verifier.check_stage(
-        &pcd.proof.preamble.native_preamble_rx,
-        internal_circuits::stages::native::preamble::STAGING_ID,
-    );
-
-    // Internal circuit c verification
-    let c_stage_valid = verifier.check_stage(
-        &pcd.proof.internal_circuits.c_rx,
-        internal_circuits::c::STAGED_ID,
-    );
-
-    let unified_instance = internal_circuits::unified::Instance {
-        nested_preamble_commitment: pcd.proof.preamble.nested_preamble_commitment,
-        w: pcd.proof.internal_circuits.w,
-    };
-    let c = internal_circuits::c::Circuit::<C, R>::new(params.circuit_poseidon());
-    let unified_ky = c.ky(&unified_instance)?;
-
-    let mut combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-    combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
-
-    let c_circuit_valid = verifier.check_internal_circuit(
-        &combined_rx,
-        internal_circuits::c::CIRCUIT_ID,
-        &unified_ky,
-    );
-
-    // Application verification
-    let left_header =
-        FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(pcd.proof.application.left_header.clone())
-            .map_err(|_| Error::MalformedEncoding("left_header has incorrect size".into()))?;
-    let right_header =
-        FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(pcd.proof.application.right_header.clone())
-            .map_err(|_| Error::MalformedEncoding("right_header has incorrect size".into()))?;
-
-    let application_ky = {
-        let adapter = Adapter::<C, StubStep<H>, R, HEADER_SIZE>::new(StubStep::new());
-        let instance = (left_header, right_header, pcd.data.clone());
-        adapter.ky(instance)?
-    };
-
-    let application_valid = verifier.check_circuit(
-        &pcd.proof.application.rx,
-        pcd.proof.application.circuit_id,
-        &application_ky,
-    );
-
-    Ok(preamble_valid && c_stage_valid && c_circuit_valid && application_valid)
 }

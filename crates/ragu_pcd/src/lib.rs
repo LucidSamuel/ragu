@@ -129,17 +129,6 @@ pub struct Application<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    /// Creates a trivial proof for the empty [`Header`] implementation `()`.
-    /// This may or may not be identical to any previously constructed (trivial)
-    /// proof, and so is not guaranteed to be freshly randomized.
-    pub fn trivial(&self) -> Proof<C, R> {
-        proof::trivial::<C, R, HEADER_SIZE>(
-            self.num_application_steps,
-            &self.circuit_mesh,
-            self.params,
-        )
-    }
-
     /// Creates a random trivial proof for the empty [`Header`] implementation
     /// `()`. This takes more time to generate because it cannot be cached
     /// within the [`Application`].
@@ -170,56 +159,5 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
 
         Ok(rerandomized_proof.0.carry(data))
-    }
-
-    /// Merge two PCD into one using a provided [`Step`].
-    ///
-    /// ## Parameters
-    ///
-    /// * `rng`: a random number generator used to sample randomness during
-    ///   proof generation. The fact that this method takes a random number
-    ///   generator is not an indication that the resulting proof-carrying data
-    ///   is zero-knowledge; that must be ensured by performing
-    ///   [`Application::rerandomize`] at a later point.
-    /// * `step`: the [`Step`] instance that has been registered in this
-    ///   [`Application`].
-    /// * `witness`: the witness data for the [`Step`]
-    /// * `left`: the left PCD to merge in this step; must correspond to the
-    ///   [`Step::Left`] header.
-    /// * `right`: the right PCD to merge in this step; must correspond to the
-    ///   [`Step::Right`] header.
-    pub fn merge<'source, RNG: Rng, S: Step<C>>(
-        &self,
-        rng: &mut RNG,
-        step: S,
-        witness: S::Witness<'source>,
-        left: Pcd<'source, C, R, S::Left>,
-        right: Pcd<'source, C, R, S::Right>,
-    ) -> Result<(Proof<C, R>, S::Aux<'source>)> {
-        merge::merge::<C, R, RNG, S, HEADER_SIZE>(
-            self.num_application_steps,
-            &self.circuit_mesh,
-            self.params,
-            rng,
-            step,
-            witness,
-            left,
-            right,
-        )
-    }
-
-    /// Verifies some [`Pcd`] for the provided [`Header`].
-    pub fn verify<RNG: Rng, H: Header<C::CircuitField>>(
-        &self,
-        pcd: &Pcd<'_, C, R, H>,
-        rng: RNG,
-    ) -> Result<bool> {
-        verify::verify::<C, R, RNG, H, HEADER_SIZE>(
-            &self.circuit_mesh,
-            pcd,
-            self.num_application_steps,
-            self.params,
-            rng,
-        )
     }
 }
