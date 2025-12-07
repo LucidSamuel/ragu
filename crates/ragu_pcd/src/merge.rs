@@ -79,7 +79,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nu = C::CircuitField::random(&mut *rng);
         let mu_inv = mu.invert().unwrap();
 
-        let error_terms = (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
+        let error_terms = ErrorTermsLen::<NUM_REVDOT_CLAIMS>::range()
             .map(|_| C::CircuitField::random(&mut *rng))
             .collect_fixed()?;
 

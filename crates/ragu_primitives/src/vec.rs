@@ -53,6 +53,11 @@ pub trait Len: Send + Sync + 'static {
     /// This must always return the same value for a given concrete
     /// implementation.
     fn len() -> usize;
+
+    /// Returns a range from `0` to [`Self::len()`].
+    fn range() -> core::ops::Range<usize> {
+        0..Self::len()
+    }
 }
 
 /// Represents a length determined at compile time.

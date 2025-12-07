@@ -104,7 +104,7 @@ impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::Circuit
             let nu = Element::alloc(dr, witness.view().map(|w| w.nu))?;
 
             // Allocate error terms.
-            let error_terms = (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
+            let error_terms = ErrorTermsLen::<NUM_REVDOT_CLAIMS>::range()
                 .map(|i| Element::alloc(dr, witness.view().map(|w| w.error_terms[i])))
                 .try_collect_fixed()?;
 
