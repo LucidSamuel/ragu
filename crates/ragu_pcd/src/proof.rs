@@ -21,7 +21,7 @@ use crate::{
     Application,
     components::{
         ErrorTermsLen,
-        fold_revdot::{ErrorMatrix, RevdotFolding, RevdotFoldingInput},
+        fold_revdot::{ErrorTerms, RevdotFolding, RevdotFoldingInput},
     },
     header::Header,
     internal_circuits::{self, NUM_REVDOT_CLAIMS, dummy},
@@ -178,7 +178,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let mu = Element::alloc(dr, Always::maybe_just(|| mu))?;
             let nu = Element::alloc(dr, Always::maybe_just(|| nu))?;
 
-            let error_matrix = ErrorMatrix::new(
+            let error_terms = ErrorTerms::new(
                 error_terms
                     .iter()
                     .map(|&et| Element::alloc(dr, Always::maybe_just(|| et)))
@@ -193,7 +193,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let input = RevdotFoldingInput {
                 mu,
                 nu,
-                error_matrix,
+                error_terms,
                 ky_values,
             };
             let c = dr.routine(RevdotFolding::<NUM_REVDOT_CLAIMS>, input)?;

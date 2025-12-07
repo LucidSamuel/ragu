@@ -21,7 +21,7 @@ use super::{
 };
 use crate::components::{
     ErrorTermsLen,
-    fold_revdot::{ErrorMatrix, RevdotFolding, RevdotFoldingInput},
+    fold_revdot::{ErrorTerms, RevdotFolding, RevdotFoldingInput},
 };
 
 pub const CIRCUIT_ID: usize = super::C_CIRCUIT_ID;
@@ -106,11 +106,12 @@ impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::Circuit
             let mu = Element::alloc(dr, witness.view().map(|w| w.mu))?;
             let nu = Element::alloc(dr, witness.view().map(|w| w.nu))?;
 
-            // Allocate error terms from witness as an error matrix.
-            let error_elements = (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
-                .map(|i| Element::alloc(dr, witness.view().map(|w| w.error_terms[i])))
-                .try_collect_fixed()?;
-            let error_matrix = ErrorMatrix::new(error_elements);
+            // Allocate error terms.
+            let error_terms = ErrorTerms::new(
+                (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
+                    .map(|i| Element::alloc(dr, witness.view().map(|w| w.error_terms[i])))
+                    .try_collect_fixed()?,
+            );
 
             // TODO: Use zeros for ky_values for now.
             let ky_values = (0..NUM_REVDOT_CLAIMS)
@@ -120,7 +121,7 @@ impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::Circuit
             let input = RevdotFoldingInput {
                 mu,
                 nu,
-                error_matrix,
+                error_terms,
                 ky_values,
             };
 

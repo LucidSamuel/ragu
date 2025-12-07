@@ -1,4 +1,4 @@
-//! Routine for computing c, the revdot claim for the folded accumulator.
+//! Routine for computing $c$, the product for the folded revdot claim.
 
 use ff::Field;
 use ragu_core::{
@@ -16,15 +16,16 @@ use alloc::vec::Vec;
 
 use super::ErrorTermsLen;
 
-/// Off-diagonal error terms.
+/// Off-diagonal "error" terms of the matrix of revdot evaluations for a folding
+/// step.
 #[derive(Gadget)]
-pub struct ErrorMatrix<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> {
+pub struct ErrorTerms<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> {
     #[ragu(gadget)]
     elements: FixedVec<Element<'dr, D>, ErrorTermsLen<NUM_REVDOT_CLAIMS>>,
 }
 
-impl<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> ErrorMatrix<'dr, D, NUM_REVDOT_CLAIMS> {
-    /// Creates a new error matrix from the given elements.
+impl<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> ErrorTerms<'dr, D, NUM_REVDOT_CLAIMS> {
+    /// Creates a new [`ErrorTerms`] from the given elements.
     pub fn new(elements: FixedVec<Element<'dr, D>, ErrorTermsLen<NUM_REVDOT_CLAIMS>>) -> Self {
         Self { elements }
     }
@@ -46,7 +47,7 @@ pub struct RevdotFoldingInput<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usiz
     pub nu: Element<'dr, D>,
     /// Off-diagonal error terms from folding.
     #[ragu(gadget)]
-    pub error_matrix: ErrorMatrix<'dr, D, NUM_REVDOT_CLAIMS>,
+    pub error_terms: ErrorTerms<'dr, D, NUM_REVDOT_CLAIMS>,
     /// Diagonal k(Y) polynomial evaluations.
     #[ragu(gadget)]
     pub ky_values: FixedVec<Element<'dr, D>, ConstLen<NUM_REVDOT_CLAIMS>>,
@@ -70,7 +71,7 @@ impl<F: Field, const NUM_REVDOT_CLAIMS: usize> Routine<F> for RevdotFolding<NUM_
         let munu = input.mu.mul(dr, &input.nu)?;
         let mu_inv = input.mu.invert(dr)?;
 
-        let mut error_terms = input.error_matrix.into_inner().into_iter();
+        let mut error_terms = input.error_terms.into_inner().into_iter();
         let mut ky_values = input.ky_values.into_inner().into_iter();
 
         let mut result = Element::zero(dr);
@@ -153,7 +154,7 @@ mod tests {
             .map(|&v| Element::constant(&mut emulator, v))
             .collect_fixed()
             .unwrap();
-        let error_matrix = ErrorMatrix::new(error_vec);
+        let error_terms = ErrorTerms::new(error_vec);
 
         let ky_values = ky
             .iter()
@@ -164,7 +165,7 @@ mod tests {
         let input = RevdotFoldingInput {
             mu,
             nu,
-            error_matrix,
+            error_terms,
             ky_values,
         };
 
