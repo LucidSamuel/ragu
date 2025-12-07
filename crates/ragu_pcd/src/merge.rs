@@ -92,7 +92,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             Emulator::emulate_wireless((mu, nu, mu_inv, error_terms.clone()), |dr, _| {
                 let mu = Element::alloc(dr, Always::maybe_just(|| mu))?;
                 let nu = Element::alloc(dr, Always::maybe_just(|| nu))?;
-                let mu_inv = Element::alloc(dr, Always::maybe_just(|| mu_inv))?;
 
                 let error_matrix = ErrorMatrix::new(
                     (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())
@@ -107,7 +106,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let input = RevdotClaimInput {
                     mu,
                     nu,
-                    mu_inv,
                     error_matrix,
                     ky_values,
                 };

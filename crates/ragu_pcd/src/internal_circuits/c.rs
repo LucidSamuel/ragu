@@ -104,9 +104,9 @@ impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::Circuit
 
         // Compute c, the folded revdot product claim.
         {
+            // TODO: witnessing these values for now; derive them later
             let mu = Element::alloc(dr, witness.view().map(|w| w.mu))?;
             let nu = Element::alloc(dr, witness.view().map(|w| w.nu))?;
-            let mu_inv = mu.invert(dr)?;
 
             // Allocate error terms from witness as an error matrix.
             let error_elements = (0..ErrorTermsLen::<NUM_REVDOT_CLAIMS>::len())

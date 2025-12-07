@@ -44,9 +44,6 @@ pub struct RevdotClaimInput<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize>
     /// Folding challenge for columns.
     #[ragu(gadget)]
     pub nu: Element<'dr, D>,
-    /// Inverse of mu.
-    #[ragu(gadget)]
-    pub mu_inv: Element<'dr, D>,
     /// Off-diagonal error terms from folding.
     #[ragu(gadget)]
     pub error_matrix: ErrorMatrix<'dr, D, NUM_REVDOT_CLAIMS>,
@@ -73,6 +70,7 @@ impl<F: Field, const NUM_REVDOT_CLAIMS: usize> Routine<F>
         _: DriverValue<D, Self::Aux<'dr>>,
     ) -> Result<<Self::Output as GadgetKind<F>>::Rebind<'dr, D>> {
         let munu = input.mu.mul(dr, &input.nu)?;
+        let mu_inv = input.mu.invert(dr)?;
 
         let mut error_terms = input.error_matrix.into_inner().into_iter();
         let mut ky_values = input.ky_values.into_inner().into_iter();
@@ -93,7 +91,7 @@ impl<F: Field, const NUM_REVDOT_CLAIMS: usize> Routine<F>
                 result = result.add(dr, &contribution);
                 col_power = col_power.mul(dr, &munu)?;
             }
-            row_power = row_power.mul(dr, &input.mu_inv)?;
+            row_power = row_power.mul(dr, &mu_inv)?;
         }
 
         Ok(result)
@@ -117,6 +115,7 @@ mod tests {
     use ff::Field;
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
+    use ragu_primitives::vec::CollectFixed;
     use rand::rngs::OsRng;
 
     #[test]
@@ -148,9 +147,8 @@ mod tests {
         // Run routine with Emulator.
         let mut emulator = Emulator::execute();
 
-        let mu_elem = Element::constant(&mut emulator, mu);
-        let nu_elem = Element::constant(&mut emulator, nu);
-        let mu_inv_elem = Element::constant(&mut emulator, mu_inv);
+        let mu = Element::constant(&mut emulator, mu);
+        let nu = Element::constant(&mut emulator, nu);
 
         let error_vec: Vec<_> = error
             .iter()
@@ -158,16 +156,15 @@ mod tests {
             .collect();
         let error_matrix = ErrorMatrix::new(FixedVec::new(error_vec).unwrap());
 
-        let ky_vec: Vec<_> = ky
+        let ky_values = ky
             .iter()
             .map(|&v| Element::constant(&mut emulator, v))
-            .collect();
-        let ky_values = FixedVec::new(ky_vec).unwrap();
+            .collect_fixed()
+            .unwrap();
 
         let input = RevdotClaimInput {
-            mu: mu_elem,
-            nu: nu_elem,
-            mu_inv: mu_inv_elem,
+            mu,
+            nu,
             error_matrix,
             ky_values,
         };
