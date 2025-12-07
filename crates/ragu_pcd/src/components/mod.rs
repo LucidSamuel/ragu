@@ -10,6 +10,6 @@ pub struct ErrorTermsLen<const NUM_REVDOT_CLAIMS: usize>;
 
 impl<const NUM_REVDOT_CLAIMS: usize> Len for ErrorTermsLen<NUM_REVDOT_CLAIMS> {
     fn len() -> usize {
-        NUM_REVDOT_CLAIMS * (NUM_REVDOT_CLAIMS - 1)
+        NUM_REVDOT_CLAIMS * NUM_REVDOT_CLAIMS - NUM_REVDOT_CLAIMS
     }
 }

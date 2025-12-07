@@ -35,9 +35,9 @@ impl<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> ErrorMatrix<'dr, D, NU
     }
 }
 
-/// Input gadget for the [`ComputeRevdotClaim`] routine.
+/// Input gadget for the [`RevdotFolding`] routine.
 #[derive(Gadget)]
-pub struct RevdotClaimInput<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> {
+pub struct RevdotFoldingInput<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize> {
     /// Folding challenge for rows.
     #[ragu(gadget)]
     pub mu: Element<'dr, D>,
@@ -54,12 +54,10 @@ pub struct RevdotClaimInput<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize>
 
 /// Routine for folding the revdot claims into a target value c.
 #[derive(Clone, Default)]
-pub struct ComputeRevdotClaim<const NUM_REVDOT_CLAIMS: usize>;
+pub struct RevdotFolding<const NUM_REVDOT_CLAIMS: usize>;
 
-impl<F: Field, const NUM_REVDOT_CLAIMS: usize> Routine<F>
-    for ComputeRevdotClaim<NUM_REVDOT_CLAIMS>
-{
-    type Input = Kind![F; RevdotClaimInput<'_, _, NUM_REVDOT_CLAIMS>];
+impl<F: Field, const NUM_REVDOT_CLAIMS: usize> Routine<F> for RevdotFolding<NUM_REVDOT_CLAIMS> {
+    type Input = Kind![F; RevdotFoldingInput<'_, _, NUM_REVDOT_CLAIMS>];
     type Output = Kind![F; Element<'_, _>];
     type Aux<'dr> = ();
 
@@ -119,7 +117,7 @@ mod tests {
     use rand::rngs::OsRng;
 
     #[test]
-    fn test_c_routine_equivalency() -> Result<()> {
+    fn test_revdot_folding() -> Result<()> {
         const NUM_REVDOT_CLAIMS: usize = 3;
 
         let a: Vec<Fp> = (0..NUM_REVDOT_CLAIMS).map(|_| Fp::random(OsRng)).collect();
@@ -163,14 +161,14 @@ mod tests {
             .collect_fixed()
             .unwrap();
 
-        let input = RevdotClaimInput {
+        let input = RevdotFoldingInput {
             mu,
             nu,
             error_matrix,
             ky_values,
         };
 
-        let result = emulator.routine(ComputeRevdotClaim::<NUM_REVDOT_CLAIMS>, input)?;
+        let result = emulator.routine(RevdotFolding::<NUM_REVDOT_CLAIMS>, input)?;
         let computed_c = result.value().take();
 
         assert_eq!(

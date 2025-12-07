@@ -21,7 +21,7 @@ use crate::{
     Application,
     components::{
         ErrorTermsLen,
-        fold_revdot::{ComputeRevdotClaim, ErrorMatrix, RevdotClaimInput},
+        fold_revdot::{ErrorMatrix, RevdotFolding, RevdotFoldingInput},
     },
     header::Header,
     internal_circuits::{self, NUM_REVDOT_CLAIMS, dummy},
@@ -190,13 +190,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 .map(|_| Element::zero(dr))
                 .collect_fixed()?;
 
-            let input = RevdotClaimInput {
+            let input = RevdotFoldingInput {
                 mu,
                 nu,
                 error_matrix,
                 ky_values,
             };
-            let c = dr.routine(ComputeRevdotClaim::<NUM_REVDOT_CLAIMS>, input)?;
+            let c = dr.routine(RevdotFolding::<NUM_REVDOT_CLAIMS>, input)?;
             Ok(*c.value().take())
         })
         .expect("c should not fail");

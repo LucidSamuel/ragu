@@ -21,7 +21,7 @@ use super::{
 };
 use crate::components::{
     ErrorTermsLen,
-    fold_revdot::{ComputeRevdotClaim, ErrorMatrix, RevdotClaimInput},
+    fold_revdot::{ErrorMatrix, RevdotFolding, RevdotFoldingInput},
 };
 
 pub const CIRCUIT_ID: usize = super::C_CIRCUIT_ID;
@@ -117,14 +117,14 @@ impl<C: Cycle, R: Rank, const NUM_REVDOT_CLAIMS: usize> StagedCircuit<C::Circuit
                 .map(|_| Element::zero(dr))
                 .collect_fixed()?;
 
-            let input = RevdotClaimInput {
+            let input = RevdotFoldingInput {
                 mu,
                 nu,
                 error_matrix,
                 ky_values,
             };
 
-            let c = dr.routine(ComputeRevdotClaim::<NUM_REVDOT_CLAIMS>, input)?;
+            let c = dr.routine(RevdotFolding::<NUM_REVDOT_CLAIMS>, input)?;
             unified_output.c.set(c);
         }
 
