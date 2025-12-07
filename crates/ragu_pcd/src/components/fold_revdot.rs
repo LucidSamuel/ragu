@@ -32,7 +32,7 @@ pub fn compute_c<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize>(
     error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<NUM_REVDOT_CLAIMS>>,
     ky_values: &FixedVec<Element<'dr, D>, ConstLen<NUM_REVDOT_CLAIMS>>,
 ) -> Result<Element<'dr, D>> {
-    let munu = mu.mul(dr, &nu)?;
+    let munu = mu.mul(dr, nu)?;
     let mu_inv = mu.invert(dr)?;
 
     let mut error_terms = error_terms.iter();
@@ -50,7 +50,7 @@ pub fn compute_c<'dr, D: Driver<'dr>, const NUM_REVDOT_CLAIMS: usize>(
                 error_terms.next().expect("should exist")
             };
 
-            let contribution = col_power.mul(dr, &term)?;
+            let contribution = col_power.mul(dr, term)?;
             result = result.add(dr, &contribution);
             col_power = col_power.mul(dr, &munu)?;
         }
