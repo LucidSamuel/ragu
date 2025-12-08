@@ -32,7 +32,7 @@ book COMMAND: _book_setup
   mdbook {{COMMAND}} ./book --open
 
 # run CI checks locally (formatting, clippy, tests)
-ci_local:
+ci_local: _book_setup
   @echo "Running formatting check..."
   cargo fmt --all -- --check
   @echo "Running clippy..."
@@ -43,4 +43,6 @@ ci_local:
   cargo build --benches --examples --all-features
   @echo "Checking documentation..."
   RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all --locked --document-private-items
+  @echo "Building book..."
+  mdbook build ./book
   @echo "All CI checks passed!"

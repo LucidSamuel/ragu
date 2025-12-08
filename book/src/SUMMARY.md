@@ -1,16 +1,11 @@
 # Summary
 
 [Introduction](introduction.md)
+[Proof-Carrying Data](concepts/pcd.md)
 
 ---
 
-# Part I: Concepts
-
-- [Proof-Carrying Data](concepts/pcd.md)
-
----
-
-# Part II: User Guide
+# Part I: User Guide
 
 - [Getting Started](guide/getting_started.md)
 - [Writing Circuits](guide/writing_circuits.md)
@@ -24,7 +19,7 @@
 
 ---
 
-# Part III: Protocol Design
+# Part II: Protocol Design
 
 - [Protocol Overview](protocol/index.md)
 - [Preliminaries](protocol/prelim/index.md)
@@ -48,7 +43,7 @@
 
 ---
 
-# Part IV: Implementation & Design
+# Part III: Implementation & Design
 
 - [Architecture Overview](implementation/arch.md)
 - [Circuits](implementation/circuits.md)

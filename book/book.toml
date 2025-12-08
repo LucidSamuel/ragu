@@ -15,12 +15,3 @@ command = "mdbook-mermaid"
 
 [output.html]
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
-
-[output.linkcheck]
-# TODO: (alex) remove this once we integrate the book with rustdoc
-exclude = ["ragu_.*", ".*-trait$", ".*-gadget$", ".*-method$"]
-# Ignore warnings about "incomplete links" during documentation reorganization
-# These are mostly false positives from:
-# 1. Citation-style references like [BGH19], [BBBPWM17] embedded in link text
-# 2. KaTeX math expressions that contain brackets
-warning-policy = "ignore"
