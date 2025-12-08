@@ -10,7 +10,7 @@ Ragu is developed as a Cargo workspace.
 * `crates/`
     * **`ragu_arithmetic`**: Contains most of the math traits and utilities needed throughout Ragu, and is a dependency of almost every other crate in this project.
     * **`ragu_macros`**: Internal crate that contains procedural macros both used within the project and exposed to users in other crates.
-    * **`ragu_pasta`**: Compatability shim and parameter generation utilities for the [Pasta curve cycle](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/).
+    * **`ragu_pasta`**: Compatibility shim and parameter generation utilities for the [Pasta curve cycle](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/).
     * **`ragu_core`**: The fundamental crate of the library. Presents the `Driver` abstraction and related traits and utilities. All circuit development and most algorithms are written using the API provided by this crate.
     * **`ragu_primitives`**: This crate provides implementations of many algorithms and abstractions that use the API in `ragu_core`, mainly providing gadget implementations that are useful for building circuits.
     * **`ragu_circuits`**: This crate provides the implementation of the Ragu protocol and utilities for building arithmetic circuits in Ragu.

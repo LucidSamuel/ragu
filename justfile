@@ -11,17 +11,20 @@ build_release *ARGS:
 lint:
   cargo clippy --workspace --lib --tests --benches -- -D warnings
   cargo fmt --all -- --check
+  typos
 
 fix:
   cargo fmt --all
   cargo fix --allow-dirty --allow-staged
   cargo clippy --fix --allow-dirty --allow-staged
+  typos -w
 
 _install_binstall:
   @which cargo-binstall >/dev/null 2>&1 || cargo install cargo-binstall
 
 _book_setup: _install_binstall
   @cargo binstall -y mdbook@0.4.52 mdbook-katex@0.9.4 mdbook-mermaid@0.16.2
+  @cargo binstall -y typos-cli
 
 # locally [build | serve | watch] Ragu book
 book COMMAND: _book_setup
