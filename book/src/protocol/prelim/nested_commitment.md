@@ -21,7 +21,9 @@ hash a commitment $A$ (Vesta point with $\F_q$ coordinates) into the transcript.
 Even with algebraic hash function, you can't hash $\F_q$ elements natively 
 in $\F_p$ and non-native arithmetic is expensive.
 
-![nested_commitment](../../../assets/nested_commitment.svg)
+<p align="center">
+  <img src="../../assets/nested_commitment.svg" alt="nested_commitment" />
+</p>
 
 The *nested commitment* $\mathring{A}$ cryptographically binds the original data 
 while being native to the $\F_p$ circuit. 
@@ -48,7 +50,9 @@ we need to further ensure the consistency between its commitment $\mathring{A}$
 and the overall witness polynomial commitment $R\in\G_2=\com(r(X)\in\F_q[X])$.
 Both $\mathring{A}$ and $R$ are available to the next $\F_p$ circuit step.
 
-![defer-example](../../../assets/defer.svg)
+<p align="center">
+  <img src="../../assets/defer.svg" alt="defer_example" />
+</p>
 
 Ensuring this consistency checks constitutes two _well-formedness_ requirements:
 1. $A(X)$ doesn't overlap with other partial-witness (e.g. $B(X)$)
