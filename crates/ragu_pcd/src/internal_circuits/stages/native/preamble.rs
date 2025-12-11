@@ -1,6 +1,6 @@
 use arithmetic::Cycle;
 use ff::PrimeField;
-use ragu_circuits::{mesh::omega_j, polynomials::Rank, staging};
+use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
@@ -22,7 +22,7 @@ use crate::{
     step::padded,
 };
 
-pub const STAGING_ID: usize = crate::internal_circuits::NATIVE_PREAMBLE_STAGING_ID;
+pub use crate::internal_circuits::InternalCircuitIndex::PreambleStage as STAGING_ID;
 
 type HeaderVec<'dr, D, const HEADER_SIZE: usize> = FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>;
 
@@ -85,9 +85,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
             output_header: alloc_header(dr, output_header.view().map(|h| h.as_slice()))?,
             circuit_id: Element::alloc(
                 dr,
-                proof
-                    .view()
-                    .map(|p| omega_j(p.application.circuit_id as u32)),
+                proof.view().map(|p| p.application.circuit_id.omega_j()),
             )?,
             unified: unified::Output::alloc_from_proof(dr, proof)?,
         })

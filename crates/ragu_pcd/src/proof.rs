@@ -2,6 +2,7 @@ use arithmetic::{Cycle, FixedGenerators};
 use ff::Field;
 use ragu_circuits::{
     CircuitExt,
+    mesh::CircuitIndex,
     polynomials::{Rank, structured},
     staging::StageExt,
 };
@@ -29,7 +30,7 @@ pub struct Proof<C: Cycle, R: Rank> {
 }
 
 pub(crate) struct ApplicationProof<C: Cycle, R: Rank> {
-    pub(crate) circuit_id: usize,
+    pub(crate) circuit_id: CircuitIndex,
     pub(crate) left_header: Vec<C::CircuitField>,
     pub(crate) right_header: Vec<C::CircuitField>,
     pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
@@ -159,8 +160,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Create a dummy proof to use for preamble witness.
         // The preamble witness needs proof references, but we're creating a trivial proof
         // from scratch, so we construct a dummy with placeholder values.
-        let dummy_circuit_id =
-            internal_circuits::index(self.num_application_steps, dummy::CIRCUIT_ID);
+        let dummy_circuit_id = dummy::CIRCUIT_ID.circuit_index(self.num_application_steps);
 
         let dummy_proof = Proof {
             preamble: PreambleProof {
@@ -301,7 +301,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
             application: ApplicationProof {
                 rx: application_rx,
-                circuit_id: internal_circuits::index(self.num_application_steps, dummy::CIRCUIT_ID),
+                circuit_id: dummy::CIRCUIT_ID.circuit_index(self.num_application_steps),
                 left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
                 right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
                 blind: application_blind,

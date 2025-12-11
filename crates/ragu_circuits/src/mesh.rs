@@ -27,6 +27,34 @@ use crate::{
     polynomials::{Rank, structured, unstructured},
 };
 
+/// Represents a simple numeric index of a circuit in the mesh.
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(transparent)]
+pub struct CircuitIndex(u32);
+
+impl CircuitIndex {
+    /// Creates a new circuit index.
+    pub fn new(index: usize) -> Self {
+        Self(index.try_into().unwrap())
+    }
+
+    /// Returns $\omega^j$ field element that corresponds to this $i$th circuit index.
+    ///
+    /// The $i$th circuit added to any [`Mesh`] (for a given [`PrimeField`] `F`) is
+    /// assigned the domain element of smallest multiplicative order not yet
+    /// assigned to any circuit prior to $i$. This corresponds with $\Omega^{f(i)}$
+    /// where $f(i)$ is the [`S`](PrimeField::S)-bit reversal of `i` and $\Omega$ is
+    /// the primitive [root of unity](PrimeField::ROOT_OF_UNITY) of order $2^{S}$ in
+    /// `F`.
+    ///
+    /// Notably, the result of this function does not depend on the actual size of
+    /// the [`Mesh`]'s interpolation polynomial domain.
+    pub fn omega_j<F: PrimeField>(self) -> F {
+        let bit_reversal_id = bitreverse(self.0, F::S);
+        F::ROOT_OF_UNITY.pow([bit_reversal_id.into()])
+    }
+}
+
 /// Builder for constructing a new [`Mesh`].
 pub struct MeshBuilder<'params, F: PrimeField, R: Rank> {
     circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
@@ -169,6 +197,15 @@ impl<F: PrimeField, R: Rank> Mesh<'_, F, R> {
         coeffs
     }
 
+    /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
+    /// the mesh polynomial unrestricted at $X$.
+    ///
+    /// Wraps [`Mesh::wy`]. See [`CircuitIndex::omega_j`] for more details.
+    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
+        let w: F = i.omega_j();
+        self.wy(w, y)
+    }
+
     /// Evaluate the mesh polynomial unrestricted at $X$.
     pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
         self.w(
@@ -263,26 +300,9 @@ impl<F: PrimeField, R: Rank> Mesh<'_, F, R> {
     }
 }
 
-/// Returns $\omega^j$ that corresponds to the $i$th circuit added to a
-/// [`Mesh`].
-///
-/// The $i$th circuit added to any [`Mesh`] (for a given [`PrimeField`] `F`) is
-/// assigned the domain element of smallest multiplicative order not yet
-/// assigned to any circuit prior to $i$. This corresponds with $\Omega^{f(i)}$
-/// where $f(i)$ is the [`S`](PrimeField::S)-bit reversal of `i` and $\Omega$ is
-/// the primitive [root of unity](PrimeField::ROOT_OF_UNITY) of order $2^{S}$ in
-/// `F`.
-///
-/// Notably, the result of this function does not depend on the actual size of
-/// the [`Mesh`]'s interpolation polynomial domain.
-pub fn omega_j<F: PrimeField>(id: u32) -> F {
-    let bit_reversal_id = bitreverse(id, F::S);
-    F::ROOT_OF_UNITY.pow([bit_reversal_id as u64])
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{MeshBuilder, OmegaKey, omega_j};
+    use super::{CircuitIndex, MeshBuilder, OmegaKey};
     use crate::polynomials::R;
     use crate::tests::SquareCircuit;
     use alloc::collections::BTreeSet;
@@ -305,16 +325,16 @@ mod tests {
             }
             1 << order
         }
-        assert_eq!(omega_j::<Fp>(0), Fp::ONE);
-        assert_eq!(omega_j::<Fp>(1), -Fp::ONE);
-        assert_eq!(order(omega_j::<Fp>(0)), 1);
-        assert_eq!(order(omega_j::<Fp>(1)), 2);
-        assert_eq!(order(omega_j::<Fp>(2)), 4);
-        assert_eq!(order(omega_j::<Fp>(3)), 4);
-        assert_eq!(order(omega_j::<Fp>(4)), 8);
-        assert_eq!(order(omega_j::<Fp>(5)), 8);
-        assert_eq!(order(omega_j::<Fp>(6)), 8);
-        assert_eq!(order(omega_j::<Fp>(7)), 8);
+        assert_eq!(CircuitIndex::new(0).omega_j::<Fp>(), Fp::ONE);
+        assert_eq!(CircuitIndex::new(1).omega_j::<Fp>(), -Fp::ONE);
+        assert_eq!(order(CircuitIndex::new(0).omega_j::<Fp>()), 1);
+        assert_eq!(order(CircuitIndex::new(1).omega_j::<Fp>()), 2);
+        assert_eq!(order(CircuitIndex::new(2).omega_j::<Fp>()), 4);
+        assert_eq!(order(CircuitIndex::new(3).omega_j::<Fp>()), 4);
+        assert_eq!(order(CircuitIndex::new(4).omega_j::<Fp>()), 8);
+        assert_eq!(order(CircuitIndex::new(5).omega_j::<Fp>()), 8);
+        assert_eq!(order(CircuitIndex::new(6).omega_j::<Fp>()), 8);
+        assert_eq!(order(CircuitIndex::new(7).omega_j::<Fp>()), 8);
     }
 
     type TestRank = R<8>;
@@ -416,7 +436,7 @@ mod tests {
             let domain = Domain::<Fp>::new(log2_circuits);
 
             for id in 0..num_circuits {
-                let omega_from_function = omega_j::<Fp>(id as u32);
+                let omega_from_function = CircuitIndex::new(id).omega_j::<Fp>();
 
                 let bit_reversal_id = bitreverse(id as u32, Fp::S);
                 let position = ((bit_reversal_id as u64) >> (Fp::S - log2_circuits)) as usize;
@@ -439,7 +459,7 @@ mod tests {
         let mut seen_keys = BTreeSet::new();
 
         for i in 0..max_circuits {
-            let omega = omega_j::<Fp>(i);
+            let omega = CircuitIndex::new(i).omega_j::<Fp>();
             let key = OmegaKey::from(omega);
 
             assert!(
