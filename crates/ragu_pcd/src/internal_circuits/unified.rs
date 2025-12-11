@@ -108,7 +108,6 @@ pub struct OutputBuilder<'a, 'dr, D: Driver<'dr>, C: Cycle> {
 }
 
 impl<'dr, D: Driver<'dr>, C: Cycle> Output<'dr, D, C> {
-    // TODO: Expose a gadget for the "trailing zero element" pattern to simplify values() counting.
     /// Allocate an Output from a proof reference.
     pub fn alloc_from_proof<R: Rank>(
         dr: &mut D,
