@@ -39,7 +39,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, const NUM_REVDOT_CLAI
 
 pub struct Witness<'a, C: Cycle> {
     pub unified_instance: &'a unified::Instance<C>,
-    pub query_witness: &'a native_query::Witness<C::CircuitField>,
+    pub query_witness: &'a native_query::Witness<C>,
     pub eval_witness: &'a native_eval::Witness<C::CircuitField>,
 }
 
@@ -122,6 +122,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, const NUM_REVDOT_CLAIMS: usize
         unified_output.mu.set(mu);
         unified_output.nu.set(nu);
         unified_output.x.set(x.clone());
+
+        // Query stage's nested_s_commitment must equal the one in unified output.
+        unified_output
+            .nested_s_commitment
+            .set(query.nested_s_commitment);
 
         // Derive alpha challenge.
         let alpha = {

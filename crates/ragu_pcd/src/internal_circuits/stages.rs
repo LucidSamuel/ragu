@@ -112,6 +112,7 @@ pub mod nested {
     define_nested_point_stage!(s_doubleprime, parent = ());
     define_nested_point_stage!(error, parent = ());
     define_nested_multi_point_stage!(ab, parent = ());
+    define_nested_point_stage!(s, parent = ());
     define_nested_point_stage!(query, parent = ());
     define_nested_point_stage!(f, parent = ());
     define_nested_point_stage!(eval, parent = ());

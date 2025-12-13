@@ -14,7 +14,7 @@ use crate::{
     internal_circuits::{self, NUM_NATIVE_REVDOT_CLAIMS, stages, unified},
     proof::{
         ABProof, ApplicationProof, ErrorProof, EvalProof, FProof, InternalCircuits, Pcd,
-        PreambleProof, Proof, QueryProof, SDoublePrimeProof, SPrimeProof,
+        PreambleProof, Proof, QueryProof, SDoublePrimeProof, SPrimeProof, SProof,
     },
     step::{Step, adapter::Adapter},
 };
@@ -192,6 +192,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let x =
             crate::components::transcript::emulate_x::<C>(nu, nested_ab_commitment, self.params)?;
 
+        // Compute commitment to mesh polynomial at (x, y).
+        let mesh_xy = self.circuit_mesh.xy(x, y);
+        let mesh_xy_blind = C::CircuitField::random(&mut *rng);
+        let mesh_xy_commitment = mesh_xy.commit(host_generators, mesh_xy_blind);
+
+        let nested_s_rx = stages::nested::s::Stage::<C::HostCurve, R>::rx(mesh_xy_commitment)?;
+        let nested_s_blind = C::ScalarField::random(&mut *rng);
+        let nested_s_commitment = nested_s_rx.commit(nested_generators, nested_s_blind);
+
         // Compute t(x, z), the TXZ polynomial evaluation derived from x and z.
         let _xz = x * z;
         let _txz_claimed = R::txz(x, z);
@@ -199,6 +208,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Compute query witness (stubbed for now).
         let query_witness = internal_circuits::stages::native::query::Witness {
             x,
+            nested_s_commitment,
             queries: internal_circuits::stages::native::query::Queries::range()
                 .map(|_| C::CircuitField::ZERO)
                 .collect_fixed()?,
@@ -263,7 +273,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             crate::components::transcript::emulate_beta::<C>(nested_eval_commitment, self.params)?;
 
         // Create the unified instance.
-        // TODO: Missing fields: nested_s_commitment
         let unified_instance = &unified::Instance {
             nested_preamble_commitment,
             w,
@@ -277,6 +286,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             c,
             nested_ab_commitment,
             x,
+            nested_s_commitment,
             nested_query_commitment,
             alpha,
             nested_f_commitment,
@@ -377,6 +387,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     nested_ab_rx,
                     nested_ab_blind,
                     nested_ab_commitment,
+                },
+                s: SProof {
+                    mesh_xy,
+                    mesh_xy_blind,
+                    mesh_xy_commitment,
+                    nested_s_rx,
+                    nested_s_blind,
+                    nested_s_commitment,
                 },
                 query: QueryProof {
                     native_query_rx,
