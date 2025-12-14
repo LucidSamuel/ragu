@@ -1,3 +1,5 @@
+//! Evaluation of the $t(X, Z)$ polynomial.
+
 use ff::Field;
 use ragu_core::{
     Error, Result,

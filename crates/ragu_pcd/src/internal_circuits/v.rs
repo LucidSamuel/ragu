@@ -1,7 +1,7 @@
 use crate::components::transcript;
 use arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Evaluate, Rank},
+    polynomials::{Rank, txz::Evaluate},
     staging::{StageBuilder, Staged, StagedCircuit},
 };
 use ragu_core::{
