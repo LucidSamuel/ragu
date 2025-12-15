@@ -5,7 +5,7 @@ use ragu_circuits::Circuit;
 use ragu_core::{
     Result,
     drivers::{Driver, emulator::Emulator},
-    maybe::{Always, Maybe},
+    maybe::{Always, Maybe, MaybeKind},
 };
 use ragu_primitives::{Element, GadgetExt, io::Buffer};
 
