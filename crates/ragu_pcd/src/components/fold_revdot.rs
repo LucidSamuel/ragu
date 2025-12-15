@@ -152,4 +152,55 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_multireduce() -> Result<()> {
+        fn measure<const M: usize, const N: usize>() -> Result<usize> {
+            let rng = OsRng;
+            let sim = Simulator::simulate(rng, |dr, mut rng| {
+                let mu = Element::alloc(dr, rng.view_mut().map(|r| Fp::random(r)))?;
+                let nu = Element::alloc(dr, rng.view_mut().map(|r| Fp::random(r)))?;
+                let error_terms = (0..ErrorTermsLen::<M>::len())
+                    .map(|_| Element::alloc(dr, rng.view_mut().map(|r| Fp::random(r))))
+                    .try_collect_fixed()?;
+                let ky_values = (0..M)
+                    .map(|_| Element::alloc(dr, rng.view_mut().map(|r| Fp::random(r))))
+                    .try_collect_fixed()?;
+
+                let mut collapsed = vec![];
+                for _ in 0..N {
+                    let v = compute_c::<_, M>(dr, &mu, &nu, &error_terms, &ky_values)?;
+                    collapsed.push(v);
+                }
+                let collapsed = FixedVec::new(collapsed)?;
+                let error_terms = (0..ErrorTermsLen::<N>::len())
+                    .map(|_| Element::alloc(dr, rng.view_mut().map(|r| Fp::random(r))))
+                    .try_collect_fixed()?;
+
+                compute_c::<_, N>(dr, &mu, &nu, &error_terms, &collapsed)?;
+
+                Ok(())
+            })?;
+
+            let num = sim.num_multiplications();
+
+            // N * cost(M) + cost(N) where cost(x) = 2x² + x + 2
+            let expected = |m: usize, n: usize| {
+                let cost = |x: usize| 2 * x * x + x + 2;
+                n * cost(m) + cost(n)
+            };
+
+            assert_eq!(num, expected(M, N));
+
+            Ok(sim.num_multiplications())
+        }
+
+        assert_eq!(measure::<2, 2>()?, 36);
+        assert_eq!(measure::<3, 7>()?, 268);
+        assert_eq!(measure::<6, 11>()?, 1135);
+        assert_eq!(measure::<5, 10>()?, 782);
+        assert_eq!(measure::<10, 10>()?, 2332);
+
+        Ok(())
+    }
 }
