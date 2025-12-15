@@ -74,7 +74,7 @@ See details in the [staging section](../extensions/staging.md).
 In each PCD step, both curves work together simultaneously in a cycle-fold inspired
 design. The $\F_p$ recursion circuit handles proof/accumulator merging and uses
 nested commitments $\mathring{A}, \mathring{B},\ldots$ as non-deterministic advice
-to hash into the transcript. In parallel, the $\F_q$ circuit performs the deferred
+to hash into the transcript. Concurrently, the $\F_q$ circuit performs the deferred
 group operations over the original commitments $A, B\in\G_{host}$ and checks part 1
 of the well-formedness of the partial witness polynomials underlying these nested
 commitments. Finally, part 2 of the well-formedness is enforced within the $\F_p$
