@@ -16,12 +16,20 @@ Accumulation schemes solve this by deferring expensive checks. Instead of fully
 verifying each proof during recursion, we partially verify it and accumulate
 the remaining work for later batch verification. The per-step overhead becomes
 sublinear while the final decider amortizes the accumulated checks across all
-steps.
+steps, performing the deferred linear-time work only once.
 
 Consider the IVC syntax formalized in
-[[BCMS20]](https://eprint.iacr.org/2020/499):
+[[BCMS20]](https://eprint.iacr.org/2020/499) below[^split-accum-links]:
 
-<p align="center">
+[^split-accum-links]: The diagram for accumulation schemes is heavily based on
+talks by [Benedikt Bünz](https://youtu.be/CY84j0_E7KA) and
+[Pratyush Mishra](https://youtu.be/7MtzoVM6e6w). The diagram presents the IVC
+chain from the _prover's perspective_ who applies the step function once, runs
+the accumulation prover to folds both the public instances and witnesses, then
+with finally produce a NARK proof of honest stepping and folding.
+
+
+<P align="center">
   <img src="../../../assets/ivc_syntax.svg" alt="ivc_syntax" />
 </p>
 
@@ -64,8 +72,8 @@ and the per-step recursion overhead is massively reduced to sublinear.
 Ragu implements **split accumulation**, a variant formalized in
 [[BCLMS20]](https://eprint.iacr.org/2020/1618), in which the verifier
 $\mathsf{Acc.V}$ checks correct accumulation of _only public instances_, allowing
-a potentially non-succinct witness size (usually linear), thus its relaxed
-dependency on NARK rather than SNARK. Intuitively, the accumulation prover
+a potentially non-succinct witness size (usually linear), thus requiring only
+a NARK rather than a SNARK. Intuitively, the accumulation prover
 partially verifies a new NARK proof $\pi_i$, then folds the remaining unverified
 statements with the previously accumulated statement $\acc_i$ into a new
 $\acc_{i+1}$ through random linear combination. To enable verification of
@@ -109,12 +117,19 @@ $\acc_i = (\acc_i^{(1)}, \acc_i^{(2)})$.
   <img src="../../../assets/ivc_on_cycle.svg" alt="ivc_on_cycle_of_curves" />
 </p>
 
-Each IVC step now consists of two halves working in tandem:
+**Base Case**: $i=0$, $z_0$ set to the application init state,
+accumulators are set to a trivial value $\acc_0:=\acc_\bot$, the previous step
+instance $\inst_0^{(2)}:=\inst_\bot$ is set to a trivially satisfying instance
+(similarly for its respective witness maintained by the prover).
+
+Each future IVC step now consists of two halves working in tandem:
 
 **Primary circuit** $CS^{(1)}$:
 - Advances application state $z_i^{(1)} \to z_{i+1}^{(1)}$
 - Folds the previous step's secondary instance $\inst_i^{(2)}$ into accumulator
   $\acc_i^{(2)} \to \acc_{i+1}^{(2)}$
+  - **base**: if $i=0$, directly set $\acc_{i+1}^{(2)}:=\acc_0^{(2)}=\acc_\bot$
+    without any folding
 - Produces new instance $\inst_{i+1}^{(1)}$ to be folded in the next half
 - Enforces [deferred operations](../../prelim/nested_commitment.md#deferreds) in
   $CS^{(2)}$ from the last step (its group operations are native here), and 
@@ -124,6 +139,8 @@ Each IVC step now consists of two halves working in tandem:
 - Advances application state $z_i^{(2)} \to z_{i+1}^{(2)}$
 - Folds the primary instance $\inst_{i+1}^{(1)}$ into accumulator
   $\acc_i^{(1)} \to \acc_{i+1}^{(1)}$
+  - **base**: if $i=0$, directly set $\acc_{i+1}^{(1)}:=\inst_0^{(1)}$ without
+    any folding
 - Produces new instance $\inst_{i+1}^{(2)}$ for the next step
 - Enforces deferred operations from $CS^{(1)}$ (in the same step) and defer group
   operations to $CS^{(1)}$ for the next step
@@ -137,7 +154,7 @@ counterpart on the cycle.[^ivc-curve-diagram]
 [^ivc-curve-diagram]: The IVC on a curve cycle diagram is heavily based on the
 [[NBS23] paper](https://eprint.iacr.org/2023/969) and [Wilson Nguyen's
 talk](https://youtu.be/l-F5ykQQ4qw). The diagram presents the IVC computation
-chain from the verifier's perspective and omits auxiliary advice and witness
+chain from the _verifier's perspective_ and omits auxiliary advice and witness
 parts of the NARK instance and accumulator managed by the prover.
 
 ## 2-arity PCD
