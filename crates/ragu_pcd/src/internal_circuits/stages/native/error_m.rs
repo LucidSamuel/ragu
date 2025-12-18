@@ -12,7 +12,7 @@ use ragu_core::{
 };
 use ragu_primitives::{
     Element,
-    vec::{CollectFixed, FixedVec, Len},
+    vec::{FixedVec, Len},
 };
 
 use core::marker::PhantomData;
@@ -76,13 +76,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> staging::Stage<
 
         // Allocate nested error terms
         let error_terms: FixedVec<FixedVec<Element<'dr, D>, ErrorTermsLen<P::M>>, P::N> =
-            P::N::range()
-                .map(|i| {
-                    ErrorTermsLen::<P::M>::range()
-                        .map(|j| Element::alloc(dr, witness.view().map(|w| w.error_terms[i][j])))
-                        .try_collect_fixed()
+            FixedVec::try_from_fn(|i| {
+                FixedVec::try_from_fn(|j| {
+                    Element::alloc(dr, witness.view().map(|w| w.error_terms[i][j]))
                 })
-                .try_collect_fixed()?;
+            })?;
 
         Ok(Output { z, error_terms })
     }

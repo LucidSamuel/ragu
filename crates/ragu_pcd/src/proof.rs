@@ -7,10 +7,7 @@ use ragu_circuits::{
     staging::StageExt,
 };
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{
-    Element,
-    vec::{CollectFixed, FixedVec, Len},
-};
+use ragu_primitives::{Element, vec::FixedVec};
 use rand::{Rng, rngs::OsRng};
 
 use alloc::{vec, vec::Vec};
@@ -670,13 +667,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Create error_m witness with z and nested error terms
         let error_m_witness = stages::native::error_m::Witness::<C, NativeParameters> {
             z,
-            error_terms: <<NativeParameters as Parameters>::N>::range()
-                .map(|_| {
-                    ErrorTermsLen::<<NativeParameters as Parameters>::M>::range()
-                        .map(|_| C::CircuitField::ZERO)
-                        .collect_fixed()
-                })
-                .try_collect_fixed()?,
+            error_terms: FixedVec::from_fn(|_| FixedVec::from_fn(|_| C::CircuitField::ZERO)),
         };
         let native_error_m_rx =
             stages::native::error_m::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
@@ -707,12 +698,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // error_n includes nu as a binding challenge and collapsed values from layer 1
         let error_n_witness = stages::native::error_n::Witness::<C, NativeParameters> {
             nu,
-            error_terms: ErrorTermsLen::<<NativeParameters as Parameters>::N>::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
-            collapsed: <<NativeParameters as Parameters>::N>::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            error_terms: FixedVec::from_fn(|_| C::CircuitField::ZERO),
+            collapsed: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
         let native_error_n_rx =
             stages::native::error_n::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
@@ -760,28 +747,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let error_terms_m: FixedVec<
                     FixedVec<Element<'_, _>, ErrorTermsLen<<NativeParameters as Parameters>::M>>,
                     <NativeParameters as Parameters>::N,
-                > = <<NativeParameters as Parameters>::N>::range()
-                    .map(|i| {
-                        ErrorTermsLen::<<NativeParameters as Parameters>::M>::range()
-                            .map(|j| Element::alloc(dr, error_terms_m.view().map(|et| et[i][j])))
-                            .try_collect_fixed()
+                > = FixedVec::try_from_fn(|i| {
+                    FixedVec::try_from_fn(|j| {
+                        Element::alloc(dr, error_terms_m.view().map(|et| et[i][j]))
                     })
-                    .try_collect_fixed()?;
+                })?;
 
                 // Allocate error_n error terms
                 let error_terms_n: FixedVec<
                     Element<'_, _>,
                     ErrorTermsLen<<NativeParameters as Parameters>::N>,
-                > = ErrorTermsLen::<<NativeParameters as Parameters>::N>::range()
-                    .map(|i| Element::alloc(dr, error_terms_n.view().map(|et| et[i])))
-                    .try_collect_fixed()?;
+                > = FixedVec::try_from_fn(|i| {
+                    Element::alloc(dr, error_terms_n.view().map(|et| et[i]))
+                })?;
 
                 // Layer 1: N instances of M-sized reductions
                 // ky_values stay as zeros for now
                 let ky_values_m: FixedVec<_, <NativeParameters as Parameters>::M> =
-                    <<NativeParameters as Parameters>::M>::range()
-                        .map(|_| Element::zero(dr))
-                        .collect_fixed()?;
+                    FixedVec::from_fn(|_| Element::zero(dr));
 
                 let mut collapsed = vec![];
                 for error_terms_i in error_terms_m.iter() {
@@ -845,9 +828,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Compute query witness (stubbed for now).
         let query_witness = internal_circuits::stages::native::query::Witness {
             x,
-            queries: internal_circuits::stages::native::query::Queries::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            queries: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
 
         let native_query_rx =
@@ -897,9 +878,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Compute eval witness (stubbed for now).
         let eval_witness = internal_circuits::stages::native::eval::Witness {
             u,
-            evals: internal_circuits::stages::native::eval::Evals::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            evals: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
         let native_eval_rx =
             internal_circuits::stages::native::eval::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;

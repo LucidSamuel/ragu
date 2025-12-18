@@ -2,15 +2,12 @@ use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{
-    Element,
-    vec::{CollectFixed, FixedVec, Len},
-};
+use ragu_primitives::{Element, vec::FixedVec};
 use rand::Rng;
 
 use crate::{
     Application, circuit_counts,
-    components::fold_revdot::{self, ErrorTermsLen, NativeParameters, Parameters},
+    components::fold_revdot::{self, NativeParameters},
     internal_circuits::{self, stages, unified},
     proof::{
         ABProof, ApplicationProof, ErrorProof, EvalProof, FProof, InternalCircuits, MeshWyProof,
@@ -149,13 +146,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // The inclusion of z binds the error stage to the earlier "transcript".
         let error_m_witness = stages::native::error_m::Witness::<C, NativeParameters> {
             z,
-            error_terms: <<NativeParameters as Parameters>::N>::range()
-                .map(|_| {
-                    ErrorTermsLen::<<NativeParameters as Parameters>::M>::range()
-                        .map(|_| C::CircuitField::ZERO)
-                        .collect_fixed()
-                })
-                .try_collect_fixed()?,
+            error_terms: FixedVec::from_fn(|_| FixedVec::from_fn(|_| C::CircuitField::ZERO)),
         };
         let native_error_m_rx =
             stages::native::error_m::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
@@ -208,9 +199,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // error_n includes nu as a binding challenge and the collapsed values from layer 1.
         let error_n_witness = stages::native::error_n::Witness::<C, NativeParameters> {
             nu,
-            error_terms: ErrorTermsLen::<<NativeParameters as Parameters>::N>::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            error_terms: FixedVec::from_fn(|_| C::CircuitField::ZERO),
             collapsed,
         };
         let native_error_n_rx =
@@ -306,9 +295,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Compute query witness (stubbed for now).
         let query_witness = internal_circuits::stages::native::query::Witness {
             x,
-            queries: internal_circuits::stages::native::query::Queries::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            queries: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
 
         let native_query_rx =
@@ -355,9 +342,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Compute eval witness (stubbed for now).
         let eval_witness = internal_circuits::stages::native::eval::Witness {
             u,
-            evals: internal_circuits::stages::native::eval::Evals::range()
-                .map(|_| C::CircuitField::ZERO)
-                .collect_fixed()?,
+            evals: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
         let native_eval_rx =
             internal_circuits::stages::native::eval::Stage::<C, R, HEADER_SIZE>::rx(&eval_witness)?;
