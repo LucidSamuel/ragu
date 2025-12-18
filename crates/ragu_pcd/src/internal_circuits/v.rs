@@ -6,7 +6,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::GadgetKind,
     maybe::Maybe,
 };
 
@@ -39,8 +39,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters>
 
 pub struct Witness<'a, C: Cycle> {
     pub unified_instance: &'a unified::Instance<C>,
-    pub query_witness: &'a native_query::Witness<C>,
-    pub eval_witness: &'a native_eval::Witness<C::CircuitField>,
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
@@ -76,23 +74,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         Self: 'dr,
     {
         let builder = builder.skip_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let (query, builder) = builder.add_stage::<native_query::Stage<C, R, HEADER_SIZE>>()?;
-        let (eval, builder) = builder.add_stage::<native_eval::Stage<C, R, HEADER_SIZE>>()?;
+        let builder = builder.skip_stage::<native_query::Stage<C, R, HEADER_SIZE>>()?;
+        let builder = builder.skip_stage::<native_eval::Stage<C, R, HEADER_SIZE>>()?;
         let dr = builder.finish();
-
-        let query = query.enforced(dr, witness.view().map(|w| w.query_witness))?;
-        let eval = eval.enforced(dr, witness.view().map(|w| w.eval_witness))?;
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
 
-        // Get x from unified instance (derived by hashes_2 circuit) and enforce equality.
+        // Get x from unified instance (derived by hashes_2 circuit).
         let x = unified_output.x.get(dr, unified_instance)?;
-        x.enforce_equal(dr, &query.x)?;
-
-        // Get u from unified instance (derived by hashes_2 circuit) and enforce equality.
-        let u = unified_output.u.get(dr, unified_instance)?;
-        u.enforce_equal(dr, &eval.u)?;
 
         // Get z from unified instance (derived by hashes_1 circuit) for txz computation.
         // TODO: what to do with txz? launder out as aux data?

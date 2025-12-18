@@ -6,7 +6,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::GadgetKind,
     maybe::Maybe,
 };
 
@@ -47,7 +47,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters>
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
-    pub error_m_witness: &'a native_error_m::Witness<C, P>,
     pub error_n_witness: &'a native_error_n::Witness<C, P>,
 }
 
@@ -85,14 +84,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
     {
         let (preamble, builder) =
             builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let (error_m, builder) =
-            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
         let (error_n, builder) =
             builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
         let dr = builder.finish();
 
         let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
-        let error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
         let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         // Check that circuit IDs are valid domain elements.
@@ -101,16 +98,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
 
         let unified_instance = &witness.view().map(|w| w.unified_instance);
         let mut unified_output = OutputBuilder::new();
-
-        // Get z from unified instance (derived by hashes_1 circuit) and enforce equality.
-        let z = unified_output.z.get(dr, unified_instance)?;
-        z.enforce_equal(dr, &error_m.z)?;
-
-        // Get nu from unified instance (derived by hashes_1 circuit).
-        let nu = unified_output.nu.get(dr, unified_instance)?;
-
-        // Enforce derived nu matches error_n stage's nu.
-        nu.enforce_equal(dr, &error_n.nu)?;
 
         // Get mu_prime, nu_prime from unified instance (derived by hashes_1 circuit).
         let mu_prime = unified_output.mu_prime.get(dr, unified_instance)?;

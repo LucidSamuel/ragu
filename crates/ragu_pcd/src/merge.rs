@@ -2,7 +2,11 @@ use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::StageExt};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{Element, vec::FixedVec};
+use ragu_primitives::{
+    Element, GadgetExt, Point,
+    poseidon::Sponge,
+    vec::{CollectFixed, FixedVec},
+};
 use rand::Rng;
 
 use crate::{
@@ -100,9 +104,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // protocol. The challenges we compute in this manner are produced so as
         // to simulate the verification of the two proofs simultaneously.
         //
+        // Create a long-lived emulator and sponge for all challenge derivations
+        let mut dr = Emulator::execute();
+        let mut sponge = Sponge::new(&mut dr, self.params.circuit_poseidon());
+
         // Derive w = H(nested_preamble_commitment)
-        let w =
-            crate::components::transcript::emulate_w::<C>(nested_preamble_commitment, self.params)?;
+        Point::constant(&mut dr, nested_preamble_commitment)?.write(&mut dr, &mut sponge)?;
+        let w = *sponge.squeeze(&mut dr)?.value().take();
 
         // In order to check that the two proofs' commitments to s (the mesh polynomial
         // evaluated at (x_0, y_0) and (x_1, y_1)) are correct, we need to
@@ -130,12 +138,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Once S' is committed, we can compute the challenges (y, z).
         //
-        // Derive (y, z) = H(w, nested_s_prime_commitment).
-        let (y, z) = crate::components::transcript::emulate_y_z::<C>(
-            w,
-            nested_s_prime_commitment,
-            self.params,
-        )?;
+        // Derive (y, z) = H(nested_s_prime_commitment).
+        Point::constant(&mut dr, nested_s_prime_commitment)?.write(&mut dr, &mut sponge)?;
+        let y = *sponge.squeeze(&mut dr)?.value().take();
+        let z = *sponge.squeeze(&mut dr)?.value().take();
 
         // Given (w, y), we can compute m(w, X, y) and commit to it.
         let mesh_wy = self.circuit_mesh.wy(w, y);
@@ -143,9 +149,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mesh_wy_commitment = mesh_wy.commit(host_generators, mesh_wy_blind);
 
         // Compute error_m stage (Layer 1: N instances of M-sized reductions).
-        // The inclusion of z binds the error stage to the earlier "transcript".
         let error_m_witness = stages::native::error_m::Witness::<C, NativeParameters> {
-            z,
             error_terms: FixedVec::from_fn(|_| FixedVec::from_fn(|_| C::CircuitField::ZERO)),
         };
         let native_error_m_rx =
@@ -167,11 +171,29 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_error_m_commitment =
             nested_error_m_rx.commit(nested_generators, nested_error_m_blind);
 
-        // Derive (mu, nu) = H(nested_error_m_commitment)
-        let (mu, nu) = crate::components::transcript::emulate_mu_nu::<C>(
-            nested_error_m_commitment,
-            self.params,
+        // Absorb nested_error_m_commitment, then save sponge state for bridging
+        Point::constant(&mut dr, nested_error_m_commitment)?.write(&mut dr, &mut sponge)?;
+
+        // Save sponge state for bridging transcript between hashes_1 and hashes_2
+        let saved_sponge_state = sponge
+            .save_state(&mut dr)
+            .expect("save_state should succeed after absorbing");
+        // Extract raw field values for the error_n witness
+        let sponge_state_elements = saved_sponge_state
+            .clone()
+            .into_elements()
+            .into_iter()
+            .map(|e| *e.value().take())
+            .collect_fixed()?;
+
+        // Resume sponge to derive (mu, nu) = H(nested_error_m_commitment)
+        let (mu, mut sponge) = Sponge::resume_and_squeeze(
+            &mut dr,
+            saved_sponge_state,
+            self.params.circuit_poseidon(),
         )?;
+        let mu = *mu.value().take();
+        let nu = *sponge.squeeze(&mut dr)?.value().take();
 
         // Compute collapsed values (layer 1 folding) now that mu, nu are known.
         let collapsed =
@@ -196,11 +218,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             })?;
 
         // Compute error_n stage (Layer 2: Single N-sized reduction).
-        // error_n includes nu as a binding challenge and the collapsed values from layer 1.
         let error_n_witness = stages::native::error_n::Witness::<C, NativeParameters> {
-            nu,
             error_terms: FixedVec::from_fn(|_| C::CircuitField::ZERO),
             collapsed,
+            sponge_state_elements,
         };
         let native_error_n_rx =
             stages::native::error_n::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
@@ -221,10 +242,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested_error_n_rx.commit(nested_generators, nested_error_n_blind);
 
         // Derive (mu', nu') = H(nested_error_n_commitment)
-        let (mu_prime, nu_prime) = crate::components::transcript::emulate_mu_nu::<C>(
-            nested_error_n_commitment,
-            self.params,
-        )?;
+        Point::constant(&mut dr, nested_error_n_commitment)?.write(&mut dr, &mut sponge)?;
+        let mu_prime = *sponge.squeeze(&mut dr)?.value().take();
+        let nu_prime = *sponge.squeeze(&mut dr)?.value().take();
 
         // Compute c, the folded revdot product claim (layer 2 only).
         // Layer 1 was already computed above to produce the collapsed values.
@@ -280,12 +300,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_ab_blind = C::ScalarField::random(&mut *rng);
         let nested_ab_commitment = nested_ab_rx.commit(nested_generators, nested_ab_blind);
 
-        // Derive x = H(nu', nested_ab_commitment).
-        let x = crate::components::transcript::emulate_x::<C>(
-            nu_prime,
-            nested_ab_commitment,
-            self.params,
-        )?;
+        // Continue using the same sponge transcript (bridged from hashes_1)
+        // Derive x = H(nested_ab_commitment).
+        Point::constant(&mut dr, nested_ab_commitment)?.write(&mut dr, &mut sponge)?;
+        let x = *sponge.squeeze(&mut dr)?.value().take();
 
         // Compute commitment to mesh polynomial at (x, y).
         let mesh_xy = self.circuit_mesh.xy(x, y);
@@ -294,7 +312,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Compute query witness (stubbed for now).
         let query_witness = internal_circuits::stages::native::query::Witness {
-            x,
             queries: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
 
@@ -316,10 +333,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_query_commitment = nested_query_rx.commit(nested_generators, nested_query_blind);
 
         // Derive challenge alpha = H(nested_query_commitment).
-        let alpha = crate::components::transcript::emulate_alpha::<C>(
-            nested_query_commitment,
-            self.params,
-        )?;
+        Point::constant(&mut dr, nested_query_commitment)?.write(&mut dr, &mut sponge)?;
+        let alpha = *sponge.squeeze(&mut dr)?.value().take();
 
         // Compute the F polynomial commitment (stubbed for now).
         let native_f_rx =
@@ -335,13 +350,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_f_blind = C::ScalarField::random(&mut *rng);
         let nested_f_commitment = nested_f_rx.commit(nested_generators, nested_f_blind);
 
-        // Derive u = H(alpha, nested_f_commitment).
-        let u =
-            crate::components::transcript::emulate_u::<C>(alpha, nested_f_commitment, self.params)?;
+        // Derive u = H(nested_f_commitment).
+        Point::constant(&mut dr, nested_f_commitment)?.write(&mut dr, &mut sponge)?;
+        let u = *sponge.squeeze(&mut dr)?.value().take();
 
         // Compute eval witness (stubbed for now).
         let eval_witness = internal_circuits::stages::native::eval::Witness {
-            u,
             evals: FixedVec::from_fn(|_| C::CircuitField::ZERO),
         };
         let native_eval_rx =
@@ -359,8 +373,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_eval_commitment = nested_eval_rx.commit(nested_generators, nested_eval_blind);
 
         // Derive beta = H(nested_eval_commitment).
-        let beta =
-            crate::components::transcript::emulate_beta::<C>(nested_eval_commitment, self.params)?;
+        Point::constant(&mut dr, nested_eval_commitment)?.write(&mut dr, &mut sponge)?;
+        let beta = *sponge.squeeze(&mut dr)?.value().take();
 
         // Create the unified instance.
         let unified_instance = &unified::Instance {
@@ -395,7 +409,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::c::Witness {
                 unified_instance,
                 preamble_witness: &preamble_witness,
-                error_m_witness: &error_m_witness,
                 error_n_witness: &error_n_witness,
             },
             self.circuit_mesh.get_key(),
@@ -407,29 +420,37 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let (v_rx, _) =
             internal_circuits::v::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(self.params)
                 .rx::<R>(
-                    internal_circuits::v::Witness {
-                        unified_instance,
-                        query_witness: &query_witness,
-                        eval_witness: &eval_witness,
-                    },
+                    internal_circuits::v::Witness { unified_instance },
                     self.circuit_mesh.get_key(),
                 )?;
         let v_rx_blind = C::CircuitField::random(&mut *rng);
         let v_rx_commitment = v_rx.commit(host_generators, v_rx_blind);
 
-        // Hashes_1 circuit.
-        let (hashes_1_rx, _) = internal_circuits::hashes_1::Circuit::<C>::new(self.params)
+        // Hashes_1 staged circuit.
+        let (hashes_1_rx, _) =
+            internal_circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
+                self.params,
+            )
             .rx::<R>(
-                internal_circuits::hashes_1::Witness { unified_instance },
+                internal_circuits::hashes_1::Witness {
+                    unified_instance,
+                    error_n_witness: &error_n_witness,
+                },
                 self.circuit_mesh.get_key(),
             )?;
         let hashes_1_rx_blind = C::CircuitField::random(&mut *rng);
         let hashes_1_rx_commitment = hashes_1_rx.commit(host_generators, hashes_1_rx_blind);
 
-        // Hashes_2 circuit.
-        let (hashes_2_rx, _) = internal_circuits::hashes_2::Circuit::<C>::new(self.params)
+        // Hashes_2 staged circuit.
+        let (hashes_2_rx, _) =
+            internal_circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
+                self.params,
+            )
             .rx::<R>(
-                internal_circuits::hashes_2::Witness { unified_instance },
+                internal_circuits::hashes_2::Witness {
+                    unified_instance,
+                    error_n_witness: &error_n_witness,
+                },
                 self.circuit_mesh.get_key(),
             )?;
         let hashes_2_rx_blind = C::CircuitField::random(&mut *rng);

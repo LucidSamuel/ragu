@@ -21,24 +21,26 @@ pub use crate::components::fold_revdot::NativeParameters;
 #[repr(usize)]
 pub enum InternalCircuitIndex {
     DummyCircuit = 0,
-    Hashes1Circuit = 1,
-    Hashes2Circuit = 2,
-    KyStaged = 3,
-    KyCircuit = 4,
-    ClaimStaged = 5,
-    ClaimCircuit = 6,
-    VStaged = 7,
-    VCircuit = 8,
-    PreambleStage = 9,
-    ErrorMStage = 10,
-    ErrorNStage = 11,
-    QueryStage = 12,
-    EvalStage = 13,
+    Hashes1Staged = 1,
+    Hashes1Circuit = 2,
+    Hashes2Staged = 3,
+    Hashes2Circuit = 4,
+    KyStaged = 5,
+    KyCircuit = 6,
+    ClaimStaged = 7,
+    ClaimCircuit = 8,
+    VStaged = 9,
+    VCircuit = 10,
+    PreambleStage = 11,
+    ErrorMStage = 12,
+    ErrorNStage = 13,
+    QueryStage = 14,
+    EvalStage = 15,
 }
 
 /// The number of internal circuits registered by [`register_all`],
 /// and the number of variants in [`InternalCircuitIndex`].
-pub const NUM_INTERNAL_CIRCUITS: usize = 14;
+pub const NUM_INTERNAL_CIRCUITS: usize = 16;
 
 impl InternalCircuitIndex {
     pub fn circuit_index(self, num_application_steps: usize) -> CircuitIndex {
@@ -54,8 +56,16 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     let initial_num_circuits = mesh.num_circuits();
 
     let mesh = mesh.register_circuit(dummy::Circuit)?;
-    let mesh = mesh.register_circuit(hashes_1::Circuit::<C>::new(params))?;
-    let mesh = mesh.register_circuit(hashes_2::Circuit::<C>::new(params))?;
+    let mesh = {
+        let hashes_1 = hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params);
+        mesh.register_circuit_object(hashes_1.final_into_object()?)?
+            .register_circuit(hashes_1)?
+    };
+    let mesh = {
+        let hashes_2 = hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params);
+        mesh.register_circuit_object(hashes_2.final_into_object()?)?
+            .register_circuit(hashes_2)?
+    };
     let mesh = {
         let ky = ky::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits);
         mesh.register_circuit_object(ky.final_into_object()?)?

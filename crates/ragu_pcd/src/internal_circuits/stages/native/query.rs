@@ -28,8 +28,6 @@ impl Len for Queries {
 
 /// Witness data for the query stage.
 pub struct Witness<C: Cycle> {
-    /// The x challenge derived from hashing mu and nested_ab_commitment.
-    pub x: C::CircuitField,
     /// Query elements.
     pub queries: FixedVec<C::CircuitField, Queries>,
 }
@@ -37,9 +35,6 @@ pub struct Witness<C: Cycle> {
 /// Output gadget for the query stage.
 #[derive(Gadget)]
 pub struct Output<'dr, D: Driver<'dr>> {
-    /// The witnessed x challenge element.
-    #[ragu(gadget)]
-    pub x: Element<'dr, D>,
     /// Query elements.
     #[ragu(gadget)]
     pub queries: FixedVec<Element<'dr, D>, Queries>,
@@ -59,8 +54,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        // x challenge + queries
-        1 + Queries::len()
+        Queries::len()
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -71,10 +65,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     where
         Self: 'dr,
     {
-        let x = Element::alloc(dr, witness.view().map(|w| w.x))?;
         let queries = Queries::range()
             .map(|i| Element::alloc(dr, witness.view().map(|w| w.queries[i])))
             .try_collect_fixed()?;
-        Ok(Output { x, queries })
+        Ok(Output { queries })
     }
 }
