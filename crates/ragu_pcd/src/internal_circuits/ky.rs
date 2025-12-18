@@ -108,12 +108,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         let error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
         let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
+        let unified_instance = &witness.view().map(|w| w.unified_instance);
+        let mut unified_output = OutputBuilder::new();
+
         // Check that circuit IDs are valid domain elements.
         root_of_unity::enforce(dr, preamble.left.circuit_id.clone(), self.log2_circuits)?;
         root_of_unity::enforce(dr, preamble.right.circuit_id.clone(), self.log2_circuits)?;
-
-        let unified_instance = &witness.view().map(|w| w.unified_instance);
-        let mut unified_output = OutputBuilder::new();
 
         // Get mu, nu from unified instance (derived by hashes_1 circuit).
         let mu = unified_output.mu.get(dr, unified_instance)?;
