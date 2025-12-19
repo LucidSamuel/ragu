@@ -560,8 +560,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
             application: ApplicationProof {
                 circuit_id: dummy_circuit_id,
-                left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-                right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+                left_header: vec![C::CircuitField::todo(); HEADER_SIZE],
+                right_header: vec![C::CircuitField::todo(); HEADER_SIZE],
                 rx: application_rx.clone(),
                 blind: C::CircuitField::random(&mut *rng),
                 commitment: application_commitment,
@@ -596,8 +596,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let preamble_witness = stages::native::preamble::Witness::new(
             &dummy_proof,
             &dummy_proof,
-            [C::CircuitField::ZERO; HEADER_SIZE],
-            [C::CircuitField::ZERO; HEADER_SIZE],
+            [C::CircuitField::todo(); HEADER_SIZE],
+            [C::CircuitField::todo(); HEADER_SIZE],
         );
 
         let native_preamble_rx =
@@ -1091,8 +1091,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             application: ApplicationProof {
                 rx: application_rx,
                 circuit_id: dummy::CIRCUIT_ID.circuit_index(self.num_application_steps),
-                left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-                right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
+                left_header: vec![C::CircuitField::todo(); HEADER_SIZE],
+                right_header: vec![C::CircuitField::todo(); HEADER_SIZE],
                 blind: application_blind,
                 commitment: application_commitment,
             },
