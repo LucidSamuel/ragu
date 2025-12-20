@@ -16,16 +16,18 @@ use super::{
     stages::native::{error_m as native_error_m, error_n as native_error_n, preamble},
     unified::{self, OutputBuilder},
 };
-use crate::components::fold_revdot::{self, Parameters};
+use crate::components::fold_revdot;
 
 pub use crate::internal_circuits::InternalCircuitIndex::ClaimCircuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::ClaimStaged as STAGED_ID;
 
-pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, P: Parameters> {
-    _marker: PhantomData<(C, R, P)>,
+pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
+    _marker: PhantomData<(C, R, FP)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> Circuit<C, R, HEADER_SIZE, P> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    Circuit<C, R, HEADER_SIZE, FP>
+{
     pub fn new() -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
             _marker: PhantomData,
@@ -33,18 +35,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> Circuit<C, R, H
     }
 }
 
-pub struct Witness<'a, C: Cycle, P: Parameters> {
+pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
-    pub error_n_witness: &'a native_error_n::Witness<C, P>,
+    pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
-    for Circuit<C, R, HEADER_SIZE, P>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    StagedCircuit<C::CircuitField, R> for Circuit<C, R, HEADER_SIZE, FP>
 {
-    type Final = native_error_n::Stage<C, R, HEADER_SIZE, P>;
+    type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, P>;
+    type Witness<'source> = Witness<'source, C, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -71,9 +73,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         Self: 'dr,
     {
         let builder = builder.skip_stage::<preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
-            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
         let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
@@ -89,7 +91,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         // Layer 1 folding is verified by circuit_ky; we use error_n.collapsed directly.
         {
             // Layer 2: Single N-sized reduction using collapsed from error_n as ky_values
-            let c = fold_revdot::compute_c_n::<_, P>(
+            let c = fold_revdot::compute_c_n::<_, FP>(
                 dr,
                 &mu_prime,
                 &nu_prime,

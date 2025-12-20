@@ -27,21 +27,20 @@ use super::{
     },
     unified::{self, OutputBuilder},
 };
-use crate::components::{
-    fold_revdot::{self, Parameters},
-    root_of_unity,
-};
+use crate::components::{fold_revdot, root_of_unity};
 
 pub use crate::internal_circuits::InternalCircuitIndex::KyCircuit as CIRCUIT_ID;
 pub use crate::internal_circuits::InternalCircuitIndex::KyStaged as STAGED_ID;
 
 /// Circuit that verifies layer 1 revdot folding.
-pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, P: Parameters> {
+pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     log2_circuits: u32,
-    _marker: PhantomData<(C, R, P)>,
+    _marker: PhantomData<(C, R, FP)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> Circuit<C, R, HEADER_SIZE, P> {
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    Circuit<C, R, HEADER_SIZE, FP>
+{
     /// Create a new ky circuit.
     pub fn new(log2_circuits: u32) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
@@ -52,24 +51,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> Circuit<C, R, H
 }
 
 /// Witness for the ky circuit.
-pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> {
+pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     /// The unified instance containing challenges.
     pub unified_instance: &'a unified::Instance<C>,
     /// Witness for the preamble stage.
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
     /// Witness for the error_m stage (layer 1 error terms).
-    pub error_m_witness: &'a native_error_m::Witness<C, P>,
+    pub error_m_witness: &'a native_error_m::Witness<C, FP>,
     /// Witness for the error_n stage (layer 2 error terms + collapsed values).
-    pub error_n_witness: &'a native_error_n::Witness<C, P>,
+    pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C::CircuitField, R>
-    for Circuit<C, R, HEADER_SIZE, P>
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
+    StagedCircuit<C::CircuitField, R> for Circuit<C, R, HEADER_SIZE, FP>
 {
-    type Final = native_error_n::Stage<C, R, HEADER_SIZE, P>;
+    type Final = native_error_n::Stage<C, R, HEADER_SIZE, FP>;
 
     type Instance<'source> = &'source unified::Instance<C>;
-    type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, P>;
+    type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, FP>;
     type Output = unified::InternalOutputKind<C>;
     type Aux<'source> = ();
 
@@ -98,9 +97,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         let (preamble, builder) =
             builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
         let (error_m, builder) =
-            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
-            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, P>>()?;
+            builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
         let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
@@ -122,7 +121,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, P: Parameters> StagedCircuit<C
         let ky_values = FixedVec::from_fn(|_| Element::todo(dr));
 
         for (i, error_terms) in error_m.error_terms.iter().enumerate() {
-            fold_revdot::compute_c_m::<_, P>(dr, &mu, &nu, error_terms, &ky_values)?
+            fold_revdot::compute_c_m::<_, FP>(dr, &mu, &nu, error_terms, &ky_values)?
                 .enforce_equal(dr, &error_n.collapsed[i])?;
         }
 

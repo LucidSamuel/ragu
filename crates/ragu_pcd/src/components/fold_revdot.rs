@@ -90,28 +90,28 @@ fn compute_c_impl<'dr, D: Driver<'dr>, S: Len>(
 
 /// Compute the folded revdot claim `c` for the first layer (M-sized reduction).
 ///
-/// Uses P::M as the reduction size for layer 1 of the two-layer reduction.
-pub fn compute_c_m<'dr, D: Driver<'dr>, P: Parameters>(
+/// Uses FP::M as the reduction size for layer 1 of the two-layer reduction.
+pub fn compute_c_m<'dr, D: Driver<'dr>, FP: Parameters>(
     dr: &mut D,
     mu: &Element<'dr, D>,
     nu: &Element<'dr, D>,
-    error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<P::M>>,
-    ky_values: &FixedVec<Element<'dr, D>, P::M>,
+    error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<FP::M>>,
+    ky_values: &FixedVec<Element<'dr, D>, FP::M>,
 ) -> Result<Element<'dr, D>> {
-    compute_c_impl::<_, P::M>(dr, mu, nu, error_terms, ky_values)
+    compute_c_impl::<_, FP::M>(dr, mu, nu, error_terms, ky_values)
 }
 
 /// Compute the folded revdot claim `c` for the second layer (N-sized reduction).
 ///
-/// Uses P::N as the reduction size for layer 2 of the two-layer reduction.
-pub fn compute_c_n<'dr, D: Driver<'dr>, P: Parameters>(
+/// Uses FP::N as the reduction size for layer 2 of the two-layer reduction.
+pub fn compute_c_n<'dr, D: Driver<'dr>, FP: Parameters>(
     dr: &mut D,
     mu: &Element<'dr, D>,
     nu: &Element<'dr, D>,
-    error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<P::N>>,
-    ky_values: &FixedVec<Element<'dr, D>, P::N>,
+    error_terms: &FixedVec<Element<'dr, D>, ErrorTermsLen<FP::N>>,
+    ky_values: &FixedVec<Element<'dr, D>, FP::N>,
 ) -> Result<Element<'dr, D>> {
-    compute_c_impl::<_, P::N>(dr, mu, nu, error_terms, ky_values)
+    compute_c_impl::<_, FP::N>(dr, mu, nu, error_terms, ky_values)
 }
 
 #[cfg(test)]
