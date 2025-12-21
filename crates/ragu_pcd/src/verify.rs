@@ -1,29 +1,20 @@
 //! This module provides the [`Application::verify`] method implementation.
 
-// TODO: these should be made private, since if the trivial proof API is
-// improved these will only be used by the verifier.
-pub(crate) mod stub_step;
-pub(crate) mod stub_unified;
-
 use arithmetic::Cycle;
 use ff::PrimeField;
 use ragu_circuits::{
     mesh::{CircuitIndex, Mesh},
     polynomials::{Rank, structured},
 };
-use ragu_core::{Error, Result};
-use ragu_primitives::vec::{ConstLen, FixedVec};
+use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_primitives::Element;
 use rand::Rng;
 
 use crate::{
     Application, Pcd,
     header::Header,
-    internal_circuits::{self, InternalCircuitIndex},
-    step::adapter::Adapter,
+    internal_circuits::{self, InternalCircuitIndex, stages::native::preamble::ProofInputs},
 };
-
-use stub_step::StubStep;
-use stub_unified::StubUnified;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Verifies some [`Pcd`] for the provided [`Header`].
@@ -97,13 +88,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             internal_circuits::hashes_2::STAGED_ID,
         );
 
-        let unified_instance = internal_circuits::unified::Instance::from_proof(&pcd.proof);
+        // Compute both unified k(Y) and application k(Y) from a single ProofInputs.
+        let (unified_ky, application_ky) = Emulator::emulate_wireless(
+            (&pcd.proof, pcd.data.clone(), verifier.y),
+            |dr, witness| {
+                let (proof, data, y) = witness.cast();
+                let y = Element::alloc(dr, y)?;
+                let proof_inputs =
+                    ProofInputs::<_, C, HEADER_SIZE>::alloc_for_verify::<R, H>(dr, proof, data)?;
 
-        // Compute unified k(Y) once for both C and V circuits.
-        let unified_ky = {
-            let stub = StubUnified::<C>::new();
-            crate::components::ky::emulate(&stub, &unified_instance, verifier.y)?
-        };
+                let unified_ky = *proof_inputs.unified_ky(dr, &y)?.value().take();
+                let application_ky = *proof_inputs.application_ky(dr, &y)?.value().take();
+
+                Ok((unified_ky, application_ky))
+            },
+        )?;
 
         // C circuit verification with ky.
         // C skips preamble and error_m, so only combine error_n_rx with c_rx.
@@ -168,22 +167,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )
         };
 
-        // Application verification
-        let left_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
-            pcd.proof.application.left_header.clone(),
-        )
-        .map_err(|_| Error::MalformedEncoding("left_header has incorrect size".into()))?;
-        let right_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
-            pcd.proof.application.right_header.clone(),
-        )
-        .map_err(|_| Error::MalformedEncoding("right_header has incorrect size".into()))?;
-
-        let application_ky = {
-            let adapter = Adapter::<C, StubStep<H>, R, HEADER_SIZE>::new(StubStep::new());
-            let instance = (left_header, right_header, pcd.data.clone());
-            crate::components::ky::emulate(&adapter, instance, verifier.y)?
-        };
-
+        // Application verification (application_ky was computed earlier with unified_ky)
         let application_valid = verifier.check_circuit(
             &pcd.proof.application.rx,
             pcd.proof.application.circuit_id,

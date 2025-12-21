@@ -11,9 +11,12 @@ use ragu_primitives::{
     vec::{CollectFixed, ConstLen, FixedVec},
 };
 
+use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::{components::ky::Ky, internal_circuits::unified, proof::Proof};
+use crate::{
+    components::ky::Ky, header::Header, internal_circuits::unified, proof::Proof, step::padded,
+};
 
 pub use crate::internal_circuits::InternalCircuitIndex::PreambleStage as STAGING_ID;
 
@@ -25,9 +28,9 @@ type HeaderVec<'dr, D, const HEADER_SIZE: usize> = FixedVec<Element<'dr, D>, Con
 /// computed outside the circuit.
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
     /// Output header for left proof.
-    pub left_output_header: [C::CircuitField; HEADER_SIZE],
+    pub left_output_header: FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
     /// Output header for right proof.
-    pub right_output_header: [C::CircuitField; HEADER_SIZE],
+    pub right_output_header: FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
     /// Left proof.
     pub left: &'a Proof<C, R>,
     /// Right proof.
@@ -42,16 +45,9 @@ impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_S
         left_output_header: &[C::CircuitField],
         right_output_header: &[C::CircuitField],
     ) -> Result<Self> {
-        fn slice_to_array<T: Copy, const N: usize>(slice: &[T]) -> Result<[T; N]> {
-            slice.try_into().map_err(|_| Error::VectorLengthMismatch {
-                expected: N,
-                actual: slice.len(),
-            })
-        }
-
         Ok(Witness {
-            left_output_header: slice_to_array(left_output_header)?,
-            right_output_header: slice_to_array(right_output_header)?,
+            left_output_header: FixedVec::try_from(left_output_header.to_vec())?,
+            right_output_header: FixedVec::try_from(right_output_header.to_vec())?,
             left,
             right,
         })
@@ -98,12 +94,22 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
     pub fn alloc<R: Rank>(
         dr: &mut D,
         proof: DriverValue<D, &Proof<C, R>>,
-        output_header: DriverValue<D, &[D::F; HEADER_SIZE]>,
+        output_header: DriverValue<D, &FixedVec<D::F, ConstLen<HEADER_SIZE>>>,
     ) -> Result<Self> {
         fn alloc_header<'dr, D: Driver<'dr>, const N: usize>(
             dr: &mut D,
             data: DriverValue<D, &[D::F]>,
         ) -> Result<FixedVec<Element<'dr, D>, ConstLen<N>>> {
+            D::with(|| {
+                if data.view().take().len() != N {
+                    return Err(Error::MalformedEncoding(
+                        "Header data length does not match HEADER_SIZE".into(),
+                    ));
+                }
+
+                Ok(())
+            })?;
+
             (0..N)
                 .map(|i| Element::alloc(dr, data.view().map(|d| d[i])))
                 .try_collect_fixed()
@@ -118,13 +124,42 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
                 dr,
                 proof.view().map(|p| p.application.left_header.as_slice()),
             )?,
-            output_header: alloc_header(dr, output_header.view().map(|h| h.as_slice()))?,
+            output_header: alloc_header(dr, output_header.view().map(|h| &h[..]))?,
             circuit_id: Element::alloc(
                 dr,
                 proof.view().map(|p| p.application.circuit_id.omega_j()),
             )?,
             unified: unified::Output::alloc_from_proof(dr, proof)?,
         })
+    }
+
+    /// Allocate ProofInputs from a proof reference and some unprocessed header
+    /// data.
+    pub fn alloc_for_verify<'source, R: Rank, H: Header<C::CircuitField>>(
+        dr: &mut D,
+        proof: DriverValue<D, &Proof<C, R>>,
+        header_data: DriverValue<D, H::Data<'source>>,
+    ) -> Result<Self>
+    where
+        'source: 'dr,
+    {
+        let header_data = D::with(|| {
+            use ragu_core::drivers::emulator::{Emulator, Wireless};
+            let emulator = &mut Emulator::<Wireless<D::MaybeKind, D::F>>::wireless();
+
+            let output = H::encode(emulator, header_data)?;
+            let output = padded::for_header::<H, HEADER_SIZE, _>(emulator, output)?;
+
+            let mut header_data = Vec::with_capacity(HEADER_SIZE);
+            output.write(emulator, &mut header_data)?;
+
+            header_data
+                .into_iter()
+                .map(|e| *e.value().take())
+                .collect_fixed()
+        })?;
+
+        Self::alloc(dr, proof, header_data.view())
     }
 }
 

@@ -18,13 +18,9 @@ use alloc::{vec, vec::Vec};
 
 use crate::{
     Application, circuit_counts,
-    components::{
-        fold_revdot::{self, NativeParameters},
-        ky,
-    },
+    components::fold_revdot::{self, NativeParameters},
     header::Header,
-    internal_circuits::{self, dummy, stages, unified},
-    verify::stub_unified::StubUnified,
+    internal_circuits::{self, dummy, stages, stages::native::preamble::ProofInputs},
 };
 
 /// Represents a recursive proof for the correctness of some computation.
@@ -675,10 +671,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let app_ky = C::CircuitField::ONE;
 
         // For the unified circuit, k(y) encodes the dummy_proof's commitments and challenges.
+        // Use ProofInputs::alloc with zero output header (trivial proof has all-zero headers).
+        // TODO: this is garbage, let's fix this properly later
         let unified_ky = {
-            let stub = StubUnified::<C>::new();
-            let unified_instance = unified::Instance::from_proof(&dummy_proof);
-            ky::emulate(&stub, &unified_instance, y)?
+            let zero_header = FixedVec::from_fn(|_| C::CircuitField::ZERO);
+            Emulator::emulate_wireless((&dummy_proof, &zero_header, y), |dr, witness| {
+                let (proof, header, y) = witness.cast();
+                let y = Element::alloc(dr, y)?;
+                let proof_inputs = ProofInputs::<_, C, HEADER_SIZE>::alloc(dr, proof, header)?;
+                Ok(*proof_inputs.unified_ky(dr, &y)?.value().take())
+            })?
         };
 
         // We compute a nested commitment to S'' = m(w, X, y).

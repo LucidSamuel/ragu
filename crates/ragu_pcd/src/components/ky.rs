@@ -1,25 +1,7 @@
 //! Streaming Horner's method evaluation of k(Y) via the Buffer trait.
 
-use ff::Field;
-use ragu_circuits::Circuit;
-use ragu_core::{
-    Result,
-    drivers::{Driver, emulator::Emulator},
-    maybe::Maybe,
-};
-use ragu_primitives::{Element, GadgetExt, io::Buffer};
-
-/// Emulate k(Y) evaluation at point `y` for a circuit instance.
-pub fn emulate<F: Field, C: Circuit<F>>(circuit: &C, instance: C::Instance<'_>, y: F) -> Result<F> {
-    Emulator::emulate_wired((instance, y), |dr, witness| {
-        let (instance, y) = witness.cast();
-        let output = circuit.instance(dr, instance)?;
-        let y_elem = Element::constant(dr, y.take());
-        let mut ky = Ky::new(dr, &y_elem);
-        output.write(dr, &mut ky)?;
-        Ok(ky.finish(dr)?.wire().clone().value().take())
-    })
-}
+use ragu_core::{Result, drivers::Driver};
+use ragu_primitives::{Element, io::Buffer};
 
 /// A buffer that evaluates k(Y) at a point `y` using Horner's method.
 pub struct Ky<'a, 'dr, D: Driver<'dr>> {
