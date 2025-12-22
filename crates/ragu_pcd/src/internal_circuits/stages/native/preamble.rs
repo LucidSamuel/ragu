@@ -77,33 +77,27 @@ impl<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> ProofInputs<'dr, D
         ky.finish(dr)
     }
 
-    /// Compute k(y) for both application and bridge circuit instances.
+    /// Compute k(y) for the application circuit instance.
     ///
-    /// Returns `(application_ky, bridge_ky)` where:
-    /// - `application_ky` = k(y) for `(left_header, right_header, output_header)`
-    /// - `bridge_ky` = k(y) for `(left_header, right_header, 0)`
-    pub fn application_and_bridge_ky(
-        &self,
-        dr: &mut D,
-        y: &Element<'dr, D>,
-    ) -> Result<(Element<'dr, D>, Element<'dr, D>)> {
-        // Shared prefix
+    /// Returns `application_ky` = k(y) for `(left_header, right_header, output_header)`.
+    pub fn application_ky(&self, dr: &mut D, y: &Element<'dr, D>) -> Result<Element<'dr, D>> {
         let mut ky = Ky::new(dr, y);
         self.left_header.write(dr, &mut ky)?;
         self.right_header.write(dr, &mut ky)?;
-
-        // Clone and fork
-        let mut ky_bridge = ky.clone();
-
-        // Application: write output_header
         self.output_header.write(dr, &mut ky)?;
-        let application_ky = ky.finish(dr)?;
+        ky.finish(dr)
+    }
 
-        // Bridge: write zero discriminant
-        Element::zero(dr).write(dr, &mut ky_bridge)?;
-        let bridge_ky = ky_bridge.finish(dr)?;
-
-        Ok((application_ky, bridge_ky))
+    /// Compute k(y) for headers + unified instance binding.
+    ///
+    /// Returns `unified_bridge_ky` = k(y) for `(left_header, right_header, unified, 0)`.
+    pub fn unified_bridge_ky(&self, dr: &mut D, y: &Element<'dr, D>) -> Result<Element<'dr, D>> {
+        let mut ky = Ky::new(dr, y);
+        self.left_header.write(dr, &mut ky)?;
+        self.right_header.write(dr, &mut ky)?;
+        self.unified.write(dr, &mut ky)?;
+        Element::zero(dr).write(dr, &mut ky)?;
+        ky.finish(dr)
     }
 }
 
