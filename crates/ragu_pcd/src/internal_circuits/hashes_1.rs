@@ -139,15 +139,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         // Compute k(y) values from preamble and enforce equality with staged
         // values.
         {
-            preamble
-                .left
-                .application_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.left_application_ky)?;
+            let (left_application_ky, left_bridge_ky) =
+                preamble.left.application_and_bridge_ky(dr, &y)?;
+            let (right_application_ky, right_bridge_ky) =
+                preamble.right.application_and_bridge_ky(dr, &y)?;
 
-            preamble
-                .right
-                .application_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.right_application_ky)?;
+            left_application_ky.enforce_equal(dr, &error_n.left_application_ky)?;
+            right_application_ky.enforce_equal(dr, &error_n.right_application_ky)?;
 
             preamble
                 .left
@@ -159,15 +157,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
                 .unified_ky(dr, &y)?
                 .enforce_equal(dr, &error_n.right_unified_ky)?;
 
-            preamble
-                .left
-                .bridge_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.left_bridge_ky)?;
-
-            preamble
-                .right
-                .bridge_ky(dr, &y)?
-                .enforce_equal(dr, &error_n.right_bridge_ky)?;
+            left_bridge_ky.enforce_equal(dr, &error_n.left_bridge_ky)?;
+            right_bridge_ky.enforce_equal(dr, &error_n.right_bridge_ky)?;
         }
 
         // Absorb nested_error_m_commitment and verify saved sponge state

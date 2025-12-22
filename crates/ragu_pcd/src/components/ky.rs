@@ -9,6 +9,15 @@ pub struct Ky<'a, 'dr, D: Driver<'dr>> {
     result: Element<'dr, D>,
 }
 
+impl<'a, 'dr, D: Driver<'dr>> Clone for Ky<'a, 'dr, D> {
+    fn clone(&self) -> Self {
+        Ky {
+            y: self.y,
+            result: self.result.clone(),
+        }
+    }
+}
+
 impl<'a, 'dr, D: Driver<'dr>> Ky<'a, 'dr, D> {
     pub fn new(dr: &mut D, y: &'a Element<'dr, D>) -> Self {
         Ky {

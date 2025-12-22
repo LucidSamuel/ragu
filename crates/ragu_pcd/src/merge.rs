@@ -206,13 +206,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             Emulator::emulate_wireless(y, |dr, y| {
                 let y = Element::alloc(dr, y)?;
 
+                let (left_application, left_bridge) =
+                    preamble.left.application_and_bridge_ky(dr, &y)?;
+                let (right_application, right_bridge) =
+                    preamble.right.application_and_bridge_ky(dr, &y)?;
+
                 Ok((
-                    *preamble.left.application_ky(dr, &y)?.value().take(),
-                    *preamble.right.application_ky(dr, &y)?.value().take(),
+                    *left_application.value().take(),
+                    *right_application.value().take(),
                     *preamble.left.unified_ky(dr, &y)?.value().take(),
                     *preamble.right.unified_ky(dr, &y)?.value().take(),
-                    *preamble.left.bridge_ky(dr, &y)?.value().take(),
-                    *preamble.right.bridge_ky(dr, &y)?.value().take(),
+                    *left_bridge.value().take(),
+                    *right_bridge.value().take(),
                 ))
             })?
         };
