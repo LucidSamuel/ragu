@@ -57,9 +57,9 @@ impl<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> Witness<'a, C, R, HEADER_S
 #[derive(Gadget)]
 pub struct ProofInputs<'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize> {
     #[ragu(gadget)]
-    pub right_header: HeaderVec<'dr, D, HEADER_SIZE>,
-    #[ragu(gadget)]
     pub left_header: HeaderVec<'dr, D, HEADER_SIZE>,
+    #[ragu(gadget)]
+    pub right_header: HeaderVec<'dr, D, HEADER_SIZE>,
     #[ragu(gadget)]
     pub output_header: HeaderVec<'dr, D, HEADER_SIZE>,
     #[ragu(gadget)]

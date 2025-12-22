@@ -1,6 +1,10 @@
 use arithmetic::{Cycle, PrimeFieldExt};
 use ff::Field;
-use ragu_circuits::{CircuitExt, polynomials::Rank, staging::StageExt};
+use ragu_circuits::{
+    CircuitExt,
+    polynomials::Rank,
+    staging::{Stage, StageExt},
+};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{
     Element, GadgetExt, Point,
@@ -197,8 +201,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             left_bridge_ky,
             right_bridge_ky,
         ) = {
-            use ragu_circuits::staging::Stage;
-
             let preamble = Emulator::emulate_wireless(&preamble_witness, |dr, witness| {
                 stages::native::preamble::Stage::<C, R, HEADER_SIZE>::default().witness(dr, witness)
             })?;
