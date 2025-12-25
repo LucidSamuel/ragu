@@ -199,7 +199,7 @@ mod constraint_benchmark_tests {
     // When changing HEADER_SIZE, update the constraint counts by running:
     //   cargo test -p ragu_pcd --release print_internal -- --nocapture
     // Then copy-paste the output into the check_constraints! calls in the test below.
-    const HEADER_SIZE: usize = 2;
+    const HEADER_SIZE: usize = 38;
 
     #[rustfmt::skip]
     #[test]
@@ -239,11 +239,11 @@ mod constraint_benchmark_tests {
         }
 
         check_constraints!(DummyCircuit,    mul = 1   , lin = 3);
-        check_constraints!(Hashes1Circuit,  mul = 1967, lin = 3033);
-        check_constraints!(Hashes2Circuit,  mul = 1940, lin = 2951);
-        check_constraints!(FoldCircuit,     mul = 1784, lin = 2649);
-        check_constraints!(ComputeCCircuit, mul = 1153, lin = 1369);
-        check_constraints!(ComputeVCircuit, mul = 160 , lin = 247);
+        check_constraints!(Hashes1Circuit,  mul = 1931, lin = 2800);
+        check_constraints!(Hashes2Circuit,  mul = 2048, lin = 2951);
+        check_constraints!(FoldCircuit,     mul = 1892, lin = 2649);
+        check_constraints!(ComputeCCircuit, mul = 1873, lin = 2610);
+        check_constraints!(ComputeVCircuit, mul = 268 , lin = 247);
     }
 
     /// Helper test to print current constraint counts in copy-pasteable format.

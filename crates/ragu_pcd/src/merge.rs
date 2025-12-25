@@ -924,6 +924,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 .rx::<R>(
                     internal_circuits::compute_c::Witness {
                         unified_instance,
+                        preamble_witness,
+                        error_m_witness,
                         error_n_witness,
                     },
                     self.circuit_mesh.get_key(),

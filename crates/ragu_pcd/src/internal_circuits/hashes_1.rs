@@ -124,9 +124,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
-        let preamble = preamble.enforced(dr, witness.view().map(|w| w.preamble_witness))?;
-        let _error_m = error_m.enforced(dr, witness.view().map(|w| w.error_m_witness))?;
-        let error_n = error_n.enforced(dr, witness.view().map(|w| w.error_n_witness))?;
+        let preamble = preamble.unenforced(dr, witness.view().map(|w| w.preamble_witness))?;
+        let _error_m = error_m.unenforced(dr, witness.view().map(|w| w.error_m_witness))?;
+        let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         // Verify circuit IDs are valid roots of unity in the mesh domain.
         root_of_unity::enforce(dr, preamble.left.circuit_id.clone(), self.log2_circuits)?;

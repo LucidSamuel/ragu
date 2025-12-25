@@ -107,9 +107,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         )?;
 
         // compute_c circuit verification with ky.
-        // compute_c skips preamble and error_m, so only combine error_n_rx with c_rx.
+        // compute_c's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with c_rx.
         let c_circuit_valid = {
-            let mut c_combined_rx = pcd.proof.error.native_error_n_rx.clone();
+            let mut c_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
+            c_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
+            c_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
             c_combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
 
             verifier.check_internal_circuit(
