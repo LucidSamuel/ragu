@@ -79,23 +79,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
         Ok(self)
     }
 
-    fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
-        match self.header_map.get(&H::SUFFIX) {
-            Some(ty) => {
-                if *ty != TypeId::of::<H>() {
-                    return Err(Error::Initialization(
-                        "two different Header implementations using the same suffix".into(),
-                    ));
-                }
-            }
-            None => {
-                self.header_map.insert(H::SUFFIX, TypeId::of::<H>());
-            }
-        }
-
-        Ok(())
-    }
-
     /// Perform finalization and optimization steps to produce the
     /// [`Application`].
     pub fn finalize(
@@ -138,6 +121,23 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
             num_application_steps: self.num_application_steps,
             _marker: PhantomData,
         })
+    }
+
+    fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
+        match self.header_map.get(&H::SUFFIX) {
+            Some(ty) => {
+                if *ty != TypeId::of::<H>() {
+                    return Err(Error::Initialization(
+                        "two different Header implementations using the same suffix".into(),
+                    ));
+                }
+            }
+            None => {
+                self.header_map.insert(H::SUFFIX, TypeId::of::<H>());
+            }
+        }
+
+        Ok(())
     }
 }
 
