@@ -196,12 +196,16 @@ mod constraint_benchmark_tests {
     use ragu_circuits::polynomials::R;
     use ragu_pasta::Pasta;
 
+    // When changing HEADER_SIZE, update the constraint counts by running:
+    //   cargo test -p ragu_pcd --release print_internal -- --nocapture
+    // Then copy-paste the output into the check_constraints! calls in the test below.
+    const HEADER_SIZE: usize = 2;
+
     #[rustfmt::skip]
     #[test]
     fn test_internal_circuit_constraint_counts() {
         let pasta = Pasta::baked();
 
-        const HEADER_SIZE: usize = 10;
         let app = ApplicationBuilder::<Pasta, R<13>, HEADER_SIZE>::new()
             .finalize(pasta)
             .unwrap();
@@ -235,10 +239,46 @@ mod constraint_benchmark_tests {
         }
 
         check_constraints!(DummyCircuit,    mul = 1,    lin = 3);
-        check_constraints!(Hashes1Circuit,  mul = 2030, lin = 3192);
-        check_constraints!(Hashes2Circuit,  mul = 1931, lin = 2951);
-        check_constraints!(FoldCircuit,     mul = 1704, lin = 2506);
-        check_constraints!(ComputeCCircuit, mul = 1074, lin = 1229);
-        check_constraints!(ComputeVCircuit, mul = 184,  lin = 247);
+        check_constraints!(Hashes1Circuit,  mul = 1902, lin = 2968);
+        check_constraints!(Hashes2Circuit,  mul = 1907, lin = 2951);
+        check_constraints!(FoldCircuit,     mul = 1680, lin = 2506);
+        check_constraints!(ComputeCCircuit, mul = 1050, lin = 1229);
+        check_constraints!(ComputeVCircuit, mul = 160,  lin = 247);
+    }
+
+    /// Helper test to print current constraint counts in copy-pasteable format.
+    /// Run with: `cargo test -p ragu_pcd --release print_internal -- --nocapture`
+    #[test]
+    fn print_internal_circuit_constraint_counts() {
+        let pasta = Pasta::baked();
+
+        let app = ApplicationBuilder::<Pasta, R<13>, HEADER_SIZE>::new()
+            .finalize(pasta)
+            .unwrap();
+
+        let circuits = app.circuit_mesh.circuits();
+        const NUM_APP_STEPS: usize = 0;
+
+        let variants = [
+            ("DummyCircuit", InternalCircuitIndex::DummyCircuit),
+            ("Hashes1Circuit", InternalCircuitIndex::Hashes1Circuit),
+            ("Hashes2Circuit", InternalCircuitIndex::Hashes2Circuit),
+            ("FoldCircuit", InternalCircuitIndex::FoldCircuit),
+            ("ComputeCCircuit", InternalCircuitIndex::ComputeCCircuit),
+            ("ComputeVCircuit", InternalCircuitIndex::ComputeVCircuit),
+        ];
+
+        println!("\n// Copy-paste the following into test_internal_circuit_constraint_counts:");
+        for (name, variant) in variants {
+            let idx = NUM_APP_STEPS + step::NUM_INTERNAL_STEPS + variant as usize;
+            let circuit = &circuits[idx];
+            let (mul, lin) = circuit.constraint_counts();
+            println!(
+                "        check_constraints!({:<16} mul = {:<4}, lin = {});",
+                format!("{},", name),
+                mul,
+                lin
+            );
+        }
     }
 }
