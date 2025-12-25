@@ -134,7 +134,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Uses unified_bridge_ky to bind ApplicationProof headers to preamble output headers.
         let hashes_1_valid = {
             let mut hashes_1_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            hashes_1_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
             hashes_1_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
             hashes_1_combined_rx.add_assign(&pcd.proof.internal_circuits.hashes_1_rx);
 

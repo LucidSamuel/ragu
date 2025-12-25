@@ -80,7 +80,6 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Para
 pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     pub unified_instance: &'a unified::Instance<C>,
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
-    pub error_m_witness: &'a native_error_m::Witness<C, FP>,
     pub error_n_witness: &'a native_error_n::Witness<C, FP>,
 }
 
@@ -118,14 +117,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
     {
         let (preamble, builder) =
             builder.add_stage::<native_preamble::Stage<C, R, HEADER_SIZE>>()?;
-        let (error_m, builder) =
-            builder.add_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
+        let builder = builder.skip_stage::<native_error_m::Stage<C, R, HEADER_SIZE, FP>>()?;
         let (error_n, builder) =
             builder.add_stage::<native_error_n::Stage<C, R, HEADER_SIZE, FP>>()?;
         let dr = builder.finish();
 
         let preamble = preamble.unenforced(dr, witness.view().map(|w| w.preamble_witness))?;
-        let _error_m = error_m.unenforced(dr, witness.view().map(|w| w.error_m_witness))?;
         let error_n = error_n.unenforced(dr, witness.view().map(|w| w.error_n_witness))?;
 
         // Verify circuit IDs are valid roots of unity in the mesh domain.
