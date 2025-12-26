@@ -14,20 +14,12 @@ const DOMAIN_PREFIX: &str = "Ragu-Parameters";
 pub const DEFAULT_EP_K: usize = 13;
 pub const DEFAULT_EQ_K: usize = 13;
 
-/// Zero-sized marker type for the [Pasta
-/// curve](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/)
-/// cycle.
-///
-/// This type implements [`Clone`] and is used as the [`Cycle`](arithmetic::Cycle)
-/// type parameter. The actual curve parameters are stored in [`PastaParams`].
-/// 
-/// Marker type used as type parameter, never instantiated.
+/// Marker type for the Pasta curve cycle.
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Pasta;
 
-/// Contains the actual parameters for the Pasta curve cycle, including
-/// generators for both Pallas and Vesta curves.
+/// Parameters for the Pasta curve cycle, including generators for both curves.
 ///
 /// This type is returned by [`Pasta::generate()`] or [`Pasta::baked()`].
 pub struct PastaParams {

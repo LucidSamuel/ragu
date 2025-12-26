@@ -4,9 +4,6 @@
 //! for the [Pasta curve
 //! cycle](https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/).
 //!
-//! [`Pasta`] is a zero-sized marker type, while the actual curve parameters
-//! (generators, etc.) are stored in [`PastaParams`].
-//!
 //! ## Parameter Initialization
 //!
 //! Runtime initialization can be done through [`Pasta::generate()`]. This can be
