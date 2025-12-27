@@ -156,37 +156,34 @@ impl<'dr, D: Driver<'dr>, C: Cycle> Output<'dr, D, C> {
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let nested_preamble_commitment = Point::alloc(
-            dr,
-            proof.view().map(|p| p.preamble.nested_preamble_commitment),
-        )?;
-        let w = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.w))?;
+        let nested_preamble_commitment =
+            Point::alloc(dr, proof.view().map(|p| p.preamble.nested_commitment))?;
+        let w = Element::alloc(dr, proof.view().map(|p| p.challenges.w))?;
         let nested_s_prime_commitment = Point::alloc(
             dr,
             proof.view().map(|p| p.s_prime.nested_s_prime_commitment),
         )?;
-        let y = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.y))?;
-        let z = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.z))?;
+        let y = Element::alloc(dr, proof.view().map(|p| p.challenges.y))?;
+        let z = Element::alloc(dr, proof.view().map(|p| p.challenges.z))?;
         let nested_error_m_commitment =
             Point::alloc(dr, proof.view().map(|p| p.error_m.nested_commitment))?;
-        let mu = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.mu))?;
-        let nu = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.nu))?;
+        let mu = Element::alloc(dr, proof.view().map(|p| p.challenges.mu))?;
+        let nu = Element::alloc(dr, proof.view().map(|p| p.challenges.nu))?;
         let nested_error_n_commitment =
             Point::alloc(dr, proof.view().map(|p| p.error_n.nested_commitment))?;
-        let mu_prime = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.mu_prime))?;
-        let nu_prime = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.nu_prime))?;
-        let c = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.c))?;
-        let nested_ab_commitment =
-            Point::alloc(dr, proof.view().map(|p| p.ab.nested_ab_commitment))?;
-        let x = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.x))?;
+        let mu_prime = Element::alloc(dr, proof.view().map(|p| p.challenges.mu_prime))?;
+        let nu_prime = Element::alloc(dr, proof.view().map(|p| p.challenges.nu_prime))?;
+        let c = Element::alloc(dr, proof.view().map(|p| p.challenges.c))?;
+        let nested_ab_commitment = Point::alloc(dr, proof.view().map(|p| p.ab.nested_commitment))?;
+        let x = Element::alloc(dr, proof.view().map(|p| p.challenges.x))?;
         let nested_query_commitment =
-            Point::alloc(dr, proof.view().map(|p| p.query.nested_query_commitment))?;
-        let alpha = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.alpha))?;
-        let nested_f_commitment = Point::alloc(dr, proof.view().map(|p| p.f.nested_f_commitment))?;
-        let u = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.u))?;
+            Point::alloc(dr, proof.view().map(|p| p.query.nested_commitment))?;
+        let alpha = Element::alloc(dr, proof.view().map(|p| p.challenges.alpha))?;
+        let nested_f_commitment = Point::alloc(dr, proof.view().map(|p| p.f.nested_commitment))?;
+        let u = Element::alloc(dr, proof.view().map(|p| p.challenges.u))?;
         let nested_eval_commitment =
-            Point::alloc(dr, proof.view().map(|p| p.eval.nested_eval_commitment))?;
-        let beta = Element::alloc(dr, proof.view().map(|p| p.internal_circuits.beta))?;
+            Point::alloc(dr, proof.view().map(|p| p.eval.nested_commitment))?;
+        let beta = Element::alloc(dr, proof.view().map(|p| p.challenges.beta))?;
 
         Ok(Output {
             nested_preamble_commitment,
