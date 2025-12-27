@@ -173,7 +173,7 @@ impl<'dr, D: Driver<'dr>, C: Cycle> Output<'dr, D, C> {
             Point::alloc(dr, proof.view().map(|p| p.error_n.nested_commitment))?;
         let mu_prime = Element::alloc(dr, proof.view().map(|p| p.challenges.mu_prime))?;
         let nu_prime = Element::alloc(dr, proof.view().map(|p| p.challenges.nu_prime))?;
-        let c = Element::alloc(dr, proof.view().map(|p| p.challenges.c))?;
+        let c = Element::alloc(dr, proof.view().map(|p| p.c))?;
         let nested_ab_commitment = Point::alloc(dr, proof.view().map(|p| p.ab.nested_commitment))?;
         let x = Element::alloc(dr, proof.view().map(|p| p.challenges.x))?;
         let nested_query_commitment =

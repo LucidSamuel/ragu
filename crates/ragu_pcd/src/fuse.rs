@@ -121,8 +121,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nu_prime = transcript.squeeze(&mut dr)?;
 
         // Phase 6: Compute C, the folded revdot product claim.
-        let c_value = self.compute_c(&mu_prime, &nu_prime, &error_n_witness)?;
-        let c = Element::constant(&mut dr, c_value);
+        let c = self.compute_c(&mu_prime, &nu_prime, &error_n_witness)?;
 
         // Phase 7: A/B polynomials.
         let ab = self.compute_ab(rng)?;
@@ -152,7 +151,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Phase 11: Challenges.
         let challenges = Challenges::new(
-            &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &c, &x, &alpha, &u, &beta,
+            &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &x, &alpha, &u, &beta,
         );
 
         // Phase 12: Internal circuits.
@@ -170,6 +169,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &error_m_witness,
             &error_n_witness,
             &challenges,
+            c,
         )?;
 
         Ok((
@@ -185,6 +185,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 eval,
                 challenges,
                 circuits,
+                c,
             },
             // We return the application auxiliary data for potential use by the
             // caller.
@@ -761,6 +762,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         error_m_witness: &stages::native::error_m::Witness<C, NativeParameters>,
         error_n_witness: &stages::native::error_n::Witness<C, NativeParameters>,
         challenges: &Challenges<C>,
+        c: C::CircuitField,
     ) -> Result<CircuitCommitments<C, R>> {
         // Build unified instance from proof structs and challenges.
         let unified_instance = &unified::Instance {
@@ -775,7 +777,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested_error_n_commitment: error_n.nested_commitment,
             mu_prime: challenges.mu_prime,
             nu_prime: challenges.nu_prime,
-            c: challenges.c,
+            c,
             nested_ab_commitment: ab.nested_commitment,
             x: challenges.x,
             nested_query_commitment: query.nested_commitment,

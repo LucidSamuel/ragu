@@ -32,6 +32,7 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) eval: EvalProof<C, R>,
     pub(crate) challenges: Challenges<C>,
     pub(crate) circuits: CircuitCommitments<C, R>,
+    pub(crate) c: C::CircuitField,
 }
 
 /// Application-specific proof data including circuit ID, headers, and commitment.
@@ -175,7 +176,6 @@ pub(crate) struct Challenges<C: Cycle> {
     pub(crate) nu: C::CircuitField,
     pub(crate) mu_prime: C::CircuitField,
     pub(crate) nu_prime: C::CircuitField,
-    pub(crate) c: C::CircuitField,
     pub(crate) x: C::CircuitField,
     pub(crate) alpha: C::CircuitField,
     pub(crate) u: C::CircuitField,
@@ -195,7 +195,6 @@ impl<C: Cycle> Challenges<C> {
         nu: &Element<'dr, D>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
-        c: &Element<'dr, D>,
         x: &Element<'dr, D>,
         alpha: &Element<'dr, D>,
         u: &Element<'dr, D>,
@@ -212,7 +211,6 @@ impl<C: Cycle> Challenges<C> {
             nu: *nu.value().take(),
             mu_prime: *mu_prime.value().take(),
             nu_prime: *nu_prime.value().take(),
-            c: *c.value().take(),
             x: *x.value().take(),
             alpha: *alpha.value().take(),
             u: *u.value().take(),
@@ -230,7 +228,6 @@ impl<C: Cycle> Challenges<C> {
             nu: C::CircuitField::ZERO,
             mu_prime: C::CircuitField::ZERO,
             nu_prime: C::CircuitField::ZERO,
-            c: C::CircuitField::ZERO,
             x: C::CircuitField::ZERO,
             alpha: C::CircuitField::ZERO,
             u: C::CircuitField::ZERO,
@@ -424,6 +421,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 ky_blind: host_blind,
                 ky_commitment: dummy_commitment,
             },
+            c: C::CircuitField::ZERO,
         }
     }
 }
