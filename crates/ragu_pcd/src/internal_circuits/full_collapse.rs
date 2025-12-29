@@ -6,7 +6,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Gadget, GadgetKind},
+    gadgets::GadgetKind,
     maybe::Maybe,
 };
 
@@ -107,9 +107,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
             // Get the witnessed C from the instance (fills the slot).
             let witnessed_c = unified_output.c.get(dr, unified_instance)?;
 
-            // Base case bypass: when both children are trivial, allow prover to substitute a C value.
-            let c = is_base.conditional_select(dr, &witnessed_c, &computed_c)?;
-            c.enforce_equal(dr, &computed_c)?;
+            // When NOT in base case, enforce witnessed_c == computed_c.
+            // In base case (both children trivial), prover may witness any c value.
+            is_base
+                .not(dr)
+                .conditional_enforce_equal(dr, &witnessed_c, &computed_c)?;
         }
 
         Ok((unified_output.finish(dr, unified_instance)?, D::just(|| ())))
