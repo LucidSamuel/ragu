@@ -201,8 +201,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime = transcript.squeeze(&mut dr)?;
         let nu_prime = transcript.squeeze(&mut dr)?;
 
-        let c = self.fold_products(&mu_prime, &nu_prime, &error_n_witness)?;
-
         let ab = self.compute_ab(rng, a, b, &mu_prime, &nu_prime)?;
         Point::constant(&mut dr, ab.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let x = transcript.squeeze(&mut dr)?;
@@ -239,7 +237,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &error_m_witness,
             &error_n_witness,
             &challenges,
-            c,
             v,
         )?;
 
@@ -256,7 +253,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 eval,
                 challenges,
                 circuits,
-                c,
                 v,
             },
             // We return the application auxiliary data for potential use by the
@@ -748,55 +744,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ))
     }
 
-    /// Fold products (layer 2 only).
-    ///
-    /// Performs a single N-sized reduction using the collapsed values from
-    /// layer 1 as the k(y) values.
-    fn fold_products<'dr, D>(
-        &self,
-        mu_prime: &Element<'dr, D>,
-        nu_prime: &Element<'dr, D>,
-        error_n_witness: &stages::native::error_n::Witness<C, NativeParameters>,
-    ) -> Result<C::CircuitField>
-    where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
-    {
-        let mu_prime = *mu_prime.value().take();
-        let nu_prime = *nu_prime.value().take();
-
-        Emulator::emulate_wireless(
-            (
-                mu_prime,
-                nu_prime,
-                &error_n_witness.error_terms,
-                &error_n_witness.collapsed,
-            ),
-            |dr, witness| {
-                let (mu_prime, nu_prime, error_terms_n, collapsed) = witness.cast();
-
-                let mu_prime = Element::alloc(dr, mu_prime)?;
-                let nu_prime = Element::alloc(dr, nu_prime)?;
-
-                let error_terms_n = FixedVec::try_from_fn(|i| {
-                    Element::alloc(dr, error_terms_n.view().map(|et| et[i]))
-                })?;
-
-                let collapsed =
-                    FixedVec::try_from_fn(|i| Element::alloc(dr, collapsed.view().map(|c| c[i])))?;
-
-                // Layer 2: Single N-sized reduction using collapsed as ky_values
-                let fold_products = fold_revdot::FoldProducts::new(dr, &mu_prime, &nu_prime)?;
-                let c = fold_products.fold_products_n::<NativeParameters>(
-                    dr,
-                    &error_terms_n,
-                    &collapsed,
-                )?;
-
-                Ok(*c.value().take())
-            },
-        )
-    }
-
     /// TODO
     fn compute_v<'dr, D>(
         dr: &mut D,
@@ -850,6 +797,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let b_blind = C::CircuitField::random(&mut *rng);
         let b_commitment = b_poly.commit(C::host_generators(self.params), b_blind);
 
+        // Compute the revdot product of a and b
+        let c = a_poly.revdot(&b_poly);
+
         let nested_ab_witness = stages::nested::ab::Witness {
             a: a_commitment,
             b: b_commitment,
@@ -865,6 +815,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             b_poly,
             b_blind,
             b_commitment,
+            c,
             nested_rx,
             nested_blind,
             nested_commitment,
@@ -995,7 +946,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         error_m_witness: &stages::native::error_m::Witness<C, NativeParameters>,
         error_n_witness: &stages::native::error_n::Witness<C, NativeParameters>,
         challenges: &Challenges<C>,
-        c: C::CircuitField,
         v: C::CircuitField,
     ) -> Result<CircuitCommitments<C, R>> {
         // Build unified instance from proof structs and challenges.
@@ -1011,7 +961,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested_error_n_commitment: error_n.nested_commitment,
             mu_prime: challenges.mu_prime,
             nu_prime: challenges.nu_prime,
-            c,
+            c: ab.c,
             nested_ab_commitment: ab.nested_commitment,
             x: challenges.x,
             nested_query_commitment: query.nested_commitment,
