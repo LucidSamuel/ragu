@@ -1,8 +1,9 @@
 use arithmetic::{Cycle, PrimeFieldExt};
-use ff::Field;
+use ff::{Field, PrimeField};
 use ragu_circuits::{
     CircuitExt,
-    polynomials::Rank,
+    mesh::{CircuitIndex, Mesh},
+    polynomials::{Rank, structured},
     staging::{Stage, StageExt},
 };
 use ragu_core::{
@@ -17,13 +18,14 @@ use ragu_primitives::{
 };
 use rand::Rng;
 
-use alloc::vec;
+use alloc::{borrow::Cow, vec::Vec};
+use core::iter::{once, repeat_n};
 
 use crate::{
     Application,
     components::fold_revdot::{self, NativeParameters},
     internal_circuits::{
-        self,
+        self, InternalCircuitIndex,
         stages::{self, native::error_n::KyValues},
         total_circuit_counts, unified,
     },
@@ -33,6 +35,113 @@ use crate::{
     },
     step::{Step, adapter::Adapter},
 };
+
+/// Context for the prover to assemble a/b polynomial vectors for error term
+/// computation.
+///
+/// TODO: Extract shared logic with `Verifier` into a common `ClaimBuilder` trait.
+struct ProverContext<'m, 'rx, F: PrimeField, R: Rank> {
+    circuit_mesh: &'m Mesh<'m, F, R>,
+    num_application_steps: usize,
+    y: F,
+    z: F,
+    tz: structured::Polynomial<F, R>,
+    a: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
+    b: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
+}
+
+impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
+    /// Create a new prover context for assembling revdot claim polynomials.
+    fn new(circuit_mesh: &'m Mesh<'m, F, R>, num_application_steps: usize, y: F, z: F) -> Self {
+        Self {
+            circuit_mesh,
+            num_application_steps,
+            y,
+            z,
+            tz: R::tz(z),
+            a: Vec::new(),
+            b: Vec::new(),
+        }
+    }
+
+    /// Add a circuit claim with mesh polynomial transformation.
+    ///
+    /// Sets a = rx, b = rx(z) + s(y) + t(z).
+    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
+        self.circuit_impl(circuit_id, Cow::Borrowed(rx));
+    }
+
+    fn circuit_impl(
+        &mut self,
+        circuit_id: CircuitIndex,
+        rx: Cow<'rx, structured::Polynomial<F, R>>,
+    ) {
+        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
+        let mut b = rx.as_ref().clone();
+        b.dilate(self.z);
+        b.add_assign(&sy);
+        b.add_assign(&self.tz);
+
+        self.a.push(rx);
+        self.b.push(Cow::Owned(b));
+    }
+
+    /// Add an internal circuit claim, summing multiple stage polynomials.
+    ///
+    /// Sets a = sum(rxs), b = sum(rxs)(z) + s(y) + t(z).
+    /// Used for hashes, collapse, and compute_v circuits.
+    fn internal_circuit(
+        &mut self,
+        id: InternalCircuitIndex,
+        rxs: &[&'rx structured::Polynomial<F, R>],
+    ) {
+        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+        let circuit_id = id.circuit_index(self.num_application_steps);
+
+        let rx = if rxs.len() == 1 {
+            Cow::Borrowed(rxs[0])
+        } else {
+            let mut sum = rxs[0].clone();
+            for rx in &rxs[1..] {
+                sum.add_assign(rx);
+            }
+            Cow::Owned(sum)
+        };
+
+        self.circuit_impl(circuit_id, rx);
+    }
+
+    /// Add a stage claim for batching stage polynomial verification.
+    ///
+    /// Sets a = fold(rxs, z), b = s(y). Used for k(y) = 0 stage checks.
+    fn stage(&mut self, id: InternalCircuitIndex, rxs: &[&'rx structured::Polynomial<F, R>]) {
+        assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
+
+        let circuit_id = id.circuit_index(self.num_application_steps);
+        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
+
+        let a = if rxs.len() == 1 {
+            Cow::Borrowed(rxs[0])
+        } else {
+            Cow::Owned(structured::Polynomial::fold(rxs.iter().copied(), self.z))
+        };
+
+        self.a.push(a);
+        self.b.push(Cow::Owned(sy));
+    }
+
+    /// Add a raw claim without any mesh polynomial transformation.
+    ///
+    /// Used for ABProof claims where k(y) = c (the revdot product).
+    fn raw_claim(
+        &mut self,
+        a: &'rx structured::Polynomial<F, R>,
+        b: &'rx structured::Polynomial<F, R>,
+    ) {
+        self.a.push(Cow::Borrowed(a));
+        self.b.push(Cow::Borrowed(b));
+    }
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
@@ -84,7 +193,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = transcript.squeeze(&mut dr)?;
         let z = transcript.squeeze(&mut dr)?;
 
-        let (error_m, error_m_witness) = self.compute_error_m(rng, &w, &y)?;
+        let (error_m, error_m_witness, prover_context) =
+            self.compute_errors_m(rng, &w, &y, &z, &left, &right)?;
         Point::constant(&mut dr, error_m.nested_commitment)?.write(&mut dr, &mut transcript)?;
 
         // Save a copy of the transcript state. This is used as part of the
@@ -102,10 +212,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = transcript.squeeze(&mut dr)?;
         let nu = transcript.squeeze(&mut dr)?;
 
-        let (error_n, error_n_witness) = self.compute_error_n(
+        let (error_n, error_n_witness, a, b) = self.compute_errors_n(
             rng,
             &preamble_witness,
             &error_m_witness,
+            prover_context,
             &y,
             &mu,
             &nu,
@@ -115,9 +226,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime = transcript.squeeze(&mut dr)?;
         let nu_prime = transcript.squeeze(&mut dr)?;
 
-        let c = self.compute_c(&mu_prime, &nu_prime, &error_n_witness)?;
-
-        let ab = self.compute_ab(rng)?;
+        let ab = self.compute_ab(rng, a, b, &mu_prime, &nu_prime)?;
         Point::constant(&mut dr, ab.nested_commitment)?.write(&mut dr, &mut transcript)?;
         let x = transcript.squeeze(&mut dr)?;
 
@@ -153,7 +262,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &error_m_witness,
             &error_n_witness,
             &challenges,
-            c,
             v,
         )?;
 
@@ -170,7 +278,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 eval,
                 challenges,
                 circuits,
-                c,
                 v,
             },
             // We return the application auxiliary data for potential use by the
@@ -358,24 +465,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         })
     }
 
-    /// Compute error_m stage with mesh_wy bundled (Layer 1: N instances of M-sized reductions).
+    /// Compute errors_m stage with mesh_wy bundled (Layer 1: N instances of M-sized reductions).
     ///
-    /// Given (w, y), computes m(w, X, y), commits to it, then creates the error_m
+    /// Given (w, y, z), computes m(w, X, y), commits to it, then creates the error_m
     /// stage with the mesh_wy commitment bundled into the nested layer.
-    fn compute_error_m<'dr, D, RNG: Rng>(
+    ///
+    /// Also assembles the a/b polynomial vectors from both proofs for error term
+    /// computation, returning a `ProverContext` so the caller can fold polynomials
+    /// after mu/nu are derived from the transcript.
+    fn compute_errors_m<'dr, 'rx, D, RNG: Rng>(
         &self,
         rng: &mut RNG,
         w: &Element<'dr, D>,
         y: &Element<'dr, D>,
+        z: &Element<'dr, D>,
+        left: &'rx Proof<C, R>,
+        right: &'rx Proof<C, R>,
     ) -> Result<(
         ErrorMProof<C, R>,
         stages::native::error_m::Witness<C, NativeParameters>,
+        ProverContext<'_, 'rx, C::CircuitField, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
         let w = *w.value().take();
         let y = *y.value().take();
+        let z = *z.value().take();
 
         // Compute mesh_wy components
         let mesh_wy_poly = self.circuit_mesh.wy(w, y);
@@ -383,10 +499,99 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mesh_wy_commitment =
             mesh_wy_poly.commit(C::host_generators(self.params), mesh_wy_blind);
 
+        // Assemble a/b polynomials from both proofs for error term computation.
+        let mut ctx = ProverContext::new(&self.circuit_mesh, self.num_application_steps, y, z);
+        for proof in [left, right] {
+            // Child ABProof claim (k(y) = child's c)
+            ctx.raw_claim(&proof.ab.a_poly, &proof.ab.b_poly);
+
+            // Application circuit (uses application k(y))
+            ctx.circuit(proof.application.circuit_id, &proof.application.rx);
+
+            // hashes_1 circuit (uses unified_bridge k(y))
+            ctx.internal_circuit(
+                internal_circuits::hashes_1::CIRCUIT_ID,
+                &[
+                    &proof.circuits.hashes_1_rx,
+                    &proof.preamble.stage_rx,
+                    &proof.error_n.stage_rx,
+                ],
+            );
+
+            // Unified internal circuits (uses unified k(y))
+            ctx.internal_circuit(
+                internal_circuits::hashes_2::CIRCUIT_ID,
+                &[&proof.circuits.hashes_2_rx, &proof.error_n.stage_rx],
+            );
+            ctx.internal_circuit(
+                internal_circuits::partial_collapse::CIRCUIT_ID,
+                &[
+                    &proof.circuits.partial_collapse_rx,
+                    &proof.preamble.stage_rx,
+                    &proof.error_m.stage_rx,
+                    &proof.error_n.stage_rx,
+                ],
+            );
+            ctx.internal_circuit(
+                internal_circuits::full_collapse::CIRCUIT_ID,
+                &[
+                    &proof.circuits.full_collapse_rx,
+                    &proof.preamble.stage_rx,
+                    &proof.error_m.stage_rx,
+                    &proof.error_n.stage_rx,
+                ],
+            );
+            ctx.internal_circuit(
+                internal_circuits::compute_v::CIRCUIT_ID,
+                &[&proof.circuits.compute_v_rx],
+            );
+        }
+
+        // Stages (all k(y)=0, batched across both proofs)
+        ctx.stage(
+            InternalCircuitIndex::ErrorNFinalStaged,
+            &[
+                &left.circuits.hashes_1_rx,
+                &left.circuits.hashes_2_rx,
+                &left.circuits.partial_collapse_rx,
+                &left.circuits.full_collapse_rx,
+                &right.circuits.hashes_1_rx,
+                &right.circuits.hashes_2_rx,
+                &right.circuits.partial_collapse_rx,
+                &right.circuits.full_collapse_rx,
+            ],
+        );
+        ctx.stage(
+            InternalCircuitIndex::EvalFinalStaged,
+            &[&left.circuits.compute_v_rx, &right.circuits.compute_v_rx],
+        );
+        ctx.stage(
+            internal_circuits::stages::native::preamble::STAGING_ID,
+            &[&left.preamble.stage_rx, &right.preamble.stage_rx],
+        );
+        ctx.stage(
+            internal_circuits::stages::native::error_m::STAGING_ID,
+            &[&left.error_m.stage_rx, &right.error_m.stage_rx],
+        );
+        ctx.stage(
+            internal_circuits::stages::native::error_n::STAGING_ID,
+            &[&left.error_n.stage_rx, &right.error_n.stage_rx],
+        );
+        ctx.stage(
+            internal_circuits::stages::native::query::STAGING_ID,
+            &[&left.query.stage_rx, &right.query.stage_rx],
+        );
+        ctx.stage(
+            internal_circuits::stages::native::eval::STAGING_ID,
+            &[&left.eval.stage_rx, &right.eval.stage_rx],
+        );
+
+        // Compute real error terms from the assembled polynomial pairs
+        let error_terms = fold_revdot::compute_errors_m::<_, R, NativeParameters>(&ctx.a, &ctx.b);
+
         // Error M stage commitment
-        let error_m_witness = stages::native::error_m::Witness::<C, NativeParameters> {
-            error_terms: FixedVec::from_fn(|_| FixedVec::from_fn(|_| C::CircuitField::todo())),
-        };
+        let error_m_witness =
+            stages::native::error_m::Witness::<C, NativeParameters> { error_terms };
         let stage_rx = stages::native::error_m::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
             &error_m_witness,
         )?;
@@ -416,19 +621,23 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 nested_commitment,
             },
             error_m_witness,
+            ctx,
         ))
     }
 
-    /// Compute error_n stage (Layer 2: Single N-sized reduction).
+    /// Compute errors_n stage (Layer 2: Single N-sized reduction).
     ///
-    /// Computes k(y) values from the preamble witness, performs layer 1 folding
-    /// to get collapsed values, then builds the error_n stage witness and
-    /// commitments.
-    fn compute_error_n<'dr, D, RNG: Rng>(
+    /// Takes ownership of the ProverContext, folds the layer-1 polynomials using
+    /// mu/nu, computes k(y) values from the preamble witness, performs layer 1
+    /// folding to get collapsed values, then builds the error_n stage witness
+    /// and commitments. Returns the folded `a` and `b` polynomials for use by
+    /// compute_ab.
+    fn compute_errors_n<'dr, D, RNG: Rng>(
         &self,
         rng: &mut RNG,
         preamble_witness: &stages::native::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &stages::native::error_m::Witness<C, NativeParameters>,
+        prover_context: ProverContext<'_, '_, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
         nu: &Element<'dr, D>,
@@ -439,6 +648,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         ErrorNProof<C, R>,
         stages::native::error_n::Witness<C, NativeParameters>,
+        FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
+        FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
     )>
     where
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
@@ -446,6 +663,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let mu = *mu.value().take();
         let nu = *nu.value().take();
+        let mu_inv = mu.invert().expect("mu must be non-zero");
+        let munu = mu * nu;
+        let a = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&prover_context.a, mu_inv);
+        let b = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&prover_context.b, munu);
+        drop(prover_context);
 
         let (ky, collapsed) = Emulator::emulate_wireless(
             (preamble_witness, &error_m_witness.error_terms, y, mu, nu),
@@ -469,17 +691,23 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let mu = Element::alloc(dr, mu)?;
                 let nu = Element::alloc(dr, nu)?;
 
-                let mut ky_elements = vec![
-                    left_application_ky.clone(),
-                    right_application_ky.clone(),
-                    left_unified_ky.clone(),
-                    right_unified_ky.clone(),
-                    left_unified_bridge_ky.clone(),
-                    right_unified_bridge_ky.clone(),
-                ]
-                .into_iter();
+                // k(y) values in order matching the partial_collapse circuit
+                let mut ky_elements = once(preamble.left.unified.c.clone())
+                    .chain(once(left_application_ky.clone()))
+                    .chain(once(left_unified_bridge_ky.clone()))
+                    .chain(repeat_n(
+                        left_unified_ky.clone(),
+                        crate::internal_circuits::partial_collapse::NUM_UNIFIED_CIRCUITS,
+                    ))
+                    .chain(once(preamble.right.unified.c.clone()))
+                    .chain(once(right_application_ky.clone()))
+                    .chain(once(right_unified_bridge_ky.clone()))
+                    .chain(repeat_n(
+                        right_unified_ky.clone(),
+                        crate::internal_circuits::partial_collapse::NUM_UNIFIED_CIRCUITS,
+                    ));
 
-                let fold_c = fold_revdot::FoldC::new(dr, &mu, &nu)?;
+                let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 
                 let collapsed = FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {
@@ -489,7 +717,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                         ky_elements.next().unwrap_or_else(|| Element::zero(dr))
                     });
 
-                    let v = fold_c.compute_m::<NativeParameters>(dr, &errors, &ky_values)?;
+                    let v = fold_products
+                        .fold_products_m::<NativeParameters>(dr, &errors, &ky_values)?;
                     Ok(*v.value().take())
                 })?;
 
@@ -507,8 +736,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             },
         )?;
 
+        // Compute real error_n terms from the layer-1 folded polynomials.
+        let error_terms = fold_revdot::compute_errors_n::<_, R, NativeParameters>(&a, &b);
+
         let error_n_witness = stages::native::error_n::Witness::<C, NativeParameters> {
-            error_terms: FixedVec::from_fn(|_| C::CircuitField::todo()),
+            error_terms,
             collapsed,
             ky,
             sponge_state_elements,
@@ -538,52 +770,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 nested_commitment,
             },
             error_n_witness,
+            a,
+            b,
         ))
-    }
-
-    /// Compute c, the folded revdot product claim (layer 2 only).
-    ///
-    /// Performs a single N-sized reduction using the collapsed values from
-    /// layer 1 as the k(y) values.
-    fn compute_c<'dr, D>(
-        &self,
-        mu_prime: &Element<'dr, D>,
-        nu_prime: &Element<'dr, D>,
-        error_n_witness: &stages::native::error_n::Witness<C, NativeParameters>,
-    ) -> Result<C::CircuitField>
-    where
-        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
-    {
-        let mu_prime = *mu_prime.value().take();
-        let nu_prime = *nu_prime.value().take();
-
-        Emulator::emulate_wireless(
-            (
-                mu_prime,
-                nu_prime,
-                &error_n_witness.error_terms,
-                &error_n_witness.collapsed,
-            ),
-            |dr, witness| {
-                let (mu_prime, nu_prime, error_terms_n, collapsed) = witness.cast();
-
-                let mu_prime = Element::alloc(dr, mu_prime)?;
-                let nu_prime = Element::alloc(dr, nu_prime)?;
-
-                let error_terms_n = FixedVec::try_from_fn(|i| {
-                    Element::alloc(dr, error_terms_n.view().map(|et| et[i]))
-                })?;
-
-                let collapsed =
-                    FixedVec::try_from_fn(|i| Element::alloc(dr, collapsed.view().map(|c| c[i])))?;
-
-                // Layer 2: Single N-sized reduction using collapsed as ky_values
-                let fold_c = fold_revdot::FoldC::new(dr, &mu_prime, &nu_prime)?;
-                let c = fold_c.compute_n::<NativeParameters>(dr, &error_terms_n, &collapsed)?;
-
-                Ok(*c.value().take())
-            },
-        )
     }
 
     /// TODO
@@ -604,20 +793,43 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
     /// Compute the A/B polynomials proof.
     ///
-    /// Commits to A and B polynomials, then creates the nested commitment.
-    fn compute_ab<RNG: Rng>(&self, rng: &mut RNG) -> Result<ABProof<C, R>> {
-        // TODO: For now, stub out fake A and B polynomials.
+    /// Folds the layer-1 polynomial pairs into final A and B polynomials using
+    /// mu_prime and nu_prime, then commits and creates the nested commitment.
+    fn compute_ab<'dr, D, RNG: Rng>(
+        &self,
+        rng: &mut RNG,
+        a: FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
+        b: FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
+        mu_prime: &Element<'dr, D>,
+        nu_prime: &Element<'dr, D>,
+    ) -> Result<ABProof<C, R>>
+    where
+        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+    {
+        // Compute final folded polynomials from layer 1 pairs.
+        let mu_prime = *mu_prime.value().take();
+        let nu_prime = *nu_prime.value().take();
+        let mu_prime_inv = mu_prime.invert().expect("mu_prime must be non-zero");
+        let mu_prime_nu_prime = mu_prime * nu_prime;
+
         // A polynomial
-        let a_poly =
-            ragu_circuits::polynomials::structured::Polynomial::<C::CircuitField, R>::new();
+        let a_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(a, mu_prime_inv);
         let a_blind = C::CircuitField::random(&mut *rng);
         let a_commitment = a_poly.commit(C::host_generators(self.params), a_blind);
 
         // B polynomial
-        let b_poly =
-            ragu_circuits::polynomials::structured::Polynomial::<C::CircuitField, R>::new();
+        let b_poly = fold_revdot::fold_polys_n::<_, R, NativeParameters>(b, mu_prime_nu_prime);
         let b_blind = C::CircuitField::random(&mut *rng);
         let b_commitment = b_poly.commit(C::host_generators(self.params), b_blind);
+
+        // Compute the revdot product of a and b
+        let c = a_poly.revdot(&b_poly);
 
         let nested_ab_witness = stages::nested::ab::Witness {
             a: a_commitment,
@@ -634,6 +846,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             b_poly,
             b_blind,
             b_commitment,
+            c,
             nested_rx,
             nested_blind,
             nested_commitment,
@@ -764,7 +977,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         error_m_witness: &stages::native::error_m::Witness<C, NativeParameters>,
         error_n_witness: &stages::native::error_n::Witness<C, NativeParameters>,
         challenges: &Challenges<C>,
-        c: C::CircuitField,
         v: C::CircuitField,
     ) -> Result<CircuitCommitments<C, R>> {
         // Build unified instance from proof structs and challenges.
@@ -780,7 +992,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             nested_error_n_commitment: error_n.nested_commitment,
             mu_prime: challenges.mu_prime,
             nu_prime: challenges.nu_prime,
-            c,
+            c: ab.c,
             nested_ab_commitment: ab.nested_commitment,
             x: challenges.x,
             nested_query_commitment: query.nested_commitment,
@@ -835,6 +1047,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         >::new()
         .rx::<R>(
             internal_circuits::partial_collapse::Witness {
+                preamble_witness,
                 unified_instance,
                 error_m_witness,
                 error_n_witness,

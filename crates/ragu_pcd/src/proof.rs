@@ -31,7 +31,6 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) eval: EvalProof<C, R>,
     pub(crate) challenges: Challenges<C>,
     pub(crate) circuits: CircuitCommitments<C, R>,
-    pub(crate) c: C::CircuitField,
     pub(crate) v: C::CircuitField,
 }
 
@@ -117,6 +116,9 @@ pub(crate) struct ABProof<C: Cycle, R: Rank> {
     pub(crate) b_poly: structured::Polynomial<C::CircuitField, R>,
     pub(crate) b_blind: C::CircuitField,
     pub(crate) b_commitment: C::HostCurve,
+
+    /// The revdot product of `a_poly` and `b_poly`.
+    pub(crate) c: C::CircuitField,
 
     pub(crate) nested_rx: structured::Polynomial<C::ScalarField, R>,
     pub(crate) nested_blind: C::ScalarField,
@@ -365,6 +367,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 b_poly: zero_structured_host.clone(),
                 b_blind: host_blind,
                 b_commitment: host_commitment,
+                c: C::CircuitField::ZERO,
                 nested_rx: zero_structured_nested.clone(),
                 nested_blind,
                 nested_commitment,
@@ -414,7 +417,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 compute_v_blind: host_blind,
                 compute_v_commitment: host_commitment,
             },
-            c: C::CircuitField::ZERO,
             v: C::CircuitField::ZERO,
         }
     }
