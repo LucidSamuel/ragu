@@ -58,20 +58,31 @@ impl<L: Len> Len for ErrorTermsLen<L> {
 /// This takes a slice of polynomials (less than or equal to M * N in length)
 /// and, assuming absent polynomials are zero, folds each group of M polynomials
 /// into one polynomial using the provided scale factor.
+///
+/// # Panics
+///
+/// Panics if `source.len()` exceeds `M * N`, which would cause silent truncation.
 pub fn fold_polys_m<F: Field, R: Rank, P: Parameters>(
     source: &[impl Borrow<structured::Polynomial<F, R>>],
     scale_factor: F,
 ) -> FixedVec<structured::Polynomial<F, R>, P::N> {
+    assert!(
+        source.len() <= P::M::len() * P::N::len(),
+        "source length {} exceeds M*N = {}",
+        source.len(),
+        P::M::len() * P::N::len()
+    );
+
     source
         .chunks(P::M::len())
         .map(|chunk| structured::Polynomial::fold(chunk.iter().map(Borrow::borrow), scale_factor))
         .chain(iter::repeat_with(structured::Polynomial::new))
         .take(P::N::len())
         .collect_fixed()
-        .unwrap()
+        .expect("iterator produces exactly N elements")
 }
 
-/// Reduction step for polynomials in the first layer of revdot folding.
+/// Reduction step for polynomials in the second layer of revdot folding.
 ///
 /// This takes a length-N vector of polynomials and performs a simple folding
 /// procedure with the scaling factor. This function exists mainly to complement
@@ -88,26 +99,32 @@ pub fn fold_polys_n<F: Field, R: Rank, P: Parameters>(
 /// This computes off-diagonal revdot products for each group of `Inner`
 /// polynomials, producing `Outer` groups of error terms.
 fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
-    lhs: &[impl Borrow<structured::Polynomial<F, R>>],
-    rhs: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<structured::Polynomial<F, R>>],
+    b: &[impl Borrow<structured::Polynomial<F, R>>],
 ) -> FixedVec<FixedVec<F, ErrorTermsLen<Inner>>, Outer> {
-    assert_eq!(lhs.len(), rhs.len(), "lhs and rhs must have same length");
+    assert_eq!(a.len(), b.len(), "a and b must have same length");
+    assert!(
+        a.len() <= Outer::len() * Inner::len(),
+        "input length {} exceeds Outer*Inner = {}",
+        a.len(),
+        Outer::len() * Inner::len()
+    );
 
-    // Iterate over `Inner::len()`-sized chunks of lhs and rhs as pairs.
-    lhs.chunks(Inner::len())
-        .zip(rhs.chunks(Inner::len()))
+    // Iterate over `Inner::len()`-sized chunks of a and b as pairs.
+    a.chunks(Inner::len())
+        .zip(b.chunks(Inner::len()))
         // For each chunk, compute off-diagonal revdot products.
-        .map(|(lhs_chunk, rhs_chunk)| {
+        .map(|(a_chunk, b_chunk)| {
             // Computed using the cartesian product of indices, filtering out
             // diagonal entries.
             (0..Inner::len())
                 .flat_map(|i| (0..Inner::len()).filter_map(move |j| (i != j).then_some((i, j))))
-                // And computing their revdot products when their indices exist.
-                .map(|(i, j)| match (lhs_chunk.get(i), rhs_chunk.get(j)) {
-                    (Some(l), Some(r)) => l.borrow().revdot(r.borrow()),
-                    // ... missing entries are zero polynomials, and thus
-                    // produce zero revdot products.
-                    _ => F::ZERO,
+                // Missing entries are zero polynomials, producing zero revdot products.
+                .map(|(i, j)| {
+                    a_chunk
+                        .get(i)
+                        .zip(b_chunk.get(j))
+                        .map_or(F::ZERO, |(l, r)| l.borrow().revdot(r.borrow()))
                 })
                 .collect_fixed()
                 .expect("lengths are correct")
@@ -121,21 +138,21 @@ fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
 
 /// Compute errors_m: N groups of M*(M-1) off-diagonal revdot products.
 pub fn compute_errors_m<F: Field, R: Rank, P: Parameters>(
-    lhs: &[impl Borrow<structured::Polynomial<F, R>>],
-    rhs: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<structured::Polynomial<F, R>>],
+    b: &[impl Borrow<structured::Polynomial<F, R>>],
 ) -> FixedVec<FixedVec<F, ErrorTermsLen<P::M>>, P::N> {
-    compute_errors_impl::<F, R, P::N, P::M>(lhs, rhs)
+    compute_errors_impl::<F, R, P::N, P::M>(a, b)
 }
 
 /// Compute errors_n: N*(N-1) off-diagonal revdot products.
 pub fn compute_errors_n<F: Field, R: Rank, P: Parameters>(
-    lhs: &[impl Borrow<structured::Polynomial<F, R>>],
-    rhs: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<structured::Polynomial<F, R>>],
+    b: &[impl Borrow<structured::Polynomial<F, R>>],
 ) -> FixedVec<F, ErrorTermsLen<P::N>> {
-    compute_errors_impl::<F, R, ConstLen<1>, P::N>(lhs, rhs)
+    compute_errors_impl::<F, R, ConstLen<1>, P::N>(a, b)
         .into_iter()
         .next()
-        .unwrap()
+        .expect("Outer produces exactly one group")
 }
 
 /// Precomputed folding context for computing revdot claim `c`.
@@ -335,11 +352,7 @@ mod tests {
     #[test]
     fn test_multireduce() -> Result<()> {
         /// Verify two-layer folding correctness with actual polynomials.
-        fn verify<P: Parameters>() -> Result<()>
-        where
-            P::N: Len,
-            P::M: Len,
-        {
+        fn verify<P: Parameters>() -> Result<()> {
             type TestRank = R<4>;
             let mut rng = OsRng;
             let n = P::N::len();

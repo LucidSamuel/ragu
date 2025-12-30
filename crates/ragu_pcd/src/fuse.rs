@@ -38,6 +38,8 @@ use crate::{
 
 /// Context for the prover to assemble a/b polynomial vectors for error term
 /// computation.
+///
+/// TODO: Extract shared logic with `Verifier` into a common `ClaimBuilder` trait.
 struct ProverContext<'m, 'rx, F: PrimeField, R: Rank> {
     circuit_mesh: &'m Mesh<'m, F, R>,
     num_application_steps: usize,
@@ -45,10 +47,11 @@ struct ProverContext<'m, 'rx, F: PrimeField, R: Rank> {
     z: F,
     tz: structured::Polynomial<F, R>,
     a: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
-    b: Vec<structured::Polynomial<F, R>>,
+    b: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
+    /// Create a new prover context for assembling revdot claim polynomials.
     fn new(circuit_mesh: &'m Mesh<'m, F, R>, num_application_steps: usize, y: F, z: F) -> Self {
         Self {
             circuit_mesh,
@@ -61,11 +64,14 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
         }
     }
 
+    /// Add a circuit claim with mesh polynomial transformation.
+    ///
+    /// Sets a = rx, b = rx(z) + s(y) + t(z).
     fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
-        self.circuit_cow(circuit_id, Cow::Borrowed(rx));
+        self.circuit_impl(circuit_id, Cow::Borrowed(rx));
     }
 
-    fn circuit_cow(
+    fn circuit_impl(
         &mut self,
         circuit_id: CircuitIndex,
         rx: Cow<'rx, structured::Polynomial<F, R>>,
@@ -77,9 +83,13 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
         b.add_assign(&self.tz);
 
         self.a.push(rx);
-        self.b.push(b);
+        self.b.push(Cow::Owned(b));
     }
 
+    /// Add an internal circuit claim, summing multiple stage polynomials.
+    ///
+    /// Sets a = sum(rxs), b = sum(rxs)(z) + s(y) + t(z).
+    /// Used for hashes, collapse, and compute_v circuits.
     fn internal_circuit(
         &mut self,
         id: InternalCircuitIndex,
@@ -98,9 +108,12 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
             Cow::Owned(sum)
         };
 
-        self.circuit_cow(circuit_id, rx);
+        self.circuit_impl(circuit_id, rx);
     }
 
+    /// Add a stage claim for batching stage polynomial verification.
+    ///
+    /// Sets a = fold(rxs, z), b = s(y). Used for k(y) = 0 stage checks.
     fn stage(&mut self, id: InternalCircuitIndex, rxs: &[&'rx structured::Polynomial<F, R>]) {
         assert!(!rxs.is_empty(), "must provide at least one rx polynomial");
 
@@ -114,7 +127,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
         };
 
         self.a.push(a);
-        self.b.push(sy);
+        self.b.push(Cow::Owned(sy));
     }
 
     /// Add a raw claim without any mesh polynomial transformation.
@@ -126,7 +139,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ProverContext<'m, 'rx, F, R> {
         b: &'rx structured::Polynomial<F, R>,
     ) {
         self.a.push(Cow::Borrowed(a));
-        self.b.push(b.clone());
+        self.b.push(Cow::Borrowed(b));
     }
 }
 

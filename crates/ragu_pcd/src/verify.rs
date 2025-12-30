@@ -16,7 +16,10 @@ use core::iter::{once, repeat, repeat_n};
 use crate::{
     Application, Pcd,
     header::Header,
-    internal_circuits::{self, InternalCircuitIndex, stages::native::preamble::ProofInputs},
+    internal_circuits::{
+        self, InternalCircuitIndex, partial_collapse::NUM_UNIFIED_CIRCUITS,
+        stages::native::preamble::ProofInputs,
+    },
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -55,7 +58,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 Ok((unified_ky, unified_bridge_ky, application_ky))
             })?;
 
-        // Build LHS and RHS polynomials for each revdot claim.
+        // Build a and b polynomials for each revdot claim.
         let mut verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, y, z);
 
         // Circuit checks.
@@ -145,12 +148,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let ky_values = once(pcd.proof.ab.c)
                 .chain(once(application_ky))
                 .chain(once(unified_bridge_ky))
-                .chain(repeat_n(unified_ky, 4))
+                .chain(repeat_n(unified_ky, NUM_UNIFIED_CIRCUITS))
                 .chain(repeat(C::CircuitField::ZERO));
 
             ky_values
-                .zip(verifier.lhs.iter().zip(verifier.rhs.iter()))
-                .all(|(ky, (lhs, rhs))| lhs.revdot(rhs) == ky)
+                .zip(verifier.a.iter().zip(verifier.b.iter()))
+                .all(|(ky, (a, b))| a.revdot(b) == ky)
         };
 
         Ok(revdot_claims)
@@ -163,8 +166,8 @@ struct Verifier<'m, 'rx, F: PrimeField, R: Rank> {
     y: F,
     z: F,
     tz: structured::Polynomial<F, R>,
-    lhs: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
-    rhs: Vec<structured::Polynomial<F, R>>,
+    a: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
+    b: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
@@ -175,28 +178,28 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
             y,
             z,
             tz: R::tz(z),
-            lhs: Vec::new(),
-            rhs: Vec::new(),
+            a: Vec::new(),
+            b: Vec::new(),
         }
     }
 
     fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
-        self.circuit_cow(circuit_id, Cow::Borrowed(rx));
+        self.circuit_impl(circuit_id, Cow::Borrowed(rx));
     }
 
-    fn circuit_cow(
+    fn circuit_impl(
         &mut self,
         circuit_id: CircuitIndex,
         rx: Cow<'rx, structured::Polynomial<F, R>>,
     ) {
         let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
-        let mut rhs = rx.as_ref().clone();
-        rhs.dilate(self.z);
-        rhs.add_assign(&sy);
-        rhs.add_assign(&self.tz);
+        let mut b = rx.as_ref().clone();
+        b.dilate(self.z);
+        b.add_assign(&sy);
+        b.add_assign(&self.tz);
 
-        self.lhs.push(rx);
-        self.rhs.push(rhs);
+        self.a.push(rx);
+        self.b.push(Cow::Owned(b));
     }
 
     fn internal_circuit(
@@ -217,7 +220,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
             Cow::Owned(sum)
         };
 
-        self.circuit_cow(circuit_id, rx);
+        self.circuit_impl(circuit_id, rx);
     }
 
     fn stage(&mut self, id: InternalCircuitIndex, rxs: &[&'rx structured::Polynomial<F, R>]) {
@@ -226,14 +229,14 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
         let circuit_id = id.circuit_index(self.num_application_steps);
         let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
 
-        let lhs = if rxs.len() == 1 {
+        let a = if rxs.len() == 1 {
             Cow::Borrowed(rxs[0])
         } else {
             Cow::Owned(structured::Polynomial::fold(rxs.iter().copied(), self.z))
         };
 
-        self.lhs.push(lhs);
-        self.rhs.push(sy);
+        self.a.push(a);
+        self.b.push(Cow::Owned(sy));
     }
 
     /// Add a raw claim without any mesh polynomial transformation.
@@ -244,7 +247,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Verifier<'m, 'rx, F, R> {
         a: &'rx structured::Polynomial<F, R>,
         b: &'rx structured::Polynomial<F, R>,
     ) {
-        self.lhs.push(Cow::Borrowed(a));
-        self.rhs.push(b.clone());
+        self.a.push(Cow::Borrowed(a));
+        self.b.push(Cow::Borrowed(b));
     }
 }
