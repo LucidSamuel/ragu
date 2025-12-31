@@ -21,7 +21,7 @@ use crate::{internal_circuits::NUM_INTERNAL_CIRCUITS, proof::Proof};
 pub use crate::internal_circuits::InternalCircuitIndex::QueryStage as STAGING_ID;
 
 /// Number of polynomial evaluations per child proof.
-const NUM_EVALS_PER_CHILD: usize = 22;
+const NUM_EVALS_PER_CHILD: usize = 27;
 
 /// Pre-computed evaluations of mesh_xy at each internal circuit's omega^j.
 pub struct FixedMeshWitness<F> {
@@ -42,10 +42,15 @@ pub struct FixedMeshWitness<F> {
 /// Witness for a child proof's polynomial evaluations.
 pub struct ChildEvaluationsWitness<F> {
     pub preamble_at_x: F,
+    pub preamble_at_xz: F,
     pub error_m_at_x: F,
+    pub error_m_at_xz: F,
     pub error_n_at_x: F,
+    pub error_n_at_xz: F,
     pub query_at_x: F,
+    pub query_at_xz: F,
     pub eval_at_x: F,
+    pub eval_at_xz: F,
     pub a_poly_at_x: F,
     pub b_poly_at_x: F,
     pub old_mesh_xy_at_new_w: F,
@@ -77,10 +82,15 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
     ) -> Self {
         ChildEvaluationsWitness {
             preamble_at_x: proof.preamble.stage_rx.eval(x),
+            preamble_at_xz: proof.preamble.stage_rx.eval(xz),
             error_m_at_x: proof.error_m.stage_rx.eval(x),
+            error_m_at_xz: proof.error_m.stage_rx.eval(xz),
             error_n_at_x: proof.error_n.stage_rx.eval(x),
+            error_n_at_xz: proof.error_n.stage_rx.eval(xz),
             query_at_x: proof.query.stage_rx.eval(x),
+            query_at_xz: proof.query.stage_rx.eval(xz),
             eval_at_x: proof.eval.stage_rx.eval(x),
+            eval_at_xz: proof.eval.stage_rx.eval(xz),
             a_poly_at_x: proof.ab.a_poly.eval(x),
             b_poly_at_x: proof.ab.b_poly.eval(x),
             old_mesh_xy_at_new_w: proof.query.mesh_xy_poly.eval(w),
@@ -178,13 +188,23 @@ pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
     #[ragu(gadget)]
     pub preamble_at_x: Element<'dr, D>,
     #[ragu(gadget)]
+    pub preamble_at_xz: Element<'dr, D>,
+    #[ragu(gadget)]
     pub error_m_at_x: Element<'dr, D>,
+    #[ragu(gadget)]
+    pub error_m_at_xz: Element<'dr, D>,
     #[ragu(gadget)]
     pub error_n_at_x: Element<'dr, D>,
     #[ragu(gadget)]
+    pub error_n_at_xz: Element<'dr, D>,
+    #[ragu(gadget)]
     pub query_at_x: Element<'dr, D>,
     #[ragu(gadget)]
+    pub query_at_xz: Element<'dr, D>,
+    #[ragu(gadget)]
     pub eval_at_x: Element<'dr, D>,
+    #[ragu(gadget)]
+    pub eval_at_xz: Element<'dr, D>,
     #[ragu(gadget)]
     pub a_poly_at_x: Element<'dr, D>,
     #[ragu(gadget)]
@@ -229,10 +249,15 @@ impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
     ) -> Result<Self> {
         Ok(ChildEvaluations {
             preamble_at_x: Element::alloc(dr, witness.view().map(|w| w.preamble_at_x))?,
+            preamble_at_xz: Element::alloc(dr, witness.view().map(|w| w.preamble_at_xz))?,
             error_m_at_x: Element::alloc(dr, witness.view().map(|w| w.error_m_at_x))?,
+            error_m_at_xz: Element::alloc(dr, witness.view().map(|w| w.error_m_at_xz))?,
             error_n_at_x: Element::alloc(dr, witness.view().map(|w| w.error_n_at_x))?,
+            error_n_at_xz: Element::alloc(dr, witness.view().map(|w| w.error_n_at_xz))?,
             query_at_x: Element::alloc(dr, witness.view().map(|w| w.query_at_x))?,
+            query_at_xz: Element::alloc(dr, witness.view().map(|w| w.query_at_xz))?,
             eval_at_x: Element::alloc(dr, witness.view().map(|w| w.eval_at_x))?,
+            eval_at_xz: Element::alloc(dr, witness.view().map(|w| w.eval_at_xz))?,
             a_poly_at_x: Element::alloc(dr, witness.view().map(|w| w.a_poly_at_x))?,
             b_poly_at_x: Element::alloc(dr, witness.view().map(|w| w.b_poly_at_x))?,
             old_mesh_xy_at_new_w: Element::alloc(
