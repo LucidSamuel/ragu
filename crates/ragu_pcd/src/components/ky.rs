@@ -1,44 +1,44 @@
 //! Streaming Horner's method evaluation of k(Y) via the Buffer trait.
 
 use ragu_core::{Result, drivers::Driver};
-use ragu_primitives::{Element, io::Buffer};
+use ragu_primitives::{Element, GadgetExt, io::Buffer};
+
+use super::horner::Horner;
 
 /// A buffer that evaluates k(Y) at a point `y` using Horner's method.
+///
+/// This wraps [`Horner`] and adds a trailing constant 1 term when finished.
 pub struct Ky<'a, 'dr, D: Driver<'dr>> {
-    y: &'a Element<'dr, D>,
-    result: Element<'dr, D>,
+    inner: Horner<'a, 'dr, D>,
 }
 
 impl<'a, 'dr, D: Driver<'dr>> Clone for Ky<'a, 'dr, D> {
     fn clone(&self) -> Self {
         Ky {
-            y: self.y,
-            result: self.result.clone(),
+            inner: self.inner.clone(),
         }
     }
 }
 
 impl<'a, 'dr, D: Driver<'dr>> Ky<'a, 'dr, D> {
+    /// Creates a new buffer that evaluates k(Y) at point `y`.
     pub fn new(dr: &mut D, y: &'a Element<'dr, D>) -> Self {
         Ky {
-            y,
-            result: Element::zero(dr),
+            inner: Horner::new(dr, y),
         }
     }
 
     /// Finishes the evaluation by adding the trailing constant (one) term.
     /// Returns the final k(y) value.
-    pub fn finish(self, dr: &mut D) -> Result<Element<'dr, D>> {
-        // Final Horner step: result = result * y + 1
-        Ok(self.result.mul(dr, self.y)?.add(dr, &Element::one()))
+    pub fn finish(mut self, dr: &mut D) -> Result<Element<'dr, D>> {
+        // Write trailing 1 and finish
+        Element::one().write(dr, &mut self.inner)?;
+        Ok(self.inner.finish())
     }
 }
 
 impl<'a, 'dr, D: Driver<'dr>> Buffer<'dr, D> for Ky<'a, 'dr, D> {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
-        // Horner's step: result = result * y + value.
-        self.result = self.result.mul(dr, self.y)?.add(dr, value);
-
-        Ok(())
+        self.inner.write(dr, value)
     }
 }
