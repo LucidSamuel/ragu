@@ -60,6 +60,7 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     mut mesh: MeshBuilder<'params, C::CircuitField, R>,
     params: &'params C::Params,
     log2_circuits: u32,
+    num_application_steps: usize,
 ) -> Result<MeshBuilder<'params, C::CircuitField, R>> {
     let initial_num_circuits = mesh.num_circuits();
 
@@ -143,7 +144,9 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
             )?;
 
         // compute_v
-        mesh = mesh.register_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new())?;
+        mesh = mesh.register_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new(
+            num_application_steps,
+        ))?;
     }
 
     // Verify we registered the expected number of circuits.
@@ -223,7 +226,7 @@ mod test_params {
         check_constraints!(Hashes2Circuit,         mul = 2047, lin = 2952);
         check_constraints!(PartialCollapseCircuit, mul = 1891, lin = 2650);
         check_constraints!(FullCollapseCircuit,    mul = 1876, lin = 2620);
-        check_constraints!(ComputeVCircuit,        mul = 384,  lin = 401);
+        check_constraints!(ComputeVCircuit,        mul = 420,  lin = 473);
     }
 
     #[rustfmt::skip]

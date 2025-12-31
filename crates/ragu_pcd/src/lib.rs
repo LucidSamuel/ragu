@@ -122,6 +122,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 self.circuit_mesh,
                 params,
                 log2_circuits,
+                self.num_application_steps,
             )?;
 
             assert_eq!(

@@ -22,12 +22,14 @@ use crate::components::horner::Horner;
 pub use crate::internal_circuits::InternalCircuitIndex::ComputeVCircuit as CIRCUIT_ID;
 
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize> {
+    num_application_steps: usize,
     _marker: PhantomData<(C, R)>,
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Circuit<C, R, HEADER_SIZE> {
-    pub fn new() -> Staged<C::CircuitField, R, Self> {
+    pub fn new(num_application_steps: usize) -> Staged<C::CircuitField, R, Self> {
         Staged::new(Circuit {
+            num_application_steps,
             _marker: PhantomData,
         })
     }
@@ -104,7 +106,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
             let fu = {
                 let alpha = unified_output.alpha.get(dr, unified_instance)?;
                 let u = unified_output.u.get(dr, unified_instance)?;
-                let denominators = Denominators::new(dr, &u, &w, &x, &y, &preamble)?;
+                let denominators =
+                    Denominators::new(dr, &u, &w, &x, &y, &preamble, self.num_application_steps)?;
                 let mut horner = Horner::new(dr, &alpha);
                 for (pu, v, denominator) in poly_queries(&eval, &query, &preamble, &denominators) {
                     pu.sub(dr, v).mul(dr, denominator)?.write(dr, &mut horner)?;
@@ -147,6 +150,20 @@ struct Denominators<'dr, D: Driver<'dr>> {
     old_x0: Element<'dr, D>,
     old_x1: Element<'dr, D>,
     x: Element<'dr, D>,
+
+    // Internal circuit omega^j denominators
+    internal_preamble_stage: Element<'dr, D>,
+    internal_error_m_stage: Element<'dr, D>,
+    internal_error_n_stage: Element<'dr, D>,
+    internal_query_stage: Element<'dr, D>,
+    internal_eval_stage: Element<'dr, D>,
+    internal_error_n_final_staged: Element<'dr, D>,
+    internal_eval_final_staged: Element<'dr, D>,
+    internal_hashes_1_circuit: Element<'dr, D>,
+    internal_hashes_2_circuit: Element<'dr, D>,
+    internal_partial_collapse_circuit: Element<'dr, D>,
+    internal_full_collapse_circuit: Element<'dr, D>,
+    internal_compute_v_circuit: Element<'dr, D>,
 }
 
 impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
@@ -158,7 +175,18 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         x: &Element<'dr, D>,
         y: &Element<'dr, D>,
         preamble: &native_preamble::Output<'dr, D, C, HEADER_SIZE>,
-    ) -> Result<Self> {
+        num_application_steps: usize,
+    ) -> Result<Self>
+    where
+        D::F: ff::PrimeField,
+    {
+        use super::InternalCircuitIndex::{self, *};
+
+        let internal_denom = |dr: &mut D, idx: InternalCircuitIndex| -> Result<Element<'dr, D>> {
+            let omega_j = Element::constant(dr, idx.circuit_index(num_application_steps).omega_j());
+            u.sub(dr, &omega_j).invert(dr)
+        };
+
         Ok(Denominators {
             left_u:  u.sub(dr, &preamble.left.unified.u).invert(dr)?,
             right_u: u.sub(dr, &preamble.right.unified.u).invert(dr)?,
@@ -169,6 +197,18 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
             old_x0:  u.sub(dr, &preamble.left.unified.x).invert(dr)?,
             old_x1:  u.sub(dr, &preamble.right.unified.x).invert(dr)?,
             x:       u.sub(dr, x).invert(dr)?,
+            internal_preamble_stage:           internal_denom(dr, PreambleStage)?,
+            internal_error_m_stage:            internal_denom(dr, ErrorMStage)?,
+            internal_error_n_stage:            internal_denom(dr, ErrorNStage)?,
+            internal_query_stage:              internal_denom(dr, QueryStage)?,
+            internal_eval_stage:               internal_denom(dr, EvalStage)?,
+            internal_error_n_final_staged:     internal_denom(dr, ErrorNFinalStaged)?,
+            internal_eval_final_staged:        internal_denom(dr, EvalFinalStaged)?,
+            internal_hashes_1_circuit:         internal_denom(dr, Hashes1Circuit)?,
+            internal_hashes_2_circuit:         internal_denom(dr, Hashes2Circuit)?,
+            internal_partial_collapse_circuit: internal_denom(dr, PartialCollapseCircuit)?,
+            internal_full_collapse_circuit:    internal_denom(dr, FullCollapseCircuit)?,
+            internal_compute_v_circuit:        internal_denom(dr, ComputeVCircuit)?,
         })
     }
 }
@@ -199,6 +239,19 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
         (&eval.mesh_wy,            &query.right.new_mesh_wy_at_old_x, &d.old_x1),
         (&eval.mesh_wy,            &query.mesh_wxy,                   &d.x),
         (&eval.mesh_xy,            &query.mesh_wxy,                   &d.w),
+        // Fixed mesh polynomial queries at internal circuit omega^j points
+        (&eval.mesh_xy,            &query.fixed_mesh.preamble_stage,           &d.internal_preamble_stage),
+        (&eval.mesh_xy,            &query.fixed_mesh.error_m_stage,            &d.internal_error_m_stage),
+        (&eval.mesh_xy,            &query.fixed_mesh.error_n_stage,            &d.internal_error_n_stage),
+        (&eval.mesh_xy,            &query.fixed_mesh.query_stage,              &d.internal_query_stage),
+        (&eval.mesh_xy,            &query.fixed_mesh.eval_stage,               &d.internal_eval_stage),
+        (&eval.mesh_xy,            &query.fixed_mesh.error_n_final_staged,     &d.internal_error_n_final_staged),
+        (&eval.mesh_xy,            &query.fixed_mesh.eval_final_staged,        &d.internal_eval_final_staged),
+        (&eval.mesh_xy,            &query.fixed_mesh.hashes_1_circuit,         &d.internal_hashes_1_circuit),
+        (&eval.mesh_xy,            &query.fixed_mesh.hashes_2_circuit,         &d.internal_hashes_2_circuit),
+        (&eval.mesh_xy,            &query.fixed_mesh.partial_collapse_circuit, &d.internal_partial_collapse_circuit),
+        (&eval.mesh_xy,            &query.fixed_mesh.full_collapse_circuit,    &d.internal_full_collapse_circuit),
+        (&eval.mesh_xy,            &query.fixed_mesh.compute_v_circuit,        &d.internal_compute_v_circuit),
     ]
     .into_iter()
 }

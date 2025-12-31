@@ -1044,6 +1044,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     where
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
+        use InternalCircuitIndex::*;
         use arithmetic::factor_iter;
         use internal_circuits::stages::nested::f;
 
@@ -1052,6 +1053,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let _z = *z.value().take();
         let x = *x.value().take();
         let alpha = *alpha.value().take();
+
+        let omega_j = |idx: InternalCircuitIndex| -> C::CircuitField {
+            idx.circuit_index(self.num_application_steps).omega_j()
+        };
 
         // List of each query of every polynomial in this fuse step.
         let mut iters = [
@@ -1069,6 +1074,25 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(error_m.mesh_wy_poly.iter_coeffs(), right.challenges.x),
             factor_iter(error_m.mesh_wy_poly.iter_coeffs(), x),
             factor_iter(query.mesh_xy_poly.iter_coeffs(), w),
+            // Fixed mesh polynomial queries at internal circuit omega^j points
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(PreambleStage)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(ErrorMStage)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(ErrorNStage)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(QueryStage)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(EvalStage)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(ErrorNFinalStaged)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(EvalFinalStaged)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(Hashes1Circuit)),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(Hashes2Circuit)),
+            factor_iter(
+                query.mesh_xy_poly.iter_coeffs(),
+                omega_j(PartialCollapseCircuit),
+            ),
+            factor_iter(
+                query.mesh_xy_poly.iter_coeffs(),
+                omega_j(FullCollapseCircuit),
+            ),
+            factor_iter(query.mesh_xy_poly.iter_coeffs(), omega_j(ComputeVCircuit)),
         ];
 
         let mut coeffs = Vec::new();
@@ -1271,8 +1295,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             full_collapse_rx.commit(C::host_generators(self.params), full_collapse_rx_blind);
 
         // compute_v staged circuit.
-        let (compute_v_rx, _) = internal_circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new()
-            .rx::<R>(
+        let (compute_v_rx, _) = internal_circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new(
+            self.num_application_steps,
+        )
+        .rx::<R>(
             internal_circuits::compute_v::Witness {
                 unified_instance,
                 preamble_witness,
