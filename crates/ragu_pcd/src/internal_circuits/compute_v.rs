@@ -500,10 +500,14 @@ fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
     Ok((ax, bx))
 }
 
-/// Returns an iterator over the queries.
+/// Returns an iterator over the polynomial queries.
 ///
-/// Each yielded element represents $(p(u), v, (u - x_i)^{-1})$ where $v = p(x_i)$
-/// is the prover's claim for that query.
+/// Each yielded element represents $(p(u), v, (u - x_i)^{-1})$ where $v =
+/// p(x_i)$ is the prover's claim given polynomial $p(X)$.
+///
+/// The queries must be ordered exactly as in the prover's computation of $f(X)$
+/// in [`crate::Application::compute_f`], since the ordering affects the weight
+/// (with respect to $\alpha$) of each quotient polynomial.
 #[rustfmt::skip]
 fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
     eval: &'a native_eval::Output<'dr, D>,
@@ -514,90 +518,69 @@ fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Cycle, const HEADER_SIZE: usize>(
     computed_bx: &'a Element<'dr, D>,
 ) -> impl Iterator<Item = (&'a Element<'dr, D>, &'a Element<'dr, D>, &'a Element<'dr, D>)> {
     [
-        // Check p(X) accumulator
-        (&eval.left.p_poly,        &preamble.left.unified.v,          &d.left_u),
-        (&eval.right.p_poly,       &preamble.right.unified.v,         &d.right_u),
-        // Consistency checks for mesh polynomials
-        (&eval.left.mesh_xy_poly,  &query.left.old_mesh_xy_at_new_w,  &d.w),
-        (&eval.right.mesh_xy_poly, &query.right.old_mesh_xy_at_new_w, &d.w),
-        (&eval.mesh_wx0,           &query.left.old_mesh_xy_at_new_w,  &d.old_y0),
-        (&eval.mesh_wx1,           &query.right.old_mesh_xy_at_new_w, &d.old_y1),
-        (&eval.mesh_wx0,           &query.left.new_mesh_wy_at_old_x,  &d.y),
-        (&eval.mesh_wx1,           &query.right.new_mesh_wy_at_old_x, &d.y),
-        (&eval.mesh_wy,            &query.left.new_mesh_wy_at_old_x,  &d.old_x0),
-        (&eval.mesh_wy,            &query.right.new_mesh_wy_at_old_x, &d.old_x1),
-        (&eval.mesh_wy,            &query.mesh_wxy,                   &d.x),
-        (&eval.mesh_xy,            &query.mesh_wxy,                   &d.w),
-        // Fixed mesh polynomial queries at internal circuit omega^j points
-        (&eval.mesh_xy,            &query.fixed_mesh.preamble_stage,           &d.internal_preamble_stage),
-        (&eval.mesh_xy,            &query.fixed_mesh.error_m_stage,            &d.internal_error_m_stage),
-        (&eval.mesh_xy,            &query.fixed_mesh.error_n_stage,            &d.internal_error_n_stage),
-        (&eval.mesh_xy,            &query.fixed_mesh.query_stage,              &d.internal_query_stage),
-        (&eval.mesh_xy,            &query.fixed_mesh.eval_stage,               &d.internal_eval_stage),
-        (&eval.mesh_xy,            &query.fixed_mesh.error_n_final_staged,     &d.internal_error_n_final_staged),
-        (&eval.mesh_xy,            &query.fixed_mesh.eval_final_staged,        &d.internal_eval_final_staged),
-        (&eval.mesh_xy,            &query.fixed_mesh.hashes_1_circuit,         &d.internal_hashes_1_circuit),
-        (&eval.mesh_xy,            &query.fixed_mesh.hashes_2_circuit,         &d.internal_hashes_2_circuit),
-        (&eval.mesh_xy,            &query.fixed_mesh.partial_collapse_circuit, &d.internal_partial_collapse_circuit),
-        (&eval.mesh_xy,            &query.fixed_mesh.full_collapse_circuit,    &d.internal_full_collapse_circuit),
-        (&eval.mesh_xy,            &query.fixed_mesh.compute_v_circuit,        &d.internal_compute_v_circuit),
-        // Verify new_mesh_xy at child proof circuit_ids
-        (&eval.mesh_xy,            &query.left.new_mesh_xy_at_old_circuit_id,  &d.left_circuit_id),
-        (&eval.mesh_xy,            &query.right.new_mesh_xy_at_old_circuit_id, &d.right_circuit_id),
-        // Child A/B polynomial queries at current x
-        (&eval.left.a_poly,           &query.left.a_poly_at_x,           &d.x),
-        (&eval.left.b_poly,           &query.left.b_poly_at_x,           &d.x),
-        (&eval.right.a_poly,          &query.right.a_poly_at_x,          &d.x),
-        (&eval.right.b_poly,          &query.right.b_poly_at_x,          &d.x),
-        // Current step A/B polynomial queries at x
-        (&eval.a_poly,                computed_ax,                 &d.x),
-        (&eval.b_poly,                computed_bx,                 &d.x),
-        // Left child proof stage/circuit polynomials
-        (&eval.left.preamble,         &query.left.preamble_at_x,         &d.x),
-        (&eval.left.preamble,         &query.left.preamble_at_xz,        &d.xz),
-        (&eval.left.error_m,          &query.left.error_m_at_x,          &d.x),
-        (&eval.left.error_m,          &query.left.error_m_at_xz,         &d.xz),
-        (&eval.left.error_n,          &query.left.error_n_at_x,          &d.x),
-        (&eval.left.error_n,          &query.left.error_n_at_xz,         &d.xz),
-        (&eval.left.query,            &query.left.query_at_x,            &d.x),
-        (&eval.left.query,            &query.left.query_at_xz,           &d.xz),
-        (&eval.left.eval,             &query.left.eval_at_x,             &d.x),
-        (&eval.left.eval,             &query.left.eval_at_xz,            &d.xz),
-        (&eval.left.application,      &query.left.application_at_x,      &d.x),
-        (&eval.left.application,      &query.left.application_at_xz,     &d.xz),
-        (&eval.left.hashes_1,         &query.left.hashes_1_at_x,         &d.x),
-        (&eval.left.hashes_1,         &query.left.hashes_1_at_xz,        &d.xz),
-        (&eval.left.hashes_2,         &query.left.hashes_2_at_x,         &d.x),
-        (&eval.left.hashes_2,         &query.left.hashes_2_at_xz,        &d.xz),
-        (&eval.left.partial_collapse, &query.left.partial_collapse_at_x, &d.x),
-        (&eval.left.partial_collapse, &query.left.partial_collapse_at_xz,&d.xz),
-        (&eval.left.full_collapse,    &query.left.full_collapse_at_x,    &d.x),
-        (&eval.left.full_collapse,    &query.left.full_collapse_at_xz,   &d.xz),
-        (&eval.left.compute_v,        &query.left.compute_v_at_x,        &d.x),
-        (&eval.left.compute_v,        &query.left.compute_v_at_xz,       &d.xz),
-        // Right child proof stage/circuit polynomials
-        (&eval.right.preamble,        &query.right.preamble_at_x,        &d.x),
-        (&eval.right.preamble,        &query.right.preamble_at_xz,       &d.xz),
-        (&eval.right.error_m,         &query.right.error_m_at_x,         &d.x),
-        (&eval.right.error_m,         &query.right.error_m_at_xz,        &d.xz),
-        (&eval.right.error_n,         &query.right.error_n_at_x,         &d.x),
-        (&eval.right.error_n,         &query.right.error_n_at_xz,        &d.xz),
-        (&eval.right.query,           &query.right.query_at_x,           &d.x),
-        (&eval.right.query,           &query.right.query_at_xz,          &d.xz),
-        (&eval.right.eval,            &query.right.eval_at_x,            &d.x),
-        (&eval.right.eval,            &query.right.eval_at_xz,           &d.xz),
-        (&eval.right.application,     &query.right.application_at_x,     &d.x),
-        (&eval.right.application,     &query.right.application_at_xz,    &d.xz),
-        (&eval.right.hashes_1,        &query.right.hashes_1_at_x,        &d.x),
-        (&eval.right.hashes_1,        &query.right.hashes_1_at_xz,       &d.xz),
-        (&eval.right.hashes_2,        &query.right.hashes_2_at_x,        &d.x),
-        (&eval.right.hashes_2,        &query.right.hashes_2_at_xz,       &d.xz),
-        (&eval.right.partial_collapse,&query.right.partial_collapse_at_x,&d.x),
-        (&eval.right.partial_collapse,&query.right.partial_collapse_at_xz,&d.xz),
-        (&eval.right.full_collapse,   &query.right.full_collapse_at_x,   &d.x),
-        (&eval.right.full_collapse,   &query.right.full_collapse_at_xz,  &d.xz),
-        (&eval.right.compute_v,       &query.right.compute_v_at_x,       &d.x),
-        (&eval.right.compute_v,       &query.right.compute_v_at_xz,      &d.xz),
-    ]
-    .into_iter()
+        // Check p(u) = v for each child proof.
+        (&eval.left.p_poly,            &preamble.left.unified.v,                   &d.left_u),
+        (&eval.right.p_poly,           &preamble.right.unified.v,                  &d.right_u),
+        // m(W, x_i, y_i) -> m(w, x_i, Y)
+        (&eval.left.mesh_xy_poly,      &query.left.old_mesh_xy_at_new_w,           &d.w),
+        (&eval.right.mesh_xy_poly,     &query.right.old_mesh_xy_at_new_w,          &d.w),
+        (&eval.mesh_wx0,               &query.left.old_mesh_xy_at_new_w,           &d.old_y0),
+        (&eval.mesh_wx1,               &query.right.old_mesh_xy_at_new_w,          &d.old_y1),
+        // m(w, x_i, Y) -> m(w, X, y)
+        (&eval.mesh_wx0,               &query.left.new_mesh_wy_at_old_x,           &d.y),
+        (&eval.mesh_wx1,               &query.right.new_mesh_wy_at_old_x,          &d.y),
+        (&eval.mesh_wy,                &query.left.new_mesh_wy_at_old_x,           &d.old_x0),
+        (&eval.mesh_wy,                &query.right.new_mesh_wy_at_old_x,          &d.old_x1),
+        // m(w, X, y) -> s(W, x, y)
+        (&eval.mesh_wy,                &query.mesh_wxy,                            &d.x),
+        (&eval.mesh_xy,                &query.mesh_wxy,                            &d.w),
+    ].into_iter()
+    // m(\omega^j, x, y) evaluations for each internal index j
+    .chain([
+        (&query.fixed_mesh.preamble_stage,           &d.internal_preamble_stage),
+        (&query.fixed_mesh.error_m_stage,            &d.internal_error_m_stage),
+        (&query.fixed_mesh.error_n_stage,            &d.internal_error_n_stage),
+        (&query.fixed_mesh.query_stage,              &d.internal_query_stage),
+        (&query.fixed_mesh.eval_stage,               &d.internal_eval_stage),
+        (&query.fixed_mesh.error_n_final_staged,     &d.internal_error_n_final_staged),
+        (&query.fixed_mesh.eval_final_staged,        &d.internal_eval_final_staged),
+        (&query.fixed_mesh.hashes_1_circuit,         &d.internal_hashes_1_circuit),
+        (&query.fixed_mesh.hashes_2_circuit,         &d.internal_hashes_2_circuit),
+        (&query.fixed_mesh.partial_collapse_circuit, &d.internal_partial_collapse_circuit),
+        (&query.fixed_mesh.full_collapse_circuit,    &d.internal_full_collapse_circuit),
+        (&query.fixed_mesh.compute_v_circuit,        &d.internal_compute_v_circuit),
+    ].into_iter().map(|(v, denom)| (&eval.mesh_xy, v, denom)))
+    .chain([
+        // m(circuit_id_i, x, y) evaluations for the ith child proof
+        (&eval.mesh_xy,                &query.left.new_mesh_xy_at_old_circuit_id,  &d.left_circuit_id),
+        (&eval.mesh_xy,                &query.right.new_mesh_xy_at_old_circuit_id, &d.right_circuit_id),
+        // a_i(x), b_i(x) polynomial queries at x for each child proof
+        (&eval.left.a_poly,            &query.left.a_poly_at_x,                    &d.x),
+        (&eval.left.b_poly,            &query.left.b_poly_at_x,                    &d.x),
+        (&eval.right.a_poly,           &query.right.a_poly_at_x,                   &d.x),
+        (&eval.right.b_poly,           &query.right.b_poly_at_x,                   &d.x),
+        // a(x), b(x) polynomial queries for the new accumulator; crucially, these evaluations
+        // are computed by the verifier based on the other evaluations, NOT witnessed by the
+        // prover.
+        (&eval.a_poly,                 computed_ax,                                &d.x),
+        (&eval.b_poly,                 computed_bx,                                &d.x),
+    ])
+    // Stage and circuit evaluations for each child proof at both x and xz
+    // Note: both points are needed to perform circuit checks, which take
+    // the form << r, r \circ z + s_y + t_z >> = k_y.
+    .chain([(&eval.left, &query.left), (&eval.right, &query.right)]
+        .into_iter()
+        .flat_map(|(eval, query)| [
+            (&eval.preamble,         &query.preamble_at_x,         &query.preamble_at_xz),
+            (&eval.error_m,          &query.error_m_at_x,          &query.error_m_at_xz),
+            (&eval.error_n,          &query.error_n_at_x,          &query.error_n_at_xz),
+            (&eval.query,            &query.query_at_x,            &query.query_at_xz),
+            (&eval.eval,             &query.eval_at_x,             &query.eval_at_xz),
+            (&eval.application,      &query.application_at_x,      &query.application_at_xz),
+            (&eval.hashes_1,         &query.hashes_1_at_x,         &query.hashes_1_at_xz),
+            (&eval.hashes_2,         &query.hashes_2_at_x,         &query.hashes_2_at_xz),
+            (&eval.partial_collapse, &query.partial_collapse_at_x, &query.partial_collapse_at_xz),
+            (&eval.full_collapse,    &query.full_collapse_at_x,    &query.full_collapse_at_xz),
+            (&eval.compute_v,        &query.compute_v_at_x,        &query.compute_v_at_xz),
+        ].into_iter().flat_map(|(e, qx, qxz)| [(e, qx, &d.x), (e, qxz, &d.xz)])))
 }
