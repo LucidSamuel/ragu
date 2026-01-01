@@ -43,7 +43,7 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
     pub unified_instance: &'a unified::Instance<C>,
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
     pub query_witness: &'a native_query::Witness<C>,
-    pub eval_witness: &'a native_eval::Witness<'a, C, R>,
+    pub eval_witness: &'a native_eval::Witness<C::CircuitField>,
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField, R>
