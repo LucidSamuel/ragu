@@ -99,10 +99,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> StagedCircuit<C::CircuitField,
         let z = unified_output.z.get(dr, unified_instance)?;
         let x = unified_output.x.get(dr, unified_instance)?;
 
-        // TODO: make Evaluate take a Rank parameter, so that it internally
-        // calls log2_n() instead of allowing the caller to accidentally supply
-        // the wrong value.
-        let txz = dr.routine(Evaluate::new(R::log2_n()), (x.clone(), z.clone()))?;
+        let txz = dr.routine(Evaluate::<R>::new(), (x.clone(), z.clone()))?;
 
         // Enforce the claimed value `v` in the unified instance is correctly
         // computed based on committed evaluation claims and verifier

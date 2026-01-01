@@ -92,7 +92,7 @@ pub trait Rank:
             let x = Element::alloc(dr, x)?;
             let z = Element::alloc(dr, z)?;
 
-            dr.routine(txz::Evaluate::new(Self::log2_n()), (x, z))
+            dr.routine(txz::Evaluate::<Self>::new(), (x, z))
         })
         .expect("should synthesize correctly without triggering inversion errors")
         .value()
