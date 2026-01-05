@@ -21,7 +21,7 @@ use super::{
     InternalCircuitIndex,
     stages::native::{
         eval as native_eval, preamble as native_preamble,
-        query::{self as native_query, ChildEvaluations, FixedMeshEvaluations},
+        query::{self as native_query, ChildEvaluations, FixedMeshEvaluations, RxEval},
     },
     unified::{self, OutputBuilder},
 };
@@ -265,9 +265,6 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
     }
 }
 
-/// Rx type for evaluation context: (at_x, at_xz) tuple.
-type RxEval<'a, 'dr, D> = (&'a Element<'dr, D>, &'a Element<'dr, D>);
-
 /// Source providing rx evaluations from query output.
 struct EvaluationSource<'a, 'dr, D: Driver<'dr>> {
     left: &'a ChildEvaluations<'dr, D>,
@@ -275,8 +272,6 @@ struct EvaluationSource<'a, 'dr, D: Driver<'dr>> {
 }
 
 impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
-    /// For most components: (at_x, at_xz) tuple.
-    /// For AbA/AbB: (at_x, at_x) where second is unused by processor.
     type Rx = RxEval<'a, 'dr, D>;
 
     /// For app circuits: the mesh evaluation at the circuit's omega^j.
@@ -285,85 +280,47 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
     fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
         use RxComponent::*;
         match component {
-            // Raw claims: both values are at_x (processor only uses first element)
+            // Raw claims: only x evaluation is available
             AbA => [
-                (&self.left.a_poly_at_x, &self.left.a_poly_at_x),
-                (&self.right.a_poly_at_x, &self.right.a_poly_at_x),
+                RxEval::X(&self.left.a_poly_at_x),
+                RxEval::X(&self.right.a_poly_at_x),
             ]
             .into_iter(),
             AbB => [
-                (&self.left.b_poly_at_x, &self.left.b_poly_at_x),
-                (&self.right.b_poly_at_x, &self.right.b_poly_at_x),
+                RxEval::X(&self.left.b_poly_at_x),
+                RxEval::X(&self.right.b_poly_at_x),
             ]
             .into_iter(),
-            // Circuit claims: (at_x, at_xz) tuple
+            // Circuit claims: both x and xz evaluations available
             Application => [
-                (&self.left.application.at_x, &self.left.application.at_xz),
-                (&self.right.application.at_x, &self.right.application.at_xz),
+                self.left.application.to_eval(),
+                self.right.application.to_eval(),
             ]
             .into_iter(),
-            Hashes1 => [
-                (&self.left.hashes_1.at_x, &self.left.hashes_1.at_xz),
-                (&self.right.hashes_1.at_x, &self.right.hashes_1.at_xz),
-            ]
-            .into_iter(),
-            Hashes2 => [
-                (&self.left.hashes_2.at_x, &self.left.hashes_2.at_xz),
-                (&self.right.hashes_2.at_x, &self.right.hashes_2.at_xz),
-            ]
-            .into_iter(),
+            Hashes1 => [self.left.hashes_1.to_eval(), self.right.hashes_1.to_eval()].into_iter(),
+            Hashes2 => [self.left.hashes_2.to_eval(), self.right.hashes_2.to_eval()].into_iter(),
             PartialCollapse => [
-                (
-                    &self.left.partial_collapse.at_x,
-                    &self.left.partial_collapse.at_xz,
-                ),
-                (
-                    &self.right.partial_collapse.at_x,
-                    &self.right.partial_collapse.at_xz,
-                ),
+                self.left.partial_collapse.to_eval(),
+                self.right.partial_collapse.to_eval(),
             ]
             .into_iter(),
             FullCollapse => [
-                (
-                    &self.left.full_collapse.at_x,
-                    &self.left.full_collapse.at_xz,
-                ),
-                (
-                    &self.right.full_collapse.at_x,
-                    &self.right.full_collapse.at_xz,
-                ),
+                self.left.full_collapse.to_eval(),
+                self.right.full_collapse.to_eval(),
             ]
             .into_iter(),
             ComputeV => [
-                (&self.left.compute_v.at_x, &self.left.compute_v.at_xz),
-                (&self.right.compute_v.at_x, &self.right.compute_v.at_xz),
+                self.left.compute_v.to_eval(),
+                self.right.compute_v.to_eval(),
             ]
             .into_iter(),
-            PreambleStage => [
-                (&self.left.preamble.at_x, &self.left.preamble.at_xz),
-                (&self.right.preamble.at_x, &self.right.preamble.at_xz),
-            ]
-            .into_iter(),
-            ErrorMStage => [
-                (&self.left.error_m.at_x, &self.left.error_m.at_xz),
-                (&self.right.error_m.at_x, &self.right.error_m.at_xz),
-            ]
-            .into_iter(),
-            ErrorNStage => [
-                (&self.left.error_n.at_x, &self.left.error_n.at_xz),
-                (&self.right.error_n.at_x, &self.right.error_n.at_xz),
-            ]
-            .into_iter(),
-            QueryStage => [
-                (&self.left.query.at_x, &self.left.query.at_xz),
-                (&self.right.query.at_x, &self.right.query.at_xz),
-            ]
-            .into_iter(),
-            EvalStage => [
-                (&self.left.eval.at_x, &self.left.eval.at_xz),
-                (&self.right.eval.at_x, &self.right.eval.at_xz),
-            ]
-            .into_iter(),
+            PreambleStage => {
+                [self.left.preamble.to_eval(), self.right.preamble.to_eval()].into_iter()
+            }
+            ErrorMStage => [self.left.error_m.to_eval(), self.right.error_m.to_eval()].into_iter(),
+            ErrorNStage => [self.left.error_n.to_eval(), self.right.error_n.to_eval()].into_iter(),
+            QueryStage => [self.left.query.to_eval(), self.right.query.to_eval()].into_iter(),
+            EvalStage => [self.left.eval.to_eval(), self.right.eval.to_eval()].into_iter(),
         }
     }
 
@@ -411,17 +368,16 @@ impl<'a, 'dr, D: Driver<'dr>> EvaluationProcessor<'a, 'dr, D> {
 impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr, D>>
     for EvaluationProcessor<'a, 'dr, D>
 {
-    fn raw_claim(&mut self, (ax, _): RxEval<'a, 'dr, D>, (bx, _): RxEval<'a, 'dr, D>) {
-        // For raw claims, we use the at_x values directly (at_xz is unused)
-        self.ax.push(ax.clone());
-        self.bx.push(bx.clone());
+    fn raw_claim(&mut self, a: RxEval<'a, 'dr, D>, b: RxEval<'a, 'dr, D>) {
+        self.ax.push(a.x().clone());
+        self.bx.push(b.x().clone());
     }
 
-    fn circuit(&mut self, mesh: &'a Element<'dr, D>, (rx_x, rx_xz): RxEval<'a, 'dr, D>) {
+    fn circuit(&mut self, mesh: &'a Element<'dr, D>, rx: RxEval<'a, 'dr, D>) {
         // b(x) = rx(xz) + mesh + t(xz)
-        self.ax.push(rx_x.clone());
+        self.ax.push(rx.x().clone());
         self.bx
-            .push(rx_xz.add(self.dr, mesh).add(self.dr, self.txz));
+            .push(rx.xz().add(self.dr, mesh).add(self.dr, self.txz));
     }
 
     fn internal_circuit(
@@ -434,9 +390,9 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr
         let mut a_sum = Element::zero(self.dr);
         let mut b_sum = Element::zero(self.dr);
 
-        for (ax, bx) in rxs {
-            a_sum = a_sum.add(self.dr, ax);
-            b_sum = b_sum.add(self.dr, bx);
+        for rx in rxs {
+            a_sum = a_sum.add(self.dr, rx.x());
+            b_sum = b_sum.add(self.dr, rx.xz());
         }
 
         // a(x) = sum of all rx(x)
@@ -455,7 +411,7 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimProcessor<RxEval<'a, 'dr, D>, &'a Element<'dr
 
         // a(x) = fold of all rx(x) with z (Horner's rule)
         self.ax
-            .push(Element::fold(self.dr, rxs.map(|(ax, _)| ax), self.z)?);
+            .push(Element::fold(self.dr, rxs.map(|rx| rx.x()), self.z)?);
         // b(x) = mesh (s_y evaluated at circuit's omega^j)
         self.bx.push(mesh.clone());
         Ok(())

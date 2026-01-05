@@ -61,6 +61,41 @@ impl<'dr, D: Driver<'dr>> XzQuery<'dr, D> {
     }
 }
 
+/// Evaluation(s) of an rx polynomial at x and optionally xz.
+///
+/// For circuit claims, both x and xz evaluations are available. For raw a/b
+/// claims, only the x evaluation is available.
+pub enum RxEval<'a, 'dr, D: Driver<'dr>> {
+    /// Only the x evaluation is available (used for raw a/b queries).
+    X(&'a Element<'dr, D>),
+    /// Both x and xz evaluations are available.
+    Xz(&'a Element<'dr, D>, &'a Element<'dr, D>),
+}
+
+impl<'a, 'dr, D: Driver<'dr>> RxEval<'a, 'dr, D> {
+    /// Returns the evaluation at x.
+    pub fn x(&self) -> &'a Element<'dr, D> {
+        match self {
+            Self::X(x) | Self::Xz(x, _) => x,
+        }
+    }
+
+    /// Returns the evaluation at xz. Panics if only x is available.
+    pub fn xz(&self) -> &'a Element<'dr, D> {
+        match self {
+            Self::X(_) => panic!("xz evaluation not available for x-only RxEval"),
+            Self::Xz(_, xz) => xz,
+        }
+    }
+}
+
+impl<'dr, D: Driver<'dr>> XzQuery<'dr, D> {
+    /// Convert to an RxEval with both x and xz evaluations.
+    pub fn to_eval(&self) -> RxEval<'_, 'dr, D> {
+        RxEval::Xz(&self.at_x, &self.at_xz)
+    }
+}
+
 /// Pre-computed evaluations of mesh_xy at each internal circuit's omega^j.
 pub struct FixedMeshWitness<F> {
     pub preamble_stage: F,
