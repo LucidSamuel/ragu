@@ -1,3 +1,11 @@
+//! Evaluate the [`Step`] circuit.
+//!
+//! This creates a witness for the step circuit given the two input [`Pcd`]s and
+//! the step witness. This produces the [`proof::Application`] component of the
+//! proof. The inputs are all consumed, and the `left` and `right proofs are
+//! returned to the caller along with the auxiliary data from the application
+//! synthesis.
+
 use arithmetic::Cycle;
 use ff::Field;
 use ragu_circuits::{CircuitExt, polynomials::Rank};
@@ -23,7 +31,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         proof::Application<C, R>,
         S::Aux<'source>,
     )> {
-        let circuit_id = S::INDEX.circuit_index(self.num_application_steps)?;
         let (rx, aux) = Adapter::<C, S, R, HEADER_SIZE>::new(step).rx::<R>(
             (left.data, right.data, witness),
             self.circuit_mesh.get_key(),
@@ -37,7 +44,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             left.proof,
             right.proof,
             proof::Application {
-                circuit_id,
+                circuit_id: S::INDEX.circuit_index(self.num_application_steps)?,
                 left_header: left_header.into_inner(),
                 right_header: right_header.into_inner(),
                 rx,
