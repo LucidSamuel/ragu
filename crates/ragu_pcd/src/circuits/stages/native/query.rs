@@ -16,9 +16,9 @@ use ragu_primitives::Element;
 
 use core::marker::PhantomData;
 
-use crate::{Proof, internal_circuits::NUM_INTERNAL_CIRCUITS};
+use crate::{Proof, circuits::NUM_INTERNAL_CIRCUITS};
 
-pub use crate::internal_circuits::InternalCircuitIndex::QueryStage as STAGING_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::QueryStage as STAGING_ID;
 
 /// Witness for a polynomial evaluated at both x and xz.
 pub struct XzQueryWitness<T> {
@@ -253,11 +253,8 @@ impl<'dr, D: Driver<'dr>> FixedMeshEvaluations<'dr, D> {
     }
 
     /// Look up the mesh evaluation for the given internal circuit index.
-    pub fn circuit_mesh(
-        &self,
-        id: crate::internal_circuits::InternalCircuitIndex,
-    ) -> &Element<'dr, D> {
-        use crate::internal_circuits::InternalCircuitIndex::*;
+    pub fn circuit_mesh(&self, id: crate::circuits::InternalCircuitIndex) -> &Element<'dr, D> {
+        use crate::circuits::InternalCircuitIndex::*;
         match id {
             Hashes1Circuit => &self.hashes_1_circuit,
             Hashes2Circuit => &self.hashes_2_circuit,
@@ -423,7 +420,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal_circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
+    use crate::circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
 
     #[test]

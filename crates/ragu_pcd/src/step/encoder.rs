@@ -15,7 +15,7 @@ use ragu_primitives::{
 
 use alloc::vec::Vec;
 
-use super::{Header, padded};
+use super::{Header, internal::padded};
 
 /// A helper passed to step synthesis that provides access to the header data
 /// for an input, along with methods to encode it into either a header gadget

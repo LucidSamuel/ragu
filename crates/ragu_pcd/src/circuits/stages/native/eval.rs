@@ -15,7 +15,7 @@ use core::marker::PhantomData;
 
 use crate::Proof;
 
-pub use crate::internal_circuits::InternalCircuitIndex::EvalStage as STAGING_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::EvalStage as STAGING_ID;
 
 /// Pre-computed polynomial evaluations at $u$ (from the parent fuse operation)
 /// for a child proof.
@@ -215,7 +215,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal_circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
+    use crate::circuits::stages::native::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
 
     #[test]

@@ -18,7 +18,7 @@ use super::{
 };
 use crate::components::fold_revdot;
 
-pub use crate::internal_circuits::InternalCircuitIndex::FullCollapseCircuit as CIRCUIT_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::FullCollapseCircuit as CIRCUIT_ID;
 
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize, FP: fold_revdot::Parameters> {
     _marker: PhantomData<(C, R, FP)>,

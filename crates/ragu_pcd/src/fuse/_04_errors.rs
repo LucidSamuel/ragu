@@ -1,0 +1,244 @@
+use arithmetic::Cycle;
+use ff::Field;
+use ragu_circuits::{
+    polynomials::{Rank, structured},
+    staging::{Stage as StageTrait, StageExt},
+};
+use ragu_core::{
+    Result,
+    drivers::{Driver, emulator::Emulator},
+    maybe::{Always, Maybe},
+};
+use ragu_primitives::{Element, vec::FixedVec};
+use rand::Rng;
+
+use core::iter::{once, repeat_n};
+
+use crate::{
+    Application, Proof,
+    circuits::{
+        partial_collapse::NUM_UNIFIED_CIRCUITS,
+        stages::{
+            self,
+            native::error_n::{ChildKyValues, KyValues},
+        },
+    },
+    components::{
+        claim_builder::{self, ClaimBuilder},
+        fold_revdot::{self, NativeParameters},
+    },
+    proof,
+};
+
+use super::FuseProofSource;
+
+impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
+    pub(super) fn compute_errors_m<'dr, 'rx, D, RNG: Rng>(
+        &self,
+        rng: &mut RNG,
+        w: &Element<'dr, D>,
+        y: &Element<'dr, D>,
+        z: &Element<'dr, D>,
+        left: &'rx Proof<C, R>,
+        right: &'rx Proof<C, R>,
+    ) -> Result<(
+        proof::ErrorM<C, R>,
+        stages::native::error_m::Witness<C, NativeParameters>,
+        ClaimBuilder<'_, 'rx, C::CircuitField, R>,
+    )>
+    where
+        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+    {
+        let w = *w.value().take();
+        let y = *y.value().take();
+        let z = *z.value().take();
+
+        let mesh_wy_poly = self.circuit_mesh.wy(w, y);
+        let mesh_wy_blind = C::CircuitField::random(&mut *rng);
+        let mesh_wy_commitment =
+            mesh_wy_poly.commit(C::host_generators(self.params), mesh_wy_blind);
+
+        let source = FuseProofSource { left, right };
+        let mut builder = ClaimBuilder::new(&self.circuit_mesh, self.num_application_steps, y, z);
+        claim_builder::build_claims(&source, &mut builder)?;
+
+        let error_terms =
+            fold_revdot::compute_errors_m::<_, R, NativeParameters>(&builder.a, &builder.b);
+
+        let error_m_witness =
+            stages::native::error_m::Witness::<C, NativeParameters> { error_terms };
+        let stage_rx = stages::native::error_m::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
+            &error_m_witness,
+        )?;
+        let stage_blind = C::CircuitField::random(&mut *rng);
+        let stage_commitment = stage_rx.commit(C::host_generators(self.params), stage_blind);
+
+        let nested_error_m_witness = stages::nested::error_m::Witness {
+            native_error_m: stage_commitment,
+            mesh_wy: mesh_wy_commitment,
+        };
+        let nested_rx =
+            stages::nested::error_m::Stage::<C::HostCurve, R>::rx(&nested_error_m_witness)?;
+        let nested_blind = C::ScalarField::random(&mut *rng);
+        let nested_commitment = nested_rx.commit(C::nested_generators(self.params), nested_blind);
+
+        Ok((
+            proof::ErrorM {
+                mesh_wy_poly,
+                mesh_wy_blind,
+                mesh_wy_commitment,
+                stage_rx,
+                stage_blind,
+                stage_commitment,
+                nested_rx,
+                nested_blind,
+                nested_commitment,
+            },
+            error_m_witness,
+            builder,
+        ))
+    }
+
+    pub(super) fn compute_errors_n<'dr, D, RNG: Rng>(
+        &self,
+        rng: &mut RNG,
+        preamble_witness: &stages::native::preamble::Witness<'_, C, R, HEADER_SIZE>,
+        error_m_witness: &stages::native::error_m::Witness<C, NativeParameters>,
+        claim_builder: ClaimBuilder<'_, '_, C::CircuitField, R>,
+        y: &Element<'dr, D>,
+        mu: &Element<'dr, D>,
+        nu: &Element<'dr, D>,
+        sponge_state_elements: FixedVec<
+            C::CircuitField,
+            ragu_primitives::poseidon::PoseidonStateLen<C::CircuitField, C::CircuitPoseidon>,
+        >,
+    ) -> Result<(
+        proof::ErrorN<C, R>,
+        stages::native::error_n::Witness<C, NativeParameters>,
+        FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
+        FixedVec<
+            structured::Polynomial<C::CircuitField, R>,
+            <NativeParameters as fold_revdot::Parameters>::N,
+        >,
+    )>
+    where
+        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+    {
+        let y = *y.value().take();
+        let mu = *mu.value().take();
+        let nu = *nu.value().take();
+        let mu_inv = mu.invert().expect("mu must be non-zero");
+        let munu = mu * nu;
+        let a = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claim_builder.a, mu_inv);
+        let b = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claim_builder.b, munu);
+        drop(claim_builder);
+
+        let (ky, collapsed) = Emulator::emulate_wireless(
+            (preamble_witness, &error_m_witness.error_terms, y, mu, nu),
+            |dr, witness| {
+                let (preamble_witness, error_terms_m, y, mu, nu) = witness.cast();
+
+                let preamble = stages::native::preamble::Stage::<C, R, HEADER_SIZE>::default()
+                    .witness(dr, preamble_witness.view().map(|w| *w))?;
+
+                let y = Element::alloc(dr, y)?;
+                let left_application_ky = preamble.left.application_ky(dr, &y)?;
+                let right_application_ky = preamble.right.application_ky(dr, &y)?;
+                let (left_unified_ky, left_unified_bridge_ky) =
+                    preamble.left.unified_ky_values(dr, &y)?;
+                let (right_unified_ky, right_unified_bridge_ky) =
+                    preamble.right.unified_ky_values(dr, &y)?;
+
+                let mu = Element::alloc(dr, mu)?;
+                let nu = Element::alloc(dr, nu)?;
+
+                let mut ky_elements = once((
+                    preamble.left.unified.c.clone(),
+                    preamble.right.unified.c.clone(),
+                ))
+                .chain(once((
+                    left_application_ky.clone(),
+                    right_application_ky.clone(),
+                )))
+                .chain(once((
+                    left_unified_bridge_ky.clone(),
+                    right_unified_bridge_ky.clone(),
+                )))
+                .chain(repeat_n(
+                    (left_unified_ky.clone(), right_unified_ky.clone()),
+                    NUM_UNIFIED_CIRCUITS,
+                ))
+                .flat_map(|(l, r)| [l, r]);
+
+                let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
+
+                let collapsed = FixedVec::try_from_fn(|i| {
+                    let errors = FixedVec::try_from_fn(|j| {
+                        Element::alloc(dr, error_terms_m.view().map(|et| et[i][j]))
+                    })?;
+                    let ky_values = FixedVec::from_fn(|_| {
+                        ky_elements.next().unwrap_or_else(|| Element::zero(dr))
+                    });
+
+                    let v = fold_products
+                        .fold_products_m::<NativeParameters>(dr, &errors, &ky_values)?;
+                    Ok(*v.value().take())
+                })?;
+
+                let ky = KyValues {
+                    left: ChildKyValues {
+                        application: *left_application_ky.value().take(),
+                        unified: *left_unified_ky.value().take(),
+                        unified_bridge: *left_unified_bridge_ky.value().take(),
+                    },
+                    right: ChildKyValues {
+                        application: *right_application_ky.value().take(),
+                        unified: *right_unified_ky.value().take(),
+                        unified_bridge: *right_unified_bridge_ky.value().take(),
+                    },
+                };
+
+                Ok((ky, collapsed))
+            },
+        )?;
+
+        let error_terms = fold_revdot::compute_errors_n::<_, R, NativeParameters>(&a, &b);
+
+        let error_n_witness = stages::native::error_n::Witness::<C, NativeParameters> {
+            error_terms,
+            collapsed,
+            ky,
+            sponge_state_elements,
+        };
+        let stage_rx = stages::native::error_n::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(
+            &error_n_witness,
+        )?;
+        let stage_blind = C::CircuitField::random(&mut *rng);
+        let stage_commitment = stage_rx.commit(C::host_generators(self.params), stage_blind);
+
+        let nested_error_n_witness = stages::nested::error_n::Witness {
+            native_error_n: stage_commitment,
+        };
+        let nested_rx =
+            stages::nested::error_n::Stage::<C::HostCurve, R>::rx(&nested_error_n_witness)?;
+        let nested_blind = C::ScalarField::random(&mut *rng);
+        let nested_commitment = nested_rx.commit(C::nested_generators(self.params), nested_blind);
+
+        Ok((
+            proof::ErrorN {
+                stage_rx,
+                stage_blind,
+                stage_commitment,
+                nested_rx,
+                nested_blind,
+                nested_commitment,
+            },
+            error_n_witness,
+            a,
+            b,
+        ))
+    }
+}

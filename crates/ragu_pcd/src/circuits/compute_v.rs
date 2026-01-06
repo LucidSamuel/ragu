@@ -27,7 +27,7 @@ use super::{
 };
 use crate::components::horner::Horner;
 
-pub use crate::internal_circuits::InternalCircuitIndex::ComputeVCircuit as CIRCUIT_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::ComputeVCircuit as CIRCUIT_ID;
 
 pub struct Circuit<C: Cycle, R, const HEADER_SIZE: usize> {
     num_application_steps: usize,

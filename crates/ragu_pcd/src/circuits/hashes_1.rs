@@ -56,7 +56,7 @@
 //! only to avoid the extra overhead of witnessing the `left`/`right` output
 //! headers in circuits that do not use the preamble stage.
 //!
-//! The output is wrapped in a [`Suffix`] with a zero element appended. This
+//! The output is wrapped in a [`WithSuffix`] with a zero element appended. This
 //! ensures the public input serialization matches the $k(y)$ computation for
 //! `unified_ky`, which is defined as $k(y)$ over `(unified, 0)`. The trailing
 //! zero aligns the internal circuit's public inputs with the expected format
@@ -68,7 +68,7 @@
 //! [$w$]: unified::Output::w
 //! [$y$]: unified::Output::y
 //! [$z$]: unified::Output::z
-//! [`Suffix`]: crate::components::suffix::Suffix
+//! [`WithSuffix`]: crate::components::suffix::WithSuffix
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -96,9 +96,9 @@ use super::{
     },
     unified::{self, OutputBuilder},
 };
-use crate::components::{fold_revdot, root_of_unity, suffix::Suffix};
+use crate::components::{fold_revdot, root_of_unity, suffix::WithSuffix};
 
-pub use crate::internal_circuits::InternalCircuitIndex::Hashes1Circuit as CIRCUIT_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::Hashes1Circuit as CIRCUIT_ID;
 
 /// Public output of the first hash circuit.
 ///
@@ -182,7 +182,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
     type Instance<'source> = &'source unified::Instance<C>;
     type Witness<'source> = Witness<'source, C, R, HEADER_SIZE, FP>;
-    type Output = Kind![C::CircuitField; Suffix<'_, _, Output<'_, _, C, HEADER_SIZE>>];
+    type Output = Kind![C::CircuitField; WithSuffix<'_, _, Output<'_, _, C, HEADER_SIZE>>];
     type Aux<'source> = ();
 
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -296,6 +296,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         };
 
         let zero = Element::zero(dr);
-        Ok((Suffix::new(output, zero), D::just(|| ())))
+        Ok((WithSuffix::new(output, zero), D::just(|| ())))
     }
 }

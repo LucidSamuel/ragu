@@ -14,10 +14,10 @@ use core::iter::{once, repeat, repeat_n};
 
 use crate::{
     Application, Pcd, Proof,
+    circuits::partial_collapse::NUM_UNIFIED_CIRCUITS,
+    circuits::stages::native::preamble::ProofInputs,
     components::claim_builder::{self, ClaimBuilder, ClaimSource, RxComponent},
     header::Header,
-    internal_circuits::partial_collapse::NUM_UNIFIED_CIRCUITS,
-    internal_circuits::stages::native::preamble::ProofInputs,
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {

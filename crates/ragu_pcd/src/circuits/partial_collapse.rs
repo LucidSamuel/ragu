@@ -34,7 +34,7 @@ use super::{
 };
 use crate::components::fold_revdot;
 
-pub use crate::internal_circuits::InternalCircuitIndex::PartialCollapseCircuit as CIRCUIT_ID;
+pub(crate) use crate::circuits::InternalCircuitIndex::PartialCollapseCircuit as CIRCUIT_ID;
 
 /// Number of circuits that use the unified k(y) value per proof.
 // TODO: this constant seems brittle because it may vary between the two fields.
