@@ -11,6 +11,7 @@
 //! - [`build_claims`]: Orchestrates claim building in unified order
 
 use alloc::{borrow::Cow, vec::Vec};
+use core::iter::repeat_n;
 use ff::PrimeField;
 use ragu_circuits::{
     mesh::{CircuitIndex, Mesh},
@@ -19,6 +20,14 @@ use ragu_circuits::{
 use ragu_core::Result;
 
 use crate::circuits::{self, InternalCircuitIndex};
+
+/// Number of circuits that use the unified k(y) value per proof.
+///
+/// This is the count of internal circuits (hashes_1, hashes_2, partial_collapse,
+/// full_collapse) that share the same unified k(y) value. The unified_ky iterator
+/// from [`KySource`] is repeated this many times in [`ky_values`].
+// TODO: this constant seems brittle because it may vary between the two fields.
+pub const NUM_UNIFIED_CIRCUITS: usize = 4;
 
 /// Enum identifying which rx polynomial to retrieve from a proof.
 #[derive(Clone, Copy, Debug)]
@@ -327,4 +336,40 @@ impl<'m, 'rx, F: PrimeField, R: Rank>
         self.b.push(Cow::Owned(sy));
         Ok(())
     }
+}
+
+/// Trait for providing k(y) values for claim verification.
+pub trait KySource {
+    /// The k(y) value type.
+    type Ky: Clone;
+
+    /// Iterator over raw_c values (the c from AB proof / preamble unified).
+    fn raw_c(&self) -> impl Iterator<Item = Self::Ky>;
+
+    /// Iterator over application circuit k(y) values.
+    fn application_ky(&self) -> impl Iterator<Item = Self::Ky>;
+
+    /// Iterator over unified bridge k(y) values.
+    fn unified_bridge_ky(&self) -> impl Iterator<Item = Self::Ky>;
+
+    /// Base iterator over unified k(y) values (will be repeated [`NUM_UNIFIED_CIRCUITS`] times).
+    /// The `+ Clone` bound is required for `repeat_n` in [`ky_values`].
+    fn unified_ky(&self) -> impl Iterator<Item = Self::Ky> + Clone;
+
+    /// The zero value for stage claims.
+    fn zero(&self) -> Self::Ky;
+}
+
+/// Build an iterator over k(y) values in claim order.
+///
+/// Chains the k(y) sources in the order required by [`build_claims`],
+/// with `unified_ky` repeated [`NUM_UNIFIED_CIRCUITS`] times,
+/// followed by infinite zeros for stage claims.
+pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    source
+        .raw_c()
+        .chain(source.application_ky())
+        .chain(source.unified_bridge_ky())
+        .chain(repeat_n(source.unified_ky(), NUM_UNIFIED_CIRCUITS).flatten())
+        .chain(core::iter::repeat(source.zero()))
 }
