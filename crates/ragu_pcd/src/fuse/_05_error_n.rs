@@ -28,7 +28,7 @@ use crate::{
         nested,
     },
     components::{
-        claim_builder::{TwoProofKySource, ky_values},
+        claims::{TwoProofKySource, ky_values},
         fold_revdot::{self, NativeParameters},
     },
     proof,
@@ -42,7 +42,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, NativeParameters>,
-        claim_builder: crate::components::claim_builder::ClaimBuilder<'_, '_, C::CircuitField, R>,
+        claims: crate::components::claims::ClaimBuilder<'_, '_, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
         nu: &Element<'dr, D>,
@@ -64,9 +64,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nu = *nu.value().take();
         let mu_inv = mu.invert().expect("mu must be non-zero");
         let munu = mu * nu;
-        let a = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claim_builder.a, mu_inv);
-        let b = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claim_builder.b, munu);
-        drop(claim_builder);
+        let a = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claims.a, mu_inv);
+        let b = fold_revdot::fold_polys_m::<_, R, NativeParameters>(&claims.b, munu);
+        drop(claims);
 
         let (ky, collapsed) = Emulator::emulate_wireless(
             (preamble_witness, &error_m_witness.error_terms, y, mu, nu),

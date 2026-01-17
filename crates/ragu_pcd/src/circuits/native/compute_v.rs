@@ -59,7 +59,7 @@ use ragu_primitives::{Element, Endoscalar, GadgetExt};
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::components::claim_builder::{self, ClaimProcessor, ClaimSource, NativeRxComponent};
+use crate::components::claims::{self as claims, ClaimProcessor, ClaimSource, NativeRxComponent};
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 
 use super::{
@@ -374,7 +374,7 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
 /// required by [`build_claims`]. The ordering must match exactly
 /// to ensure correct folding correspondence with the prover's computation.
 ///
-/// [`build_claims`]: claim_builder::build_claims
+/// [`build_claims`]: claims::build_claims
 struct EvaluationSource<'a, 'dr, D: Driver<'dr>> {
     left: &'a ChildEvaluations<'dr, D>,
     right: &'a ChildEvaluations<'dr, D>,
@@ -546,13 +546,13 @@ fn compute_axbx<'dr, D: Driver<'dr>, P: Parameters>(
     mu_prime_nu_prime: &Element<'dr, D>,
 ) -> Result<(Element<'dr, D>, Element<'dr, D>)> {
     // Build ax/bx evaluation vectors using the unified claim building abstraction.
-    // This ensures the ordering matches claim_builder::build_claims() exactly.
+    // This ensures the ordering matches claims::build_claims() exactly.
     let source = EvaluationSource {
         left: &query.left,
         right: &query.right,
     };
     let mut processor = EvaluationProcessor::new(dr, z, txz, &query.fixed_mesh);
-    claim_builder::build_claims(&source, &mut processor)?;
+    claims::build_claims(&source, &mut processor)?;
 
     let (ax_sources, bx_sources) = processor.build();
     let ax = fold_two_layer::<_, P>(dr, &ax_sources, mu_inv, mu_prime_inv)?;

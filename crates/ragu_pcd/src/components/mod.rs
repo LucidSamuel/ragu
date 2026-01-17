@@ -1,6 +1,6 @@
 //! Reusable or isolated internal components.
 
-pub(crate) mod claim_builder;
+pub(crate) mod claims;
 #[allow(dead_code)]
 pub(crate) mod endoscalar;
 pub(crate) mod fold_revdot;

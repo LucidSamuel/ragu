@@ -22,7 +22,7 @@ use crate::{
     Application, Proof,
     circuits::{native, nested},
     components::{
-        claim_builder::{self, ClaimBuilder},
+        claims::{self as claims, ClaimBuilder},
         fold_revdot::{self, NativeParameters},
     },
     proof,
@@ -58,7 +58,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let source = FuseProofSource { left, right };
         let mut builder = ClaimBuilder::new(&self.native_mesh, self.num_application_steps, y, z);
-        claim_builder::build_claims(&source, &mut builder)?;
+        claims::build_claims(&source, &mut builder)?;
 
         let error_terms =
             fold_revdot::compute_errors_m::<_, R, NativeParameters>(&builder.a, &builder.b);

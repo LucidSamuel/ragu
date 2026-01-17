@@ -15,8 +15,8 @@ use core::iter::once;
 use crate::{
     Application, Pcd, Proof,
     circuits::native::stages::preamble::ProofInputs,
-    components::claim_builder::{
-        self, ClaimBuilder, ClaimSource, KySource, NativeRxComponent, ky_values,
+    components::claims::{
+        self as claims, ClaimBuilder, ClaimSource, KySource, NativeRxComponent, ky_values,
     },
     header::Header,
 };
@@ -70,7 +70,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Build a and b polynomials for each revdot claim.
         let source = SingleProofSource { proof: &pcd.proof };
         let mut builder = ClaimBuilder::new(&self.native_mesh, self.num_application_steps, y, z);
-        claim_builder::build_claims(&source, &mut builder)?;
+        claims::build_claims(&source, &mut builder)?;
 
         // Check all revdot claims.
         let revdot_claims = {

@@ -21,7 +21,7 @@ use rand::Rng;
 
 use crate::{
     Application, Pcd, Proof,
-    components::claim_builder::{ClaimSource, NativeRxComponent},
+    components::claims::{ClaimSource, NativeRxComponent},
     proof,
     step::Step,
 };
@@ -68,7 +68,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = transcript.squeeze(&mut dr)?;
         let z = transcript.squeeze(&mut dr)?;
 
-        let (error_m, error_m_witness, claim_builder) =
+        let (error_m, error_m_witness, claims) =
             self.compute_errors_m(rng, &w, &y, &z, &left, &right)?;
         Point::constant(&mut dr, error_m.nested_commitment)?.write(&mut dr, &mut transcript)?;
 
@@ -88,7 +88,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             rng,
             &preamble_witness,
             &error_m_witness,
-            claim_builder,
+            claims,
             &y,
             &mu,
             &nu,
