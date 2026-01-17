@@ -62,28 +62,6 @@ pub enum NativeRxComponent {
     Eval,
 }
 
-/// Enum identifying which nested field rx polynomial to retrieve from a proof.
-#[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
-pub enum NestedRxComponent {
-    /// The preamble nested rx polynomial.
-    Preamble,
-    /// The s_prime nested rx polynomial.
-    SPrime,
-    /// The error_m nested rx polynomial.
-    ErrorM,
-    /// The error_n nested rx polynomial.
-    ErrorN,
-    /// The ab nested rx polynomial.
-    Ab,
-    /// The query nested rx polynomial.
-    Query,
-    /// The f nested rx polynomial.
-    F,
-    /// The eval nested rx polynomial.
-    Eval,
-}
-
 /// Trait for providing claim component values from sources.
 ///
 /// This trait abstracts over what a "source" provides. For polynomial contexts
