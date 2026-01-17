@@ -1,3 +1,31 @@
+//! Partial evaluation of `s(X,Y)` at a fixed point `X = x`.
+//! See the [parent module][`super`] for background on `s(X,Y)`.
+//!
+//! This module provides [`eval`], which computes `s(x, Y)`—the wiring polynomial
+//! evaluated at a concrete `x`, yielding a univariate polynomial in `Y`.
+//!
+//! The output `s(x, Y) = Σⱼ cⱼ · Yʲ` has one coefficient per linear constraint
+//! in the circuit. Each `cⱼ` is computed by evaluating a univarate polynomial in
+//! `X` that consists of linear combination of monomial terms at `X=x`.
+//!
+//! # How it works
+//!
+//! The [`Evaluator`] driver re-interprets circuit operations to compute polynomial
+//! coefficients directly:
+//!
+//! - `mul()`: returns wire handles that are actually monomial evaluations
+//!   (`x^{2n-1-i}`, `x^{2n+i}`, `x^{4n-1-i}` for the `i`-th multiplication gate).
+//!
+//! - `add()`: accumulates a linear combination of these evaluations and returns
+//!   the sum (actually `MonomialSum`) as a handle to the virtual wire.
+//!
+//! - `enforce_zero()`: stores the accumulated sum as coefficient `cⱼ` and
+//!   advances to the next constraint.
+//!
+//! Since the wiring polynomial encodes only linear constraints, multiplication
+//! gates (`a · b = c`) are not enforced—`mul()` simply prepares the monomial
+//! basis that linear constraints reference.
+
 use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
@@ -22,7 +50,7 @@ use crate::{
 use super::{Monomial, MonomialSum};
 
 /// Driver for computing partial evaluation $s(x, Y)$.
-struct Collector<F: Field, R: Rank> {
+struct Evaluator<F: Field, R: Rank> {
     result: unstructured::Polynomial<F, R>,
     multiplication_constraints: usize,
     linear_constraints: usize,
@@ -36,7 +64,7 @@ struct Collector<F: Field, R: Rank> {
     _marker: core::marker::PhantomData<R>,
 }
 
-impl<F: Field, R: Rank> DriverTypes for Collector<F, R> {
+impl<F: Field, R: Rank> DriverTypes for Evaluator<F, R> {
     type MaybeKind = Empty;
     type LCadd = MonomialSum<F>;
     type LCenforce = MonomialSum<F>;
@@ -44,7 +72,7 @@ impl<F: Field, R: Rank> DriverTypes for Collector<F, R> {
     type ImplWire = Monomial<F>;
 }
 
-impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
+impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<F, R> {
     type F = F;
     type Wire = Monomial<F>;
 
@@ -143,7 +171,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let xn4 = xn2.square();
     let current_w_x = xn4 * x_inv;
 
-    let mut collector = Collector::<F, R> {
+    let mut evaluator = Evaluator::<F, R> {
         result: unstructured::Polynomial::new(),
         multiplication_constraints,
         linear_constraints,
@@ -156,25 +184,32 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         available_b: None,
         _marker: core::marker::PhantomData,
     };
-    let (key_wire, _, one) = collector.mul(|| unreachable!())?;
+    // c_0 = 1, reserve the constant ONE wire
+    let (key_wire, _, one) = evaluator.mul(|| unreachable!())?;
 
     // Enforce linear constraint key_wire = key to randomize non-trivial
     // evaluations of this circuit polynomial.
-    collector.enforce_zero(|lc| {
+    evaluator.enforce_zero(|lc| {
         lc.add(&key_wire)
             .add_term(&one, Coeff::NegativeArbitrary(key))
     })?;
 
     let mut outputs = vec![];
-    let (io, _) = circuit.witness(&mut collector, Empty)?;
-    io.write(&mut collector, &mut outputs)?;
+    let (io, _) = circuit.witness(&mut evaluator, Empty)?;
+    io.write(&mut evaluator, &mut outputs)?;
+    // enforcing public output wires = k_j in the public wires, see `ky::eval()`
     for output in outputs {
-        collector.enforce_zero(|lc| lc.add(output.wire()))?;
+        evaluator.enforce_zero(|lc| lc.add(output.wire()))?;
     }
-    collector.enforce_zero(|lc| lc.add(&one))?;
+    // enforcing c_0 = k_0 (=1)
+    evaluator.enforce_zero(|lc| lc.add(&one))?;
 
-    collector.result[0..collector.linear_constraints].reverse();
-    assert_eq!(collector.result[0], collector.one);
+    // Order (built in reverse order):
+    // - ONE wire constraint
+    // - public output for the actual circuit logic
+    // - mesh key binding constraint
+    evaluator.result[0..evaluator.linear_constraints].reverse();
+    assert_eq!(evaluator.result[0], evaluator.one);
 
-    Ok(collector.result)
+    Ok(evaluator.result)
 }

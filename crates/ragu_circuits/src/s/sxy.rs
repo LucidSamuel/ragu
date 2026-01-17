@@ -1,3 +1,14 @@
+//! Evaluate the circuit polynomial s(x, y) at fixed x and y.
+//! See module level [documentation][`crate::s`] for background,
+//! and [`sx` module](crate::s::sx) for how the Evaluator driver works for partial
+//! evaluation `s(x, Y)`.
+//!
+//! `sxy::Evaluator` employs similar driver logic as `sx::Evaluator` but more
+//! memory efficient since it only needs to keep track of a single valuation value
+//! instead of a vector of coefficients. More importantly, it is subject to more
+//! aggressive optimizations through multi-dimennsional routine memoization.
+//! See <https://github.com/tachyon-zcash/ragu/issues/58> for details.
+
 use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
@@ -13,9 +24,9 @@ use alloc::vec;
 
 use crate::{Circuit, polynomials::Rank};
 
-use super::{Wire, WireSum};
+use super::{Monomial, MonomialSum};
 
-struct Collector<F, R> {
+struct Evaluator<F, R> {
     result: F,
     multiplication_constraints: usize,
     linear_constraints: usize,
@@ -26,23 +37,23 @@ struct Collector<F, R> {
     current_u_x: F, // x^{2 * n - 1 - i}
     current_v_x: F, // x^{2 * n + i}
     current_w_x: F, // x^{4 * n - 1 - i}
-    available_b: Option<Wire<F>>,
+    available_b: Option<Monomial<F>>,
     _marker: core::marker::PhantomData<R>,
 }
 
-impl<F: Field, R: Rank> DriverTypes for Collector<F, R> {
+impl<F: Field, R: Rank> DriverTypes for Evaluator<F, R> {
     type MaybeKind = Empty;
-    type LCadd = WireSum<F>;
-    type LCenforce = WireSum<F>;
+    type LCadd = MonomialSum<F>;
+    type LCenforce = MonomialSum<F>;
     type ImplField = F;
-    type ImplWire = Wire<F>;
+    type ImplWire = Monomial<F>;
 }
 
-impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
+impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<F, R> {
     type F = F;
-    type Wire = Wire<F>;
+    type Wire = Monomial<F>;
 
-    const ONE: Self::Wire = Wire::One;
+    const ONE: Self::Wire = Monomial::One;
 
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
         if let Some(wire) = self.available_b.take() {
@@ -73,11 +84,11 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
         self.current_v_x *= self.x;
         self.current_w_x *= self.x_inv;
 
-        Ok((Wire::Value(a), Wire::Value(b), Wire::Value(c)))
+        Ok((Monomial::Value(a), Monomial::Value(b), Monomial::Value(c)))
     }
 
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
-        Wire::Value(lc(WireSum::new(self.one)).value)
+        Monomial::Value(lc(MonomialSum::new(self.one)).value)
     }
 
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
@@ -88,7 +99,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
         self.linear_constraints += 1;
 
         self.result *= self.y;
-        self.result += lc(WireSum::new(self.one)).value;
+        self.result += lc(MonomialSum::new(self.one)).value;
 
         Ok(())
     }
@@ -115,6 +126,9 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Collector<F, R> {
     }
 }
 
+/// Evaluate the wiring polynomial `s(X,Y)` at fixed point `(x,y)` with mesh key `key`.
+/// Mesh key augment the original `circuit` with one more `key`-related linear
+/// constraint, thus binding `circuit` to an outer `Mesh` context.
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(circuit: &C, x: F, y: F, key: F) -> Result<F> {
     if x == F::ZERO {
         // The polynomial is zero if x is zero.
@@ -135,7 +149,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(circuit: &C, x: F, y: F, key: F) -
         return Ok(current_w_x);
     }
 
-    let mut dr = Collector::<F, R> {
+    let mut dr = Evaluator::<F, R> {
         result: F::ZERO,
         multiplication_constraints: 0,
         linear_constraints: 0,

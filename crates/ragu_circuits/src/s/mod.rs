@@ -59,7 +59,7 @@ use ragu_core::drivers::LinearExpression;
 ///
 /// When a circuit is executed under a standard constraint system driver,
 /// `Wire` represents an index. When executed under a polynomial evaluation
-/// driver (like `Collector`), `Wire` is bound to this `Monomial` type,
+/// driver (like `Evaluator`), `Wire` is bound to this `Monomial` type,
 /// allowing the same gadget code to compute polynomial coefficients instead
 /// of building constraints.
 #[derive(Clone)]
