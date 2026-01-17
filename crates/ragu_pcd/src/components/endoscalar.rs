@@ -17,7 +17,8 @@
 //! curve type and number of points.
 
 use arithmetic::{CurveAffine, Uendo};
-use ff::Field;
+use ff::{Field, WithSmallOrderMulGroup};
+use pasta_curves::group::{Curve, prime::PrimeCurveAffine};
 use ragu_circuits::{
     polynomials::Rank,
     staging::{Stage, StageBuilder, StagedCircuit},
@@ -29,9 +30,11 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Element, Endoscalar, Point,
+    Element, Endoscalar, Point, compute_endoscalar,
     vec::{FixedVec, Len},
 };
+
+use alloc::vec;
 
 /// Number of endoscaling operations per step. This is how many we can fit into
 /// a single circuit in our target circuit size.
@@ -94,6 +97,58 @@ pub struct PointsWitness<C: CurveAffine, const NUM_POINTS: usize> {
     pub inputs: FixedVec<C, InputsLen<NUM_POINTS>>,
     /// Interstitial outputs, one per step.
     pub interstitials: FixedVec<C, NumStepsLen<NUM_POINTS>>,
+}
+
+impl<C: CurveAffine + PrimeCurveAffine, const NUM_POINTS: usize> PointsWitness<C, NUM_POINTS>
+where
+    C::Scalar: WithSmallOrderMulGroup<3>,
+{
+    /// Creates a new `PointsWitness` from points and an endoscalar.
+    ///
+    /// The first point becomes `initial`, remaining points become `inputs`,
+    /// and `interstitials` are computed by simulating the Horner evaluation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `points.len() != NUM_POINTS`.
+    pub fn new(endoscalar: Uendo, points: &[C]) -> Self {
+        assert_eq!(points.len(), NUM_POINTS, "expected {NUM_POINTS} points");
+
+        let initial = points[0];
+        let points = &points[1..];
+        let inputs = FixedVec::from_fn(|i| points[i]);
+
+        let endoscalar: C::Scalar = compute_endoscalar(endoscalar);
+
+        // Compute interstitials using chunked Horner iteration
+        let mut interstitials = vec::Vec::with_capacity(NumStepsLen::<NUM_POINTS>::len());
+        let mut acc = initial.to_curve();
+
+        if points.is_empty() {
+            interstitials.push(acc);
+        } else {
+            // TODO: we can use multiexps in batches here
+            for chunk in points.chunks(ENDOSCALINGS_PER_STEP) {
+                for input in chunk {
+                    acc = acc * endoscalar + input.to_curve();
+                }
+                interstitials.push(acc);
+            }
+        }
+
+        let interstitials = {
+            // Batch normalize projective points to affine
+            let mut tmp = vec![C::identity(); interstitials.len()];
+            C::Curve::batch_normalize(&interstitials, &mut tmp);
+            FixedVec::new(tmp).expect("correct length")
+        };
+
+        Self {
+            initial,
+            inputs,
+            interstitials,
+        }
+    }
 }
 
 /// Output gadget containing initial, inputs, and interstitials. See [`PointsWitness`].
@@ -279,10 +334,7 @@ mod tests {
         maybe::Maybe,
     };
     use ragu_pasta::{Ep, EpAffine, Fp, Fq};
-    use ragu_primitives::{
-        Endoscalar,
-        vec::{FixedVec, Len},
-    };
+    use ragu_primitives::{Endoscalar, vec::Len};
     use rand::{Rng, thread_rng};
 
     type R = polynomials::R<13>;
@@ -364,29 +416,14 @@ mod tests {
             (Ep::generator() * <Ep as Group>::Scalar::random(thread_rng())).to_affine()
         });
 
-        // Extract initial point and the rest as inputs
-        let initial = base_inputs[0];
-        let inputs_slice = &base_inputs[1..];
-
         // Compute expected final result via Horner over all base inputs.
         let expected = compute_horner_native(endoscalar, &base_inputs);
 
-        // Compute interstitials
-        let interstitials_vec =
-            compute_interstitials::<NUM_POINTS>(endoscalar, initial, inputs_slice);
+        // Construct witness using the constructor
+        let points = PointsWitness::<EpAffine, NUM_POINTS>::new(endoscalar, &base_inputs);
 
         // Verify final interstitial matches expected
-        assert_eq!(interstitials_vec[num_steps - 1], expected);
-
-        let inputs: FixedVec<EpAffine, InputsLen<NUM_POINTS>> =
-            FixedVec::from_fn(|i| inputs_slice[i]);
-        let interstitials: FixedVec<EpAffine, NumStepsLen<NUM_POINTS>> =
-            FixedVec::from_fn(|i| interstitials_vec[i]);
-        let points = PointsWitness {
-            initial,
-            inputs: inputs.clone(),
-            interstitials: interstitials.clone(),
-        };
+        assert_eq!(points.interstitials[num_steps - 1], expected);
 
         // Run each step through the staged circuit and verify correctness.
         for step in 0..num_steps {
@@ -450,29 +487,14 @@ mod tests {
             (Ep::generator() * <Ep as Group>::Scalar::random(thread_rng())).to_affine()
         });
 
-        // Extract initial point and the rest as inputs
-        let initial = base_inputs[0];
-        let inputs_slice = &base_inputs[1..];
-
         // Compute expected final result via Horner over all base inputs.
         let expected = compute_horner_native(endoscalar, &base_inputs);
 
-        // Compute interstitials
-        let interstitials_vec =
-            compute_interstitials::<NUM_POINTS>(endoscalar, initial, inputs_slice);
+        // Construct witness using the constructor
+        let points = PointsWitness::<EpAffine, NUM_POINTS>::new(endoscalar, &base_inputs);
 
         // Verify final interstitial matches expected
-        assert_eq!(interstitials_vec[num_steps - 1], expected);
-
-        let inputs: FixedVec<EpAffine, InputsLen<NUM_POINTS>> =
-            FixedVec::from_fn(|i| inputs_slice[i]);
-        let interstitials: FixedVec<EpAffine, NumStepsLen<NUM_POINTS>> =
-            FixedVec::from_fn(|i| interstitials_vec[i]);
-        let points = PointsWitness {
-            initial,
-            inputs: inputs.clone(),
-            interstitials: interstitials.clone(),
-        };
+        assert_eq!(points.interstitials[num_steps - 1], expected);
 
         // Run each step through the staged circuit.
         for step in 0..num_steps {
@@ -593,5 +615,54 @@ mod tests {
         assert_eq!(range::<14>(1), 4..8);
         assert_eq!(range::<14>(2), 8..12);
         assert_eq!(range::<14>(3), 12..13);
+    }
+
+    #[test]
+    fn test_points_witness_new() {
+        /// Verifies PointsWitness::new produces identical results to manual construction.
+        fn check<const NUM_POINTS: usize>() {
+            let endoscalar: Uendo = thread_rng().r#gen();
+            let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
+                (Ep::generator() * <Ep as Group>::Scalar::random(thread_rng())).to_affine()
+            });
+
+            // Compute via PointsWitness::new
+            let from_new = PointsWitness::<EpAffine, NUM_POINTS>::new(endoscalar, &base_inputs);
+
+            // Compute manually using test helper
+            let initial = base_inputs[0];
+            let inputs_slice = &base_inputs[1..];
+            let interstitials_vec =
+                compute_interstitials::<NUM_POINTS>(endoscalar, initial, inputs_slice);
+
+            // Verify initial
+            assert_eq!(from_new.initial, initial);
+
+            // Verify inputs
+            for (a, b) in from_new.inputs.iter().zip(inputs_slice) {
+                assert_eq!(a, b);
+            }
+
+            // Verify interstitials
+            for (a, b) in from_new.interstitials.iter().zip(&interstitials_vec) {
+                assert_eq!(a, b);
+            }
+        }
+
+        // Test edge case: NUM_POINTS == 1 (no inputs, 1 step)
+        check::<1>();
+
+        // Test small cases
+        check::<2>();
+        check::<3>();
+        check::<4>();
+        check::<5>();
+
+        // Test cases that span multiple steps
+        check::<6>();
+        check::<9>();
+        check::<11>();
+        check::<13>();
+        check::<14>();
     }
 }
