@@ -10,12 +10,19 @@
 //! - [`Processor`]: Processes rx values into accumulated outputs
 //! - [`build`]: Orchestrates claim building in unified order
 
+use alloc::borrow::Cow;
 use core::iter::{once, repeat_n};
+
+use ff::PrimeField;
+use ragu_circuits::{
+    mesh::CircuitIndex,
+    polynomials::{Rank, structured},
+};
 use ragu_core::Result;
 use ragu_core::drivers::Driver;
 use ragu_primitives::Element;
 
-use super::Source;
+use super::{Builder, Source};
 use crate::circuits::{self, InternalCircuitIndex};
 
 /// Number of circuits that use the unified k(y) value per proof.
@@ -75,6 +82,71 @@ pub trait Processor<Rx, AppCircuitId> {
     /// Process a stage claim (fold of rxs, k(y) = 0).
     /// Returns `Result<()>` because evaluation context requires fallible fold operations.
     fn stage(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
+}
+
+impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R>, CircuitIndex>
+    for Builder<'m, 'rx, F, R>
+{
+    fn raw_claim(
+        &mut self,
+        a: &'rx structured::Polynomial<F, R>,
+        b: &'rx structured::Polynomial<F, R>,
+    ) {
+        self.a.push(Cow::Borrowed(a));
+        self.b.push(Cow::Borrowed(b));
+    }
+
+    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
+        self.circuit_impl(circuit_id, Cow::Borrowed(rx));
+    }
+
+    fn internal_circuit(
+        &mut self,
+        id: InternalCircuitIndex,
+        mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+    ) {
+        let circuit_id = id.circuit_index(self.num_application_steps);
+        let first = rxs.next().expect("must provide at least one rx polynomial");
+
+        let rx = match rxs.next() {
+            None => Cow::Borrowed(first),
+            Some(second) => {
+                let mut sum = first.clone();
+                sum.add_assign(second);
+                for rx in rxs {
+                    sum.add_assign(rx);
+                }
+                Cow::Owned(sum)
+            }
+        };
+
+        self.circuit_impl(circuit_id, rx);
+    }
+
+    fn stage(
+        &mut self,
+        id: InternalCircuitIndex,
+        mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+    ) -> Result<()> {
+        let first = rxs.next().expect("must provide at least one rx polynomial");
+
+        let circuit_id = id.circuit_index(self.num_application_steps);
+        let sy = self.mesh.circuit_y(circuit_id, self.y);
+
+        let a = match rxs.next() {
+            None => Cow::Borrowed(first),
+            Some(second) => Cow::Owned(structured::Polynomial::fold(
+                core::iter::once(first)
+                    .chain(core::iter::once(second))
+                    .chain(rxs),
+                self.z,
+            )),
+        };
+
+        self.a.push(a);
+        self.b.push(Cow::Owned(sy));
+        Ok(())
+    }
 }
 
 /// Build claims in unified interleaved order from a source.
