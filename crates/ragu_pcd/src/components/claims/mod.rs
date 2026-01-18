@@ -16,7 +16,7 @@ use native::ClaimProcessor;
 ///
 /// Accumulates (a, b) polynomial pairs for each claim type, using
 /// the mesh polynomial to transform rx polynomials appropriately.
-pub struct ClaimBuilder<'m, 'rx, F: PrimeField, R: Rank> {
+pub struct Builder<'m, 'rx, F: PrimeField, R: Rank> {
     circuit_mesh: &'m Mesh<'m, F, R>,
     num_application_steps: usize,
     y: F,
@@ -28,7 +28,7 @@ pub struct ClaimBuilder<'m, 'rx, F: PrimeField, R: Rank> {
     pub b: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
 }
 
-impl<'m, 'rx, F: PrimeField, R: Rank> ClaimBuilder<'m, 'rx, F, R> {
+impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
     /// Create a new claim builder.
     pub fn new(circuit_mesh: &'m Mesh<'m, F, R>, num_application_steps: usize, y: F, z: F) -> Self {
         Self {
@@ -59,8 +59,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> ClaimBuilder<'m, 'rx, F, R> {
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank>
-    ClaimProcessor<&'rx structured::Polynomial<F, R>, CircuitIndex>
-    for ClaimBuilder<'m, 'rx, F, R>
+    ClaimProcessor<&'rx structured::Polynomial<F, R>, CircuitIndex> for Builder<'m, 'rx, F, R>
 {
     fn raw_claim(
         &mut self,

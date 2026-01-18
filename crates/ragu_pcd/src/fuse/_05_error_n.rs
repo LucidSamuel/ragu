@@ -28,7 +28,7 @@ use crate::{
         nested,
     },
     components::{
-        claims::native::{TwoProofKySource, ky_values},
+        claims,
         fold_revdot::{self, NativeParameters},
     },
     proof,
@@ -42,7 +42,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, NativeParameters>,
-        claims: crate::components::claims::native::ClaimBuilder<'_, '_, C::CircuitField, R>,
+        claims: claims::Builder<'_, '_, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
         nu: &Element<'dr, D>,
@@ -88,7 +88,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 let nu = Element::alloc(dr, nu)?;
 
                 // Build k(y) values in claim order.
-                let ky = TwoProofKySource {
+                let ky = claims::native::TwoProofKySource {
                     left_raw_c: preamble.left.unified.c.clone(),
                     right_raw_c: preamble.right.unified.c.clone(),
                     left_app: left_application_ky.clone(),
@@ -99,7 +99,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     right_unified: right_unified_ky.clone(),
                     zero: Element::zero(dr),
                 };
-                let mut ky = ky_values(&ky);
+                let mut ky = claims::native::ky_values(&ky);
 
                 let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 

@@ -17,8 +17,6 @@ use ragu_primitives::Element;
 
 use crate::circuits::{self, InternalCircuitIndex};
 
-pub use super::ClaimBuilder;
-
 /// Number of circuits that use the unified k(y) value per proof.
 ///
 /// This is the count of internal circuits (hashes_1, hashes_2, partial_collapse,
