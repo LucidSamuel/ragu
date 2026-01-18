@@ -59,7 +59,7 @@ use ragu_primitives::{Element, Endoscalar, GadgetExt};
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use crate::components::claims::{self as claims, ClaimProcessor, ClaimSource, NativeRxComponent};
+use crate::components::claims::native::{self as claims, ClaimProcessor, ClaimSource, RxComponent};
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 
 use super::{
@@ -386,8 +386,8 @@ impl<'a, 'dr, D: Driver<'dr>> ClaimSource for EvaluationSource<'a, 'dr, D> {
     /// For app circuits: the mesh evaluation at the circuit's omega^j.
     type AppCircuitId = &'a Element<'dr, D>;
 
-    fn rx(&self, component: NativeRxComponent) -> impl Iterator<Item = Self::Rx> {
-        use NativeRxComponent::*;
+    fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+        use RxComponent::*;
         let (left, right) = match component {
             // Raw claims: only x evaluation is available
             AbA => (

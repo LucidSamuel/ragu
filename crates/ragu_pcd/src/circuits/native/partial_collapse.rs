@@ -51,7 +51,7 @@
 //! [`preamble`]: super::stages::preamble
 //! [`hashes_1`]: super::hashes_1
 //! [`FoldProducts::fold_products_m`]: fold_revdot::FoldProducts::fold_products_m
-//! [`TwoProofKySource`]: crate::components::claims::TwoProofKySource
+//! [`TwoProofKySource`]: crate::components::claims::native::TwoProofKySource
 
 use arithmetic::Cycle;
 use ragu_circuits::{
@@ -73,7 +73,7 @@ use super::{
     unified::{self, OutputBuilder},
 };
 use crate::components::{
-    claims::{TwoProofKySource, ky_values},
+    claims::native::{TwoProofKySource, ky_values},
     fold_revdot,
 };
 

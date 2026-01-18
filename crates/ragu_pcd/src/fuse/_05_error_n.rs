@@ -28,7 +28,7 @@ use crate::{
         nested,
     },
     components::{
-        claims::{TwoProofKySource, ky_values},
+        claims::native::{TwoProofKySource, ky_values},
         fold_revdot::{self, NativeParameters},
     },
     proof,
@@ -42,7 +42,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, NativeParameters>,
-        claims: crate::components::claims::ClaimBuilder<'_, '_, C::CircuitField, R>,
+        claims: crate::components::claims::native::ClaimBuilder<'_, '_, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
         nu: &Element<'dr, D>,

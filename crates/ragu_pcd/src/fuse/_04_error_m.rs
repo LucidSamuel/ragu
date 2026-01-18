@@ -22,7 +22,7 @@ use crate::{
     Application, Proof,
     circuits::{native, nested},
     components::{
-        claims::{self as claims, ClaimBuilder},
+        claims::native::{self as claims, ClaimBuilder},
         fold_revdot::{self, NativeParameters},
     },
     proof,
