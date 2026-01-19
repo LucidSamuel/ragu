@@ -1,3 +1,22 @@
+//! Evaluates s(X, y) at fixed `y`.
+//!
+//! # Design
+//!
+//! Unlike `sx` which can build coefficients incrementally, `s(X,y)` coefficients
+//! cannot be computed in a strictly streaming order during synthesis.
+//! The coefficient of `X^j` depends on wiring matrix terms
+//! like `sum_{j=0}^{q-1} sum_{i=0}^{n-1} U_{j,i} * X^{2n-1-i}`
+//! (and similarly for V, W matrices), which essentially require evaluating
+//! a row of `U` (or `V`, `W`) matrix. These rows are undetermined until
+//! all q linear constraints have been processed.
+//!
+//! We use **virtual wires** to defer coefficient computation. Virtual wires are
+//! symbolic linear combinations that accumulate references to other wires
+//! (virtual or allocated). They use manual reference counting to track usage.
+//! When a virtual wire's refcount reaches zero, it resolves by distributing its
+//! value to constituent terms, eventually reaching allocated wires (A, B, C) where
+//! values are written to the polynomial via the backward view.
+
 use arithmetic::Coeff;
 use ff::Field;
 use ragu_core::{
@@ -17,7 +36,6 @@ use crate::{
     polynomials::{Rank, structured},
 };
 
-/// Wires are identified by their allocated index or virtual index.
 #[derive(Copy, Clone)]
 enum WireIndex {
     A(usize),
@@ -26,8 +44,8 @@ enum WireIndex {
     Virtual(usize),
 }
 
-/// The wire type provided by the driver contains a reference to the virtual
-/// table, which allows reference-counted management of virtual wires.
+/// Uniform type for allocated and virtual wire.
+/// A virtual wire carries a virtual table pointer `table: Some<_>`.
 struct Wire<'table, 'sy, F: Field, R: Rank> {
     index: WireIndex,
     table: Option<&'table RefCell<VirtualTable<'sy, F, R>>>,
@@ -38,6 +56,19 @@ impl<'table, 'sy, F: Field, R: Rank> Wire<'table, 'sy, F, R> {
         Wire {
             index,
             table: Some(table),
+        }
+    }
+
+    /// Increments the refcount for this wire to register storing a reference.
+    ///
+    /// This is used when storing a wire reference in a term vector (e.g., in a
+    /// virtual wire's linear combination). The refcount will be decremented when
+    /// the virtual wire is freed and its terms are resolved.
+    ///
+    /// For non-virtual wires (A, B, C), this is a no-op.
+    fn increment_refcount(&self) {
+        if let WireIndex::Virtual(index) = self.index {
+            self.table.unwrap().borrow_mut().wires[index].refcount += 1;
         }
     }
 }
@@ -63,12 +94,40 @@ impl<F: Field, R: Rank> Drop for Wire<'_, '_, F, R> {
     }
 }
 
+/// A virtual wire representing a linear combination of allocated wires.
+///
+/// Virtual wires accumulate references to other wires (virtual or allocated)
+/// in their `terms` vector. The reference count tracks:
+/// 1. Owned `Wire` handles that reference this virtual wire
+/// 2. References stored in other virtual wires' `terms` vectors
+///
+/// When the refcount reaches zero, the virtual wire is **resolved**,
+/// see [`VirtualTable::free`].
 struct VirtualWire<F: Field> {
+    /// Reference count: number of owned Wire handles + stored references
     refcount: usize,
+    /// Terms accumulated in this virtual wire's linear combination.
+    /// Each stored wire reference contributes +1 to that wire's refcount.
     terms: Vec<(WireIndex, Coeff<F>)>,
+    /// Current accumulated value for this virtual wire
     value: Coeff<F>,
 }
 
+/// The virtual table maintains a list of virtual wires, a free list for
+/// reusing virtual wire slots, and a backward view into the structured polynomial
+/// `s(X, y)`.
+///
+/// See [`Self::free`] for details on the reference counting and resolution.
+///
+/// # Backward View
+///
+/// Ultimately, `<<r(X), s(X,y)>> = k(y)` enforces correct circuit wiring.
+/// Expressed in revdot product, LHS becomes:
+/// `<[0 | a.rev | b | c.rev], s_coeff_vec>`
+///
+/// The backward view of `s(X,y)` gives us directly access to the coefficients
+/// for the `a`, `b`, and `c` wires in the correct order, instead of building
+/// a flat coefficient vector for `s(X,y)` then re-interpreting it.
 struct VirtualTable<'sy, F: Field, R: Rank> {
     wires: Vec<VirtualWire<F>>,
     free: Vec<usize>,
@@ -88,10 +147,18 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
         } += value.value();
     }
 
+    /// Decrements the refcount of a virtual wire and **resolve** it (by adding
+    /// to the `self.free` vector) if the count reaches zero.
+    ///
+    /// Resolved virtual wires distribute their accumulated value to all
+    /// constituent terms, which are then recursively freed. This cascading
+    /// resolution eventually reaches allocated wires (A, B, C) where the values
+    /// are written to the polynomial.
     fn free(&mut self, index: WireIndex) {
         if let WireIndex::Virtual(index) = index {
             assert!(self.wires[index].refcount > 0);
             self.wires[index].refcount -= 1;
+
             if self.wires[index].refcount == 0 {
                 let mut terms = vec![];
                 core::mem::swap(&mut terms, &mut self.wires[index].terms);
@@ -100,13 +167,15 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
                     self.add(wire, value * coeff);
                     self.free(wire);
                 }
-                core::mem::swap(&mut terms, &mut self.wires[index].terms);
+                self.wires[index].terms.clear();
+                self.wires[index].value = Coeff::Zero;
                 self.free.push(index);
             }
         }
     }
 
-    fn reinit(&mut self, index: WireIndex, terms: Vec<(WireIndex, Coeff<F>)>) {
+    /// Update the terms of a virtual wire
+    fn update(&mut self, index: WireIndex, terms: Vec<(WireIndex, Coeff<F>)>) {
         match index {
             WireIndex::Virtual(index) => {
                 self.wires[index].terms = terms;
@@ -115,15 +184,16 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
         }
     }
 
-    fn alloc(&mut self) -> (WireIndex, Vec<(WireIndex, Coeff<F>)>) {
+    /// Allocate a new virtual wire
+    fn alloc(&mut self) -> WireIndex {
         match self.free.pop() {
             Some(index) => {
-                self.wires[index].refcount = 1;
-                self.wires[index].value = Coeff::Zero;
-                let mut terms = vec![];
-                core::mem::swap(&mut terms, &mut self.wires[index].terms);
+                assert_eq!(self.wires[index].refcount, 0);
+                assert_eq!(self.wires[index].value, Coeff::Zero);
+                assert!(self.wires[index].terms.is_empty());
 
-                (WireIndex::Virtual(index), terms)
+                self.wires[index].refcount = 1;
+                WireIndex::Virtual(index)
             }
             None => {
                 let index = self.wires.len();
@@ -132,13 +202,14 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
                     terms: vec![],
                     value: Coeff::Zero,
                 });
-                (WireIndex::Virtual(index), vec![])
+                WireIndex::Virtual(index)
             }
         }
     }
 }
 
-struct Collector<'table, 'sy, F: Field, R: Rank> {
+/// Evaluator driver for evaluating s(X, y) at fixed y.
+struct Evaluator<'table, 'sy, F: Field, R: Rank> {
     multiplication_constraints: usize,
     linear_constraints: usize,
     y_inv: F,
@@ -148,27 +219,37 @@ struct Collector<'table, 'sy, F: Field, R: Rank> {
     _marker: core::marker::PhantomData<R>,
 }
 
-struct TermCollector<F: Field>(Vec<(WireIndex, Coeff<F>)>, Coeff<F>);
+/// Collects terms for a linear combination of wires.
+struct TermCollector<F: Field> {
+    terms: Vec<(WireIndex, Coeff<F>)>,
+    gain: Coeff<F>,
+}
+
+impl<F: Field> TermCollector<F> {
+    fn new() -> Self {
+        TermCollector {
+            terms: vec![],
+            gain: Coeff::One,
+        }
+    }
+}
+
 impl<'table, 'sy, F: Field, R: Rank> LinearExpression<Wire<'table, 'sy, F, R>, F>
     for TermCollector<F>
 {
     fn add_term(mut self, wire: &Wire<'table, 'sy, F, R>, coeff: Coeff<F>) -> Self {
-        let wire = wire.clone();
-        let tmp = (wire.index, coeff * self.1);
-
-        // NB: We want to maintain the refcount because we're creating a virtual
-        // wire which will have a reference to this wire.
-        core::mem::forget(wire);
-        self.0.push(tmp);
+        wire.increment_refcount();
+        self.terms.push((wire.index, coeff * self.gain));
         self
     }
 
     fn gain(mut self, coeff: Coeff<F>) -> Self {
-        self.1 = self.1 * coeff;
+        self.gain = self.gain * coeff;
         self
     }
 }
 
+/// Enforces a linear combination to zero by adding terms to the virtual table.
 struct TermEnforcer<'table, 'sy, F: Field, R: Rank>(
     &'table RefCell<VirtualTable<'sy, F, R>>,
     Coeff<F>,
@@ -187,7 +268,7 @@ impl<'table, 'sy, F: Field, R: Rank> LinearExpression<Wire<'table, 'sy, F, R>, F
     }
 }
 
-impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Collector<'table, 'sy, F, R> {
+impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, F, R> {
     type MaybeKind = Empty;
     type LCadd = TermCollector<F>;
     type LCenforce = TermEnforcer<'table, 'sy, F, R>;
@@ -195,7 +276,7 @@ impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Collector<'table, 'sy, F, R
     type ImplWire = Wire<'table, 'sy, F, R>;
 }
 
-impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Collector<'table, 'sy, F, R> {
+impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, F, R> {
     type F = F;
     type Wire = Wire<'table, 'sy, F, R>;
 
@@ -240,9 +321,9 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Collector<'table, 'sy, F
     }
 
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
-        let (wire, terms) = self.virtual_table.borrow_mut().alloc();
-        let terms = lc(TermCollector(terms, Coeff::One)).0;
-        self.virtual_table.borrow_mut().reinit(wire, terms);
+        let wire = self.virtual_table.borrow_mut().alloc();
+        let terms = lc(TermCollector::new()).terms;
+        self.virtual_table.borrow_mut().update(wire, terms);
 
         Wire {
             index: wire,
@@ -289,6 +370,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Collector<'table, 'sy, F
     }
 }
 
+/// Evaluate the wiring polynomial `s(x, y)` at fixed `(x,y)`
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
     y: F,
@@ -311,7 +393,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             sy: sy.backward(),
         });
         {
-            let mut collector = Collector::<'_, '_, F, R> {
+            let mut evaluator = Evaluator::<'_, '_, F, R> {
                 multiplication_constraints: 0,
                 linear_constraints: 0,
                 y_inv: y.invert().expect("y is not zero"),
@@ -321,24 +403,24 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
                 _marker: core::marker::PhantomData,
             };
 
-            let (key_wire, _, one) = collector.mul(|| unreachable!())?;
+            let (key_wire, _, one) = evaluator.mul(|| unreachable!())?;
 
             // Enforce linear constraint key_wire = key to randomize non-trivial
             // evaluations of this circuit polynomial.
-            collector.enforce_zero(|lc| {
+            evaluator.enforce_zero(|lc| {
                 lc.add(&key_wire)
                     .add_term(&one, Coeff::NegativeArbitrary(key))
             })?;
 
             let mut outputs = vec![];
-            let (io, _) = circuit.witness(&mut collector, Empty)?;
-            io.write(&mut collector, &mut outputs)?;
+            let (io, _) = circuit.witness(&mut evaluator, Empty)?;
+            io.write(&mut evaluator, &mut outputs)?;
 
             for output in outputs {
-                collector.enforce_zero(|lc| lc.add(output.wire()))?;
+                evaluator.enforce_zero(|lc| lc.add(output.wire()))?;
             }
-            collector.enforce_zero(|lc| lc.add(&one))?;
-            assert_eq!(collector.linear_constraints, num_linear_constraints);
+            evaluator.enforce_zero(|lc| lc.add(&one))?;
+            assert_eq!(evaluator.linear_constraints, num_linear_constraints);
         }
 
         // We should have ended up freeing all the wires; otherwise, there's

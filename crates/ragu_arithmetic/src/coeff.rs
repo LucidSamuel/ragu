@@ -7,7 +7,7 @@ use core::ops::{Add, Mul};
 /// about field elements that can be leveraged to optimize arithmetic operations
 /// (like avoiding unnecessary field multiplications) and improve the efficiency
 /// of group arithmetic.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Coeff<F: Field> {
     /// Represents `F::ZERO`.
     Zero,
