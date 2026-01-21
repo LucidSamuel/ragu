@@ -52,7 +52,7 @@
 //! ## Usage
 //!
 //! The [`Stage`] trait allows you to define a **stage** for your multi-stage
-//! circuit polynomial. Stages are (currently) designed so that they must be
+//! wiring polynomial. Stages are (currently) designed so that they must be
 //! built on top of previous stages, with the trivial `()` implementation for a
 //! root stage provided by Ragu.
 //!

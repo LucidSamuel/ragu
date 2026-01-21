@@ -1,4 +1,4 @@
-//! Management of polynomials that encode large sets of circuit polynomials for
+//! Management of polynomials that encode large sets of wiring polynomials for
 //! efficient querying.
 //!
 //! ## Overview

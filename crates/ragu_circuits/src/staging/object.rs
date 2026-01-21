@@ -16,7 +16,7 @@ pub struct StageObject<R: Rank> {
 }
 
 impl<R: Rank> StageObject<R> {
-    /// Creates a new staging circuit polynomial with the given
+    /// Creates a new staging wiring polynomial with the given
     /// `skip_multiplications` and `num_multiplications` values. Witnesses that
     /// satisfy this circuit will have all non-`ONE` multiplication gate wires
     /// enforced to equal zero except for the
@@ -35,7 +35,7 @@ impl<R: Rank> StageObject<R> {
         })
     }
 
-    /// Creates a new staging circuit polynomial with the given
+    /// Creates a new staging wiring polynomial with the given
     /// `skip_multiplications` and maximum possible multiplications.
     /// The number of multiplications will be `R::n() - skip_multiplications - 1`,
     /// which is the maximum before bounds are reached.
