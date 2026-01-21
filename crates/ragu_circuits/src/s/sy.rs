@@ -7,20 +7,22 @@
 //! # Design
 //!
 //! Unlike [`sx`] which can build coefficients incrementally, $s(X, y)$
-//! coefficients cannot be computed in a strictly streaming order during synthesis.
+//! coefficients cannot be computed in a strictly streaming order during
+//! synthesis.
 //!
 //! ### Why Deferred Computation?
 //!
 //! Consider the coefficient of $X^j$ in $s(X, y)$: it equals $\sum\_{q=0}^{Q-1}
-//! \mathbf{U}\_{j,q} \cdot y^q$, where $\mathbf{U}\_{j,q}$ is determined by which wires appear in
-//! constraint $q$ and $Q$ is the total constraint count. During synthesis,
-//! constraints arrive one at a time—we learn $U\_{j,0}$ from the first
-//! constraint, $U\_{j,1}$ from the second, and so on. The complete coefficient
-//! of $X^j$ remains unknown until all $q$ constraints have been processed.
+//! \mathbf{U}\_{j,q} \cdot y^q$, where $\mathbf{U}\_{j,q}$ is determined by
+//! which wires appear in constraint $q$ and $Q$ is the total constraint count.
+//! During synthesis, constraints arrive one at a time—we learn $U\_{j,0}$ from
+//! the first constraint, $U\_{j,1}$ from the second, and so on. The complete
+//! coefficient of $X^j$ remains unknown until all $q$ constraints have been
+//! processed.
 //!
 //! This contrasts with [`sx`], where each constraint produces a complete
-//! coefficient $c\_j$ that can be stored immediately (because the $Y$ powers are
-//! symbolic, not evaluated).
+//! coefficient $c\_j$ that can be stored immediately (because the $Y$ powers
+//! are symbolic, not evaluated).
 //!
 //! ### Virtual Wire Algorithm
 //!
@@ -28,7 +30,8 @@
 //! constraints are known:
 //!
 //! 1. **Allocate virtual wires** — When [`Driver::add`] creates a linear
-//!    combination, allocate a virtual wire from [`VirtualTable`] to represent it.
+//!    combination, allocate a virtual wire from [`VirtualTable`] to represent
+//!    it.
 //!
 //! 2. **Track references** — Each virtual wire maintains a refcount. Storing a
 //!    reference (e.g., in another virtual wire's term list) increments it;
@@ -38,18 +41,18 @@
 //!    zero, it *resolves*: distribute its accumulated $y$-power value to all
 //!    constituent terms, then recursively free those terms.
 //!
-//! 4. **Cascading to allocated wires** — Resolution cascades through the virtual
-//!    wire graph until reaching allocated wires ($a$, $b$, $c$), where values
-//!    are written directly to the backward view of the polynomial.
+//! 4. **Cascading to allocated wires** — Resolution cascades through the
+//!    virtual wire graph until reaching allocated wires ($a$, $b$, $c$), where
+//!    values are written directly to the backward view of the polynomial.
 //!
 //! ### Backward View
 //!
 //! The wiring constraint $\langle\langle r(X), s(X, y) \rangle\rangle = k(y)$
 //! uses a "revdot" inner product: coefficients of $r(X)$ are matched against
-//! coefficients of $s(X, y)$ in a specific order based on wire type. Rather than
-//! building a flat coefficient vector and reinterpreting it, the backward view
-//! provides direct access to the $a$, $b$, and $c$ coefficient regions. See
-//! [`structured::View`] for details.
+//! coefficients of $s(X, y)$ in a specific order based on wire type. Rather
+//! than building a flat coefficient vector and reinterpreting it, the backward
+//! view provides direct access to the $a$, $b$, and $c$ coefficient regions.
+//! See [`structured::View`] for details.
 //!
 //! ### Coefficient Order
 //!
