@@ -9,12 +9,11 @@
 #![allow(clippy::type_complexity)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
-#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1_favicon32.png")]
-#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1_rustdoc128.png")]
+#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
+#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
 extern crate alloc;
 
-pub mod composition;
 mod ky;
 pub mod mesh;
 mod metrics;
@@ -22,6 +21,7 @@ pub mod polynomials;
 mod rx;
 mod s;
 pub mod staging;
+mod trivial;
 
 #[cfg(test)]
 mod tests;
@@ -122,6 +122,12 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                 s::sy::eval(&self.circuit, y, key, self.metrics.num_linear_constraints)
                     .expect("should succeed if metrics succeeded")
             }
+            fn constraint_counts(&self) -> (usize, usize) {
+                (
+                    self.metrics.num_multiplication_constraints,
+                    self.metrics.num_linear_constraints,
+                )
+            }
         }
 
         let circuit = ProcessedCircuit {
@@ -160,4 +166,7 @@ pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
 
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
     fn sy(&self, y: F, key: F) -> structured::Polynomial<F, R>;
+
+    /// Returns the number of constraints: `(multiplication, linear)`.
+    fn constraint_counts(&self) -> (usize, usize);
 }

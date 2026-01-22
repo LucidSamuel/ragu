@@ -11,7 +11,7 @@ use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
     header::{Header, Suffix},
-    step::{Encoded, Encoder, Index, Step},
+    step::{Encoded, Index, Step},
 };
 use ragu_primitives::{Element, poseidon::Sponge};
 use rand::{SeedableRng, rngs::StdRng};
@@ -62,8 +62,8 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
         &self,
         dr: &mut D,
         _: DriverValue<D, Self::Witness<'source>>,
-        left: Encoder<'dr, 'source, D, Self::Left, HEADER_SIZE>,
-        right: Encoder<'dr, 'source, D, Self::Right, HEADER_SIZE>,
+        left: DriverValue<D, C::CircuitField>,
+        right: DriverValue<D, C::CircuitField>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -75,8 +75,8 @@ impl<C: Cycle> Step<C> for Hash2<'_, C> {
     where
         Self: 'dr,
     {
-        let left = left.encode(dr)?;
-        let right = right.encode(dr)?;
+        let left = Encoded::new(dr, left)?;
+        let right = Encoded::new(dr, right)?;
 
         let mut sponge = Sponge::new(dr, self.poseidon_params);
         sponge.absorb(dr, left.as_gadget())?;
@@ -105,8 +105,8 @@ impl<C: Cycle> Step<C> for WitnessLeaf<'_, C> {
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
-        _: Encoder<'dr, 'source, D, Self::Left, HEADER_SIZE>,
-        _: Encoder<'dr, 'source, D, Self::Right, HEADER_SIZE>,
+        _left: DriverValue<D, ()>,
+        _right: DriverValue<D, ()>,
     ) -> Result<(
         (
             Encoded<'dr, D, Self::Left, HEADER_SIZE>,
@@ -141,46 +141,39 @@ fn various_merging_operations() -> Result<()> {
     let pasta = Pasta::baked();
     let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
         .register(WitnessLeaf {
-            poseidon_params: pasta.circuit_poseidon(),
+            poseidon_params: Pasta::circuit_poseidon(pasta),
         })?
         .register(Hash2 {
-            poseidon_params: pasta.circuit_poseidon(),
+            poseidon_params: Pasta::circuit_poseidon(pasta),
         })?
         .finalize(pasta)?;
 
     let mut rng = StdRng::seed_from_u64(1234);
 
-    let trivial = app.trivial().carry::<()>(());
-    assert!(app.verify(&trivial, &mut rng)?);
-
-    let leaf1 = app.merge(
+    let leaf1 = app.seed(
         &mut rng,
         WitnessLeaf {
-            poseidon_params: pasta.circuit_poseidon(),
+            poseidon_params: Pasta::circuit_poseidon(pasta),
         },
         Fp::from(42u64),
-        trivial.clone(),
-        trivial.clone(),
     )?;
     let leaf1 = leaf1.0.carry(leaf1.1);
     assert!(app.verify(&leaf1, &mut rng)?);
 
-    let leaf2 = app.merge(
+    let leaf2 = app.seed(
         &mut rng,
         WitnessLeaf {
-            poseidon_params: pasta.circuit_poseidon(),
+            poseidon_params: Pasta::circuit_poseidon(pasta),
         },
         Fp::from(42u64),
-        trivial.clone(),
-        trivial.clone(),
     )?;
     let leaf2 = leaf2.0.carry(leaf2.1);
     assert!(app.verify(&leaf2, &mut rng)?);
 
-    let node1 = app.merge(
+    let node1 = app.fuse(
         &mut rng,
         Hash2 {
-            poseidon_params: pasta.circuit_poseidon(),
+            poseidon_params: Pasta::circuit_poseidon(pasta),
         },
         (),
         leaf1,

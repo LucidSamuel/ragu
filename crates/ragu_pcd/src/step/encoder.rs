@@ -15,99 +15,126 @@ use ragu_primitives::{
 
 use alloc::vec::Vec;
 
-use super::{Header, padded};
+use super::{Header, internal::padded};
 
-/// A helper passed to step synthesis that provides access to the header data
-/// for an input, along with methods to encode it into either a header gadget
-/// or a raw serialized header of fixed length `HEADER_SIZE`.
-pub struct Encoder<'dr, 'source: 'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> {
-    witness: DriverValue<D, H::Data<'source>>,
-}
-
-impl<'dr, 'source: 'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize>
-    Encoder<'dr, 'source, D, H, HEADER_SIZE>
-{
-    /// Creates a new encoder for some header data.
-    pub(crate) fn new(witness: DriverValue<D, H::Data<'source>>) -> Self {
-        Encoder { witness }
-    }
+/// Headers can be encoded in two ways depending on the circuit requirements:
+///
+/// # Variants
+///
+/// ## `Gadget` - Standard Encoding
+/// Preserves the header's gadget structure. The gadget will be serialized with
+/// padding during the write phase. This is the efficient default used by most Steps.
+///
+/// Different header types produce different circuit structures (e.g., a single-element
+/// header vs a tuple header will have different constraint systems).
+///
+/// ## `Uniform` - Circuit-Uniform Encoding
+/// Pre-serializes the header into a fixed-size array of field elements using an
+/// emulator. This ensures identical circuit structure regardless of the underlying
+/// header type.
+///
+/// Used internally for rerandomization where `Rerandomize<H>` must produce the same
+/// circuit for any header type `H`. The tradeoff is reduced efficiency (emulation
+/// overhead) in exchange for circuit uniformity.
+///
+/// # Why Two Variants?
+///
+/// Most Steps benefit from structural encoding (`Gadget`) - it's efficient and the
+/// circuit structure matches the computation. However, rerandomization requires that
+/// the same circuit handles any header type, necessitating the uniform encoding
+/// (`Uniform`) that erases type-level differences through serialization.
+enum EncodedInner<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> {
+    /// Standard gadget encoding preserving structure (efficient, type-dependent circuit)
+    Gadget(<H::Output as GadgetKind<D::F>>::Rebind<'dr, D>),
+    /// Uniform encoding as field elements (less efficient, type-independent circuit)
+    Uniform(FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>),
 }
 
 /// The result of encoding a header within a step.
-///
-/// This can either be a concrete gadget encoding (`Gadget`) or a raw
-/// fixed-length serialized form (`Raw`) padded to `HEADER_SIZE`.
-pub enum Encoded<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> {
-    /// A gadget form of the header produced by `Header::encode`.
-    Gadget(<H::Output as GadgetKind<D::F>>::Rebind<'dr, D>),
-    /// A fixed-length serialized header (including suffix), padded to `HEADER_SIZE`.
-    Raw(FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>),
+pub struct Encoded<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize>(
+    EncodedInner<'dr, D, H, HEADER_SIZE>,
+);
+
+impl<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> Clone
+    for EncodedInner<'dr, D, H, HEADER_SIZE>
+{
+    fn clone(&self) -> Self {
+        match self {
+            EncodedInner::Gadget(gadget) => EncodedInner::Gadget(gadget.clone()),
+            EncodedInner::Uniform(uniform) => EncodedInner::Uniform(uniform.clone()),
+        }
+    }
 }
 
 impl<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> Clone
     for Encoded<'dr, D, H, HEADER_SIZE>
 {
     fn clone(&self) -> Self {
-        match self {
-            Encoded::Gadget(gadget) => Encoded::Gadget(gadget.clone()),
-            Encoded::Raw(raw) => Encoded::Raw(raw.clone()),
-        }
+        Encoded(self.0.clone())
     }
 }
 
 impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usize>
     Encoded<'dr, D, H, HEADER_SIZE>
 {
-    /// Create an `Encoded::Gadget` from a header gadget value.
+    /// Create an encoded header from a gadget value.
     pub fn from_gadget(gadget: <H::Output as GadgetKind<D::F>>::Rebind<'dr, D>) -> Self {
-        Encoded::Gadget(gadget)
+        Encoded(EncodedInner::Gadget(gadget))
     }
 
-    /// Returns a reference to the gadget if this is a `Gadget` encoding.
+    /// Returns a reference to the underlying gadget.
     pub fn as_gadget(&self) -> &<H::Output as GadgetKind<D::F>>::Rebind<'dr, D> {
-        match self {
-            Encoded::Gadget(g) => g,
-            Encoded::Raw(_) => unreachable!(
-                "as_gadget should not be called on a raw encoding; raw encodings are only used internally"
-            ),
+        match &self.0 {
+            EncodedInner::Gadget(g) => g,
+            EncodedInner::Uniform(_) => {
+                unreachable!("as_gadget should not be called on Uniform encoded headers")
+            }
         }
     }
 
     pub(crate) fn write(self, dr: &mut D, buf: &mut Vec<Element<'dr, D>>) -> Result<()> {
-        match self {
-            Encoded::Gadget(gadget) => {
+        match self.0 {
+            EncodedInner::Gadget(gadget) => {
                 padded::for_header::<H, HEADER_SIZE, _>(dr, gadget)?.write(dr, buf)?
             }
-            Encoded::Raw(raw) => {
-                buf.extend(raw.into_inner());
+            EncodedInner::Uniform(elements) => {
+                buf.extend(elements.into_inner());
             }
         }
         Ok(())
     }
-}
 
-impl<'dr, 'source: 'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usize>
-    Encoder<'dr, 'source, D, H, HEADER_SIZE>
-{
-    /// Proxy for [`Header::encode`] applied to the [`Header::Data`] held by
-    /// this encoder.
-    pub fn encode(self, dr: &mut D) -> Result<Encoded<'dr, D, H, HEADER_SIZE>> {
-        Ok(Encoded::from_gadget(H::encode(dr, self.witness)?))
+    /// Creates a new encoded header by converting the header data into its gadget form.
+    ///
+    /// This is the standard encoding method used by most Steps. The gadget structure
+    /// is preserved and will be serialized with padding during the write phase.
+    pub fn new<'source: 'dr>(
+        dr: &mut D,
+        witness: DriverValue<D, H::Data<'source>>,
+    ) -> Result<Self> {
+        Ok(Encoded::from_gadget(H::encode(dr, witness)?))
     }
 
-    /// This witnesses the Header's gadget as its serialized encoding (via
-    /// [`Write`](ragu_primitives::io::Write)) directly, rather than witnessing
-    /// the gadget and then performing serialization. This step (if successful)
-    /// will always synthesize the same circuit regardless of the concrete
-    /// header.
-    pub(crate) fn raw_encode(self, dr: &mut D) -> Result<Encoded<'dr, D, H, HEADER_SIZE>> {
+    /// Creates a uniform encoded header for circuit-independent encoding.
+    ///
+    /// This encoding method pre-serializes the header into field elements using an
+    /// emulator, ensuring that different header types produce identical circuit
+    /// structures. This is used internally for rerandomization to guarantee that
+    /// `Rerandomize<HeaderA>` and `Rerandomize<HeaderB>` synthesize the same circuit.
+    ///
+    /// The tradeoff: less efficient (requires emulation + serialization) but achieves
+    /// circuit uniformity across different header types.
+    pub(crate) fn new_uniform<'source: 'dr>(
+        dr: &mut D,
+        witness: DriverValue<D, H::Data<'source>>,
+    ) -> Result<Self> {
         let mut emulator: Emulator<Wireless<D::MaybeKind, _>> = Emulator::wireless();
-        let gadget = H::encode(&mut emulator, self.witness)?;
+        let gadget = H::encode(&mut emulator, witness)?;
         let gadget = padded::for_header::<H, HEADER_SIZE, _>(&mut emulator, gadget)?;
 
         let mut raw = Vec::with_capacity(HEADER_SIZE);
         gadget.write(&mut emulator, &mut Pipe::new(dr, &mut raw))?;
 
-        Ok(Encoded::Raw(FixedVec::try_from(raw)?))
+        Ok(Encoded(EncodedInner::Uniform(FixedVec::try_from(raw)?)))
     }
 }

@@ -1,27 +1,21 @@
 //! This module provides the [`Application::verify`] method implementation.
 
-mod stub_step;
-mod stub_unified;
-
 use arithmetic::Cycle;
-use ff::PrimeField;
+use ff::Field;
 use ragu_circuits::{
-    mesh::{CircuitIndex, Mesh},
+    mesh::CircuitIndex,
     polynomials::{Rank, structured},
 };
-use ragu_core::{Error, Result};
-use ragu_primitives::vec::{ConstLen, FixedVec};
+use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_primitives::Element;
 use rand::Rng;
 
-use crate::{
-    Application, Pcd,
-    header::Header,
-    internal_circuits::{self, InternalCircuitIndex},
-    step::adapter::Adapter,
-};
+use core::iter::once;
 
-use stub_step::StubStep;
-use stub_unified::StubUnified;
+use crate::{
+    Application, Pcd, Proof, circuits::native::stages::preamble::ProofInputs, components::claims,
+    header::Header,
+};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Verifies some [`Pcd`] for the provided [`Header`].
@@ -30,279 +24,239 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         pcd: &Pcd<'_, C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
-        // The `Verifier` helper struct holds onto a verification context to
-        // simplify performing revdot claims on different polynomials in the
-        // proof.
-        let verifier = Verifier::new(&self.circuit_mesh, self.num_application_steps, &mut rng);
+        // Sample verification challenges w, y, and z.
+        let w = C::CircuitField::random(&mut rng);
+        let y = C::CircuitField::random(&mut rng);
+        let z = C::CircuitField::random(&mut rng);
 
-        // Preamble verification
-        let preamble_valid = verifier.check_stage(
-            &pcd.proof.preamble.native_preamble_rx,
-            internal_circuits::stages::native::preamble::STAGING_ID,
-        );
+        // Validate that the application circuit_id is within the mesh domain.
+        // (Internal circuit IDs are constants and don't need this check.)
+        if !self
+            .native_mesh
+            .circuit_in_domain(pcd.proof.application.circuit_id)
+        {
+            return Ok(false);
+        }
 
-        // Error_m stage verification (Layer 1).
-        let error_m_valid = verifier.check_stage(
-            &pcd.proof.error.native_error_m_rx,
-            internal_circuits::stages::native::error_m::STAGING_ID,
-        );
+        // Validate that the `left_header` and `right_header` lengths match
+        // `HEADER_SIZE`. Alternatively, the `Proof` structure could be
+        // parameterized on the `HEADER_SIZE`, but this appeared to be simpler.
+        if pcd.proof.application.left_header.len() != HEADER_SIZE
+            || pcd.proof.application.right_header.len() != HEADER_SIZE
+        {
+            return Ok(false);
+        }
 
-        // Error_n stage verification (Layer 2).
-        let error_n_valid = verifier.check_stage(
-            &pcd.proof.error.native_error_n_rx,
-            internal_circuits::stages::native::error_n::STAGING_ID,
-        );
+        // Compute unified k(y), unified_bridge k(y), and application k(y).
+        let (unified_ky, unified_bridge_ky, application_ky) =
+            Emulator::emulate_wireless((&pcd.proof, pcd.data.clone(), y), |dr, witness| {
+                let (proof, data, y) = witness.cast();
+                let y = Element::alloc(dr, y)?;
+                let proof_inputs =
+                    ProofInputs::<_, C, HEADER_SIZE>::alloc_for_verify::<R, H>(dr, proof, data)?;
 
-        // Query verification.
-        let query_valid = verifier.check_stage(
-            &pcd.proof.query.native_query_rx,
-            internal_circuits::stages::native::query::STAGING_ID,
-        );
+                let (unified_ky, unified_bridge_ky) = proof_inputs.unified_ky_values(dr, &y)?;
+                let unified_ky = *unified_ky.value().take();
+                let unified_bridge_ky = *unified_bridge_ky.value().take();
+                let application_ky = *proof_inputs.application_ky(dr, &y)?.value().take();
 
-        // Eval verification.
-        let eval_valid = verifier.check_stage(
-            &pcd.proof.eval.native_eval_rx,
-            internal_circuits::stages::native::eval::STAGING_ID,
-        );
+                Ok((unified_ky, unified_bridge_ky, application_ky))
+            })?;
 
-        // Internal circuit c verification
-        let c_stage_valid = verifier.check_stage(
-            &pcd.proof.internal_circuits.c_rx,
-            internal_circuits::c::STAGED_ID,
-        );
+        // Build a and b polynomials for each revdot claim.
+        let source = native::SingleProofSource { proof: &pcd.proof };
+        let mut builder = claims::Builder::new(&self.native_mesh, self.num_application_steps, y, z);
+        claims::native::build(&source, &mut builder)?;
 
-        // Internal circuit v verification
-        let v_stage_valid = verifier.check_stage(
-            &pcd.proof.internal_circuits.v_rx,
-            internal_circuits::v::STAGED_ID,
-        );
-
-        // Internal circuit ky stage verification
-        let ky_stage_valid = verifier.check_stage(
-            &pcd.proof.internal_circuits.ky_rx,
-            internal_circuits::ky::STAGED_ID,
-        );
-
-        // Internal circuit hashes_1 stage verification
-        let hashes_1_stage_valid = verifier.check_stage(
-            &pcd.proof.internal_circuits.hashes_1_rx,
-            internal_circuits::hashes_1::STAGED_ID,
-        );
-
-        // Internal circuit hashes_2 stage verification
-        let hashes_2_stage_valid = verifier.check_stage(
-            &pcd.proof.internal_circuits.hashes_2_rx,
-            internal_circuits::hashes_2::STAGED_ID,
-        );
-
-        let unified_instance = internal_circuits::unified::Instance {
-            nested_preamble_commitment: pcd.proof.preamble.nested_preamble_commitment,
-            w: pcd.proof.internal_circuits.w,
-            nested_s_prime_commitment: pcd.proof.s_prime.nested_s_prime_commitment,
-            y: pcd.proof.internal_circuits.y,
-            z: pcd.proof.internal_circuits.z,
-            nested_error_m_commitment: pcd.proof.error.nested_error_m_commitment,
-            mu: pcd.proof.internal_circuits.mu,
-            nu: pcd.proof.internal_circuits.nu,
-            nested_error_n_commitment: pcd.proof.error.nested_error_n_commitment,
-            mu_prime: pcd.proof.internal_circuits.mu_prime,
-            nu_prime: pcd.proof.internal_circuits.nu_prime,
-            c: pcd.proof.internal_circuits.c,
-            nested_ab_commitment: pcd.proof.ab.nested_ab_commitment,
-            x: pcd.proof.internal_circuits.x,
-            nested_query_commitment: pcd.proof.query.nested_query_commitment,
-            alpha: pcd.proof.internal_circuits.alpha,
-            nested_f_commitment: pcd.proof.f.nested_f_commitment,
-            u: pcd.proof.internal_circuits.u,
-            nested_eval_commitment: pcd.proof.eval.nested_eval_commitment,
-            beta: pcd.proof.internal_circuits.beta,
-        };
-
-        // Compute unified k(Y) once for both C and V circuits.
-        let unified_ky = {
-            let stub = StubUnified::<C>::new();
-            crate::components::ky::emulate(&stub, &unified_instance, verifier.y)?
-        };
-
-        // C circuit verification with ky.
-        // C's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with c_rx.
-        let c_circuit_valid = {
-            let mut c_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            c_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
-            c_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
-            c_combined_rx.add_assign(&pcd.proof.internal_circuits.c_rx);
-
-            verifier.check_internal_circuit(
-                &c_combined_rx,
-                internal_circuits::c::CIRCUIT_ID,
+        // Check all native revdot claims.
+        let native_revdot_claims = {
+            let ky_source = native::SingleProofKySource {
+                raw_c: pcd.proof.ab.c,
+                application_ky,
+                unified_bridge_ky,
                 unified_ky,
-            )
+            };
+
+            native::ky_values(&ky_source)
+                .zip(builder.a.iter().zip(builder.b.iter()))
+                .all(|(ky, (a, b))| a.revdot(b) == ky)
         };
 
-        // V circuit verification with ky.
-        // V's final stage is eval, so combine preamble_rx + query_rx + eval_rx with v_rx.
-        let v_circuit_valid = {
-            let mut v_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            v_combined_rx.add_assign(&pcd.proof.query.native_query_rx);
-            v_combined_rx.add_assign(&pcd.proof.eval.native_eval_rx);
-            v_combined_rx.add_assign(&pcd.proof.internal_circuits.v_rx);
+        // Check all nested revdot claims.
+        let nested_revdot_claims = {
+            let nested_source = nested::SingleProofSource { proof: &pcd.proof };
+            let y_nested = C::ScalarField::random(&mut rng);
+            let z_nested = C::ScalarField::random(&mut rng);
+            let mut nested_builder = claims::Builder::new(&self.nested_mesh, 0, y_nested, z_nested);
+            claims::nested::build(&nested_source, &mut nested_builder)?;
 
-            verifier.check_internal_circuit(
-                &v_combined_rx,
-                internal_circuits::v::CIRCUIT_ID,
-                unified_ky,
-            )
+            let ky_source = nested::SingleProofKySource::<C::ScalarField>::new();
+            nested::ky_values(&ky_source)
+                .zip(nested_builder.a.iter().zip(nested_builder.b.iter()))
+                .all(|(ky, (a, b))| a.revdot(b) == ky)
         };
 
-        // Hashes_1 circuit verification with ky.
-        // Hashes_1's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with hashes_1_rx.
-        let hashes_1_valid = {
-            let mut hashes_1_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            hashes_1_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
-            hashes_1_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
-            hashes_1_combined_rx.add_assign(&pcd.proof.internal_circuits.hashes_1_rx);
+        // Check polynomial evaluation claim.
+        let p_eval_claim = pcd.proof.p.poly.eval(pcd.proof.challenges.u) == pcd.proof.p.v;
 
-            verifier.check_internal_circuit(
-                &hashes_1_combined_rx,
-                internal_circuits::hashes_1::CIRCUIT_ID,
-                unified_ky,
-            )
+        // Check P commitment corresponds to polynomial and blind.
+        let p_commitment_claim = pcd
+            .proof
+            .p
+            .poly
+            .commit(C::host_generators(self.params), pcd.proof.p.blind)
+            == pcd.proof.p.commitment;
+
+        // Check mesh_xy polynomial evaluation at the sampled w.
+        // mesh_xy_poly is m(W, x, y) - the mesh evaluated at current x, y, free in W.
+        let mesh_xy_claim = {
+            let x = pcd.proof.challenges.x;
+            let y = pcd.proof.challenges.y;
+            let poly_eval = pcd.proof.query.mesh_xy_poly.eval(w);
+            let expected = self.native_mesh.wxy(w, x, y);
+            poly_eval == expected
         };
 
-        // Hashes_2 circuit verification with ky.
-        // Hashes_2's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with hashes_2_rx.
-        let hashes_2_valid = {
-            let mut hashes_2_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            hashes_2_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
-            hashes_2_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
-            hashes_2_combined_rx.add_assign(&pcd.proof.internal_circuits.hashes_2_rx);
+        // TODO: Add checks for mesh_wx0_poly, mesh_wx1_poly, and mesh_wy_poly.
+        // - mesh_wx0/wx1: need child proof x challenges (x₀, x₁) which "disappear" in preamble
+        // - mesh_wy: interstitial value that will be elided later
 
-            verifier.check_internal_circuit(
-                &hashes_2_combined_rx,
-                internal_circuits::hashes_2::CIRCUIT_ID,
-                unified_ky,
-            )
-        };
-
-        // Ky circuit verification with ky.
-        // Ky's final stage is error_n, so combine preamble_rx + error_m_rx + error_n_rx with ky_rx.
-        let ky_circuit_valid = {
-            let mut ky_combined_rx = pcd.proof.preamble.native_preamble_rx.clone();
-            ky_combined_rx.add_assign(&pcd.proof.error.native_error_m_rx);
-            ky_combined_rx.add_assign(&pcd.proof.error.native_error_n_rx);
-            ky_combined_rx.add_assign(&pcd.proof.internal_circuits.ky_rx);
-
-            verifier.check_internal_circuit(
-                &ky_combined_rx,
-                internal_circuits::ky::CIRCUIT_ID,
-                unified_ky,
-            )
-        };
-
-        // Application verification
-        let left_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
-            pcd.proof.application.left_header.clone(),
-        )
-        .map_err(|_| Error::MalformedEncoding("left_header has incorrect size".into()))?;
-        let right_header = FixedVec::<_, ConstLen<HEADER_SIZE>>::try_from(
-            pcd.proof.application.right_header.clone(),
-        )
-        .map_err(|_| Error::MalformedEncoding("right_header has incorrect size".into()))?;
-
-        let application_ky = {
-            let adapter = Adapter::<C, StubStep<H>, R, HEADER_SIZE>::new(StubStep::new());
-            let instance = (left_header, right_header, pcd.data.clone());
-            crate::components::ky::emulate(&adapter, instance, verifier.y)?
-        };
-
-        let application_valid = verifier.check_circuit(
-            &pcd.proof.application.rx,
-            pcd.proof.application.circuit_id,
-            application_ky,
-        );
-
-        Ok(preamble_valid
-            && error_m_valid
-            && error_n_valid
-            && query_valid
-            && eval_valid
-            && c_stage_valid
-            && v_stage_valid
-            && ky_stage_valid
-            && hashes_1_stage_valid
-            && hashes_2_stage_valid
-            && c_circuit_valid
-            && v_circuit_valid
-            && hashes_1_valid
-            && hashes_2_valid
-            && ky_circuit_valid
-            && application_valid)
+        Ok(native_revdot_claims
+            && nested_revdot_claims
+            && p_eval_claim
+            && p_commitment_claim
+            && mesh_xy_claim)
     }
 }
 
-struct Verifier<'a, F: PrimeField, R: Rank> {
-    circuit_mesh: &'a Mesh<'a, F, R>,
-    num_application_steps: usize,
-    y: F,
-    z: F,
-    tz: structured::Polynomial<F, R>,
-}
+mod native {
+    use super::*;
+    use crate::components::claims::{
+        Source,
+        native::{KySource, RxComponent},
+    };
 
-impl<'a, F: PrimeField, R: Rank> Verifier<'a, F, R> {
-    fn new<RNG: Rng>(
-        circuit_mesh: &'a Mesh<'a, F, R>,
-        num_application_steps: usize,
-        rng: &mut RNG,
-    ) -> Self {
-        let y = F::random(&mut *rng);
-        let z = F::random(&mut *rng);
-        let tz = R::tz(z);
-        Self {
-            circuit_mesh,
-            num_application_steps,
-            y,
-            z,
-            tz,
+    pub use crate::components::claims::native::ky_values;
+
+    pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
+        pub proof: &'rx Proof<C, R>,
+    }
+
+    impl<'rx, C: Cycle, R: Rank> Source for SingleProofSource<'rx, C, R> {
+        type RxComponent = RxComponent;
+        type Rx = &'rx structured::Polynomial<C::CircuitField, R>;
+        type AppCircuitId = CircuitIndex;
+
+        fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+            use RxComponent::*;
+            let poly = match component {
+                AbA => &self.proof.ab.a_poly,
+                AbB => &self.proof.ab.b_poly,
+                Application => &self.proof.application.rx,
+                Hashes1 => &self.proof.circuits.hashes_1_rx,
+                Hashes2 => &self.proof.circuits.hashes_2_rx,
+                PartialCollapse => &self.proof.circuits.partial_collapse_rx,
+                FullCollapse => &self.proof.circuits.full_collapse_rx,
+                ComputeV => &self.proof.circuits.compute_v_rx,
+                Preamble => &self.proof.preamble.native_rx,
+                ErrorM => &self.proof.error_m.native_rx,
+                ErrorN => &self.proof.error_n.native_rx,
+                Query => &self.proof.query.native_rx,
+                Eval => &self.proof.eval.native_rx,
+            };
+            core::iter::once(poly)
+        }
+
+        fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
+            core::iter::once(self.proof.application.circuit_id)
         }
     }
 
-    /// Check an rx polynomial for a stage (empty ky).
-    fn check_stage(
-        &self,
-        rx: &structured::Polynomial<F, R>,
-        staging_id: InternalCircuitIndex,
-    ) -> bool {
-        let circuit_id = staging_id.circuit_index(self.num_application_steps);
-        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
-
-        rx.revdot(&sy) == F::ZERO
+    /// Source for k(y) values for single-proof verification.
+    pub struct SingleProofKySource<F> {
+        pub raw_c: F,
+        pub application_ky: F,
+        pub unified_bridge_ky: F,
+        pub unified_ky: F,
     }
 
-    /// Check an rx polynomial for an internal circuit with computed ky.
-    fn check_internal_circuit(
-        &self,
-        rx: &structured::Polynomial<F, R>,
-        internal_id: InternalCircuitIndex,
-        ky: F,
-    ) -> bool {
-        let circuit_id = internal_id.circuit_index(self.num_application_steps);
-        self.check_circuit(rx, circuit_id, ky)
+    impl<F: Field> KySource for SingleProofKySource<F> {
+        type Ky = F;
+
+        fn raw_c(&self) -> impl Iterator<Item = F> {
+            once(self.raw_c)
+        }
+
+        fn application_ky(&self) -> impl Iterator<Item = F> {
+            once(self.application_ky)
+        }
+
+        fn unified_bridge_ky(&self) -> impl Iterator<Item = F> {
+            once(self.unified_bridge_ky)
+        }
+
+        fn unified_ky(&self) -> impl Iterator<Item = F> + Clone {
+            once(self.unified_ky)
+        }
+
+        fn zero(&self) -> F {
+            F::ZERO
+        }
+    }
+}
+
+mod nested {
+    use super::*;
+    use crate::components::claims::{
+        Source,
+        nested::{KySource, RxComponent},
+    };
+
+    pub use crate::components::claims::nested::ky_values;
+
+    /// Source for nested field rx polynomials for single-proof verification.
+    pub struct SingleProofSource<'rx, C: Cycle, R: Rank> {
+        pub proof: &'rx Proof<C, R>,
     }
 
-    /// Check an rx polynomial for a circuit with computed ky.
-    fn check_circuit(
-        &self,
-        rx: &structured::Polynomial<F, R>,
-        circuit_id: CircuitIndex,
-        ky: F,
-    ) -> bool {
-        let sy = self.circuit_mesh.circuit_y(circuit_id, self.y);
+    impl<'rx, C: Cycle, R: Rank> Source for SingleProofSource<'rx, C, R> {
+        type RxComponent = RxComponent;
+        type Rx = &'rx structured::Polynomial<C::ScalarField, R>;
+        type AppCircuitId = ();
 
-        let mut rhs = rx.clone();
-        rhs.dilate(self.z);
-        rhs.add_assign(&sy);
-        rhs.add_assign(&self.tz);
+        fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+            use RxComponent::*;
+            let poly = match component {
+                EndoscalarStage => &self.proof.p.endoscalar_rx,
+                PointsStage => &self.proof.p.points_rx,
+                EndoscalingStep(step) => &self.proof.p.step_rxs[step], // TODO: bounds
+            };
+            core::iter::once(poly)
+        }
 
-        rx.revdot(&rhs) == ky
+        fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
+            core::iter::empty()
+        }
+    }
+
+    /// Source for k(y) values for nested single-proof verification.
+    pub struct SingleProofKySource<F>(core::marker::PhantomData<F>);
+
+    impl<F> SingleProofKySource<F> {
+        pub fn new() -> Self {
+            Self(core::marker::PhantomData)
+        }
+    }
+
+    impl<F: Field> KySource for SingleProofKySource<F> {
+        type Ky = F;
+
+        fn one(&self) -> F {
+            F::ONE
+        }
+
+        fn zero(&self) -> F {
+            F::ZERO
+        }
     }
 }

@@ -13,4 +13,8 @@
 \wit:\mathtt{w}
 \sample:\overset{\$}{\leftarrow}
 \endo:\underbar{#1}
+\iseq:\overset{?}{=}
 \com:\mathsf{Commit}
+\acc:\mathsf{acc}
+\pf:\mathsf{pf}
+\aux:\mathsf{aux}

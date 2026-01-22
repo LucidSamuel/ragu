@@ -1,5 +1,6 @@
 use arithmetic::Coeff;
-use ff::Field;
+use arithmetic::PrimeFieldExt;
+use ff::{Field, PrimeField};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -8,8 +9,12 @@ use ragu_core::{
 };
 
 use alloc::vec::Vec;
+use core::borrow::Borrow;
 
-use crate::io::{Buffer, Write};
+use crate::{
+    Boolean,
+    io::{Buffer, Write},
+};
 
 /// Represents a wire and its corresponding field element value, but generally
 /// does not guarantee any particular constraint has been imposed on the wire.
@@ -104,6 +109,16 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         let value = D::just(|| D::F::ZERO);
 
         Element { value, wire }
+    }
+
+    /// Creates an element with a non-trivial constant for use as a stub.
+    ///
+    /// See [`PrimeFieldExt::todo`] for the equivalent on bare field elements.
+    pub fn todo(dr: &mut D) -> Self
+    where
+        D::F: PrimeField,
+    {
+        Self::constant(dr, D::F::todo())
     }
 
     /// Creates an element for the provided constant value.
@@ -230,6 +245,12 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
                 .ok_or_else(|| Error::InvalidWitness("division by zero".into()))
         })?;
 
+        self.invert_with(dr, inverse)
+    }
+
+    /// Enforce that this element times the provided `inverse` (unallocated value) equals one.
+    /// Returns the allocated `inverse` element.
+    pub fn invert_with(&self, dr: &mut D, inverse: DriverValue<D, D::F>) -> Result<Self> {
         let (a, b, c) = dr.mul(|| {
             Ok((
                 Coeff::Arbitrary(*self.value.snag()),
@@ -283,6 +304,51 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
             value: quotient_value,
             wire: quotient,
         })
+    }
+
+    /// Returns a boolean indicating whether this element is zero.
+    pub fn is_zero(&self, dr: &mut D) -> Result<Boolean<'dr, D>> {
+        crate::boolean::is_zero(dr, self)
+    }
+
+    /// Returns a boolean indicating whether this element equals another.
+    pub fn is_equal(&self, dr: &mut D, other: &Self) -> Result<Boolean<'dr, D>> {
+        let diff = self.sub(dr, other);
+        diff.is_zero(dr)
+    }
+
+    /// Computes a weighted sum of the elements yielded by an iterator by the
+    /// powers of the provided `scale_factor`.
+    ///
+    /// Horner's method is used to evaluate the weighted sum, effectively
+    /// scaling the first element by the highest power of `scale_factor` and the
+    /// last element by nothing at all.
+    pub fn fold<E: Borrow<Element<'dr, D>>>(
+        dr: &mut D,
+        elements: impl IntoIterator<Item = E>,
+        scale_factor: &Element<'dr, D>,
+    ) -> Result<Self> {
+        let mut iter = elements.into_iter();
+        let Some(first) = iter.next() else {
+            return Ok(Element::zero(dr));
+        };
+        iter.try_fold(first.borrow().clone(), |acc, elem| {
+            acc.mul(dr, scale_factor)
+                .map(|scaled| scaled.add(dr, elem.borrow()))
+        })
+    }
+
+    /// Sums an iterator of elements.
+    ///
+    /// This is more efficient than [`Element::fold`] with scale=1 because it
+    /// avoids multiplication constraints.
+    pub fn sum<E: Borrow<Element<'dr, D>>>(
+        dr: &mut D,
+        elements: impl IntoIterator<Item = E>,
+    ) -> Self {
+        elements
+            .into_iter()
+            .fold(Element::zero(dr), |acc, elem| acc.add(dr, elem.borrow()))
     }
 }
 

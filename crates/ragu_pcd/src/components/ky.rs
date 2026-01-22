@@ -1,53 +1,44 @@
 //! Streaming Horner's method evaluation of k(Y) via the Buffer trait.
 
-use ff::Field;
-use ragu_circuits::Circuit;
-use ragu_core::{
-    Result,
-    drivers::{Driver, emulator::Emulator},
-    maybe::Maybe,
-};
+use ragu_core::{Result, drivers::Driver};
 use ragu_primitives::{Element, GadgetExt, io::Buffer};
 
-/// Emulate k(Y) evaluation at point `y` for a circuit instance.
-pub fn emulate<F: Field, C: Circuit<F>>(circuit: &C, instance: C::Instance<'_>, y: F) -> Result<F> {
-    Emulator::emulate_wired((instance, y), |dr, witness| {
-        let (instance, y) = witness.cast();
-        let output = circuit.instance(dr, instance)?;
-        let y_elem = Element::constant(dr, y.take());
-        let mut ky = Ky::new(dr, y_elem);
-        output.write(dr, &mut ky)?;
-        Ok(ky.finish(dr)?.wire().clone().value().take())
-    })
-}
+use super::horner::Horner;
 
 /// A buffer that evaluates k(Y) at a point `y` using Horner's method.
-pub struct Ky<'dr, D: Driver<'dr>> {
-    y: Element<'dr, D>,
-    result: Element<'dr, D>,
+///
+/// This wraps [`Horner`] and adds a trailing constant 1 term when finished.
+pub struct Ky<'a, 'dr, D: Driver<'dr>> {
+    inner: Horner<'a, 'dr, D>,
 }
 
-impl<'dr, D: Driver<'dr>> Ky<'dr, D> {
-    pub fn new(dr: &mut D, y: Element<'dr, D>) -> Self {
+impl<'a, 'dr, D: Driver<'dr>> Clone for Ky<'a, 'dr, D> {
+    fn clone(&self) -> Self {
         Ky {
-            y,
-            result: Element::zero(dr),
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<'a, 'dr, D: Driver<'dr>> Ky<'a, 'dr, D> {
+    /// Creates a new buffer that evaluates k(Y) at point `y`.
+    pub fn new(y: &'a Element<'dr, D>) -> Self {
+        Ky {
+            inner: Horner::new(y),
         }
     }
 
     /// Finishes the evaluation by adding the trailing constant (one) term.
     /// Returns the final k(y) value.
-    pub fn finish(self, dr: &mut D) -> Result<Element<'dr, D>> {
-        // Final Horner step: result = result * y + 1
-        Ok(self.result.mul(dr, &self.y)?.add(dr, &Element::one()))
+    pub fn finish(mut self, dr: &mut D) -> Result<Element<'dr, D>> {
+        // Write trailing 1 and finish
+        Element::one().write(dr, &mut self.inner)?;
+        Ok(self.inner.finish(dr))
     }
 }
 
-impl<'dr, D: Driver<'dr>> Buffer<'dr, D> for Ky<'dr, D> {
+impl<'a, 'dr, D: Driver<'dr>> Buffer<'dr, D> for Ky<'a, 'dr, D> {
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()> {
-        // Horner's step: result = result * y + value.
-        self.result = self.result.mul(dr, &self.y)?.add(dr, value);
-
-        Ok(())
+        self.inner.write(dr, value)
     }
 }

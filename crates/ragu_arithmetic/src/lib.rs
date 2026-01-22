@@ -65,8 +65,8 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
-#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1_favicon32.png")]
-#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1_rustdoc128.png")]
+#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
+#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
 extern crate alloc;
 
@@ -76,13 +76,27 @@ mod fft;
 mod uendo;
 mod util;
 
-use ff::{Field, WithSmallOrderMulGroup};
+use ff::{Field, PrimeField, WithSmallOrderMulGroup};
+
+/// Stub for development that isn't algebraically special.
+const TODO_VALUE: u64 = 0x5E8B_1D3A;
+
+/// Extension trait for [`PrimeField`] types providing additional utility methods.
+pub trait PrimeFieldExt: PrimeField {
+    /// Returns a non-trivial constant for use as a stub during development.
+    #[inline]
+    fn todo() -> Self {
+        Self::from_u128(TODO_VALUE as u128)
+    }
+}
+
+impl<F: PrimeField> PrimeFieldExt for F {}
 
 pub use coeff::Coeff;
 pub use domain::Domain;
 pub use fft::{Ring, bitreverse};
 pub use pasta_curves::arithmetic::{Coordinates, CurveAffine, CurveExt};
-pub use util::{dot, eval, factor, factor_iter, geosum, mul};
+pub use util::{dot, eval, factor, factor_iter, geosum, mul, poly_with_roots};
 
 /// Converts a 256-bit integer literal into the little endian `[u64; 4]`
 /// representation that e.g. [`Fp::from_raw`](pasta_curves::Fp::from_raw) or
@@ -99,7 +113,11 @@ pub use u128 as Uendo;
 ///
 /// Implementations of this trait provide the types, their relationships, and
 /// the ability to conveniently access common parameters.
-pub trait Cycle: Default + Send + Sync + 'static {
+///
+/// The trait is designed as a zero-sized marker type, with runtime parameters
+/// (generators, Poseidon constants) stored in the associated
+/// [`Params`](Cycle::Params) type as necessary.
+pub trait Cycle: Copy + Clone + Default + Send + Sync + 'static {
     /// The field that circuit developers will primarily work with, and the
     /// scalar field of the [`HostCurve`](Cycle::HostCurve).
     type CircuitField: WithSmallOrderMulGroup<3>;
@@ -124,13 +142,6 @@ pub trait Cycle: Default + Send + Sync + 'static {
     /// Fixed generators for the [`HostCurve`](Cycle::HostCurve).
     type HostGenerators: FixedGenerators<Self::HostCurve>;
 
-    /// Initialized fixed generators for the
-    /// [`NestedCurve`](Cycle::NestedCurve).
-    fn nested_generators(&self) -> &Self::NestedGenerators;
-
-    /// Initialized fixed generators for the [`HostCurve`](Cycle::HostCurve).
-    fn host_generators(&self) -> &Self::HostGenerators;
-
     /// Poseidon permutation parameters for the
     /// [`CircuitField`](Cycle::CircuitField).
     type CircuitPoseidon: PoseidonPermutation<Self::CircuitField>;
@@ -139,13 +150,26 @@ pub trait Cycle: Default + Send + Sync + 'static {
     /// [`ScalarField`](Cycle::ScalarField).
     type ScalarPoseidon: PoseidonPermutation<Self::ScalarField>;
 
-    /// Initialized Poseidon parameter constants for the
-    /// [`CircuitField`](Cycle::CircuitField).
-    fn circuit_poseidon(&self) -> &Self::CircuitPoseidon;
+    /// Runtime parameters holding generators and Poseidon constants.
+    type Params: Send + Sync + 'static;
 
-    /// Initialized Poseidon parameter constants for the
+    /// Returns the fixed generators for the
+    /// [`NestedCurve`](Cycle::NestedCurve).
+    fn nested_generators(params: &Self::Params) -> &Self::NestedGenerators;
+
+    /// Returns the fixed generators for the [`HostCurve`](Cycle::HostCurve).
+    fn host_generators(params: &Self::Params) -> &Self::HostGenerators;
+
+    /// Returns the Poseidon parameter constants for the
+    /// [`CircuitField`](Cycle::CircuitField).
+    fn circuit_poseidon(params: &Self::Params) -> &Self::CircuitPoseidon;
+
+    /// Returns the Poseidon parameter constants for the
     /// [`ScalarField`](Cycle::ScalarField).
-    fn scalar_poseidon(&self) -> &Self::ScalarPoseidon;
+    fn scalar_poseidon(params: &Self::Params) -> &Self::ScalarPoseidon;
+
+    /// Generate the runtime parameters for this cycle.
+    fn generate() -> Self::Params;
 }
 
 /// Contains various fixed generators for elliptic curves, all of which have
