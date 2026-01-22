@@ -110,7 +110,7 @@ impl<F: Field> LinearExpression<WireEval<F>, F> for WireEvalSum<F> {
 }
 
 /// Extension trait for [`Driver`] for wiring polynomial evaluators in
-/// [`sx`] and [`sxy`] modules.
+/// [`s` module][super].
 ///
 /// # Public Input Enforcement
 ///
@@ -127,15 +127,9 @@ impl<F: Field> LinearExpression<WireEval<F>, F> for WireEvalSum<F> {
 ///
 /// ### Public Input Binding
 ///
-/// The system distinguishes between two types of constraints:
-///
-/// 1. **Internal constraints** — Calls to [`enforce_zero`] within
-///    [`Circuit::witness`] enforce that wire combinations equal zero.
-///
-/// 2. **Public input constraints** — Calls to [`enforce_zero`] on public output
-///    wires (from [`Circuit::instance`]) and the `ONE` wire do NOT enforce that
-///    these wires equal zero. Instead, they bind these wire values as
-///    coefficients in the public input polynomial $k(Y)$.
+/// Calls to [`enforce_zero`] on public output wires (from [`Circuit::instance`])
+/// and the `ONE` wire do NOT enforce that these wires equal zero. Instead, they
+/// bind these wire values as coefficients in the public input polynomial $k(Y)$.
 ///
 /// For example, calling `enforce_zero(|lc| lc.add(output_wire))` on a public
 /// output with value $v$ creates a constraint that binds $v$ as a coefficient
@@ -144,8 +138,9 @@ impl<F: Field> LinearExpression<WireEval<F>, F> for WireEvalSum<F> {
 /// This dual interpretation allows the same [`enforce_zero`] API to serve both
 /// purposes: internal zero constraints and public input binding.
 ///
-/// [`sx`]: super::sx
-/// [`sxy`]: super::sxy
+/// [`Circuit::witness`]: crate::Circuit::witness
+/// [`Circuit::instance`]: crate::Circuit::instance
+/// [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 pub(super) trait DriverExt<'dr>: Driver<'dr> {
     /// Enforces public output constraints by binding output wires to polynomial coefficients.
     ///
