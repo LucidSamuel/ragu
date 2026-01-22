@@ -119,10 +119,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     pub fn iter_coeffs(&self) -> impl DoubleEndedIterator<Item = F> {
         use core::iter::repeat_n;
 
-        assert!(self.u.len() <= R::n());
-        assert!(self.v.len() <= R::n());
-        assert!(self.w.len() <= R::n());
-        assert!(self.d.len() <= R::n());
+        self.assert_bounds();
 
         self.w
             .iter()
@@ -175,10 +172,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Transforms this polynomial from $p(X)$ to $p(zX)$ for $z \in \mathbb{F}$.
     pub fn dilate(&mut self, z: F) {
-        assert!(self.u.len() <= R::n());
-        assert!(self.v.len() <= R::n());
-        assert!(self.w.len() <= R::n());
-        assert!(self.d.len() <= R::n());
+        self.assert_bounds();
 
         let mut cur = F::ONE;
         for c in self.w.iter_mut() {
@@ -203,10 +197,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Evaluate this polynomial at a point `z`.
     pub fn eval(&self, z: F) -> F {
-        assert!(self.u.len() <= R::n());
-        assert!(self.v.len() <= R::n());
-        assert!(self.w.len() <= R::n());
-        assert!(self.d.len() <= R::n());
+        self.assert_bounds();
 
         let mut result = F::ZERO;
 
@@ -239,10 +230,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         generators: &impl arithmetic::FixedGenerators<C>,
         blind: F,
     ) -> C {
-        assert!(self.u.len() <= R::n());
-        assert!(self.v.len() <= R::n());
-        assert!(self.w.len() <= R::n());
-        assert!(self.d.len() <= R::n());
+        self.assert_bounds();
 
         assert!(generators.g().len() >= R::num_coeffs()); // TODO(ebfull)
 
@@ -275,6 +263,14 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             coeffs: self.iter_coeffs().collect(),
             _marker: core::marker::PhantomData,
         }
+    }
+
+    /// Assert that all coefficient vectors are within the rank bound.
+    fn assert_bounds(&self) {
+        assert!(self.u.len() <= R::n());
+        assert!(self.v.len() <= R::n());
+        assert!(self.w.len() <= R::n());
+        assert!(self.d.len() <= R::n());
     }
 
     /// Helper function to apply an operation to all coefficients.
