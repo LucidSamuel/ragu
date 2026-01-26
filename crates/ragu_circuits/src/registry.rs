@@ -145,18 +145,66 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
     }
 }
 
-/// Registry key binds the registry polynomial to the Fiat-Shamir transcript.
+/// Key that binds the registry polynomial $m(W, X, Y)$ to prevent Fiat-Shamir
+/// soudness attack.
 ///
-/// Since the registry polynomial is under developer control with many degrees
-/// of freedom, we need to bind its (succint) description to the transcript
-/// to avoid "weak Fiat-Shamir attack" or any backdoors.
-/// The key is computed during [`RegistryBuilder::finalize`] and used during
-/// polynomial evaluations, effectively augmenting each circuit with a linear
-/// constraint.
+/// In Fiat-Shamir transformed protocols, public info such as the proving
+/// statement (i.e., circuit descriptions) must be included in the transcript
+/// before any prover messages or verifier challenges. Otherwise, malicious
+/// provers may adapatively choose another statement during, or even after,
+/// generating a proof. In the literature, this is known as
+/// [weak Fiat-Shamir attacks](https://eprint.iacr.org/2023/1400).
+///
+/// To prevent such attacks, one can salt the registry digest `H(m(W,X,Y))`
+/// to the transcript before any prover messages, forcing a fixed instance.
+/// However, the registry `m` contains the description of a recursive verifier
+/// whose logic depends on a transcript salted with the very digest
+/// `H(m(W,X,Y))` itself, creating a circular dependency.
+///
+/// Previously, many preprocessing recursive proofs solve this self-reference
+/// problem by externalizing the circuit description into a verification key (vk)
+/// that is generated ahead of time and passed in as public input to the
+/// recursive verifier. However, Ragu avoid preprocessing by design, requiring
+/// an alternative solution.
+///
+/// # Binding a polynomial through its evaluation
+///
+/// Apart from its cryptographic hash digest, we can characterize a polynomial
+/// through its evaluation at fixed point. Obviously, the evaluation
+/// `e_0 = m(w_0, x_0, y_0)` alone where `w_0, x_0, y_0` are public constants is
+/// insufficient since many other polynomials also agree at this point.
+///
+/// If we seed another evaluation point by hashing the first eval `e_0`, namely
+/// `w_1, x_1, y_1 = H(e_0)`, and evaluate `e_1 = m(w_1, x_1, y_1)`. Then the
+/// `e_1` is much more tightly bound to `m`, since polynomials must agrees
+/// at both `(w_0, x_0, y_0)` and `(w_1, x_1, y_1)` to collide. Continuing this
+/// process `d` times, we obtain `e_d` as the binding evaluation to `m`.
+/// The soundness argument reduces to the Schwartz-Zippel lemma.
+///
+/// Note that for computationally bounded adversaries, a smaller constant `d` is
+/// likely sufficient thanks to the unpredictability of next evaluation point.
+/// In practice, we can choose `d` to balance security and performance.
 ///
 /// See [#78] for the security argument.
 ///
+/// # Break self-reference without preprocessing
+///
+/// Now with a binding evaluation `e_d`, which is the registry [`Key`], we can
+/// break the self-reference more elegantly without preprocessing or reliance on
+/// public inputs.
+///
+/// Concretely, we retroactively inject the registry key into each member circuit
+/// of `m` as a special wire `key_wire`, enforced by a simple linear constraint
+/// `key_wire = k`. This binds each circuit's wiring polynomial to the registry
+/// polynomial, and thus the entire registry polynomial to the Fiat-Shamir
+/// transcript without self-reference. The key randomizes the wiring polynomial
+/// directly.
+///
+/// The key is computed during [`RegistryBuilder::finalize`] and used during
+/// polynomial evaluations of [`CircuitObject`].
+///
 /// [#78]: https://github.com/tachyon-zcash/ragu/issues/78
+/// [`CircuitObject`]: crate::CircuitObject
 pub struct Key<F: Field> {
     /// Registry digest value
     val: F,
