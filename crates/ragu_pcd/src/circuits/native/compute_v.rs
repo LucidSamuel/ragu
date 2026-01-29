@@ -780,30 +780,22 @@ impl<'dr, D: Driver<'dr, F: ff::PrimeField>> Inverter<'dr, D> {
     /// the inversion constraints are still enforced through the [`Element`]
     /// wiring.
     fn invert(self, dr: &mut D) -> Result<Vec<Element<'dr, D>>> {
-        if self.differences.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let inverted_advice = D::just(|| {
-            let mut field_values = self
+        let mut advice = D::just(|| {
+            let mut differences = self
                 .differences
                 .iter()
                 .map(|diff| **diff.value().snag())
                 .collect::<Vec<_>>();
 
-            let mut scratch = field_values.clone();
-            ff::BatchInverter::invert_with_external_scratch(&mut field_values, &mut scratch);
+            let mut scratch = differences.clone();
+            ff::BatchInverter::invert_with_external_scratch(&mut differences, &mut scratch);
 
-            field_values
+            differences.into_iter()
         });
 
-        let mut inverted_elements = Vec::with_capacity(self.differences.len());
-        for (i, diff) in self.differences.into_iter().enumerate() {
-            let advice = D::just(|| inverted_advice.snag()[i]);
-            let inv_elem = diff.invert_with(dr, advice)?;
-            inverted_elements.push(inv_elem);
-        }
-
-        Ok(inverted_elements)
+        self.differences
+            .into_iter()
+            .map(|e| e.invert_with(dr, advice.view_mut().map(|e| e.next().unwrap())))
+            .collect()
     }
 }
