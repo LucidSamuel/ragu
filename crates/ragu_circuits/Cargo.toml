@@ -21,6 +21,10 @@ all-features = true
 
 [features]
 default = []
+unstable-test-fixtures = ["arithmetic/unstable-test-fixtures"]
+
+[lib]
+bench = false
 
 [dependencies]
 arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", package = "ragu_arithmetic" }
@@ -32,4 +36,9 @@ rand = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+gungraun = { workspace = true }
 ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
+
+[[bench]]
+name = "circuits"
+harness = false
