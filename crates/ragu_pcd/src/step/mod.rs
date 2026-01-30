@@ -11,6 +11,7 @@ use ragu_core::{
 };
 
 use super::header::Header;
+use crate::circuits::native::NUM_INTERNAL_CIRCUITS;
 
 pub use encoder::Encoded;
 
@@ -53,12 +54,15 @@ impl Index {
 
     /// Returns the circuit index for this step.
     ///
+    /// Internal steps occupy indices 0..NUM_INTERNAL_STEPS.
+    /// Application steps occupy indices (NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS)..(NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS + num_application_steps).
+    ///
     /// Pass the known number of application steps to validate and compute the
     /// final index of this step. Returns an error if an application step index
     /// exceeds the number of registered steps.
     pub(crate) fn circuit_index(&self, num_application_steps: usize) -> Result<CircuitIndex> {
         match self.index {
-            StepIndex::Internal(i) => Ok(CircuitIndex::new(num_application_steps + (i as usize))),
+            StepIndex::Internal(i) => Ok(CircuitIndex::from_u32(i as u32)),
             StepIndex::Application(i) => {
                 if i >= num_application_steps {
                     return Err(ragu_core::Error::Initialization(
@@ -66,7 +70,9 @@ impl Index {
                         ));
                 }
 
-                Ok(CircuitIndex::new(i))
+                Ok(CircuitIndex::new(
+                    NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS + i,
+                ))
             }
         }
     }
@@ -103,19 +109,29 @@ impl Index {
 
 #[test]
 fn test_index_map() -> Result<()> {
-    let num_application_steps = 10;
+    use crate::circuits::native::NUM_INTERNAL_CIRCUITS;
 
+    let num_application_steps = 10;
+    let app_offset = NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+
+    // Internal steps occupy indices 0..NUM_INTERNAL_STEPS
     assert_eq!(
         Index::internal(InternalStepIndex::Rerandomize).circuit_index(num_application_steps)?,
-        CircuitIndex::new(10)
-    );
-    assert_eq!(
-        Index::new(0).circuit_index(num_application_steps)?,
         CircuitIndex::new(0)
     );
     assert_eq!(
-        Index::new(1).circuit_index(num_application_steps)?,
+        Index::internal(InternalStepIndex::Trivial).circuit_index(num_application_steps)?,
         CircuitIndex::new(1)
+    );
+
+    // Application steps occupy indices (NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS)..
+    assert_eq!(
+        Index::new(0).circuit_index(num_application_steps)?,
+        CircuitIndex::new(app_offset)
+    );
+    assert_eq!(
+        Index::new(1).circuit_index(num_application_steps)?,
+        CircuitIndex::new(app_offset + 1)
     );
     Index::new(999).assert_index(999)?;
     assert!(Index::new(10).circuit_index(num_application_steps).is_err());

@@ -57,8 +57,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             registry_wy_poly.commit(C::host_generators(self.params), registry_wy_blind);
 
         let source = FuseProofSource { left, right };
-        let mut builder =
-            claims::Builder::new(&self.native_registry, self.num_application_steps, y, z);
+        let mut builder = claims::Builder::new(&self.native_registry, y, z);
         claims::native::build(&source, &mut builder)?;
 
         let error_terms =

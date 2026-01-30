@@ -65,8 +65,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         // Build a and b polynomials for each revdot claim.
         let source = native::SingleProofSource { proof: &pcd.proof };
-        let mut builder =
-            claims::Builder::new(&self.native_registry, self.num_application_steps, y, z);
+        let mut builder = claims::Builder::new(&self.native_registry, y, z);
         claims::native::build(&source, &mut builder)?;
 
         // Check all native revdot claims.
@@ -89,7 +88,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             let y_nested = C::ScalarField::random(&mut rng);
             let z_nested = C::ScalarField::random(&mut rng);
             let mut nested_builder =
-                claims::Builder::new(&self.nested_registry, 0, y_nested, z_nested);
+                claims::Builder::new(&self.nested_registry, y_nested, z_nested);
             claims::nested::build(&nested_source, &mut nested_builder)?;
 
             let ky_source = nested::SingleProofKySource::<C::ScalarField>::new();
@@ -231,7 +230,7 @@ mod nested {
             let poly = match component {
                 EndoscalarStage => &self.proof.p.endoscalar_rx,
                 PointsStage => &self.proof.p.points_rx,
-                EndoscalingStep(step) => &self.proof.p.step_rxs[step], // TODO: bounds
+                EndoscalingStep(step) => &self.proof.p.step_rxs[step as usize], // TODO: bounds
             };
             core::iter::once(poly)
         }

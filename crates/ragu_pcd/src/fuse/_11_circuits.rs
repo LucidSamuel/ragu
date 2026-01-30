@@ -113,17 +113,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let full_collapse_rx_commitment =
             full_collapse_rx.commit(C::host_generators(self.params), full_collapse_rx_blind);
 
-        let (compute_v_rx, _) =
-            native::compute_v::Circuit::<C, R, HEADER_SIZE>::new(self.num_application_steps)
-                .rx::<R>(
-                    native::compute_v::Witness {
-                        unified_instance,
-                        preamble_witness,
-                        query_witness,
-                        eval_witness,
-                    },
-                    self.native_registry.key(),
-                )?;
+        let (compute_v_rx, _) = native::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx::<R>(
+            native::compute_v::Witness {
+                unified_instance,
+                preamble_witness,
+                query_witness,
+                eval_witness,
+            },
+            self.native_registry.key(),
+        )?;
         let compute_v_rx_blind = C::CircuitField::random(&mut *rng);
         let compute_v_rx_commitment =
             compute_v_rx.commit(C::host_generators(self.params), compute_v_rx_blind);

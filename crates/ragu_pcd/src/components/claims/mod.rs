@@ -63,7 +63,6 @@ pub trait Source {
 /// the registry polynomial to transform rx polynomials appropriately.
 pub struct Builder<'m, 'rx, F: PrimeField, R: Rank> {
     pub(crate) registry: &'m Registry<'m, F, R>,
-    pub(crate) num_application_steps: usize,
     pub(crate) y: F,
     pub(crate) z: F,
     pub(crate) tz: structured::Polynomial<F, R>,
@@ -75,10 +74,9 @@ pub struct Builder<'m, 'rx, F: PrimeField, R: Rank> {
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
     /// Create a new claim builder.
-    pub fn new(registry: &'m Registry<'m, F, R>, num_application_steps: usize, y: F, z: F) -> Self {
+    pub fn new(registry: &'m Registry<'m, F, R>, y: F, z: F) -> Self {
         Self {
             registry,
-            num_application_steps,
             y,
             z,
             tz: R::tz(z),

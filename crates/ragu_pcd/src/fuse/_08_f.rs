@@ -54,9 +54,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let xz = x * z;
         let alpha = *alpha.value().take();
 
-        let omega_j = |idx: InternalCircuitIndex| -> C::CircuitField {
-            idx.circuit_index(self.num_application_steps).omega_j()
-        };
+        let omega_j =
+            |idx: InternalCircuitIndex| -> C::CircuitField { idx.circuit_index().omega_j() };
 
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.

@@ -57,7 +57,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             registry_xy_poly.commit(C::host_generators(self.params), registry_xy_blind);
 
         let registry_at = |idx: InternalCircuitIndex| -> C::CircuitField {
-            let circuit_id = idx.circuit_index(self.num_application_steps);
+            let circuit_id = idx.circuit_index();
             registry_xy_poly.eval(circuit_id.omega_j())
         };
 

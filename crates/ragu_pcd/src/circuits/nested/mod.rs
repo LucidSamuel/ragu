@@ -44,14 +44,15 @@ pub(crate) enum InternalCircuitIndex {
 
 impl InternalCircuitIndex {
     /// Convert to a [`CircuitIndex`] for registry lookup.
+    ///
+    /// All variants return compile-time constant indices.
     pub(crate) const fn circuit_index(self) -> CircuitIndex {
-        let idx = match self {
-            Self::EndoscalarStage => 0,
-            Self::PointsStage => 1,
-            Self::PointsFinalStaged => 2,
-            Self::EndoscalingStep(step) => 3 + step,
-        };
-        CircuitIndex::from_u32(idx)
+        match self {
+            Self::EndoscalarStage => CircuitIndex::from_u32(0),
+            Self::PointsStage => CircuitIndex::from_u32(1),
+            Self::PointsFinalStaged => CircuitIndex::from_u32(2),
+            Self::EndoscalingStep(step) => CircuitIndex::from_u32(3 + step),
+        }
     }
 }
 

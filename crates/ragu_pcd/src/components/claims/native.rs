@@ -105,7 +105,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) {
-        let circuit_id = id.circuit_index(self.num_application_steps);
+        let circuit_id = id.circuit_index();
         let rx = super::sum_polynomials(rxs);
         self.circuit_impl(circuit_id, rx);
     }
@@ -115,7 +115,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
     ) -> Result<()> {
-        let circuit_id = id.circuit_index(self.num_application_steps);
+        let circuit_id = id.circuit_index();
         self.stage_impl(circuit_id, rxs)
     }
 }

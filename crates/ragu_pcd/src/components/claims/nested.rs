@@ -22,7 +22,7 @@ pub enum RxComponent {
     /// PointsStage rx polynomial.
     PointsStage,
     /// EndoscalingStep circuit rx polynomial (indexed by step number).
-    EndoscalingStep(usize),
+    EndoscalingStep(u32),
 }
 
 /// Trait for processing nested claim values into accumulated outputs.
@@ -84,12 +84,12 @@ where
     // Each circuit claim needs: step_rx + endoscalar_rx + points_rx
     for step in 0..num_steps {
         for ((step_rx, endo_rx), pts_rx) in source
-            .rx(EndoscalingStep(step))
+            .rx(EndoscalingStep(step as u32))
             .zip(source.rx(EndoscalarStage))
             .zip(source.rx(PointsStage))
         {
             processor.internal_circuit(
-                InternalCircuitIndex::EndoscalingStep(step),
+                InternalCircuitIndex::EndoscalingStep(step as u32),
                 [step_rx, endo_rx, pts_rx].into_iter(),
             );
         }
@@ -108,7 +108,7 @@ where
     // PointsFinalStaged (index 2) - final stage check
     // Aggregates all EndoscalingStep rxs from all proofs
     {
-        let final_rxs = (0..num_steps).flat_map(|step| source.rx(EndoscalingStep(step)));
+        let final_rxs = (0..num_steps).flat_map(|step| source.rx(EndoscalingStep(step as u32)));
         processor.stage(InternalCircuitIndex::PointsFinalStaged, final_rxs)?;
     }
 
