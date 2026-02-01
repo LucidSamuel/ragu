@@ -120,3 +120,91 @@ fn rerandomization_flow() {
     let fused = app.rerandomize(fused, &mut rng).unwrap();
     assert!(app.verify(&fused, &mut rng).unwrap());
 }
+
+#[test]
+fn multiple_rerandomizations_all_verify() {
+    let pasta = Pasta::baked();
+    let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
+        .register(Step0)
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+
+    let mut rng = StdRng::seed_from_u64(9999);
+
+    let original = app.seed(&mut rng, Step0, ()).unwrap().0;
+    let original = original.carry::<HeaderA>(());
+    assert!(app.verify(&original, &mut rng).unwrap());
+
+    // Rerandomize multiple times - each should verify
+    let rerand1 = app.rerandomize(original.clone(), &mut rng).unwrap();
+    assert!(app.verify(&rerand1, &mut rng).unwrap());
+
+    let rerand2 = app.rerandomize(original.clone(), &mut rng).unwrap();
+    assert!(app.verify(&rerand2, &mut rng).unwrap());
+
+    // Rerandomize an already rerandomized proof
+    let rerand3 = app.rerandomize(rerand1, &mut rng).unwrap();
+    assert!(app.verify(&rerand3, &mut rng).unwrap());
+}
+
+#[test]
+fn rerandomization_preserves_header_data() {
+    let pasta = Pasta::baked();
+    let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
+        .register(Step0)
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+
+    let mut rng = StdRng::seed_from_u64(4321);
+
+    let original = app.seed(&mut rng, Step0, ()).unwrap().0;
+    let original = original.carry::<HeaderA>(());
+
+    let rerandomized = app.rerandomize(original.clone(), &mut rng).unwrap();
+
+    // Header data should be preserved
+    assert_eq!(
+        original.data, rerandomized.data,
+        "rerandomization should preserve header data"
+    );
+}
+
+#[test]
+fn rerandomized_fused_proof_verifies() {
+    let pasta = Pasta::baked();
+    let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
+        .register(Step0)
+        .unwrap()
+        .register(Step1)
+        .unwrap()
+        .finalize(pasta)
+        .unwrap();
+
+    let mut rng = StdRng::seed_from_u64(7777);
+
+    // Create two seeded proofs
+    let left = app
+        .seed(&mut rng, Step0, ())
+        .unwrap()
+        .0
+        .carry::<HeaderA>(());
+    let right = app
+        .seed(&mut rng, Step0, ())
+        .unwrap()
+        .0
+        .carry::<HeaderA>(());
+
+    // Fuse them
+    let fused = app.fuse(&mut rng, Step1, (), left, right).unwrap().0;
+    let fused = fused.carry::<HeaderA>(());
+    assert!(app.verify(&fused, &mut rng).unwrap());
+
+    // Rerandomize the fused proof
+    let rerandomized = app.rerandomize(fused, &mut rng).unwrap();
+    assert!(
+        app.verify(&rerandomized, &mut rng).unwrap(),
+        "rerandomized fused proof should verify"
+    );
+}
