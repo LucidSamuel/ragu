@@ -131,6 +131,81 @@ to $\F_q$ circuit to avoid expensive non-native arithmetic in the circuit.
 In the $\F_p$ circuit, we only witness the nested commitments of
 $\bar{A}^\ast, \bar{B}^\ast$ whose coordinates are native in $\F_p$.
 
-## 2 Layer Reduction
+## Multi-layer Revdot Reduction
 
 Another challenge comes from the $O(n^2)$ field operations for deriving $c^\ast$.
+When folding many revdot claims (e.g., $n=133$ in Ragu's fuse operation), the
+single-reduction approach above requires $n^2 = 17689$ field multiplications,
+exceeding the targeted circuit size limit.
+Ragu prefers smaller circuits (even if requiring more circuits per step) because
+smaller circuits lead to smaller witness commitments, which lead to smaller IPA
+proofs, ultimately yielding faster verifier times.
+
+To address this, we employ a **two-layer reduction** scheme parameterized by
+$(M, N)$ that folds up to $M \cdot N$ claims using roughly $NM^2 + N^2 - N + 3$
+constraints instead of $(M \cdot N)^2$.
+
+### Structure
+
+The two-layer scheme works as follows:
+
+- _Partition_: Group the $M \cdot N$ input claims into $N$ groups of $M$ claims each.
+- _Layer 1_: Using challenges $\mu, \nu \sample \F$, fold each group of $M$
+   claims into a single claim, producing $N$ intermediate claims.
+- _Layer 2_: Using fresh challenges $\mu', \nu' \sample \F$, fold the $N$
+   intermediate claims into one final claim.
+
+This hierarchical approach reduces the quadratic blowup by processing claims in
+smaller batches first, then combining the results.
+
+### 2 Layer Reduction
+
+Given initial revdot claims indexed as $\set{(\bar{A}_i, \bar{B}_i, c_i)}_{i \in [M\cdot N]}$,
+the accumulation proceeds:
+
+1. Prover and verifier partition claims into $N$ groups of $M$ claims each.
+2. Layer 1:
+   - Prover sends all error terms $\set{e^{(g)}_{i,j}}_{g\in[N], i\neq j, i,j\in[M]}$
+     (i.e., $N$ groups of $M(M-1)$ error terms each)
+   - Verifier samples $\mu, \nu \sample \F$
+   - Both compute $N$ intermediate claims. For each group $g \in [N]$:
+     $$
+     \bar{A}^{(g)} = \sum_{i=0}^{M-1} \mu^{-i} \bar{A}_{gM+i},\quad
+     \bar{B}^{(g)} = \sum_{i=0}^{M-1} (\mu\nu)^i \bar{B}_{gM+i},\quad
+     c^{(g)} = \sum_{i,j\in[M]} \mu^{j-i} \nu^j e^{(g)}_{i,j}
+     $$
+3. Layer 2:
+   - Prover sends error terms $\set{e_{g,h}}_{g\neq h, g,h\in[N]}$
+     (i.e., $N(N-1)$ cross-terms between intermediate claims)
+   - Verifier samples fresh $\mu', \nu' \sample \F$
+   - Both compute final folded claim:
+     $$
+     \bar{A}^\ast = \sum_{g=0}^{N-1} (\mu')^{-g} \bar{A}^{(g)},\quad
+     \bar{B}^\ast = \sum_{g=0}^{N-1} (\mu'\nu')^g \bar{B}^{(g)},\quad
+     c^\ast = \sum_{g,h\in[N]} (\mu')^{h-g} (\nu')^h e_{g,h}
+     $$
+
+The key insight is that fresh challenges $\mu', \nu'$ in layer 2 are independent
+from $\mu, \nu$ in layer 1, maintaining soundness across both layers.
+
+### Complexity Analysis
+
+For folding $M \cdot N$ claims via two layers with parameters $(M, N)$:
+
+- Layer 1: Precompute $\mu\nu$ and $\mu^{-1}$ ($2$ constraints), then fold
+  $N$ groups of $M$ claims using nested Horner evaluation ($N(M^2 - 1)$ constraints),
+  totaling $NM^2 - N + 2$ constraints
+- Layer 2: Precompute $\mu'\nu'$ and $(\mu')^{-1}$ ($2$ constraints), then fold
+  $N$ intermediate claims using nested Horner evaluation ($N^2 - 1$ constraints),
+  totaling $N^2 + 1$ constraints
+- Total: $(NM^2 - N + 2) + (N^2 + 1) = NM^2 + N^2 - N + 3$ constraints
+
+Compare this to a single-layer reduction of the same $M \cdot N$ claims:
+
+- $(M \cdot N)^2 + 1$ constraints
+
+For Ragu's parameters $M=7, N=19$ (supporting up to $133$ claims):
+
+- Two-layer: $19 \cdot 49 + 361 - 19 + 3 = 1276$ constraints
+- Single-layer: $133^2 + 1 = 17690$ constraints
+- Savings: $\sim 93\%$ reduction
