@@ -451,8 +451,16 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
     fn compute_registry_digest(&self) -> F {
         let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
 
-        let field_from_hash = |hasher: &blake2b_simd::State, index: u8| {
-            F::from_uniform_bytes(hasher.clone().update(&[index]).finalize().as_array())
+        let field_from_hash = |digest_state: &blake2b_simd::Hash, index: u8| {
+            F::from_uniform_bytes(
+                Params::new()
+                    .personal(b"ragu_registry___")
+                    .to_state()
+                    .update(digest_state.as_bytes())
+                    .update(&[index])
+                    .finalize()
+                    .as_array(),
+            )
         };
 
         // Placeholder "nothing-up-my-sleeve challenges" (small primes).
@@ -468,12 +476,16 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
             let eval = self.wxy(w, x, y);
             hasher.update(eval.to_repr().as_ref());
 
-            w = field_from_hash(&hasher, 0);
-            x = field_from_hash(&hasher, 1);
-            y = field_from_hash(&hasher, 2);
+            let digest_state = hasher.finalize();
+            w = field_from_hash(&digest_state, 0);
+            x = field_from_hash(&digest_state, 1);
+            y = field_from_hash(&digest_state, 2);
+
+            hasher = Params::new().personal(b"ragu_registry___").to_state();
+            hasher.update(digest_state.as_bytes());
         }
 
-        field_from_hash(&hasher, 0)
+        field_from_hash(&hasher.finalize(), 0)
     }
 }
 
