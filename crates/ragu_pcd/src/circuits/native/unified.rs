@@ -287,7 +287,7 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
     /// proof's components and challenges. Useful for testing or when the full
     /// proof structure is available.
     ///
-    /// Note: Field order must match `define_unified_instance!`.
+    /// Note: Field order follows `define_unified_instance!` for consistency.
     pub fn alloc_from_proof<R: Rank>(
         dr: &mut D,
         proof: DriverValue<D, &Proof<C, R>>,
