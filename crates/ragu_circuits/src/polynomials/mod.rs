@@ -70,8 +70,8 @@ pub trait Rank:
     /// $$t(x, Z) = -\sum_{i=0}^{n - 1} x^{4n - 1 - i} (Z^{2n - 1 - i} + Z^{2n + i})$$
     /// for some $x \in \mathbb{F}$.
     ///
-    /// This is the symmetric counterpart to [`Rank::tz`] and is used to
-    /// evaluate the same polynomial when the roles of `x` and `z` are flipped.
+    /// This is the symmetric counterpart to [`Rank::tz`]: here $x$ is the
+    /// evaluation point and $Z$ remains the indeterminate.
     fn tx<F: Field>(x: F) -> sparse::Polynomial<F, Self> {
         let mut view = sparse::View::wiring();
         if x != F::ZERO {
