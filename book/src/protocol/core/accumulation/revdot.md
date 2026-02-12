@@ -1,7 +1,7 @@
 # Revdot Product
 
-Step 5 of our [NARK](../nark.md#nark-1) involves a special case of inner product
-argument of the following form:
+Step 5 of our [NARK](../nark.md#nark) involves a special case of inner
+product relation of the following form:
 
 $$
 \Rel_{rdp}=\bigg\{\begin{align*}
@@ -23,16 +23,19 @@ We call these **revdot product relations**.
 
 Revdot products appear in several contexts in the Ragu protocol:
 
-- individual circuits'
+- enforcing an individual circuit's
   [consolidated constraint](../arithmetization.md#consolidated-constraints)
-  enforcement against its public inputs 
-- [staging polynomials](../../extensions/staging.md)' well-formness check 
-  via enforcing its revdot product with its _stage mask_ polynomial
-- Folded accumulator $\acc.\v{a}, \acc.\v{b}$ from the previous PCD step
+  against its public inputs
+- checking [staging polynomials](../../extensions/staging.md)'
+  well-formedness via their revdot products with stage mask
+  polynomials
+- folding the accumulator $\acc.\v{a}, \acc.\v{b}$ from the
+  previous PCD step
 
-## Intuition
+## Intuition {#intuition}
 
-Revdot product is a special case of inner product relations. Since the
+The revdot product relation is a special case of inner product
+relations. Since the
 concrete commitment scheme we use, Pedersen Vector commitment, is _linearly
 homomorphic_, we can borrow the aggregation technique from Bulletproofs,
 which aggregates multiple claims into one via **random linear combination**.
@@ -66,7 +69,8 @@ $$
 \end{align*}
 $$
 
-where $e_{i,j}=\revdot{\v{a}_i}{\v{b}_j}$, with diagonal elements $e_{i,i} = c_i$.
+where $e_{i,j}=\revdot{\v{a}_i}{\v{b}_j}$, with diagonal elements
+$e_{i,i} = c_i$.
 The verifier can compute $\bar{A}^\ast, \bar{B}^\ast$ unassisted.
 To compute $c^\ast$, the verifier needs _cross terms_ $\set{e_{i,j}}_{i\neq j}$
 in addition to the $\set{c_i}$ terms already available. For soundness, **the
@@ -81,7 +85,7 @@ $$
 \revdot{\mu^{-i}\cdot \v{a}_i}{(\mu\nu)^j \cdot \v{b}_j} = \mu^{j-i} \nu^j \cdot e_{i,j}
 $$
 
-for $\forall i,j \in[n]$.
+for all $i,j \in[n]$.
 In this matrix view, all diagonal entries are $\nu^i\cdot c_i$, computable by
 the verifier unassisted. All off-diagonal entries (i.e., $i\neq j$) contain
 **error terms** that constitute the remaining summands.
@@ -92,7 +96,8 @@ The terms _cross terms_ and _error terms_ are used interchangeably.
 
 The accumulator instance and witness defined in the split-accumulation scheme
 are identical to those of the revdot product relation $\Rel_{rdp}$.
-We fold new revdot claims from various sources into $\acc_i$ to derive $\acc_{i+1}$.
+We fold new revdot claims from various sources into $\acc_i$ to
+derive $\acc_{i+1}$.
 This procedure aggregates all new revdot claims, including the folded claim
 in $\acc_i$, into a single claim captured by the updated accumulator.
 
@@ -102,7 +107,8 @@ The split-accumulation proceeds as follows:
    $\set{\pi_i}$ to be accumulated into the instance-witness pair
    [as above](#intuition).
    The verifier holds $\set{\bar{A}_i,\bar{B}_i, c_i}_{i\in[n]}$.
-2. The prover sends all $n^2-n$ (off-diagonal) error terms $\set{e_{i,j}}_{i\neq j}$.
+2. The prover sends all $n^2-n$ (off-diagonal) error terms
+   $\set{e_{i,j}}_{i\neq j}$.
 3. The verifier samples $\mu,\nu \sample\F$.
 4. The prover updates the folded witness:
    $$
@@ -127,18 +133,20 @@ The verifier's work consists primarily of $2\cdot \mathsf{MSM}(n)$ to compute
 $\bar{A}^\ast, \bar{B}^\ast$, and $O(n^2)$ field multiplications to compute
 $c^\ast$.
 We introduce the next two techniques to reduce the verifier cost of enforcing
-these computations in circuit. We use both techniques in conjunction, but present
-them separately for clarity.
+these computations in circuit. We use both techniques in
+conjunction, but present them separately for clarity.
 
 ## Reducing Commitment Aggregation to Batched Evaluation
 
 Enforcing the computation of $\bar{A}^\ast$ and $\bar{B}^\ast$ requires linear
-combination of commitments in circuit. A direct implementation involves non-native
+combination of commitments in circuit. A direct implementation
+involves non-native
 arithmetic to constrain scalar multiplications. Instead, Ragu transforms the
 commitment aggregation statement into a PCS multi-opening claim, then piggybacks
 on the existing [batched evaluation](./pcs.md) for accumulation.
 
-The aggregation of homomorphic commitments $\bar{A}_i$ corresponds to aggregation
+The aggregation of homomorphic commitments $\bar{A}_i$ corresponds
+to aggregation
 of their underlying polynomials $a_i(X)$. We can _spot check_ the constituent
 polynomials and the aggregated polynomial at an arbitrary point $\beta\in\F$.
 If their evaluations follow the expected linear combination relation, _and_ the
@@ -174,11 +182,14 @@ non-native arithmetic.
 
 ## Multi-layer Revdot Reduction
 
-Another challenge arises from the $O(n^2)$ field operations to derive $c^\ast$.
+The previous section addressed the cost of commitment aggregation.
+Another challenge arises from the $O(n^2)$ field operations to
+derive $c^\ast$.
 When folding many revdot claims (e.g., $n=133$ in Ragu's fuse operation), the
 single-reduction approach above requires $n^2 = 17689$ field multiplications,
 exceeding the targeted circuit size limit.
-Smaller circuits are preferable (even if requiring more circuits per step) because
+Smaller circuits are preferable (even if requiring more circuits
+per step) because
 they lead to smaller witness commitments, which lead to smaller IPA proofs,
 ultimately yielding faster verifier times.
 
@@ -186,11 +197,12 @@ To address this, we employ a **two-layer reduction** scheme parameterized by
 $(M, N)$ that folds up to $M \cdot N$ claims using roughly $NM^2 + N^2 - N + 3$
 constraints instead of $(M \cdot N)^2$.
 
-### Structure
+### Two-Layer Structure
 
 The two-layer scheme works as follows:
 
-- _Partition_: Group the $M \cdot N$ input claims into $N$ groups of $M$ claims each.
+- _Partition_: Group the $M \cdot N$ input claims into $N$ groups
+  of $M$ claims each.
 - _Layer 1_: Using challenges $\mu, \nu \sample \F$, fold each group of $M$
    claims into a single claim, producing $N$ intermediate claims.
 - _Layer 2_: Using fresh challenges $\mu', \nu' \sample \F$, fold the $N$
@@ -199,14 +211,16 @@ The two-layer scheme works as follows:
 This hierarchical approach reduces the quadratic blowup by processing claims in
 smaller batches first, then combining the results.
 
-### 2 Layer Reduction
+### Two-Layer Reduction
 
-Given initial revdot claims indexed as $\set{(\bar{A}_i, \bar{B}_i, c_i)}_{i \in [M\cdot N]}$,
+Given initial revdot claims indexed as
+$\set{(\bar{A}_i, \bar{B}_i, c_i)}_{i \in [M\cdot N]}$,
 the accumulation proceeds:
 
 1. The prover and verifier partition claims into $N$ groups of $M$ claims each.
 2. Layer 1:
-   - The prover sends all error terms $\set{e^{(g)}_{i,j}}_{g\in[N], i\neq j, i,j\in[M]}$
+   - The prover sends all error terms
+     $\set{e^{(g)}_{i,j}}_{g\in[N], i\neq j, i,j\in[M]}$
      (i.e., $N$ groups of $M(M-1)$ error terms each).
    - The verifier samples $\mu, \nu \sample \F$.
    - Both parties compute $N$ intermediate claims. For each group $g \in [N]$:
@@ -227,7 +241,8 @@ the accumulation proceeds:
      $$
 
 The key insight is that fresh challenges $\mu', \nu'$ in layer 2 are independent
-from $\mu, \nu$ in layer 1, maintaining soundness across both layers.
+from $\mu, \nu$ in layer 1, since the Schwartz-Zippel soundness
+argument applies independently at each layer.
 
 ### Complexity Analysis
 
