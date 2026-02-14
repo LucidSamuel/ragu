@@ -15,9 +15,9 @@
 //! to compile the added circuits into a registry polynomial representation that can
 //! be efficiently evaluated at different restrictions.
 
-use arithmetic::{Domain, bitreverse};
 use blake2b_simd::Params;
 use ff::{Field, FromUniformBytes, PrimeField};
+use ragu_arithmetic::{Domain, bitreverse};
 use ragu_core::{Error, Result};
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
@@ -496,9 +496,9 @@ mod tests {
     use crate::tests::SquareCircuit;
     use alloc::collections::BTreeSet;
     use alloc::collections::btree_map::BTreeMap;
-    use arithmetic::{Domain, bitreverse};
     use ff::Field;
     use ff::PrimeField;
+    use ragu_arithmetic::{Domain, bitreverse};
     use ragu_core::Result;
     use ragu_pasta::Fp;
 
