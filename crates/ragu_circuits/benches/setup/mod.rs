@@ -72,8 +72,8 @@ pub fn rand_unstructured_poly(rng: &mut StdRng) -> unstructured::Polynomial<Fp, 
     unstructured::Polynomial::random(rng)
 }
 
-pub fn builder_squares<'a>() -> RegistryBuilder<'a, Fp, R<25>> {
-    RegistryBuilder::<'a, Fp, R<25>>::new()
+pub fn builder_squares<'a>() -> RegistryBuilder<'a, Fp, R<20>> {
+    RegistryBuilder::<'a, Fp, R<20>>::new()
         .register_circuit(SquareCircuit { times: 2 })
         .unwrap()
         .register_circuit(SquareCircuit { times: 10 })

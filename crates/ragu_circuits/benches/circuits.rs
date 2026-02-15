@@ -127,7 +127,7 @@ fn register() {
 
 #[library_benchmark]
 #[bench::finalize(builder_squares())]
-fn finalize(builder: RegistryBuilder<Fp, R<25>>) {
+fn finalize(builder: RegistryBuilder<Fp, R<20>>) {
     black_box(builder.finalize()).unwrap();
 }
 
