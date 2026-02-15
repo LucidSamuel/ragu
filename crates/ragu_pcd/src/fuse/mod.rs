@@ -206,7 +206,7 @@ mod tests {
     use crate::ApplicationBuilder;
     use crate::header::{Header, Suffix};
     use crate::step::{Encoded, Index, Step};
-    use arithmetic::Cycle;
+    use ragu_arithmetic::Cycle;
     use ragu_circuits::polynomials::R;
     use ragu_core::{
         drivers::{Driver, DriverValue},
@@ -287,7 +287,7 @@ mod tests {
             dr: &mut D,
             _: DriverValue<D, ()>,
             left: DriverValue<D, Fp>,
-            _right: DriverValue<D, Fp>,
+            right: DriverValue<D, Fp>,
         ) -> Result<(
             (
                 Encoded<'dr, D, Self::Left, HS>,
