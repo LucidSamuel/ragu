@@ -61,7 +61,11 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
         }
         let z2n = zn.square(dr)?;
 
-        // Use precomputed inversions from aux to avoid redundant computation
+        // Use precomputed inversions from aux to avoid redundant computation.
+        //
+        // Preconditions:
+        // - x != 0 and z != 0 (inversion will fail otherwise)
+        // - aux must contain (x^{-1}, z^{-1}), typically from predict()
         let (x_inv_val, z_inv_val) = aux.cast();
         let x_inv = x.invert_with(dr, x_inv_val)?;
         let z_inv = z.invert_with(dr, z_inv_val)?;
