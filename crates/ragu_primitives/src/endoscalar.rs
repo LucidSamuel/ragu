@@ -155,6 +155,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let mut acc = p.endo(dr).add_incomplete(dr, p, None)?.double(dr)?;
         let mut bits = self.bits();
 
+        // Uendo::BITS is guaranteed to be even (enforced in ragu_arithmetic).
         for _ in 0..(Uendo::BITS as usize / 2) {
             let negate_bit = bits.next().unwrap();
             let endo_bit = bits.next().unwrap();
@@ -183,6 +184,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         let mut acc = Element::zero(dr);
         let mut bits = self.bits();
 
+        // Uendo::BITS is guaranteed to be even (enforced in ragu_arithmetic).
         for _ in 0..(Uendo::BITS as usize / 2) {
             let n = bits.next().unwrap();
             let e = bits.next().unwrap();
