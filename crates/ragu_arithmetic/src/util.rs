@@ -168,7 +168,7 @@ pub fn mul<
         let skip_bits = segment * c;
         let skip_bytes = skip_bits / 8;
 
-        if skip_bytes >= 32 {
+        if skip_bytes >= bytes.as_ref().len() {
             return 0;
         }
 
@@ -184,7 +184,7 @@ pub fn mul<
         tmp as usize
     }
 
-    let segments = (256 / c) + 1;
+    let segments = (C::Scalar::NUM_BITS as usize).div_ceil(c);
 
     let mut acc = C::Curve::identity();
 
