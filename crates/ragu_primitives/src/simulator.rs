@@ -125,12 +125,12 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
 
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         let lc = lc(DirectSum::default());
-        self.num_linear_constraints += 1;
 
         if lc.value != F::ZERO {
             return Err(Error::InvalidWitness("linear constraint failed".into()));
         }
 
+        self.num_linear_constraints += 1;
         Ok(())
     }
 
