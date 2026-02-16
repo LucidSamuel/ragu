@@ -270,10 +270,7 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> SpongeS
     }
 
     fn get_rate(&self) -> Vec<Element<'dr, D>> {
-        let mut tmp = self.values.clone().into_inner();
-        tmp.truncate(P::RATE);
-        tmp.reverse();
-        tmp
+        self.values.iter().take(P::RATE).cloned().rev().collect()
     }
 }
 
@@ -297,11 +294,11 @@ fn mds<'i, 'dr, D: Driver<'dr>>(
     matrix: impl ExactSizeIterator<Item = &'i [D::F]>,
 ) -> Result<()> {
     assert_eq!(state.len(), matrix.len());
-    let tmp = state
+    let tmp: Vec<_> = state
         .iter()
         .zip(matrix)
         .map(|(_, coeffs)| multiadd(dr, state, coeffs))
-        .collect::<Result<Vec<_>>>()?;
+        .collect();
     state.clone_from_slice(&tmp[..]);
 
     Ok(())
