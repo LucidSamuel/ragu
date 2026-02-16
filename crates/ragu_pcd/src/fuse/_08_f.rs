@@ -5,9 +5,10 @@
 //! claimed query in the query stage for all of the committed polynomials so
 //! far.
 //!
-//! Each `factor_iter` call below produces the coefficients of
-//! $(p\_i(X) - v\_i) / (X - x\_i)$ for a single query. The total number of
-//! terms must match `poly_queries` in the `compute_v` circuit exactly.
+//! Each quotient $(p\_i(X) - v\_i) / (X - x\_i)$ is produced by either a
+//! `factor_iter` call (single point) or a `factor_batch` call (multiple
+//! points sharing the same polynomial). The total number of terms must
+//! match `poly_queries` in the `compute_v` circuit exactly.
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
@@ -23,7 +24,7 @@ use ragu_core::{
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
-use alloc::vec::Vec;
+use alloc::{boxed::Box, vec::Vec};
 
 use crate::{
     Application, Proof, circuits::native::InternalCircuitIndex, circuits::nested::stages::f, proof,
@@ -49,7 +50,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
         use InternalCircuitIndex::*;
-        use ragu_arithmetic::factor_iter;
+        use ragu_arithmetic::{factor_batch, factor_iter};
 
         let w = *w.value().take();
         let y = *y.value().take();
@@ -61,66 +62,83 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let omega_j =
             |idx: InternalCircuitIndex| -> C::CircuitField { idx.circuit_index().omega_j() };
 
+        // Batch multi-point factorings: one pass per polynomial instead of one
+        // per (polynomial, point) pair.
+        let query_xy_quots = factor_batch(
+            query.registry_xy_poly.iter_coeffs(),
+            &[
+                w,
+                omega_j(PreambleStage),
+                omega_j(ErrorNStage),
+                omega_j(ErrorMStage),
+                omega_j(QueryStage),
+                omega_j(EvalStage),
+                omega_j(ErrorMFinalStaged),
+                omega_j(ErrorNFinalStaged),
+                omega_j(EvalFinalStaged),
+                omega_j(Hashes1Circuit),
+                omega_j(Hashes2Circuit),
+                omega_j(PartialCollapseCircuit),
+                omega_j(FullCollapseCircuit),
+                omega_j(ComputeVCircuit),
+                left.application.circuit_id.omega_j(),
+                right.application.circuit_id.omega_j(),
+            ],
+        );
+        let error_m_quots = factor_batch(
+            error_m.registry_wy_poly.iter_coeffs(),
+            &[left.challenges.x, right.challenges.x, x],
+        );
+        let wx0_quots = factor_batch(
+            s_prime.registry_wx0_poly.iter_coeffs(),
+            &[left.challenges.y, y],
+        );
+        let wx1_quots = factor_batch(
+            s_prime.registry_wx1_poly.iter_coeffs(),
+            &[right.challenges.y, y],
+        );
+
+        // Destructure batch results into iterators that yield coefficients in
+        // descending degree order (matching factor_iter convention).
+        let mut query_xy = query_xy_quots.into_iter();
+        let mut error_m_wy = error_m_quots.into_iter();
+        let mut wx0 = wx0_quots.into_iter();
+        let mut wx1 = wx1_quots.into_iter();
+
+        let rev = |v: Vec<C::CircuitField>| -> Box<dyn Iterator<Item = C::CircuitField>> {
+            Box::new(v.into_iter().rev())
+        };
+
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.
-        let mut iters = [
+        let mut iters: [Box<dyn Iterator<Item = C::CircuitField>>; 55] = [
             factor_iter(left.p.poly.iter_coeffs(), left.challenges.u),
             factor_iter(right.p.poly.iter_coeffs(), right.challenges.u),
             factor_iter(left.query.registry_xy_poly.iter_coeffs(), w),
             factor_iter(right.query.registry_xy_poly.iter_coeffs(), w),
-            factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), left.challenges.y),
-            factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), right.challenges.y),
-            factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), y),
-            factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), y),
-            factor_iter(error_m.registry_wy_poly.iter_coeffs(), left.challenges.x),
-            factor_iter(error_m.registry_wy_poly.iter_coeffs(), right.challenges.x),
-            factor_iter(error_m.registry_wy_poly.iter_coeffs(), x),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), w),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(PreambleStage)),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(ErrorNStage)),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(ErrorMStage)),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(QueryStage)),
-            factor_iter(query.registry_xy_poly.iter_coeffs(), omega_j(EvalStage)),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorMFinalStaged),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(ErrorNFinalStaged),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(EvalFinalStaged),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(Hashes1Circuit),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(Hashes2Circuit),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(PartialCollapseCircuit),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(FullCollapseCircuit),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                omega_j(ComputeVCircuit),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                left.application.circuit_id.omega_j(),
-            ),
-            factor_iter(
-                query.registry_xy_poly.iter_coeffs(),
-                right.application.circuit_id.omega_j(),
-            ),
+            rev(wx0.next().unwrap()),        // wx0 @ left.challenges.y
+            rev(wx1.next().unwrap()),        // wx1 @ right.challenges.y
+            rev(wx0.next().unwrap()),        // wx0 @ y
+            rev(wx1.next().unwrap()),        // wx1 @ y
+            rev(error_m_wy.next().unwrap()), // @ left.challenges.x
+            rev(error_m_wy.next().unwrap()), // @ right.challenges.x
+            rev(error_m_wy.next().unwrap()), // @ x
+            rev(query_xy.next().unwrap()),   // @ w
+            rev(query_xy.next().unwrap()),   // @ PreambleStage
+            rev(query_xy.next().unwrap()),   // @ ErrorNStage
+            rev(query_xy.next().unwrap()),   // @ ErrorMStage
+            rev(query_xy.next().unwrap()),   // @ QueryStage
+            rev(query_xy.next().unwrap()),   // @ EvalStage
+            rev(query_xy.next().unwrap()),   // @ ErrorMFinalStaged
+            rev(query_xy.next().unwrap()),   // @ ErrorNFinalStaged
+            rev(query_xy.next().unwrap()),   // @ EvalFinalStaged
+            rev(query_xy.next().unwrap()),   // @ Hashes1Circuit
+            rev(query_xy.next().unwrap()),   // @ Hashes2Circuit
+            rev(query_xy.next().unwrap()),   // @ PartialCollapseCircuit
+            rev(query_xy.next().unwrap()),   // @ FullCollapseCircuit
+            rev(query_xy.next().unwrap()),   // @ ComputeVCircuit
+            rev(query_xy.next().unwrap()),   // @ left app omega_j
+            rev(query_xy.next().unwrap()),   // @ right app omega_j
             // A/B polynomial queries:
             // a_poly at xz, b_poly at x for left child, right child, current
             factor_iter(left.ab.a_poly.iter_coeffs(), xz),
