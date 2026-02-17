@@ -299,11 +299,19 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     }
 
     /// The first padding space between the `w` and `v` vectors.
+    ///
+    /// Invariant: `self.w.len() + self.v.len() <= 2 * R::n()`, otherwise this would underflow.
+    /// This is ensured by the fact that callers validate `self.w.len() <= R::n()` and
+    /// `self.v.len() <= R::n()`.
     fn first_padding(&self) -> usize {
         R::n() * 2 - self.w.len() - self.v.len()
     }
 
     /// The second padding space between the `u` and `d` vectors.
+    ///
+    /// Invariant: `self.u.len() + self.d.len() <= 2 * R::n()`, otherwise this would underflow.
+    /// This is ensured by the fact that callers validate `self.u.len() <= R::n()` and
+    /// `self.d.len() <= R::n()`.
     fn second_padding(&self) -> usize {
         R::n() * 2 - self.u.len() - self.d.len()
     }
