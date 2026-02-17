@@ -24,11 +24,66 @@ use ragu_core::{
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::vec;
+use alloc::vec::Vec;
 
 use crate::{
     Application, Proof, circuits::native::InternalCircuitIndex, circuits::nested::stages::f, proof,
 };
+
+fn note_expected_len(expected_len: &mut Option<usize>, len: usize) {
+    if let Some(expected) = *expected_len {
+        assert_eq!(
+            expected, len,
+            "mismatched quotient lengths in compute_f: expected {}, got {}",
+            expected, len
+        );
+    } else {
+        *expected_len = Some(len);
+    }
+}
+
+fn add_weighted_iter<F: Field>(
+    coeffs_rev: &mut Vec<F>,
+    expected_len: &mut Option<usize>,
+    weight: F,
+    iter: impl Iterator<Item = F>,
+) {
+    let mut len = 0usize;
+    for (row, c) in iter.enumerate() {
+        if row == coeffs_rev.len() {
+            coeffs_rev.push(F::ZERO);
+        }
+        coeffs_rev[row] += weight * c;
+        len = row + 1;
+    }
+    note_expected_len(expected_len, len);
+}
+
+fn add_weighted_batch<F: Field, I: IntoIterator<Item = F>>(
+    coeffs_rev: &mut Vec<F>,
+    expected_len: &mut Option<usize>,
+    a: I,
+    points: &[F],
+    weights: &[F],
+) where
+    I::IntoIter: DoubleEndedIterator,
+{
+    assert_eq!(points.len(), weights.len());
+    let mut len = 0usize;
+    ragu_arithmetic::factor_batch_for_each(a, points, |row| {
+        if len == coeffs_rev.len() {
+            coeffs_rev.push(F::ZERO);
+        }
+        let mut acc = F::ZERO;
+        for i in 0..row.len() {
+            acc += weights[i] * row[i];
+        }
+        coeffs_rev[len] += acc;
+        len += 1;
+    });
+    note_expected_len(expected_len, len);
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_f<'dr, D, RNG: CryptoRng>(
@@ -50,7 +105,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
         use InternalCircuitIndex::*;
-        use ragu_arithmetic::{factor_batch, factor_iter};
+        use ragu_arithmetic::factor_iter;
 
         let w = *w.value().take();
         let y = *y.value().take();
@@ -62,124 +117,270 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let omega_j =
             |idx: InternalCircuitIndex| -> C::CircuitField { idx.circuit_index().omega_j() };
 
-        // Batch multi-point factorings: one pass per polynomial instead of one
-        // per (polynomial, point) pair.
-        let query_xy_quots = factor_batch(
-            query.registry_xy_poly.iter_coeffs(),
-            &[
-                w,
-                omega_j(PreambleStage),
-                omega_j(ErrorNStage),
-                omega_j(ErrorMStage),
-                omega_j(QueryStage),
-                omega_j(EvalStage),
-                omega_j(ErrorMFinalStaged),
-                omega_j(ErrorNFinalStaged),
-                omega_j(EvalFinalStaged),
-                omega_j(Hashes1Circuit),
-                omega_j(Hashes2Circuit),
-                omega_j(PartialCollapseCircuit),
-                omega_j(FullCollapseCircuit),
-                omega_j(ComputeVCircuit),
-                left.application.circuit_id.omega_j(),
-                right.application.circuit_id.omega_j(),
-            ],
-        );
-        let error_m_quots = factor_batch(
-            error_m.registry_wy_poly.iter_coeffs(),
-            &[left.challenges.x, right.challenges.x, x],
-        );
-        let wx0_quots = factor_batch(
-            s_prime.registry_wx0_poly.iter_coeffs(),
-            &[left.challenges.y, y],
-        );
-        let wx1_quots = factor_batch(
-            s_prime.registry_wx1_poly.iter_coeffs(),
-            &[right.challenges.y, y],
-        );
+        const TERM_COUNT: usize = 55;
+        let mut weights = vec![C::CircuitField::ZERO; TERM_COUNT];
+        let mut power = C::CircuitField::ONE;
+        for i in (0..TERM_COUNT).rev() {
+            weights[i] = power;
+            power *= alpha;
+        }
 
-        // Destructure batch results into iterators that yield coefficients in
-        // descending degree order (matching factor_iter convention).
-        let mut query_xy = query_xy_quots.into_iter();
-        let mut error_m_wy = error_m_quots.into_iter();
-        let mut wx0 = wx0_quots.into_iter();
-        let mut wx1 = wx1_quots.into_iter();
+        let query_xy_points = [
+            w,
+            omega_j(PreambleStage),
+            omega_j(ErrorNStage),
+            omega_j(ErrorMStage),
+            omega_j(QueryStage),
+            omega_j(EvalStage),
+            omega_j(ErrorMFinalStaged),
+            omega_j(ErrorNFinalStaged),
+            omega_j(EvalFinalStaged),
+            omega_j(Hashes1Circuit),
+            omega_j(Hashes2Circuit),
+            omega_j(PartialCollapseCircuit),
+            omega_j(FullCollapseCircuit),
+            omega_j(ComputeVCircuit),
+            left.application.circuit_id.omega_j(),
+            right.application.circuit_id.omega_j(),
+        ];
+        let error_m_points = [left.challenges.x, right.challenges.x, x];
+        let wx0_points = [left.challenges.y, y];
+        let wx1_points = [right.challenges.y, y];
 
-        let rev = |v: Vec<C::CircuitField>| -> Box<dyn Iterator<Item = C::CircuitField>> {
-            Box::new(v.into_iter().rev())
-        };
+        let mut coeffs_rev = Vec::new();
+        let mut expected_len = None;
 
         // This must exactly match the ordering of the `poly_queries` function
         // in the `compute_v` circuit.
-        let mut iters: [Box<dyn Iterator<Item = C::CircuitField>>; 55] = [
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[0],
             factor_iter(left.p.poly.iter_coeffs(), left.challenges.u),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[1],
             factor_iter(right.p.poly.iter_coeffs(), right.challenges.u),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[2],
             factor_iter(left.query.registry_xy_poly.iter_coeffs(), w),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[3],
             factor_iter(right.query.registry_xy_poly.iter_coeffs(), w),
-            rev(wx0.next().unwrap()),        // wx0 @ left.challenges.y
-            rev(wx1.next().unwrap()),        // wx1 @ right.challenges.y
-            rev(wx0.next().unwrap()),        // wx0 @ y
-            rev(wx1.next().unwrap()),        // wx1 @ y
-            rev(error_m_wy.next().unwrap()), // @ left.challenges.x
-            rev(error_m_wy.next().unwrap()), // @ right.challenges.x
-            rev(error_m_wy.next().unwrap()), // @ x
-            rev(query_xy.next().unwrap()),   // @ w
-            rev(query_xy.next().unwrap()),   // @ PreambleStage
-            rev(query_xy.next().unwrap()),   // @ ErrorNStage
-            rev(query_xy.next().unwrap()),   // @ ErrorMStage
-            rev(query_xy.next().unwrap()),   // @ QueryStage
-            rev(query_xy.next().unwrap()),   // @ EvalStage
-            rev(query_xy.next().unwrap()),   // @ ErrorMFinalStaged
-            rev(query_xy.next().unwrap()),   // @ ErrorNFinalStaged
-            rev(query_xy.next().unwrap()),   // @ EvalFinalStaged
-            rev(query_xy.next().unwrap()),   // @ Hashes1Circuit
-            rev(query_xy.next().unwrap()),   // @ Hashes2Circuit
-            rev(query_xy.next().unwrap()),   // @ PartialCollapseCircuit
-            rev(query_xy.next().unwrap()),   // @ FullCollapseCircuit
-            rev(query_xy.next().unwrap()),   // @ ComputeVCircuit
-            rev(query_xy.next().unwrap()),   // @ left app omega_j
-            rev(query_xy.next().unwrap()),   // @ right app omega_j
-            // A/B polynomial queries:
-            // a_poly at xz, b_poly at x for left child, right child, current
-            factor_iter(left.ab.a_poly.iter_coeffs(), xz),
-            factor_iter(left.ab.b_poly.iter_coeffs(), x),
-            factor_iter(right.ab.a_poly.iter_coeffs(), xz),
-            factor_iter(right.ab.b_poly.iter_coeffs(), x),
-            factor_iter(ab.a_poly.iter_coeffs(), xz),
-            factor_iter(ab.b_poly.iter_coeffs(), x),
-            // Per-rx evaluations at xz only. The same r_i(xz) values feed
-            // into both A(xz) (undilated) and B(x) (Z-dilated).
-            factor_iter(left.preamble.native_rx.iter_coeffs(), xz),
-            factor_iter(left.error_n.native_rx.iter_coeffs(), xz),
-            factor_iter(left.error_m.native_rx.iter_coeffs(), xz),
-            factor_iter(left.query.native_rx.iter_coeffs(), xz),
-            factor_iter(left.eval.native_rx.iter_coeffs(), xz),
-            factor_iter(left.application.rx.iter_coeffs(), xz),
-            factor_iter(left.circuits.hashes_1_rx.iter_coeffs(), xz),
-            factor_iter(left.circuits.hashes_2_rx.iter_coeffs(), xz),
-            factor_iter(left.circuits.partial_collapse_rx.iter_coeffs(), xz),
-            factor_iter(left.circuits.full_collapse_rx.iter_coeffs(), xz),
-            factor_iter(left.circuits.compute_v_rx.iter_coeffs(), xz),
-            factor_iter(right.preamble.native_rx.iter_coeffs(), xz),
-            factor_iter(right.error_n.native_rx.iter_coeffs(), xz),
-            factor_iter(right.error_m.native_rx.iter_coeffs(), xz),
-            factor_iter(right.query.native_rx.iter_coeffs(), xz),
-            factor_iter(right.eval.native_rx.iter_coeffs(), xz),
-            factor_iter(right.application.rx.iter_coeffs(), xz),
-            factor_iter(right.circuits.hashes_1_rx.iter_coeffs(), xz),
-            factor_iter(right.circuits.hashes_2_rx.iter_coeffs(), xz),
-            factor_iter(right.circuits.partial_collapse_rx.iter_coeffs(), xz),
-            factor_iter(right.circuits.full_collapse_rx.iter_coeffs(), xz),
-            factor_iter(right.circuits.compute_v_rx.iter_coeffs(), xz),
-        ];
+        );
 
-        let mut coeffs = Vec::new();
-        while let Some(first) = iters[0].next() {
-            let c = iters[1..]
-                .iter_mut()
-                .fold(first, |acc, iter| alpha * acc + iter.next().unwrap());
-            coeffs.push(c);
-        }
+        add_weighted_batch(
+            &mut coeffs_rev,
+            &mut expected_len,
+            s_prime.registry_wx0_poly.iter_coeffs(),
+            &wx0_points,
+            &weights[4..6],
+        );
+        add_weighted_batch(
+            &mut coeffs_rev,
+            &mut expected_len,
+            s_prime.registry_wx1_poly.iter_coeffs(),
+            &wx1_points,
+            &weights[6..8],
+        );
+        add_weighted_batch(
+            &mut coeffs_rev,
+            &mut expected_len,
+            error_m.registry_wy_poly.iter_coeffs(),
+            &error_m_points,
+            &weights[8..11],
+        );
+        add_weighted_batch(
+            &mut coeffs_rev,
+            &mut expected_len,
+            query.registry_xy_poly.iter_coeffs(),
+            &query_xy_points,
+            &weights[11..27],
+        );
+
+        // A/B polynomial queries:
+        // a_poly at xz, b_poly at x for left child, right child, current
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[27],
+            factor_iter(left.ab.a_poly.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[28],
+            factor_iter(left.ab.b_poly.iter_coeffs(), x),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[29],
+            factor_iter(right.ab.a_poly.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[30],
+            factor_iter(right.ab.b_poly.iter_coeffs(), x),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[31],
+            factor_iter(ab.a_poly.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[32],
+            factor_iter(ab.b_poly.iter_coeffs(), x),
+        );
+
+        // Per-rx evaluations at xz only. The same r_i(xz) values feed
+        // into both A(xz) (undilated) and B(x) (Z-dilated).
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[33],
+            factor_iter(left.preamble.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[34],
+            factor_iter(left.error_n.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[35],
+            factor_iter(left.error_m.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[36],
+            factor_iter(left.query.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[37],
+            factor_iter(left.eval.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[38],
+            factor_iter(left.application.rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[39],
+            factor_iter(left.circuits.hashes_1_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[40],
+            factor_iter(left.circuits.hashes_2_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[41],
+            factor_iter(left.circuits.partial_collapse_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[42],
+            factor_iter(left.circuits.full_collapse_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[43],
+            factor_iter(left.circuits.compute_v_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[44],
+            factor_iter(right.preamble.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[45],
+            factor_iter(right.error_n.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[46],
+            factor_iter(right.error_m.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[47],
+            factor_iter(right.query.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[48],
+            factor_iter(right.eval.native_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[49],
+            factor_iter(right.application.rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[50],
+            factor_iter(right.circuits.hashes_1_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[51],
+            factor_iter(right.circuits.hashes_2_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[52],
+            factor_iter(right.circuits.partial_collapse_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[53],
+            factor_iter(right.circuits.full_collapse_rx.iter_coeffs(), xz),
+        );
+        add_weighted_iter(
+            &mut coeffs_rev,
+            &mut expected_len,
+            weights[54],
+            factor_iter(right.circuits.compute_v_rx.iter_coeffs(), xz),
+        );
+
+        let mut coeffs = coeffs_rev;
         coeffs.reverse();
 
         let poly = unstructured::Polynomial::from_coeffs(coeffs);

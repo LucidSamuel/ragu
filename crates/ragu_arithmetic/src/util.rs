@@ -111,7 +111,11 @@ where
 /// # Panics
 ///
 /// Panics if the polynomial $a$ is of degree $0$, as it cannot be factored by a linear term.
-pub fn factor_batch<F: Field, I: IntoIterator<Item = F>>(a: I, points: &[F]) -> Vec<Vec<F>>
+pub fn factor_batch_for_each<F: Field, I: IntoIterator<Item = F>>(
+    a: I,
+    points: &[F],
+    mut for_each: impl FnMut(&[F]),
+)
 where
     I::IntoIter: DoubleEndedIterator,
 {
@@ -122,12 +126,12 @@ where
         if it.next().is_none() {
             panic!("cannot factor a polynomial of degree 0");
         }
-        return Vec::new();
+        return;
     }
 
     let neg_points: Vec<F> = points.iter().map(|b| -*b).collect();
     let mut tmps = vec![F::ZERO; n];
-    let mut results: Vec<Vec<F>> = (0..n).map(|_| Vec::new()).collect();
+    let mut row = vec![F::ZERO; n];
 
     let mut iter = a.into_iter().rev().peekable();
 
@@ -144,9 +148,35 @@ where
             lead_coeff -= tmps[i];
             tmps[i] = lead_coeff;
             tmps[i] *= neg_points[i];
-            results[i].push(lead_coeff);
+            row[i] = lead_coeff;
         }
+        for_each(&row);
     }
+}
+
+/// Computes $a / (X - b_i)$ with no remainder for the given univariate polynomial
+/// $a \in \mathbb{F}\[X]$ and each evaluation point $b_i$ in `points`, returning one
+/// quotient polynomial per point in ascending degree order.
+///
+/// This is equivalent to calling [`factor`] once per point, but walks the
+/// coefficient array only once, which is significantly faster when the same
+/// polynomial is factored at many points.
+///
+/// # Panics
+///
+/// Panics if the polynomial $a$ is of degree $0$, as it cannot be factored by a linear term.
+pub fn factor_batch<F: Field, I: IntoIterator<Item = F>>(a: I, points: &[F]) -> Vec<Vec<F>>
+where
+    I::IntoIter: DoubleEndedIterator,
+{
+    let n = points.len();
+    let mut results: Vec<Vec<F>> = (0..n).map(|_| Vec::new()).collect();
+
+    factor_batch_for_each(a, points, |row| {
+        for i in 0..n {
+            results[i].push(row[i]);
+        }
+    });
 
     for r in &mut results {
         r.reverse();
