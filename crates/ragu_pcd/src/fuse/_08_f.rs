@@ -6,7 +6,7 @@
 //! far.
 //!
 //! Each quotient $(p\_i(X) - v\_i) / (X - x\_i)$ is produced by either a
-//! `factor_iter` call (single point) or a `factor_batch` call (multiple
+//! `factor_iter` call (single point) or a `factor_batch_for_each` call (multiple
 //! points sharing the same polynomial). The total number of terms must
 //! match `poly_queries` in the `compute_v` circuit exactly.
 
@@ -176,19 +176,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(right.query.registry_xy_poly.iter_coeffs(), w),
         );
 
+        let wx0_weights = [weights[4], weights[6]];
         add_weighted_batch(
             &mut coeffs_rev,
             &mut expected_len,
             s_prime.registry_wx0_poly.iter_coeffs(),
             &wx0_points,
-            &weights[4..6],
+            &wx0_weights,
         );
+        let wx1_weights = [weights[5], weights[7]];
         add_weighted_batch(
             &mut coeffs_rev,
             &mut expected_len,
             s_prime.registry_wx1_poly.iter_coeffs(),
             &wx1_points,
-            &weights[6..8],
+            &wx1_weights,
         );
         add_weighted_batch(
             &mut coeffs_rev,
