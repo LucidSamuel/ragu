@@ -115,8 +115,7 @@ pub fn factor_batch_for_each<F: Field, I: IntoIterator<Item = F>>(
     a: I,
     points: &[F],
     mut for_each: impl FnMut(&[F]),
-)
-where
+) where
     I::IntoIter: DoubleEndedIterator,
 {
     let n = points.len();
