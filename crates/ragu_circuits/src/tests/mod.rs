@@ -12,7 +12,7 @@ use ragu_primitives::Element;
 
 use crate::{
     Circuit, CircuitExt, CircuitObject,
-    polynomials::{R, Rank},
+    polynomials::{Rank, TestRank},
     registry,
 };
 use ragu_core::maybe::Always;
@@ -152,7 +152,7 @@ fn test_simple_circuit() {
         .unwrap()
         .0;
 
-    type MyRank = R<5>;
+    type MyRank = TestRank;
     let circuit = MySimpleCircuit.into_object::<MyRank>().unwrap();
 
     consistency_checks(&*circuit);

@@ -1,5 +1,5 @@
 use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::R;
+use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
@@ -19,12 +19,12 @@ pub fn setup_register() -> (
 }
 
 pub fn setup_finalize() -> (
-    ApplicationBuilder<'static, Pasta, R<13>, 4>,
+    ApplicationBuilder<'static, Pasta, ProductionRank, 4>,
     &'static <Pasta as Cycle>::Params,
 ) {
     let pasta = Pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
-    let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
+    let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(nontrivial::WitnessLeaf { poseidon_params })
         .unwrap()
         .register(nontrivial::Hash2 { poseidon_params })
@@ -33,13 +33,13 @@ pub fn setup_finalize() -> (
 }
 
 pub fn setup_seed() -> (
-    Application<'static, Pasta, R<13>, 4>,
+    Application<'static, Pasta, ProductionRank, 4>,
     &'static <Pasta as Cycle>::CircuitPoseidon,
     StdRng,
 ) {
     let pasta = Pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
-    let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
+    let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(nontrivial::WitnessLeaf { poseidon_params })
         .unwrap()
         .register(nontrivial::Hash2 { poseidon_params })
@@ -50,9 +50,9 @@ pub fn setup_seed() -> (
 }
 
 pub fn setup_fuse() -> (
-    Application<'static, Pasta, R<13>, 4>,
-    Pcd<'static, Pasta, R<13>, nontrivial::LeafNode>,
-    Pcd<'static, Pasta, R<13>, nontrivial::LeafNode>,
+    Application<'static, Pasta, ProductionRank, 4>,
+    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
+    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
     &'static <Pasta as Cycle>::CircuitPoseidon,
     StdRng,
 ) {
@@ -80,8 +80,8 @@ pub fn setup_fuse() -> (
 }
 
 pub fn setup_verify_leaf() -> (
-    Application<'static, Pasta, R<13>, 4>,
-    Pcd<'static, Pasta, R<13>, nontrivial::LeafNode>,
+    Application<'static, Pasta, ProductionRank, 4>,
+    Pcd<'static, Pasta, ProductionRank, nontrivial::LeafNode>,
     StdRng,
 ) {
     let (app, poseidon_params, mut rng) = setup_seed();
@@ -99,8 +99,8 @@ pub fn setup_verify_leaf() -> (
 }
 
 pub fn setup_verify_node() -> (
-    Application<'static, Pasta, R<13>, 4>,
-    Pcd<'static, Pasta, R<13>, nontrivial::InternalNode>,
+    Application<'static, Pasta, ProductionRank, 4>,
+    Pcd<'static, Pasta, ProductionRank, nontrivial::InternalNode>,
     StdRng,
 ) {
     let (app, poseidon_params, mut rng) = setup_seed();

@@ -267,11 +267,11 @@ mod tests {
     use super::*;
     use crate::ApplicationBuilder;
     use ff::Field;
-    use ragu_circuits::{polynomials::R, registry::CircuitIndex};
+    use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
     use ragu_pasta::Pasta;
     use rand::{SeedableRng, rngs::StdRng};
 
-    type TestR = R<13>;
+    type TestR = ProductionRank;
     const HEADER_SIZE: usize = 4;
 
     fn create_test_app() -> crate::Application<'static, Pasta, TestR, HEADER_SIZE> {

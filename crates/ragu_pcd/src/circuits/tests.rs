@@ -7,7 +7,7 @@ use native::{
 use ragu_circuits::staging::{Stage, StageExt};
 use ragu_pasta::{Pasta, fp, fq};
 
-pub(crate) type R = ragu_circuits::polynomials::R<13>;
+pub(crate) type R = ragu_circuits::polynomials::ProductionRank;
 
 // When changing HEADER_SIZE, update the constraint counts by running:
 //   cargo test -p ragu_pcd --release print_internal_circuit -- --nocapture

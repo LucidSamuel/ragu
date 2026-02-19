@@ -492,7 +492,7 @@ impl<F: PrimeField + FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 #[cfg(test)]
 mod tests {
     use super::{CircuitIndex, OmegaKey, RegistryBuilder};
-    use crate::polynomials::R;
+    use crate::polynomials::TestRank;
     use crate::tests::SquareCircuit;
     use alloc::collections::BTreeSet;
     use alloc::collections::btree_map::BTreeMap;
@@ -501,8 +501,6 @@ mod tests {
     use ragu_arithmetic::{Domain, bitreverse};
     use ragu_core::Result;
     use ragu_pasta::Fp;
-
-    type TestRank = R<8>;
     type TestRegistryBuilder<'a> = RegistryBuilder<'a, Fp, TestRank>;
 
     #[test]

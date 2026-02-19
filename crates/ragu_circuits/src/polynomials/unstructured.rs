@@ -163,7 +163,7 @@ impl<F: Field, R: Rank> AddAssign<&super::structured::Polynomial<F, R>> for Poly
 fn test_add_structured() {
     use ragu_pasta::Fp;
 
-    type R = super::R<13>;
+    type R = super::ProductionRank;
 
     let p = super::structured::Polynomial::<Fp, R>::random(&mut rand::rng());
 

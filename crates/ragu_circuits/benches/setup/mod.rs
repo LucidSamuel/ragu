@@ -1,5 +1,5 @@
 use ff::Field;
-use ragu_circuits::polynomials::{R, structured, unstructured};
+use ragu_circuits::polynomials::{ProductionRank, TestRank, structured, unstructured};
 use ragu_circuits::registry::{Key, Registry, RegistryBuilder};
 use ragu_pasta::Fp;
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
@@ -56,24 +56,24 @@ pub fn key<F: Field>(rng: &mut StdRng) -> Key<F> {
     Key::new(F::random(rng))
 }
 
-pub fn rand_structured_poly(rng: &mut StdRng) -> structured::Polynomial<Fp, R<13>> {
+pub fn rand_structured_poly(rng: &mut StdRng) -> structured::Polynomial<Fp, ProductionRank> {
     structured::Polynomial::random(rng)
 }
 
 pub fn rand_structured_poly_vec<const N: usize>(
     rng: &mut StdRng,
-) -> Vec<structured::Polynomial<Fp, R<13>>> {
+) -> Vec<structured::Polynomial<Fp, ProductionRank>> {
     (0..N)
         .map(|_| structured::Polynomial::random(rng))
         .collect()
 }
 
-pub fn rand_unstructured_poly(rng: &mut StdRng) -> unstructured::Polynomial<Fp, R<13>> {
+pub fn rand_unstructured_poly(rng: &mut StdRng) -> unstructured::Polynomial<Fp, ProductionRank> {
     unstructured::Polynomial::random(rng)
 }
 
-pub fn builder_squares<'a>() -> RegistryBuilder<'a, Fp, R<20>> {
-    RegistryBuilder::<'a, Fp, R<20>>::new()
+pub fn builder_squares<'a>() -> RegistryBuilder<'a, Fp, ProductionRank> {
+    RegistryBuilder::<'a, Fp, ProductionRank>::new()
         .register_circuit(SquareCircuit { times: 2 })
         .unwrap()
         .register_circuit(SquareCircuit { times: 10 })
@@ -92,8 +92,8 @@ pub fn builder_squares<'a>() -> RegistryBuilder<'a, Fp, R<20>> {
         .unwrap()
 }
 
-pub fn builder_simple<'a>() -> RegistryBuilder<'a, Fp, R<5>> {
-    RegistryBuilder::<'a, Fp, R<5>>::new()
+pub fn builder_simple<'a>() -> RegistryBuilder<'a, Fp, TestRank> {
+    RegistryBuilder::<'a, Fp, TestRank>::new()
         .register_circuit(MySimpleCircuit)
         .unwrap()
         .register_circuit(MySimpleCircuit)
@@ -104,6 +104,6 @@ pub fn builder_simple<'a>() -> RegistryBuilder<'a, Fp, R<5>> {
         .unwrap()
 }
 
-pub fn registry_simple<'a>() -> Registry<'a, Fp, R<5>> {
+pub fn registry_simple<'a>() -> Registry<'a, Fp, TestRank> {
     builder_simple().finalize().unwrap()
 }

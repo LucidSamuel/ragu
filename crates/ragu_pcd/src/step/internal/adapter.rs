@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use crate::header::{Header, Suffix};
     use crate::step::{Encoded, Index, Step};
-    use ragu_circuits::polynomials::R;
+    use ragu_circuits::polynomials::TestRank;
     use ragu_core::{
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
@@ -123,7 +123,7 @@ mod tests {
     };
     use ragu_pasta::{Fp, Pasta};
 
-    type TestR = R<8>;
+    type TestR = TestRank;
     const HEADER_SIZE: usize = 4;
 
     struct TestHeader;

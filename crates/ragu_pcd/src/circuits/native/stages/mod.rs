@@ -16,7 +16,7 @@ pub(crate) mod tests {
         maybe::Empty,
     };
 
-    pub(crate) type R = ragu_circuits::polynomials::R<13>;
+    pub(crate) type R = ragu_circuits::polynomials::ProductionRank;
     pub(crate) use crate::circuits::tests::HEADER_SIZE;
     pub(crate) use crate::components::fold_revdot::NativeParameters;
 

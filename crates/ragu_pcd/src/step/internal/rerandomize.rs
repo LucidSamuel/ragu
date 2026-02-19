@@ -86,7 +86,7 @@ fn test_rerandomize_consistency() {
     use ragu_primitives::Element;
 
     const HEADER_SIZE: usize = 4;
-    type R = polynomials::R<8>;
+    type R = polynomials::TestRank;
 
     struct Single;
     impl Header<Fp> for Single {

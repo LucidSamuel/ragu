@@ -369,7 +369,7 @@ impl<'a, 'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'a, '
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ragu_circuits::polynomials::R;
+    use ragu_circuits::polynomials::ProductionRank;
     use ragu_core::{drivers::emulator::Emulator, maybe::Empty};
     use ragu_pasta::Pasta;
 
@@ -377,8 +377,9 @@ mod tests {
     fn num_wires_constant_is_correct() {
         // Use a wireless emulator with Empty witness - the emulator never reads witness values.
         let mut emulator = Emulator::counter();
-        let output = Output::<'_, _, Pasta>::alloc_from_proof::<R<16>>(&mut emulator, Empty)
-            .expect("allocation should succeed");
+        let output =
+            Output::<'_, _, Pasta>::alloc_from_proof::<ProductionRank>(&mut emulator, Empty)
+                .expect("allocation should succeed");
 
         assert_eq!(
             output.num_wires(),

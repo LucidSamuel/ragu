@@ -144,14 +144,14 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::polynomials::R;
+    use crate::polynomials::ProductionRank;
     use ragu_pasta::Fp;
     use ragu_primitives::Simulator;
 
     #[test]
     fn simulate_txz() -> Result<()> {
-        // R<13> has log2_n = 11
-        type TestRank = R<13>;
+        // ProductionRank (R<13>) has log2_n = 11
+        type TestRank = ProductionRank;
 
         let x = Fp::random(&mut rand::rng());
         let z = Fp::random(&mut rand::rng());

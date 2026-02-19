@@ -373,7 +373,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 fn test_eval() {
     use ragu_pasta::Fp;
 
-    type R = super::R<6>;
+    type R = super::TestRank;
 
     for insertions in 0..R::n() {
         let mut poly = Polynomial::<Fp, R>::new();
@@ -397,7 +397,7 @@ fn test_eval() {
 fn test_backward_forward() {
     use ragu_pasta::Fp;
 
-    type R = super::R<7>;
+    type R = super::TestRank;
 
     for insertions in 0..R::n() {
         let mut poly = Polynomial::<Fp, R>::new();
@@ -437,45 +437,51 @@ fn test_backward_forward() {
 fn test_dilate() {
     use ragu_pasta::Fp;
 
-    type R = super::R<5>;
+    type R = super::TestRank;
 
-    for insertions_a in 0..R::n() {
-        for insertions_b in 0..R::n() {
-            for insertions_c in 0..R::n() {
-                for insertions_d in 0..R::n() {
-                    let mut poly = Polynomial::<Fp, R>::new();
-                    for _ in 0..insertions_a {
-                        poly.u.push(Fp::random(&mut rand::rng()));
-                    }
-                    for _ in 0..insertions_b {
-                        poly.v.push(Fp::random(&mut rand::rng()));
-                    }
-                    for _ in 0..insertions_c {
-                        poly.w.push(Fp::random(&mut rand::rng()));
-                    }
-                    for _ in 0..insertions_d {
-                        poly.d.push(Fp::random(&mut rand::rng()));
-                    }
-                    let x = Fp::random(&mut rand::rng());
-                    let z = Fp::random(&mut rand::rng());
-                    let upoly = poly.unstructured();
-                    poly.dilate(z);
-                    let vpoly = poly.unstructured();
-                    assert_eq!(
-                        ragu_arithmetic::eval(&upoly.coeffs, x * z),
-                        ragu_arithmetic::eval(&vpoly.coeffs, x)
-                    );
-                }
-            }
+    let check = |u_len: usize, v_len: usize, w_len: usize, d_len: usize| {
+        let mut poly = Polynomial::<Fp, R>::new();
+        for _ in 0..u_len {
+            poly.u.push(Fp::random(&mut rand::rng()));
         }
+        for _ in 0..v_len {
+            poly.v.push(Fp::random(&mut rand::rng()));
+        }
+        for _ in 0..w_len {
+            poly.w.push(Fp::random(&mut rand::rng()));
+        }
+        for _ in 0..d_len {
+            poly.d.push(Fp::random(&mut rand::rng()));
+        }
+        let x = Fp::random(&mut rand::rng());
+        let z = Fp::random(&mut rand::rng());
+        let upoly = poly.unstructured();
+        poly.dilate(z);
+        let vpoly = poly.unstructured();
+        assert_eq!(
+            ragu_arithmetic::eval(&upoly.coeffs, x * z),
+            ragu_arithmetic::eval(&vpoly.coeffs, x)
+        );
+    };
+
+    // Vary each dimension independently while others are at max.
+    for i in 0..R::n() {
+        check(i, R::n() - 1, R::n() - 1, R::n() - 1);
+        check(R::n() - 1, i, R::n() - 1, R::n() - 1);
+        check(R::n() - 1, R::n() - 1, i, R::n() - 1);
+        check(R::n() - 1, R::n() - 1, R::n() - 1, i);
     }
+
+    // Boundary: all empty and all full.
+    check(0, 0, 0, 0);
+    check(R::n(), R::n(), R::n(), R::n());
 }
 
 #[test]
 fn test_negate() {
     use ragu_pasta::Fp;
 
-    type R = super::R<6>;
+    type R = super::TestRank;
 
     for insertions in 0..R::n() {
         let mut poly = Polynomial::<Fp, R>::new();
@@ -516,7 +522,7 @@ fn test_negate() {
 fn test_constant_term() {
     use ragu_pasta::Fp;
 
-    type R = super::R<6>;
+    type R = super::TestRank;
 
     let mut poly = Polynomial::<Fp, R>::new();
     let random_value = Fp::random(&mut rand::rng());
@@ -533,7 +539,7 @@ fn test_constant_term() {
 fn test_prod() {
     use ragu_pasta::Fp;
 
-    type R = super::R<7>;
+    type R = super::TestRank;
 
     let mut rx = Polynomial::<Fp, R>::new();
     {
@@ -565,7 +571,7 @@ fn test_commit_consistency() {
     use ragu_arithmetic::Cycle;
     use ragu_pasta::{Fp, Pasta};
 
-    type R = super::R<10>;
+    type R = super::TestRank;
 
     let pasta = Pasta::baked();
     let generators = Pasta::host_generators(pasta);
@@ -597,7 +603,7 @@ fn test_commit_consistency() {
 fn test_product_with_dot() {
     use ragu_pasta::Fp;
 
-    type R = super::R<5>;
+    type R = super::TestRank;
 
     let mut poly1 = Polynomial::<Fp, R>::new();
     let mut poly2 = Polynomial::<Fp, R>::new();
@@ -641,7 +647,7 @@ fn test_product_with_dot() {
 fn ring_poly_test() {
     use ragu_pasta::Fp;
 
-    type R = super::R<5>;
+    type R = super::TestRank;
 
     let rand = || Fp::random(&mut rand::rng());
 

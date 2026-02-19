@@ -342,7 +342,7 @@ mod tests {
     use ragu_primitives::{Endoscalar, vec::Len};
     use rand::Rng;
 
-    type R = polynomials::R<13>;
+    type R = polynomials::ProductionRank;
 
     /// Computes the effective scalar for an endoscalar via emulated `lift`.
     fn compute_effective_scalar(endo: Uendo) -> Fq {

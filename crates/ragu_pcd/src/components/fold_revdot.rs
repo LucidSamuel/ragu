@@ -269,7 +269,7 @@ pub fn fold_two_layer<'dr, D: Driver<'dr>, P: Parameters>(
 mod tests {
     use super::*;
     use ff::Field;
-    use ragu_circuits::polynomials::{R, structured};
+    use ragu_circuits::polynomials::{TestRank, structured};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
     use ragu_primitives::{Simulator, vec::CollectFixed};
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn test_revdot_folding() -> Result<()> {
         type P = TestParams<3, 3>;
-        type TestRank = R<4>;
+
         let n = <P as Parameters>::N::len();
         let mut rng = rand::rng();
 
@@ -350,7 +350,7 @@ mod tests {
         use alloc::vec::Vec;
 
         type P = TestParams<6, 5>; // M=5, N=6, so max = 30
-        type TestRank = R<4>;
+
         let m = <P as Parameters>::M::len();
         let n = <P as Parameters>::N::len();
 
@@ -456,7 +456,6 @@ mod tests {
     fn test_multireduce() -> Result<()> {
         /// Verify two-layer folding correctness with actual polynomials.
         fn verify<P: Parameters>() -> Result<()> {
-            type TestRank = R<4>;
             let mut rng = rand::rng();
             let n = P::N::len();
             let m = P::M::len();
@@ -580,7 +579,6 @@ mod tests {
         /// Verify fold_two_layer on evaluations matches evaluating folded polynomials
         /// for both lhs and rhs polynomial sets with their respective scale factors.
         fn verify<P: Parameters>(count: usize) -> Result<()> {
-            type TestRank = R<4>;
             let mut rng = rand::rng();
 
             // Create `count` random polynomial pairs (up to m*n)
@@ -768,7 +766,7 @@ mod tests {
     #[test]
     fn test_empty_input() {
         type P = TestParams<3, 3>;
-        type TestRank = R<4>;
+
         let n = <P as Parameters>::N::len();
 
         // Empty input should produce all-zero folded polynomials
@@ -797,7 +795,6 @@ mod tests {
     #[should_panic(expected = "exceeds M*N")]
     fn test_fold_polys_m_overflow_panics() {
         type P = TestParams<2, 2>; // max = 4
-        type TestRank = R<4>;
 
         // Create 5 polynomials, which exceeds M*N=4
         let polys: Vec<_> = (0..5)
@@ -808,7 +805,6 @@ mod tests {
 
     #[test]
     fn test_error_term_ordering() {
-        type TestRank = R<4>;
         let mut rng = rand::rng();
 
         // Create 3 distinct polynomial pairs
@@ -865,7 +861,7 @@ mod tests {
     #[test]
     fn test_native_parameters_correctness() -> Result<()> {
         // Test with actual NativeParameters (M=6, N=18)
-        type TestRank = R<4>;
+
         let mut rng = rand::rng();
         let m = <NativeParameters as Parameters>::M::len();
         let _n = <NativeParameters as Parameters>::N::len();
