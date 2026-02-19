@@ -28,7 +28,14 @@ impl<F: Field, R: Rank> Trace<F, R> {
     /// Assembles the trace into a polynomial using a trivial floor plan.
     ///
     /// For use in tests and benchmarks that don't have a registry.
-    pub fn assemble_trivial(self) -> structured::Polynomial<F, R> {
+    pub fn assemble_trivial(mut self) -> structured::Polynomial<F, R> {
+        let key = registry::Key::default();
+        {
+            let view = self.0.forward();
+            view.a[0] = key.value();
+            view.b[0] = key.inverse();
+            view.c[0] = F::ONE;
+        }
         self.0
     }
 }
@@ -109,7 +116,6 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
 pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
     witness: C::Witness<'witness>,
-    key: &registry::Key<F>,
 ) -> Result<(Trace<F, R>, C::Aux<'witness>)> {
     let mut rx = structured::Polynomial::<F, R>::new();
     let aux = {
@@ -117,13 +123,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
             rx: rx.forward(),
             available_b: None,
         };
-        dr.mul(|| {
-            Ok((
-                Coeff::Arbitrary(key.value()),
-                Coeff::Arbitrary(key.inverse()),
-                Coeff::One,
-            ))
-        })?;
+        dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
         let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
         io.write(&mut dr, &mut ())?;
 
@@ -147,8 +147,7 @@ mod tests {
     fn test_rx() {
         let circuit = SquareCircuit { times: 10 };
         let witness: Fp = Fp::from(3);
-        let key = registry::Key::default();
-        let (trace, _aux) = eval::<Fp, _, TestRank>(&circuit, witness, &key).unwrap();
+        let (trace, _aux) = eval::<Fp, _, TestRank>(&circuit, witness).unwrap();
         let rx = trace.assemble_trivial();
         let mut coeffs = rx.iter_coeffs().collect::<Vec<_>>();
         let size_of_vec = coeffs.len() / 4;

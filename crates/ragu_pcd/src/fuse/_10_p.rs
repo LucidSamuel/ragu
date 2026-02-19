@@ -200,19 +200,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             // Create rx polynomials for each endoscaling step circuit
             let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
-            let key = self.nested_registry.key();
             let mut step_rxs = Vec::with_capacity(num_steps);
             for step in 0..num_steps {
                 let step_circuit =
                     EndoscalingStep::<C::HostCurve, R, NUM_ENDOSCALING_POINTS>::new(step);
                 let staged = MultiStage::new(step_circuit);
-                let (step_trace, _) = staged.rx::<R>(
-                    EndoscalingStepWitness {
-                        endoscalar: beta_endo,
-                        points: &witness,
-                    },
-                    key,
-                )?;
+                let (step_trace, _) = staged.rx::<R>(EndoscalingStepWitness {
+                    endoscalar: beta_endo,
+                    points: &witness,
+                })?;
                 let step_rx = self.nested_registry.assemble(
                     &step_trace,
                     crate::circuits::nested::InternalCircuitIndex::EndoscalingStep(step as u32)

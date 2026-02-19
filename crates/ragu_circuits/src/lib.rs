@@ -164,9 +164,8 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
     fn rx<'witness, R: Rank>(
         &self,
         witness: Self::Witness<'witness>,
-        key: &registry::Key<F>,
     ) -> Result<(rx::Trace<F, R>, Self::Aux<'witness>)> {
-        rx::eval(self, witness, key)
+        rx::eval(self, witness)
     }
 
     /// Computes the public input polynomial $k(Y)$ for the given instance.

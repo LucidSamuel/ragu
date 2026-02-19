@@ -60,14 +60,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 self.params,
                 total_circuit_counts(self.num_application_steps).1,
             )
-            .rx::<R>(
-                native::hashes_1::Witness {
-                    unified_instance,
-                    preamble_witness,
-                    error_n_witness,
-                },
-                self.native_registry.key(),
-            )?;
+            .rx::<R>(native::hashes_1::Witness {
+                unified_instance,
+                preamble_witness,
+                error_n_witness,
+            })?;
         let hashes_1_rx = self.native_registry.assemble(
             &hashes_1_trace,
             native::hashes_1::CIRCUIT_ID.circuit_index(),
@@ -78,13 +75,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let (hashes_2_trace, _) =
             native::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(self.params)
-                .rx::<R>(
-                    native::hashes_2::Witness {
-                        unified_instance,
-                        error_n_witness,
-                    },
-                    self.native_registry.key(),
-                )?;
+                .rx::<R>(native::hashes_2::Witness {
+                    unified_instance,
+                    error_n_witness,
+                })?;
         let hashes_2_rx = self.native_registry.assemble(
             &hashes_2_trace,
             native::hashes_2::CIRCUIT_ID.circuit_index(),
@@ -95,15 +89,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let (partial_collapse_trace, _) =
             native::partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
-                .rx::<R>(
-                    native::partial_collapse::Witness {
-                        preamble_witness,
-                        unified_instance,
-                        error_m_witness,
-                        error_n_witness,
-                    },
-                    self.native_registry.key(),
-                )?;
+                .rx::<R>(native::partial_collapse::Witness {
+                    preamble_witness,
+                    unified_instance,
+                    error_m_witness,
+                    error_n_witness,
+                })?;
         let partial_collapse_rx = self.native_registry.assemble(
             &partial_collapse_trace,
             native::partial_collapse::CIRCUIT_ID.circuit_index(),
@@ -119,7 +110,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     preamble_witness,
                     error_n_witness,
                 },
-                self.native_registry.key(),
             )?;
         let full_collapse_rx = self.native_registry.assemble(
             &full_collapse_trace,
@@ -136,7 +126,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 query_witness,
                 eval_witness,
             },
-            self.native_registry.key(),
         )?;
         let compute_v_rx = self.native_registry.assemble(
             &compute_v_trace,

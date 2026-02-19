@@ -340,7 +340,14 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         trace: &crate::rx::Trace<F, R>,
         _circuit: CircuitIndex,
     ) -> Result<structured::Polynomial<F, R>> {
-        Ok(trace.0.clone())
+        let mut poly = trace.0.clone();
+        {
+            let view = poly.forward();
+            view.a[0] = self.key.value();
+            view.b[0] = self.key.inverse();
+            view.c[0] = F::ONE;
+        }
+        Ok(poly)
     }
 
     /// Return the constraint system key for this registry, used by the proof
