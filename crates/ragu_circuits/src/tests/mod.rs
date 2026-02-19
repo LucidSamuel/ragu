@@ -132,7 +132,7 @@ fn test_simple_circuit() {
     }
 
     let assignment = MySimpleCircuit
-        .rx::<MyRank>((
+        .rx((
             Fp::from_raw([
                 1833481853729904510,
                 5119040798866070668,
@@ -148,7 +148,8 @@ fn test_simple_circuit() {
         ))
         .unwrap()
         .0
-        .assemble_trivial();
+        .assemble_trivial::<MyRank>()
+        .unwrap();
 
     type MyRank = TestRank;
     let circuit = MySimpleCircuit.into_object::<MyRank>().unwrap();

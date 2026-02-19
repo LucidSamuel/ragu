@@ -14,6 +14,8 @@ use ragu_core::{
 };
 use ragu_primitives::GadgetExt;
 
+use alloc::vec::Vec;
+
 use super::{Circuit, DriverScope, Rank, registry, structured};
 
 /// Opaque trace produced by [`CircuitExt::rx`](crate::CircuitExt::rx).
@@ -22,36 +24,53 @@ use super::{Circuit, DriverScope, Rank, registry, structured};
 /// [`Registry::assemble`](crate::registry::Registry::assemble) (or
 /// [`assemble_trivial`](Self::assemble_trivial) in tests) to obtain the final
 /// polynomial.
-pub struct Trace<F: Field, R: Rank>(pub(crate) structured::Polynomial<F, R>);
+pub struct Trace<F: Field> {
+    pub(crate) a: Vec<F>,
+    pub(crate) b: Vec<F>,
+    pub(crate) c: Vec<F>,
+}
 
-impl<F: Field, R: Rank> Trace<F, R> {
+impl<F: Field> Trace<F> {
     /// Assembles the trace into a polynomial using a trivial floor plan.
     ///
     /// For use in tests and benchmarks that don't have a registry.
-    pub fn assemble_trivial(mut self) -> structured::Polynomial<F, R> {
+    pub fn assemble_trivial<R: Rank>(self) -> Result<structured::Polynomial<F, R>> {
+        if self.a.len() > R::n() || self.b.len() > R::n() || self.c.len() > R::n() {
+            return Err(Error::MultiplicationBoundExceeded(R::n()));
+        }
         let key = registry::Key::default();
+        let mut poly = structured::Polynomial::<F, R>::new();
         {
-            let view = self.0.forward();
+            let view = poly.forward();
+            for val in self.a {
+                view.a.push(val);
+            }
+            for val in self.b {
+                view.b.push(val);
+            }
+            for val in self.c {
+                view.c.push(val);
+            }
             view.a[0] = key.value();
             view.b[0] = key.inverse();
             view.c[0] = F::ONE;
         }
-        self.0
+        Ok(poly)
     }
 }
 
-struct Evaluator<'a, F: Field, R: Rank> {
-    rx: structured::View<'a, F, R, structured::Forward>,
+struct Evaluator<'a, F: Field> {
+    trace: &'a mut Trace<F>,
     available_b: Option<usize>,
 }
 
-impl<F: Field, R: Rank> DriverScope<Option<usize>> for Evaluator<'_, F, R> {
+impl<F: Field> DriverScope<Option<usize>> for Evaluator<'_, F> {
     fn scope(&mut self) -> &mut Option<usize> {
         &mut self.available_b
     }
 }
 
-impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
+impl<F: Field> DriverTypes for Evaluator<'_, F> {
     type ImplField = F;
     type ImplWire = ();
     type MaybeKind = Always<()>;
@@ -59,7 +78,7 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     type LCenforce = ();
 }
 
-impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
+impl<'a, F: Field> Driver<'a> for Evaluator<'a, F> {
     type F = F;
     type Wire = ();
     const ONE: Self::Wire = ();
@@ -68,13 +87,13 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
         // Packs two allocations into one multiplication gate when possible, enabling consecutive
         // allocations to share gates.
         if let Some(index) = self.available_b.take() {
-            let a = self.rx.a[index];
+            let a = self.trace.a[index];
             let b = value()?;
-            self.rx.b[index] = b.value();
-            self.rx.c[index] = a * b.value();
+            self.trace.b[index] = b.value();
+            self.trace.c[index] = a * b.value();
             Ok(())
         } else {
-            let index = self.rx.a.len();
+            let index = self.trace.a.len();
             self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
             self.available_b = Some(index);
             Ok(())
@@ -86,9 +105,9 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<((), (), ())> {
         let (a, b, c) = values()?;
-        self.rx.a.push(a.value());
-        self.rx.b.push(b.value());
-        self.rx.c.push(c.value());
+        self.trace.a.push(a.value());
+        self.trace.b.push(b.value());
+        self.trace.c.push(c.value());
 
         Ok(((), (), ()))
     }
@@ -113,27 +132,27 @@ impl<'a, F: Field, R: Rank> Driver<'a> for Evaluator<'a, F, R> {
     }
 }
 
-pub fn eval<'witness, F: Field, C: Circuit<F>, R: Rank>(
+pub fn eval<'witness, F: Field, C: Circuit<F>>(
     circuit: &C,
     witness: C::Witness<'witness>,
-) -> Result<(Trace<F, R>, C::Aux<'witness>)> {
-    let mut rx = structured::Polynomial::<F, R>::new();
+) -> Result<(Trace<F>, C::Aux<'witness>)> {
+    let mut trace = Trace {
+        a: Vec::new(),
+        b: Vec::new(),
+        c: Vec::new(),
+    };
     let aux = {
         let mut dr = Evaluator {
-            rx: rx.forward(),
+            trace: &mut trace,
             available_b: None,
         };
         dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
         let (io, aux) = circuit.witness(&mut dr, Always::maybe_just(|| witness))?;
         io.write(&mut dr, &mut ())?;
 
-        if dr.rx.a.len() > R::n() || dr.rx.b.len() > R::n() || dr.rx.c.len() > R::n() {
-            return Err(Error::MultiplicationBoundExceeded(R::n()));
-        }
-
         aux.take()
     };
-    Ok((Trace(rx), aux))
+    Ok((trace, aux))
 }
 
 #[cfg(test)]
@@ -147,8 +166,8 @@ mod tests {
     fn test_rx() {
         let circuit = SquareCircuit { times: 10 };
         let witness: Fp = Fp::from(3);
-        let (trace, _aux) = eval::<Fp, _, TestRank>(&circuit, witness).unwrap();
-        let rx = trace.assemble_trivial();
+        let (trace, _aux) = eval::<Fp, _>(&circuit, witness).unwrap();
+        let rx = trace.assemble_trivial::<TestRank>().unwrap();
         let mut coeffs = rx.iter_coeffs().collect::<Vec<_>>();
         let size_of_vec = coeffs.len() / 4;
         let c = coeffs.drain(..size_of_vec).collect::<Vec<_>>();

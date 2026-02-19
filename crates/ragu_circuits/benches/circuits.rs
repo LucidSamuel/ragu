@@ -6,7 +6,7 @@ use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::{R, structured, unstructured};
+use ragu_circuits::polynomials::{ProductionRank, R, TestRank, structured, unstructured};
 use ragu_circuits::registry::{Key, Registry, RegistryBuilder};
 use ragu_circuits::{Circuit, CircuitExt};
 use ragu_pasta::{Fp, Pasta};
@@ -100,14 +100,15 @@ fn into_object_r13(circuit: impl Circuit<Fp>) {
 }
 
 #[library_benchmark(setup = setup_rng)]
-#[bench::rx_r5((f, f))]
+#[bench::rx_r7((f, f))]
 fn rx_r5((witness0, witness1): (Fp, Fp)) {
     black_box(
         MySimpleCircuit
-            .rx::<R<5>>((witness0, witness1), &key)
+            .rx((witness0, witness1))
             .unwrap()
             .0
-            .assemble_trivial(),
+            .assemble_trivial::<TestRank>()
+            .unwrap(),
     );
 }
 
@@ -116,13 +117,14 @@ fn rx_r5((witness0, witness1): (Fp, Fp)) {
         (SquareCircuit { times: 2 }, (f,)),
         (SquareCircuit { times: 10 }, (f,)),
     )]
-fn rx_r13((circuit, (witness, key)): (SquareCircuit, (Fp, Key<Fp>))) {
+fn rx_r13((circuit, (witness,)): (SquareCircuit, (Fp,))) {
     black_box(
         circuit
-            .rx::<R<13>>(witness, &key)
+            .rx(witness)
             .unwrap()
             .0
-            .assemble_trivial(),
+            .assemble_trivial::<ProductionRank>()
+            .unwrap(),
     );
 }
 

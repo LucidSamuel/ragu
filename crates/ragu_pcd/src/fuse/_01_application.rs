@@ -32,7 +32,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         S::Aux<'source>,
     )> {
         let (trace, aux) =
-            Adapter::<C, S, R, HEADER_SIZE>::new(step).rx::<R>((left.data, right.data, witness))?;
+            Adapter::<C, S, R, HEADER_SIZE>::new(step).rx((left.data, right.data, witness))?;
         let rx = self
             .native_registry
             .assemble(&trace, S::INDEX.circuit_index(self.num_application_steps)?)?;
