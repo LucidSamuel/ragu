@@ -341,39 +341,24 @@ mod tests {
             .expect("finalization should succeed")
     }
 
-    #[test]
-    fn fuse_completes_without_error() {
+    fn seed_and_fuse(
+        seed: u64,
+        left: u64,
+        right: u64,
+    ) -> (
+        Application<'static, Pasta, TestR, HEADER_SIZE>,
+        Proof<Pasta, TestR>,
+    ) {
         let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
+        let mut rng = StdRng::seed_from_u64(seed);
 
-        // Seed two proofs with test data
         let left = app
-            .seed(&mut rng, SeedStep, Fp::from(10u64))
+            .seed(&mut rng, SeedStep, Fp::from(left))
             .expect("seed should succeed");
         let left = left.0.carry(left.1);
 
         let right = app
-            .seed(&mut rng, SeedStep, Fp::from(20u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        // Fuse the two proofs - exercisingg all 11 fuse stages
-        let fused = app.fuse(&mut rng, FuseStep, (), left, right);
-        assert!(fused.is_ok(), "fuse should complete without error");
-    }
-
-    #[test]
-    fn fuse_application_commitment_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(5678);
-
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(1u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
-
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(2u64))
+            .seed(&mut rng, SeedStep, Fp::from(right))
             .expect("seed should succeed");
         let right = right.0.carry(right.1);
 
@@ -381,172 +366,184 @@ mod tests {
             .fuse(&mut rng, FuseStep, (), left, right)
             .expect("fuse should succeed");
 
-        // Verify application commitment matches rx polynomial
-        let expected_commitment = proof
-            .application
-            .rx
-            .commit(Pasta::host_generators(app.params), proof.application.blind);
-        assert_eq!(
-            proof.application.commitment, expected_commitment,
-            "application commitment should match polynomial commitment"
-        );
+        (app, proof)
     }
 
     #[test]
-    fn fuse_preamble_commitment_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(9012);
+    fn fuse_commitment_bindings_match_polynomials() {
+        let (app, proof) = seed_and_fuse(1234, 10, 20);
+        let host = Pasta::host_generators(app.params);
+        let nested = Pasta::nested_generators(app.params);
 
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(3u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
+        assert_eq!(
+            proof.application.commitment,
+            proof.application.rx.commit(host, proof.application.blind)
+        );
 
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(4u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        let (proof, _) = app
-            .fuse(&mut rng, FuseStep, (), left, right)
-            .expect("fuse should succeed");
-
-        // Verify preamble native commitment matches rx polynomial
-        let expected_commitment = proof.preamble.native_rx.commit(
-            Pasta::host_generators(app.params),
-            proof.preamble.native_blind,
+        assert_eq!(
+            proof.preamble.native_commitment,
+            proof
+                .preamble
+                .native_rx
+                .commit(host, proof.preamble.native_blind)
         );
         assert_eq!(
-            proof.preamble.native_commitment, expected_commitment,
-            "preamble native commitment should match polynomial commitment"
+            proof.preamble.nested_commitment,
+            proof
+                .preamble
+                .nested_rx
+                .commit(nested, proof.preamble.nested_blind)
         );
-    }
 
-    #[test]
-    fn fuse_ab_commitment_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(3456);
-
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(5u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
-
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(6u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        let (proof, _) = app
-            .fuse(&mut rng, FuseStep, (), left, right)
-            .expect("fuse should succeed");
-
-        // Verify A polynomial commitment
-        let expected_a = proof
-            .ab
-            .a_poly
-            .commit(Pasta::host_generators(app.params), proof.ab.a_blind);
         assert_eq!(
-            proof.ab.a_commitment, expected_a,
-            "AB a_commitment should match polynomial commitment"
+            proof.s_prime.registry_wx0_commitment,
+            proof
+                .s_prime
+                .registry_wx0_poly
+                .commit(host, proof.s_prime.registry_wx0_blind)
+        );
+        assert_eq!(
+            proof.s_prime.registry_wx1_commitment,
+            proof
+                .s_prime
+                .registry_wx1_poly
+                .commit(host, proof.s_prime.registry_wx1_blind)
+        );
+        assert_eq!(
+            proof.s_prime.nested_s_prime_commitment,
+            proof
+                .s_prime
+                .nested_s_prime_rx
+                .commit(nested, proof.s_prime.nested_s_prime_blind)
         );
 
-        // Verify B polynomial commitment
-        let expected_b = proof
-            .ab
-            .b_poly
-            .commit(Pasta::host_generators(app.params), proof.ab.b_blind);
         assert_eq!(
-            proof.ab.b_commitment, expected_b,
-            "AB b_commitment should match polynomial commitment"
+            proof.error_m.registry_wy_commitment,
+            proof
+                .error_m
+                .registry_wy_poly
+                .commit(host, proof.error_m.registry_wy_blind)
         );
+        assert_eq!(
+            proof.error_m.native_commitment,
+            proof
+                .error_m
+                .native_rx
+                .commit(host, proof.error_m.native_blind)
+        );
+        assert_eq!(
+            proof.error_m.nested_commitment,
+            proof
+                .error_m
+                .nested_rx
+                .commit(nested, proof.error_m.nested_blind)
+        );
+
+        assert_eq!(
+            proof.error_n.native_commitment,
+            proof
+                .error_n
+                .native_rx
+                .commit(host, proof.error_n.native_blind)
+        );
+        assert_eq!(
+            proof.error_n.nested_commitment,
+            proof
+                .error_n
+                .nested_rx
+                .commit(nested, proof.error_n.nested_blind)
+        );
+
+        assert_eq!(
+            proof.ab.a_commitment,
+            proof.ab.a_poly.commit(host, proof.ab.a_blind)
+        );
+        assert_eq!(
+            proof.ab.b_commitment,
+            proof.ab.b_poly.commit(host, proof.ab.b_blind)
+        );
+        assert_eq!(
+            proof.ab.nested_commitment,
+            proof.ab.nested_rx.commit(nested, proof.ab.nested_blind)
+        );
+
+        assert_eq!(
+            proof.query.registry_xy_commitment,
+            proof
+                .query
+                .registry_xy_poly
+                .commit(host, proof.query.registry_xy_blind)
+        );
+        assert_eq!(
+            proof.query.native_commitment,
+            proof.query.native_rx.commit(host, proof.query.native_blind)
+        );
+        assert_eq!(
+            proof.query.nested_commitment,
+            proof
+                .query
+                .nested_rx
+                .commit(nested, proof.query.nested_blind)
+        );
+
+        assert_eq!(proof.f.commitment, proof.f.poly.commit(host, proof.f.blind));
+        assert_eq!(
+            proof.f.nested_commitment,
+            proof.f.nested_rx.commit(nested, proof.f.nested_blind)
+        );
+
+        assert_eq!(
+            proof.eval.native_commitment,
+            proof.eval.native_rx.commit(host, proof.eval.native_blind)
+        );
+        assert_eq!(
+            proof.eval.nested_commitment,
+            proof.eval.nested_rx.commit(nested, proof.eval.nested_blind)
+        );
+
+        assert_eq!(
+            proof.circuits.hashes_1_commitment,
+            proof
+                .circuits
+                .hashes_1_rx
+                .commit(host, proof.circuits.hashes_1_blind)
+        );
+        assert_eq!(
+            proof.circuits.hashes_2_commitment,
+            proof
+                .circuits
+                .hashes_2_rx
+                .commit(host, proof.circuits.hashes_2_blind)
+        );
+        assert_eq!(
+            proof.circuits.partial_collapse_commitment,
+            proof
+                .circuits
+                .partial_collapse_rx
+                .commit(host, proof.circuits.partial_collapse_blind)
+        );
+        assert_eq!(
+            proof.circuits.full_collapse_commitment,
+            proof
+                .circuits
+                .full_collapse_rx
+                .commit(host, proof.circuits.full_collapse_blind)
+        );
+        assert_eq!(
+            proof.circuits.compute_v_commitment,
+            proof
+                .circuits
+                .compute_v_rx
+                .commit(host, proof.circuits.compute_v_blind)
+        );
+
+        assert_eq!(proof.p.commitment, proof.p.poly.commit(host, proof.p.blind));
     }
 
     #[test]
     fn fuse_p_evaluation_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(7890);
-
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(7u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
-
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(8u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        let (proof, _) = app
-            .fuse(&mut rng, FuseStep, (), left, right)
-            .expect("fuse should succeed");
-
-        // Verify p(u) = v
+        let (_app, proof) = seed_and_fuse(5678, 1, 2);
         let u = proof.challenges.u;
-        let expected_v = proof.p.poly.eval(u);
-        assert_eq!(
-            proof.p.v, expected_v,
-            "p.v should equal p(u) polynomial evaluation"
-        );
-    }
-
-    #[test]
-    fn fuse_error_m_commitment_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1111);
-
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(9u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
-
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(10u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        let (proof, _) = app
-            .fuse(&mut rng, FuseStep, (), left, right)
-            .expect("fuse should succeed");
-
-        // Verify error_m native commitment
-        let expected = proof.error_m.native_rx.commit(
-            Pasta::host_generators(app.params),
-            proof.error_m.native_blind,
-        );
-        assert_eq!(
-            proof.error_m.native_commitment, expected,
-            "error_m native commitment should match polynomial commitment"
-        );
-    }
-
-    #[test]
-    fn fuse_query_commitment_matches_polynomial() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(2222);
-
-        let left = app
-            .seed(&mut rng, SeedStep, Fp::from(11u64))
-            .expect("seed should succeed");
-        let left = left.0.carry(left.1);
-
-        let right = app
-            .seed(&mut rng, SeedStep, Fp::from(12u64))
-            .expect("seed should succeed");
-        let right = right.0.carry(right.1);
-
-        let (proof, _) = app
-            .fuse(&mut rng, FuseStep, (), left, right)
-            .expect("fuse should succeed");
-
-        // Verify query native commitment
-        let expected = proof
-            .query
-            .native_rx
-            .commit(Pasta::host_generators(app.params), proof.query.native_blind);
-        assert_eq!(
-            proof.query.native_commitment, expected,
-            "query native commitment should match polynomial commitment"
-        );
+        assert_eq!(proof.p.v, proof.p.poly.eval(u));
     }
 }
