@@ -210,7 +210,7 @@ mod tests {
     use ragu_circuits::polynomials::R;
     use ragu_core::{
         drivers::{Driver, DriverValue},
-        gadgets::{GadgetKind, Kind},
+        gadgets::Kind,
     };
     use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::Element;
@@ -229,7 +229,7 @@ mod tests {
         fn encode<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
             dr: &mut D,
             witness: DriverValue<D, Self::Data<'source>>,
-        ) -> Result<<Self::Output as GadgetKind<Fp>>::Rebind<'dr, D>> {
+        ) -> Result<Element<'dr, D>> {
             Element::alloc(dr, witness)
         }
     }
