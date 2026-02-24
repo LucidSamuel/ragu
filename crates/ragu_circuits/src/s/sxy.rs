@@ -254,6 +254,8 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         let multiplication_start = slot.multiplication_start;
         let linear_start = slot.linear_start;
 
+        // Jump to this routine's absolute position in the polynomial;
+        // see the "Routine Scope Jumps" section in the `s` module doc.
         let init_scope = SxyScope {
             available_b: None,
             current_u_x: self.base_u_x * self.x_inv.pow_vartime([multiplication_start as u64]),

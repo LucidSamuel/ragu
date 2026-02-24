@@ -14,6 +14,19 @@
 //!
 //! The root routine (index 0) is always pinned at offset 0; see the
 //! [`floor_plan`] function for details.
+//!
+//! ```text
+//! synthesis order:
+//!   [gap0]  RoutineA  [gap1]  RoutineB{[gapB0]  RoutineC  [gapB1]}  [gap2]
+//!
+//! floor_plan entries (DFS):
+//!   [0] root  = gap0 + gap1 + gap2   note: symbolic; NOT a `Routine`
+//!   [1] A     = A's own constraints
+//!   [2] B     = gapB0 + gapB1        note: excludes RoutineC's constraints
+//!   [3] C     = C's own constraints
+//! ```
+//!
+//! See [`RoutineRecord`] for a fully worked example with concrete numbers.
 
 use alloc::vec::Vec;
 

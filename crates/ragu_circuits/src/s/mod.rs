@@ -51,6 +51,20 @@
 //! inputs and to provide guarantees about those inputs that drivers can safely
 //! exploit to memoize.
 //!
+//! ### Routine Scope Jumps
+//!
+//! When entering a routine, each evaluator does **not** continue from the
+//! parent scope's running position. Instead, it _jumps_ directly to the
+//! absolute offset assigned to that routine by the floor plan.
+//!
+//! This is necessary because the floor planner may reorder routines: a
+//! routine's constraints can be placed at an offset that is not contiguous
+//! with where the parent scope currently is. If, for example, the floor
+//! planner assigned `RoutineB`'s constraints to precede `RoutineA`'s in the
+//! polynomial, then when `RoutineA` is entered its evaluator must jump to
+//! `RoutineA`'s assigned offset rather than continuing from wherever
+//! `RoutineB` ended.
+//!
 //! # Overview
 //!
 //! This module provides implementations that interpret circuit code directly

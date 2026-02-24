@@ -26,6 +26,37 @@ use super::{Circuit, DriverScope};
 /// contributed by a single routine (in DFS order). These sizes are the raw
 /// input to floor planning, which decides where each routine's constraints are
 /// placed in the polynomial layout.
+///
+/// # Root Routine Recrod
+///
+/// **The first record (index 0) is not backed by a [`Routine`].**
+/// It accumulates every constraint emitted directly at circuit scope: the gaps
+/// between (and around) top-level routine calls. Each subsequent record
+/// likewise only captures constraints *local* to its scope: constraints
+/// delegated to a nested sub-routine are counted in the sub-routine's own
+/// record, not in the parent's.
+///
+/// # Example
+///
+/// Consider a circuit with this synthesis order:
+///
+/// ```text
+/// [gap0]  RoutineA  [gap1]  RoutineB{ [gapB0]  RoutineC  [gapB1] }  [gap2]
+///
+/// Root Routine: { gap0: 3*mul + 2*lc, gap1: 1*mul + 1*lc, gap2: 1*lc }
+/// RoutineA: 2*mul + 3*lc
+/// RoutineB: { gapB0: 1*mul + 2*lc, gapB1: 1*lc }
+/// RoutineC: 1*mul + 2*lc
+/// ```
+///
+/// The resulting records vector (DFS order) is:
+///
+/// | index | what        | mul | lc | note                                 |
+/// |-------|-------------|-----|----|--------------------------------------|
+/// | 0     | root        |  4  |  4 | gaps 0+1+2; **not** a `Routine`      |
+/// | 1     | `RoutineA`  |  2  |  3 | A's own constraints                  |
+/// | 2     | `RoutineB`  |  1  |  3 | gB0+gB1 only; `RoutineC` excluded    |
+/// | 3     | `RoutineC`  |  1  |  2 | C's own constraints                  |
 #[derive(Default)]
 pub struct RoutineRecord {
     /// The number of multiplication constraints in this routine.
@@ -50,6 +81,9 @@ pub struct CircuitMetrics {
     pub degree_ky: usize,
 
     /// Per-routine constraint records in synthesis order.
+    ///
+    /// See [`RoutineRecord`] for the indexing convention, including the
+    /// special root record (index 0), which is not a [`Routine`].
     pub routines: Vec<RoutineRecord>,
 }
 

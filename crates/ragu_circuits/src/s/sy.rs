@@ -599,8 +599,9 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
     ) -> Result<Bound<'table, Self, Ro::Output>> {
         self.current_routine += 1;
         let slot = &self.floor_plan[self.current_routine];
-        // Routine's y-power starts at y^{linear_start + num_linear_constraints - 1}
-        // and decrements through the routine's linear constraint range.
+
+        // Jump to this routine's absolute position in the polynomial;
+        // see the "Routine Scope Jumps" section in the `s` module doc.
         let init_scope = SyScope {
             available_b: None,
             // When num_linear_constraints == 0 the routine emits no
