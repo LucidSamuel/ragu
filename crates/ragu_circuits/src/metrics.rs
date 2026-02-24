@@ -168,15 +168,10 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
                 let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
                 let result = routine.execute(this, input, aux)?;
 
-                // Verify internal consistency: current_record unchanged and
-                // all paired allocations consumed.
+                // Verify internal consistency: current_record unchanged.
                 assert_eq!(
                     this.scope.current_record, record,
                     "current_record must remain stable during routine execution"
-                );
-                assert!(
-                    !this.scope.available_b,
-                    "all paired allocations must be consumed"
                 );
 
                 Ok(result)
@@ -241,4 +236,80 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
         degree_ky,
         routines: collector.records,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ragu_core::{
+        drivers::{Driver, DriverValue},
+        gadgets::Bound,
+        routines::{Prediction, Routine},
+    };
+    use ragu_pasta::Fp;
+
+    // A routine that allocates exactly one wire, leaving the "b" slot dangling
+    // in a pair-allocated driver like `Counter`.
+    // This must not panic when processed.
+    #[derive(Clone)]
+    struct DanglingAllocRoutine;
+
+    impl Routine<Fp> for DanglingAllocRoutine {
+        type Input = ();
+        type Output = ();
+        type Aux<'dr> = ();
+
+        fn execute<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            _input: Bound<'dr, D, Self::Input>,
+            _aux: DriverValue<D, Self::Aux<'dr>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            dr.alloc(|| Ok(Coeff::One))?;
+            Ok(())
+        }
+
+        fn predict<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _input: &Bound<'dr, D, Self::Input>,
+        ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>>
+        {
+            Ok(Prediction::Unknown(D::just(|| ())))
+        }
+    }
+
+    struct DanglingAllocCircuit;
+
+    impl Circuit<Fp> for DanglingAllocCircuit {
+        type Instance<'source> = ();
+        type Witness<'source> = ();
+        type Output = ();
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _instance: DriverValue<D, Self::Instance<'source>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            Ok(())
+        }
+
+        fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            _witness: DriverValue<D, Self::Witness<'source>>,
+        ) -> Result<(
+            Bound<'dr, D, Self::Output>,
+            DriverValue<D, Self::Aux<'source>>,
+        )> {
+            dr.routine(DanglingAllocRoutine, ())?;
+            Ok(((), D::just(|| ())))
+        }
+    }
+
+    #[test]
+    fn dangling_alloc_in_routine() {
+        super::eval::<Fp, _>(&DanglingAllocCircuit).expect("metrics eval should succeed");
+    }
 }
