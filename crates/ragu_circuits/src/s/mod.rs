@@ -57,13 +57,22 @@
 //! parent scope's running position. Instead, it _jumps_ directly to the
 //! absolute offset assigned to that routine by the floor plan.
 //!
-//! This is necessary because the floor planner may reorder routines: a
-//! routine's constraints can be placed at an offset that is not contiguous
-//! with where the parent scope currently is. If, for example, the floor
-//! planner assigned `RoutineB`'s constraints to precede `RoutineA`'s in the
-//! polynomial, then when `RoutineA` is entered its evaluator must jump to
-//! `RoutineA`'s assigned offset rather than continuing from wherever
-//! `RoutineB` ended.
+//! This is necessary because the floor plan consolidates each routine's
+//! constraints into a single contiguous range, even though in synthesis order
+//! a parent's constraints appear as *gaps* interspersed with child routine
+//! calls. For example, with:
+//!
+//! ```text
+//! synthesis order:  [gap0]  RoutineA  [gap1]  RoutineB  [gap2]
+//! polynomial:       [root: gap0+gap1+gap2]  [A: A's constraints]  [B: B's constraints]
+//! ```
+//!
+//! When RoutineA is entered, the parent scope's running counter is part-way
+//! through the root's range (after `gap0`). But RoutineA's constraints
+//! belong at `floor_plan[1].linear_start`, which follows the root's *entire*
+//! block (including `gap1` and `gap2` not yet processed). The evaluator must
+//! jump to that assigned position rather than continuing from the parent's
+//! current counter.
 //!
 //! # Overview
 //!

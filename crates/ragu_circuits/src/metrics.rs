@@ -27,7 +27,7 @@ use super::{Circuit, DriverScope};
 /// input to floor planning, which decides where each routine's constraints are
 /// placed in the polynomial layout.
 ///
-/// # Root Routine Recrod
+/// # Root Routine Record
 ///
 /// **The first record (index 0) is not backed by a [`Routine`].**
 /// It accumulates every constraint emitted directly at circuit scope: the gaps
