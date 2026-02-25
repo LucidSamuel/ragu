@@ -62,7 +62,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         x: F,
         y: F,
         key: &registry::Key<F>,
-        _floor_plan: &[crate::floor_planner::RoutineSlot],
+        _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> F {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
@@ -114,7 +114,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         &self,
         x: F,
         key: &registry::Key<F>,
-        _floor_plan: &[crate::floor_planner::RoutineSlot],
+        _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> unstructured::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
@@ -173,7 +173,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         &self,
         y: F,
         key: &registry::Key<F>,
-        _floor_plan: &[crate::floor_planner::RoutineSlot],
+        _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> structured::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
@@ -229,7 +229,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         (num_multiplication_constraints, num_linear_constraints)
     }
 
-    fn routine_records(&self) -> &[crate::RoutineRecord] {
+    fn segment_records(&self) -> &[crate::SegmentRecord] {
         &[]
     }
 }
@@ -433,7 +433,7 @@ mod tests {
         let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
         let comparison_mask = stage.clone().into_object::<R>().unwrap();
-        let floor_plan = crate::floor_planner::floor_plan(comparison_mask.routine_records());
+        let floor_plan = crate::floor_planner::floor_plan(comparison_mask.segment_records());
 
         let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
         let comparison_sxy = comparison_mask.sxy(x, y, &k, &floor_plan) - x_4n_minus_1;
@@ -450,7 +450,7 @@ mod tests {
         let obj = circuit
             .into_object::<R>()
             .expect("into_object should succeed");
-        let floor_plan = crate::floor_planner::floor_plan(obj.routine_records());
+        let floor_plan = crate::floor_planner::floor_plan(obj.segment_records());
         let (_, num_linear_constraints) = obj.constraint_counts();
         let mut sy = obj.sy(y, &k, &floor_plan);
 
@@ -468,18 +468,18 @@ mod tests {
 
     #[test]
     fn test_root_routine_has_at_least_two_linear_constraints() {
-        // The root routine always gets the registry key constraint and the ONE
-        // constraint from metrics::eval(), so its num_linear_constraints must be
-        // at least 2.  This invariant prevents the `- 1` underflow in sy::eval's
-        // initial y-power computation.
+        // The root segment always gets the registry key constraint and
+        // the ONE constraint from metrics::eval(), so its num_linear_constraints
+        // must be at least 2.  This invariant prevents the `- 1` underflow in
+        // sy::eval's initial y-power computation.
         let circuit = SquareCircuit { times: 0 };
         let obj = circuit
             .into_object::<R>()
             .expect("into_object should succeed");
-        let floor_plan = crate::floor_planner::floor_plan(obj.routine_records());
+        let floor_plan = crate::floor_planner::floor_plan(obj.segment_records());
         assert!(
             floor_plan[0].num_linear_constraints >= 2,
-            "root routine must have at least 2 linear constraints (registry key + ONE), got {}",
+            "root segment must have at least 2 linear constraints (registry key + ONE), got {}",
             floor_plan[0].num_linear_constraints,
         );
     }
@@ -534,7 +534,7 @@ mod tests {
 
             let stage_mask = StageMask::<R>::new(skip, num).unwrap();
             let comparison_mask = stage_mask.clone().into_object::<R>().unwrap();
-            let floor_plan = crate::floor_planner::floor_plan(comparison_mask.routine_records());
+            let floor_plan = crate::floor_planner::floor_plan(comparison_mask.segment_records());
 
             let k = registry::Key::new(Fp::random(&mut rand::rng()));
 
@@ -737,7 +737,7 @@ mod tests {
         let obj = TestCircuit
             .into_object::<R>()
             .expect("into_object should succeed");
-        let floor_plan = crate::floor_planner::floor_plan(obj.routine_records());
+        let floor_plan = crate::floor_planner::floor_plan(obj.segment_records());
 
         // The child routine (index 1) should have zero linear constraints.
         assert_eq!(

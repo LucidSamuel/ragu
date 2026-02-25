@@ -25,7 +25,7 @@ mod s;
 pub mod staging;
 mod trivial;
 
-pub use metrics::RoutineRecord;
+pub use metrics::SegmentRecord;
 pub use rx::Trace;
 
 #[cfg(test)]
@@ -142,7 +142,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                 x: F,
                 y: F,
                 key: &registry::Key<F>,
-                floor_plan: &[floor_planner::RoutineSlot],
+                floor_plan: &[floor_planner::ConstraintSegment],
             ) -> F {
                 s::sxy::eval::<_, _, R>(&self.circuit, x, y, key, floor_plan)
                     .expect("should succeed if metrics succeeded")
@@ -151,7 +151,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                 &self,
                 x: F,
                 key: &registry::Key<F>,
-                floor_plan: &[floor_planner::RoutineSlot],
+                floor_plan: &[floor_planner::ConstraintSegment],
             ) -> unstructured::Polynomial<F, R> {
                 s::sx::eval(&self.circuit, x, key, floor_plan)
                     .expect("should succeed if metrics succeeded")
@@ -160,7 +160,7 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                 &self,
                 y: F,
                 key: &registry::Key<F>,
-                floor_plan: &[floor_planner::RoutineSlot],
+                floor_plan: &[floor_planner::ConstraintSegment],
             ) -> structured::Polynomial<F, R> {
                 s::sy::eval(&self.circuit, y, key, floor_plan)
                     .expect("should succeed if metrics succeeded")
@@ -171,8 +171,8 @@ pub trait CircuitExt<F: Field>: Circuit<F> {
                     self.metrics.num_linear_constraints,
                 )
             }
-            fn routine_records(&self) -> &[RoutineRecord] {
-                &self.metrics.routines
+            fn segment_records(&self) -> &[SegmentRecord] {
+                &self.metrics.segments
             }
         }
 
@@ -212,7 +212,7 @@ pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
         x: F,
         y: F,
         key: &registry::Key<F>,
-        floor_plan: &[floor_planner::RoutineSlot],
+        floor_plan: &[floor_planner::ConstraintSegment],
     ) -> F;
 
     /// Computes the polynomial restriction $s(x, Y)$ for some $x \in \mathbb{F}$.
@@ -220,7 +220,7 @@ pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
         &self,
         x: F,
         key: &registry::Key<F>,
-        floor_plan: &[floor_planner::RoutineSlot],
+        floor_plan: &[floor_planner::ConstraintSegment],
     ) -> unstructured::Polynomial<F, R>;
 
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
@@ -228,15 +228,15 @@ pub trait CircuitObject<F: Field, R: Rank>: Send + Sync {
         &self,
         y: F,
         key: &registry::Key<F>,
-        floor_plan: &[floor_planner::RoutineSlot],
+        floor_plan: &[floor_planner::ConstraintSegment],
     ) -> structured::Polynomial<F, R>;
 
     /// Returns the number of constraints: `(multiplication, linear)`.
     fn constraint_counts(&self) -> (usize, usize);
 
-    /// Returns per-routine constraint records in DFS order.
+    /// Returns per-segment constraint records in DFS order.
     ///
     /// These records serve as input to
     /// [`floor_planner::floor_plan`] for computing absolute offsets.
-    fn routine_records(&self) -> &[RoutineRecord];
+    fn segment_records(&self) -> &[SegmentRecord];
 }

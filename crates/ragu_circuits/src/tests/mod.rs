@@ -61,7 +61,7 @@ fn consistency_checks<R: Rank>(circuit: &dyn CircuitObject<Fp, R>) {
     let x = Fp::random(&mut rand::rng());
     let y = Fp::random(&mut rand::rng());
     let k = registry::Key::new(Fp::random(&mut rand::rng()));
-    let floor_plan = crate::floor_planner::floor_plan(circuit.routine_records());
+    let floor_plan = crate::floor_planner::floor_plan(circuit.segment_records());
 
     let sxy_eval = circuit.sxy(x, y, &k, &floor_plan);
     let s0y_eval = circuit.sxy(Fp::ZERO, y, &k, &floor_plan);
@@ -158,7 +158,7 @@ fn test_simple_circuit() {
     let y = Fp::random(&mut rand::rng());
     let z = Fp::random(&mut rand::rng());
     let k = registry::Key::default();
-    let floor_plan = crate::floor_planner::floor_plan(circuit.routine_records());
+    let floor_plan = crate::floor_planner::floor_plan(circuit.segment_records());
 
     let a = assignment.clone();
     let mut b = assignment.clone();

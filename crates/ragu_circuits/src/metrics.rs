@@ -20,18 +20,50 @@ use core::marker::PhantomData;
 
 use super::{Circuit, DriverScope};
 
-/// Per-routine constraint counts collected during circuit synthesis.
+/// Constraint counts for one segment of the circuit, collected during synthesis.
 ///
-/// Each record captures the number of multiplication and linear constraints
-/// contributed by a single routine (in DFS order). These sizes are the raw
-/// input to floor planning, which decides where each routine's constraints are
-/// placed in the polynomial layout.
+/// Each record captures the multiplication and linear constraints contributed
+/// by a single segment in DFS order. Segments are the primary boundary for
+/// floor planning: the floor planner decides where each segment's constraints
+/// are placed in the polynomial layout.
+///
+/// The circuit is divided into segments whose boundaries are [`Routine`] calls:
+/// - **Index 0** is the *root segment* — it is not backed by any [`Routine`]
+///   and accumulates every constraint emitted directly at circuit scope
+///   (outside any routine call).
+/// - **Indices 1+** each correspond to one [`Routine`] invocation and capture
+///   only the constraints *local* to that routine's scope. Constraints
+///   delegated to a nested sub-routine are counted in the sub-routine's own
+///   segment, not in the parent's.
+///
+/// # Example
+///
+/// Consider a circuit with this synthesis order:
+///
+/// ```text
+/// [c0]  RoutineA  [c1]  RoutineB{ [b0]  RoutineC  [b1] }  [c2]
+///
+/// root segment: { c0: 3*mul + 2*lc, c1: 1*mul + 1*lc, c2: 1*lc }
+/// RoutineA: 2*mul + 3*lc
+/// RoutineB: { b0: 1*mul + 2*lc, b1: 1*lc }
+/// RoutineC: 1*mul + 2*lc
+/// ```
+///
+/// The resulting segment records (DFS order) are:
+///
+/// | index | segment        | mul | lc | note                       |
+/// |-------|----------------|-----|----|----------------------------|
+/// | 0     | root segment   |  4  |  4 | c0+c1+c2                   |
+/// | 1     | `RoutineA`     |  2  |  3 | A's own constraints        |
+/// | 2     | `RoutineB`     |  1  |  3 | b0+b1; `RoutineC` excluded |
+/// | 3     | `RoutineC`     |  1  |  2 | C's own constraints        |
 #[derive(Default)]
-pub struct RoutineRecord {
-    /// The number of multiplication constraints in this routine.
+pub struct SegmentRecord {
+    /// The number of multiplication constraints in this segment.
     pub num_multiplication_constraints: usize,
 
-    /// The number of linear constraints in this routine.
+    /// The number of linear constraints in this segment, including constraints
+    /// on wires of the input gadget and on wires allocated within the segment.
     pub num_linear_constraints: usize,
 }
 
@@ -48,21 +80,25 @@ pub struct CircuitMetrics {
     #[allow(dead_code)]
     pub degree_ky: usize,
 
-    /// Per-routine constraint records in synthesis order.
-    pub routines: Vec<RoutineRecord>,
+    /// Per-segment constraint records in DFS synthesis order.
+    ///
+    /// See [`SegmentRecord`] for the indexing convention: index 0 is the
+    /// root segment (not backed by a [`Routine`]); indices 1+ each correspond
+    /// to a [`Routine`] invocation.
+    pub segments: Vec<SegmentRecord>,
 }
 
-/// Per-routine state that is saved and restored by [`DriverScope`].
+/// Per-segment state that is saved and restored by [`DriverScope`].
 struct CounterScope {
     available_b: bool,
-    current_record: usize,
+    current_segment: usize,
 }
 
 struct Counter<F> {
     scope: CounterScope,
     num_linear_constraints: usize,
     num_multiplication_constraints: usize,
-    records: Vec<RoutineRecord>,
+    segments: Vec<SegmentRecord>,
     _marker: PhantomData<F>,
 }
 
@@ -102,7 +138,7 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
         self.num_multiplication_constraints += 1;
-        self.records[self.scope.current_record].num_multiplication_constraints += 1;
+        self.segments[self.scope.current_segment].num_multiplication_constraints += 1;
 
         Ok(((), (), ()))
     }
@@ -111,7 +147,7 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
 
     fn enforce_zero(&mut self, _: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         self.num_linear_constraints += 1;
-        self.records[self.scope.current_record].num_linear_constraints += 1;
+        self.segments[self.scope.current_segment].num_linear_constraints += 1;
         Ok(())
     }
 
@@ -120,12 +156,12 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
         routine: Ro,
         input: Bound<'dr, Self, Ro::Input>,
     ) -> Result<Bound<'dr, Self, Ro::Output>> {
-        self.records.push(RoutineRecord::default());
-        let record = self.records.len() - 1;
+        self.segments.push(SegmentRecord::default());
+        let segment_idx = self.segments.len() - 1;
         self.with_scope(
             CounterScope {
                 available_b: false,
-                current_record: record,
+                current_segment: segment_idx,
             },
             |this| {
                 let mut dummy = Emulator::wireless();
@@ -133,15 +169,10 @@ impl<'dr, F: Field> Driver<'dr> for Counter<F> {
                 let aux = routine.predict(&mut dummy, &dummy_input)?.into_aux();
                 let result = routine.execute(this, input, aux)?;
 
-                // Verify internal consistency: current_record unchanged and
-                // all paired allocations consumed.
+                // Verify internal consistency: current_segment unchanged.
                 assert_eq!(
-                    this.scope.current_record, record,
-                    "current_record must remain stable during routine execution"
-                );
-                assert!(
-                    !this.scope.available_b,
-                    "all paired allocations must be consumed"
+                    this.scope.current_segment, segment_idx,
+                    "current_segment must remain stable during routine execution"
                 );
 
                 Ok(result)
@@ -154,11 +185,11 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
     let mut collector = Counter {
         scope: CounterScope {
             available_b: false,
-            current_record: 0,
+            current_segment: 0,
         },
         num_linear_constraints: 0,
         num_multiplication_constraints: 0,
-        records: alloc::vec![RoutineRecord::default()],
+        segments: alloc::vec![SegmentRecord::default()],
         _marker: PhantomData,
     };
     let mut degree_ky = 0usize;
@@ -182,12 +213,12 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
     collector.enforce_zero(|lc| lc)?;
 
     let recorded_multiplications: usize = collector
-        .records
+        .segments
         .iter()
         .map(|r| r.num_multiplication_constraints)
         .sum();
     let recorded_linear_constraints: usize = collector
-        .records
+        .segments
         .iter()
         .map(|r| r.num_linear_constraints)
         .sum();
@@ -204,6 +235,82 @@ pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
         num_linear_constraints: collector.num_linear_constraints,
         num_multiplication_constraints: collector.num_multiplication_constraints,
         degree_ky,
-        routines: collector.records,
+        segments: collector.segments,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ragu_core::{
+        drivers::{Driver, DriverValue},
+        gadgets::Bound,
+        routines::{Prediction, Routine},
+    };
+    use ragu_pasta::Fp;
+
+    // A routine that allocates exactly one wire, leaving the "b" slot dangling
+    // in a pair-allocated driver like `Counter`.
+    // This must not panic when processed.
+    #[derive(Clone)]
+    struct DanglingAllocRoutine;
+
+    impl Routine<Fp> for DanglingAllocRoutine {
+        type Input = ();
+        type Output = ();
+        type Aux<'dr> = ();
+
+        fn execute<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            _input: Bound<'dr, D, Self::Input>,
+            _aux: DriverValue<D, Self::Aux<'dr>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            dr.alloc(|| Ok(Coeff::One))?;
+            Ok(())
+        }
+
+        fn predict<'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _input: &Bound<'dr, D, Self::Input>,
+        ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>>
+        {
+            Ok(Prediction::Unknown(D::just(|| ())))
+        }
+    }
+
+    struct DanglingAllocCircuit;
+
+    impl Circuit<Fp> for DanglingAllocCircuit {
+        type Instance<'source> = ();
+        type Witness<'source> = ();
+        type Output = ();
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _dr: &mut D,
+            _instance: DriverValue<D, Self::Instance<'source>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            Ok(())
+        }
+
+        fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            dr: &mut D,
+            _witness: DriverValue<D, Self::Witness<'source>>,
+        ) -> Result<(
+            Bound<'dr, D, Self::Output>,
+            DriverValue<D, Self::Aux<'source>>,
+        )> {
+            dr.routine(DanglingAllocRoutine, ())?;
+            Ok(((), D::just(|| ())))
+        }
+    }
+
+    #[test]
+    fn dangling_alloc_in_routine() {
+        super::eval::<Fp, _>(&DanglingAllocCircuit).expect("metrics eval should succeed");
+    }
 }

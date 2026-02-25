@@ -135,8 +135,8 @@ fn test_rerandomize_consistency() {
     let key = registry::Key::default();
 
     let floor_plan_single =
-        ragu_circuits::floor_planner::floor_plan(circuit_single.routine_records());
-    let floor_plan_pair = ragu_circuits::floor_planner::floor_plan(circuit_pair.routine_records());
+        ragu_circuits::floor_planner::floor_plan(circuit_single.segment_records());
+    let floor_plan_pair = ragu_circuits::floor_planner::floor_plan(circuit_pair.segment_records());
 
     let eval_single = circuit_single.sxy(x, y, &key, &floor_plan_single);
     let eval_pair = circuit_pair.sxy(x, y, &key, &floor_plan_pair);

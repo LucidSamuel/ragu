@@ -24,7 +24,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 
 use crate::{
     Circuit, CircuitExt, CircuitObject,
-    floor_planner::RoutineSlot,
+    floor_planner::ConstraintSegment,
     polynomials::{Rank, structured, unstructured},
     staging::{Stage, StageExt},
 };
@@ -181,9 +181,9 @@ impl<'params, F: PrimeField, R: Rank> RegistryBuilder<'params, F, R> {
             .collect();
 
         // Compute floor plans for each circuit.
-        let floor_plans: Vec<Vec<RoutineSlot>> = circuits
+        let floor_plans: Vec<Vec<ConstraintSegment>> = circuits
             .iter()
-            .map(|circuit| crate::floor_planner::floor_plan(circuit.routine_records()))
+            .map(|circuit| crate::floor_planner::floor_plan(circuit.segment_records()))
             .collect();
 
         // Build omega^j -> i lookup table.
@@ -309,7 +309,7 @@ pub struct Registry<'params, F: PrimeField, R: Rank> {
     circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
 
     /// Per-circuit floor plans computed during finalization.
-    floor_plans: Vec<Vec<RoutineSlot>>,
+    floor_plans: Vec<Vec<ConstraintSegment>>,
 
     /// Maps from the OmegaKey (which represents some `omega^j`) to the index `i`
     /// of the circuits vector.
@@ -440,7 +440,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         &self,
         cache: &LagrangeCache<F>,
         init: impl FnOnce() -> T,
-        add_poly: impl Fn(&dyn CircuitObject<F, R>, &[RoutineSlot], F, &mut T),
+        add_poly: impl Fn(&dyn CircuitObject<F, R>, &[ConstraintSegment], F, &mut T),
     ) -> T {
         let mut result = init();
 
