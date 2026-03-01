@@ -6,10 +6,6 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
     type Wire = ();
     const ONE: Self::Wire = ();
 
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        Ok(())
-    }
-
     fn mul(
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,

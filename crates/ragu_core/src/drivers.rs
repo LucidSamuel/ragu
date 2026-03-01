@@ -141,7 +141,16 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// needed. If it is called, any errors are propagated from it, and the
     /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
     /// unconditionally.
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire>;
+    ///
+    /// The default implementation calls [`mul`](Driver::mul), returns the $a$
+    /// wire, and sets $b$ and $c$ to zero to satisfy the multiplication
+    /// constraint—wasting those two wires. Drivers may override this to avoid
+    /// the overhead, e.g. by pairing consecutive allocations into a single
+    /// multiplication gate.
+    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
+        let (a, _, _) = self.mul(|| Ok((value()?, Coeff::Zero, Coeff::Zero)))?;
+        Ok(a)
+    }
 
     /// Returns a virtual wire that has a fixed constant value.
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {

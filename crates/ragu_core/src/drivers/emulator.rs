@@ -304,10 +304,6 @@ impl<'dr, M: MaybeKind, F: Field> Driver<'dr> for Emulator<Wireless<M, F>> {
     type Wire = ();
     const ONE: Self::Wire = ();
 
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        Ok(())
-    }
-
     fn constant(&mut self, _: Coeff<Self::F>) -> Self::Wire {}
 
     fn mul(
@@ -336,10 +332,6 @@ impl<'dr, F: Field> Driver<'dr> for Emulator<Wired<F>> {
     type F = F;
     type Wire = WiredValue<F>;
     const ONE: Self::Wire = WiredValue::One;
-
-    fn alloc(&mut self, f: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        f().map(|coeff| WiredValue::Assigned(coeff.value()))
-    }
 
     fn constant(&mut self, coeff: Coeff<Self::F>) -> Self::Wire {
         WiredValue::Assigned(coeff.value())
