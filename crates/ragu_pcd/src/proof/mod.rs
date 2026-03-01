@@ -20,6 +20,7 @@ use ragu_primitives::vec::Len;
 use alloc::vec;
 
 use crate::circuits::nested::NUM_ENDOSCALING_POINTS;
+use crate::components::claims::native::RxComponent;
 use crate::components::endoscalar::NumStepsLen;
 use crate::header::Header;
 
@@ -68,9 +69,9 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Returns the native-field rx polynomial for the given [`RxComponent`].
     pub(crate) fn native_rx(
         &self,
-        component: crate::components::claims::native::RxComponent,
+        component: RxComponent,
     ) -> &structured::Polynomial<C::CircuitField, R> {
-        use crate::components::claims::native::RxComponent::*;
+        use RxComponent::*;
         match component {
             AbA => &self.ab.a_poly,
             AbB => &self.ab.b_poly,
