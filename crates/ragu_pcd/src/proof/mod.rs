@@ -64,6 +64,29 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data<'_>) -> Pcd<'_, C, R, H> {
         Pcd { proof: self, data }
     }
+
+    /// Returns the native-field rx polynomial for the given [`RxComponent`].
+    pub(crate) fn native_rx(
+        &self,
+        component: crate::components::claims::native::RxComponent,
+    ) -> &structured::Polynomial<C::CircuitField, R> {
+        use crate::components::claims::native::RxComponent::*;
+        match component {
+            AbA => &self.ab.a_poly,
+            AbB => &self.ab.b_poly,
+            Application => &self.application.rx,
+            Hashes1 => &self.circuits.hashes_1_rx,
+            Hashes2 => &self.circuits.hashes_2_rx,
+            PartialCollapse => &self.circuits.partial_collapse_rx,
+            FullCollapse => &self.circuits.full_collapse_rx,
+            ComputeV => &self.circuits.compute_v_rx,
+            Preamble => &self.preamble.native_rx,
+            ErrorM => &self.error_m.native_rx,
+            ErrorN => &self.error_n.native_rx,
+            Query => &self.query.native_rx,
+            Eval => &self.eval.native_rx,
+        }
+    }
 }
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, HEADER_SIZE> {
