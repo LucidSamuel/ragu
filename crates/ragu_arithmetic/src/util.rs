@@ -156,7 +156,7 @@ pub fn mul<
     'a,
     C: CurveAffine,
     A: IntoIterator<Item = &'a C::Scalar>,
-    B: IntoIterator<Item = &'a C> + Clone,
+    B: IntoIterator<Item = &'a C> + Clone + Sync,
 >(
     coeffs: A,
     bases: B,
@@ -220,16 +220,15 @@ pub fn mul<
     }
 
     /// Compute the bucket sum for a single window segment.
-    #[cfg(feature = "multicore")]
-    fn window_sum<C: CurveAffine>(
+    fn window_sum<'b, C: CurveAffine, I: Iterator<Item = &'b C>>(
         current_segment: usize,
         c: usize,
         coeffs: &[<C::Scalar as PrimeField>::Repr],
-        bases: &[C],
+        bases: I,
     ) -> C::Curve {
         let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
 
-        for (coeff, base) in coeffs.iter().zip(bases.iter()) {
+        for (coeff, base) in coeffs.iter().zip(bases) {
             let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
             if coeff != 0 {
                 buckets[coeff - 1].add_assign(base);
@@ -250,57 +249,29 @@ pub fn mul<
     }
 
     #[cfg(feature = "multicore")]
-    {
+    let window_sums = {
         use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
-        let bases_vec: Vec<C> = bases.into_iter().copied().collect();
-
-        // Compute each window's bucket sum in parallel.
-        let window_sums: Vec<C::Curve> = (0..segments)
+        (0..segments)
             .into_par_iter()
-            .map(|seg| window_sum(seg, c, &coeffs, &bases_vec))
-            .collect();
-
-        // Combine window sums sequentially, from most significant to least.
-        let mut acc = C::Curve::identity();
-        for sum in window_sums.into_iter().rev() {
-            for _ in 0..c {
-                acc = acc.double();
-            }
-            acc += &sum;
-        }
-
-        acc
-    }
+            .map(|seg| window_sum(seg, c, &coeffs, bases.clone().into_iter()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+    };
 
     #[cfg(not(feature = "multicore"))]
-    {
-        let mut acc = C::Curve::identity();
+    let window_sums = (0..segments)
+        .map(|seg| window_sum(seg, c, &coeffs, bases.clone().into_iter()))
+        .rev();
 
-        for current_segment in (0..segments).rev() {
-            for _ in 0..c {
-                acc = acc.double();
-            }
-
-            let mut buckets: Vec<Bucket<C>> = vec![Bucket::None; (1 << c) - 1];
-
-            for (coeff, base) in coeffs.iter().zip(bases.clone().into_iter()) {
-                let coeff = get_at::<C::Scalar>(current_segment, c, coeff);
-                if coeff != 0 {
-                    buckets[coeff - 1].add_assign(base);
-                }
-            }
-
-            // Summation by parts
-            let mut running_sum = C::Curve::identity();
-            for exp in buckets.into_iter().rev() {
-                running_sum = exp.add(running_sum);
-                acc += &running_sum;
-            }
+    let mut acc = C::Curve::identity();
+    for sum in window_sums {
+        for _ in 0..c {
+            acc = acc.double();
         }
-
-        acc
+        acc += &sum;
     }
+    acc
 }
 
 /// Computes the geometric sum $0 + 1 + r + ... + r^{m-1}$.
