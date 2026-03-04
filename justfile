@@ -67,7 +67,7 @@ _bench_macos *ARGS:
     docker attach --no-stdin $container
 
 _bench_linux *ARGS: _gungraun_setup
-    cargo bench --workspace --all-features {{ARGS}}
+    cargo bench --workspace --all-features --bench arithmetic --bench circuits --bench pcd --bench primitives {{ARGS}}
 
 # generate flamegraph in target/*.svg
 flamegraph PACKAGE GROUP TARGET *ARGS:
