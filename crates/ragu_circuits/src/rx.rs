@@ -18,7 +18,6 @@ use ragu_core::{
 use ragu_primitives::GadgetExt;
 
 use alloc::{vec, vec::Vec};
-use core::marker::PhantomData;
 use std::sync::mpsc;
 
 use super::{
