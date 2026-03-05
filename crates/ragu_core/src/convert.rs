@@ -4,9 +4,9 @@
 //! driver context to another while preserving its structure and semantics is a
 //! fundamental operation. Any code that operates across multiple driver
 //! contexts will need this: [routines](crate::routines) translate their inputs
-//! onto [`Wireless`] [`Emulator`]s for prediction, wire-counting passes discard
-//! wire values entirely, and driver implementations may need to inject or
-//! rewrite wires during circuit analysis.
+//! onto [`Wireless`](crate::drivers::emulator::Wireless) [`Emulator`](crate::drivers::emulator::Emulator)s
+//! for prediction, wire-counting passes discard wire values entirely, and driver implementations may need
+//! to inject or rewrite wires during circuit analysis.
 //!
 //! [`WireMap`] provides a uniform mechanism for these conversions: an
 //! implementor fixes a source and destination driver via associated types, then
@@ -30,8 +30,10 @@ use ff::Field;
 
 use crate::{
     Result,
-    drivers::emulator::{Emulator, Wireless},
-    drivers::{Driver, DriverTypes},
+    drivers::{
+        Driver, DriverTypes,
+        emulator::{Emulator, Wireless},
+    },
     gadgets::{Bound, Gadget},
 };
 
@@ -101,9 +103,7 @@ where
     /// // Explicit:
     /// let output = CloneWires::<_, DstDriver>::convert(&gadget)?;
     /// ```
-    pub fn remap<'src, 'dst, G: Gadget<'src, Src>>(
-        gadget: &G,
-    ) -> Result<Bound<'dst, Dst, G::Kind>>
+    pub fn remap<'src, 'dst, G: Gadget<'src, Src>>(gadget: &G) -> Result<Bound<'dst, Dst, G::Kind>>
     where
         Src: Driver<'src, F = F>,
         Dst: Driver<'dst, F = F, Wire = Src::Wire>,
