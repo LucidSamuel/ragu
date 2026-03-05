@@ -11,10 +11,13 @@
   - [Drivers](guide/drivers/index.md)
     - [Witness Data](guide/drivers/witness.md)
     - [Linear Expressions](guide/drivers/linear.md)
+    - [Concrete Drivers](guide/drivers/concrete.md)
   - [Gadgets](guide/gadgets/index.md)
     - [Simple Gadgets](guide/gadgets/simple.md)
     - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
     - [The Kind! Macro](guide/gadgets/kind.md)
+    - [Conversion](guide/gadgets/conversion.md)
+    - [The Consistent Trait](guide/gadgets/consistent.md)
   - [Routines](guide/routines.md)
   - [Writing Circuits](guide/writing_circuits.md)
   - [Configuration](guide/configuration.md)
@@ -48,7 +51,6 @@
   - [PCD Step and Proofs](implementation/proofs.md)
   - [Staging](implementation/staging.md)
   - [Drivers]()
-    - [Emulator](implementation/drivers/emulator.md)
     - [Writing Custom Drivers](implementation/drivers/custom.md)
 
 ---
