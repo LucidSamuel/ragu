@@ -416,11 +416,11 @@ mod tests {
     use ff::Field;
     use ragu_pasta::Fp;
 
+    type Emu = Emulator<Wireless<Always<()>, F>>;
+
     type F = Fp;
 
-    // A minimal gadget for wire extraction tests, manually implemented
-    // because the derive macro cannot resolve `ragu_core` from within the
-    // crate itself.
+    // Manual Gadget impl because the derive macro cannot resolve `ragu_core` from within the crate.
     struct TwoWires<'dr, D: Driver<'dr>> {
         a: D::Wire,
         b: D::Wire,
@@ -479,8 +479,7 @@ mod tests {
         type Kind = TwoWiresKind;
     }
 
-    // ── Wired mode ──────────────────────────────────────────────────
-
+    // Alloc returns wires holding the assigned field values.
     #[test]
     fn wired_alloc_assigns_values() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
@@ -495,6 +494,7 @@ mod tests {
         Ok(())
     }
 
+    // Constant wires hold the expected field element for each Coeff variant.
     #[test]
     fn wired_constant_returns_correct_wire() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
@@ -511,11 +511,11 @@ mod tests {
         Ok(())
     }
 
+    // The emulator accepts a*b != c without error since it does not enforce constraints.
     #[test]
     fn wired_mul_does_not_enforce_constraints() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        // Deliberately assign a * b != c: 3 * 5 != 99
         let (a, b, c) = dr.mul(|| {
             Ok((
                 Coeff::Arbitrary(F::from(3)),
@@ -526,10 +526,11 @@ mod tests {
 
         assert_eq!(a.value(), F::from(3));
         assert_eq!(b.value(), F::from(5));
-        assert_eq!(c.value(), F::from(99)); // emulator does not enforce a*b==c
+        assert_eq!(c.value(), F::from(99));
         Ok(())
     }
 
+    // Linear combination via add produces the correct accumulated value.
     #[test]
     fn wired_add_computes_linear_combination() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
@@ -537,25 +538,26 @@ mod tests {
         let w1 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(10))))?;
         let w2 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(20))))?;
 
-        // sum = 1 * w1 + 3 * w2 = 10 + 60 = 70
+        // 1*w1 + 3*w2 = 10 + 60 = 70
         let sum = dr.add(|lc| lc.add(&w1).add_term(&w2, Coeff::Arbitrary(F::from(3))));
 
         assert_eq!(sum.value(), F::from(70));
         Ok(())
     }
 
+    // enforce_zero succeeds even for non-zero expressions since the emulator skips constraint checks.
     #[test]
     fn wired_enforce_zero_is_noop() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
         let w = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(42))))?;
 
-        // This linear combination is non-zero, but the emulator doesn't enforce.
         let result = dr.enforce_zero(|lc| lc.add(&w));
         assert!(result.is_ok());
         Ok(())
     }
 
+    // enforce_equal succeeds for unequal wires since the emulator skips constraint checks.
     #[test]
     fn wired_enforce_equal_is_noop() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
@@ -563,12 +565,12 @@ mod tests {
         let w1 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(1))))?;
         let w2 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(999))))?;
 
-        // Different values, but emulator doesn't enforce.
         let result = dr.enforce_equal(&w1, &w2);
         assert!(result.is_ok());
         Ok(())
     }
 
+    // emulate_wired runs circuit code and extracts the resulting wire field values.
     #[test]
     fn wired_emulate_wired_extracts_wires() -> Result<()> {
         let wires = Emulator::<Wired<F>>::emulate_wired((), |dr, _witness| {
@@ -591,8 +593,7 @@ mod tests {
         Ok(())
     }
 
-    // ── Wireless mode (with witness) ────────────────────────────────
-
+    // In wireless mode, all driver operations return () and witness closures are never called.
     #[test]
     fn wireless_execute_all_ops_return_unit() -> Result<()> {
         use core::cell::Cell;
@@ -630,8 +631,7 @@ mod tests {
         Ok(())
     }
 
-    // ── Wireless mode (counter, no witness) ─────────────────────────
-
+    // Counter mode runs without witnesses, enabling static constraint counting.
     #[test]
     fn wireless_counter_static_analysis() -> Result<()> {
         let mut dr = Emulator::<Wireless<crate::maybe::Empty, F>>::counter();
@@ -644,27 +644,25 @@ mod tests {
         Ok(())
     }
 
-    // ── WiredValue ──────────────────────────────────────────────────
-
+    // WiredValue::One evaluates to F::ONE.
     #[test]
     fn wired_value_one_holds_f_one() {
         assert_eq!(WiredValue::<F>::One.value(), F::ONE);
     }
 
+    // WiredValue::Assigned holds its inner field element.
     #[test]
     fn wired_value_assigned_holds_value() {
         let v = F::from(123);
         assert_eq!(WiredValue::Assigned(v).value(), v);
     }
 
-    // ── WiredDirectSum ──────────────────────────────────────────────
-
+    // WiredDirectSum accumulates a linear combination over WiredValues.
     #[test]
     fn wired_direct_sum_linear_combination() {
         let one = WiredValue::<F>::One;
         let x = WiredValue::Assigned(F::from(7));
 
-        // sum = 1 * ONE + 3 * x = 1 + 21 = 22
         let lc = WiredDirectSum(DirectSum::default())
             .add(&one)
             .add_term(&x, Coeff::Arbitrary(F::from(3)));
@@ -672,18 +670,9 @@ mod tests {
         assert_eq!(lc.0.value, F::from(22));
     }
 
-    // ── DirectSum gain factor ───────────────────────────────────────
-
+    // Gain multiplies cumulatively: add(5).gain(2).add(3).gain(-1).add(4) = 3.
     #[test]
     fn direct_sum_gain_factor() {
-        // gain multiplies cumulatively: gain(a).gain(b) => effective gain = a*b
-        //
-        // Start: value=0, gain=1
-        // add(5): coeff=1*1=1 => value = 0 + 5 = 5
-        // gain(2): gain = 1*2 = 2
-        // add(3): coeff=1*2=2 => value = 5 + 3*2 = 11
-        // gain(-1): gain = 2*(-1) = -2
-        // add(4): coeff=1*(-2)=-2 => value = 11 - 4*2 = 3
         let acc = DirectSum::<F>::default()
             .add(&F::from(5))
             .gain(Coeff::Arbitrary(F::from(2)))
@@ -692,5 +681,145 @@ mod tests {
             .add(&F::from(4));
 
         assert_eq!(acc.value, F::from(3));
+    }
+
+    // A single-wire gadget for testing minimal wire counts.
+    struct OneWire<'dr, D: Driver<'dr>> {
+        w: D::Wire,
+        _marker: core::marker::PhantomData<&'dr ()>,
+    }
+
+    impl<'dr, D: Driver<'dr>> Clone for OneWire<'dr, D> {
+        fn clone(&self) -> Self {
+            OneWire {
+                w: self.w.clone(),
+                _marker: core::marker::PhantomData,
+            }
+        }
+    }
+
+    struct OneWireKind;
+
+    unsafe impl<FieldType: Field> GadgetKind<FieldType> for OneWireKind {
+        type Rebind<'dr, D: Driver<'dr, F = FieldType>> = OneWire<'dr, D>;
+
+        fn map_gadget<'dr, 'dr2, WM: WireMap<FieldType>>(
+            this: &Bound<'dr, WM::Src, Self>,
+            ndr: &mut WM,
+        ) -> Result<Bound<'dr2, WM::Dst, Self>>
+        where
+            WM::Src: Driver<'dr, F = FieldType>,
+            WM::Dst: Driver<'dr2, F = FieldType>,
+        {
+            Ok(OneWire {
+                w: ndr.convert_wire(&this.w)?,
+                _marker: core::marker::PhantomData,
+            })
+        }
+
+        fn enforce_equal_gadget<
+            'dr,
+            D1: Driver<'dr, F = FieldType>,
+            D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
+        >(
+            dr: &mut D1,
+            a: &Bound<'dr, D2, Self>,
+            b: &Bound<'dr, D2, Self>,
+        ) -> Result<()> {
+            dr.enforce_equal(&a.w, &b.w)?;
+            Ok(())
+        }
+    }
+
+    impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for OneWire<'dr, D> {
+        type Kind = OneWireKind;
+    }
+
+    // A stateful WireMap produces different wires each time the same gadget is mapped, confirming non-idempotent &mut self semantics.
+    #[test]
+    fn stateful_wiremap_produces_different_results_on_repeated_use() -> Result<()> {
+        struct IncrementingMap {
+            counter: u64,
+        }
+
+        impl WireMap<F> for IncrementingMap {
+            type Src = Emulator<Wired<F>>;
+            type Dst = Emulator<Wired<F>>;
+
+            fn convert_wire(&mut self, _wire: &WiredValue<F>) -> Result<WiredValue<F>> {
+                self.counter += 1;
+                Ok(WiredValue::Assigned(F::from(self.counter)))
+            }
+        }
+
+        let mut dr = Emulator::<Wired<F>>::extractor();
+        let a = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(100))))?;
+        let b = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(200))))?;
+        let gadget = TwoWires {
+            a,
+            b,
+            _marker: core::marker::PhantomData,
+        };
+
+        let mut map = IncrementingMap { counter: 0 };
+
+        let mapped1: TwoWires<'_, Emulator<Wired<F>>> = gadget.map(&mut map)?;
+        assert_eq!(mapped1.a.value(), F::from(1));
+        assert_eq!(mapped1.b.value(), F::from(2));
+
+        let mapped2: TwoWires<'_, Emulator<Wired<F>>> = gadget.map(&mut map)?;
+        assert_eq!(mapped2.a.value(), F::from(3));
+        assert_eq!(mapped2.b.value(), F::from(4));
+
+        assert_eq!(map.counter, 4);
+        Ok(())
+    }
+
+    // A mid-gadget convert_wire failure leaves the WireMap in a dirty state that persists into subsequent mapping attempts.
+    #[test]
+    fn wiremap_partial_failure_leaves_dirty_state() -> Result<()> {
+        struct FailOnEven {
+            call_count: usize,
+        }
+
+        impl WireMap<F> for FailOnEven {
+            type Src = Emu;
+            type Dst = core::marker::PhantomData<F>;
+
+            fn convert_wire(&mut self, _: &()) -> Result<()> {
+                self.call_count += 1;
+                if self.call_count % 2 == 0 {
+                    Err(crate::Error::InvalidWitness("even call".into()))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        let gadget: TwoWires<'_, Emu> = TwoWires {
+            a: (),
+            b: (),
+            _marker: core::marker::PhantomData,
+        };
+
+        let mut map = FailOnEven { call_count: 0 };
+
+        let result = gadget.map(&mut map);
+        assert!(result.is_err());
+        assert_eq!(map.call_count, 2);
+
+        let one_wire: OneWire<'_, Emu> = OneWire {
+            w: (),
+            _marker: core::marker::PhantomData,
+        };
+        let result2 = one_wire.map(&mut map);
+        assert!(result2.is_ok());
+        assert_eq!(map.call_count, 3);
+
+        let result3 = gadget.map(&mut map);
+        assert!(result3.is_err());
+        assert_eq!(map.call_count, 4);
+
+        Ok(())
     }
 }
