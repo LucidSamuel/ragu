@@ -20,7 +20,7 @@
 //!
 //! - [`WireMap`], the core conversion trait.
 //! - [`CloneWires`], a [`WireMap`] that clones wires unchanged.
-//! - [`EraseWires`], a [`WireMap`] that discards wire values for use with
+//! - [`StripWires`], a [`WireMap`] that discards wire values for use with
 //!   wireless emulators.
 //!
 //! [`Routine::predict`]: crate::routines::Routine::predict
@@ -30,23 +30,37 @@ use ff::Field;
 
 use crate::{
     Result,
-    drivers::emulator::{Emulator, Wireless},
-    drivers::{Driver, DriverTypes},
+    drivers::{
+        Driver, DriverTypes,
+        emulator::{Emulator, Wireless},
+    },
     gadgets::{Bound, Gadget},
 };
 
 /// Conversion context that maps wires from one driver to another.
 ///
-/// Each implementor fixes a specific source and destination via associated
-/// types. When the same conversion logic applies to a whole family of source
-/// types, a wrapper struct parameterized by the source allows each distinct
-/// source to map to a fixed destination through a single blanket impl. See
-/// [`EraseWires`] for an example.
+/// Each implementor fixes a specific source and destination driver via
+/// associated types. When the same conversion logic applies to multiple
+/// source/destination pairs, use a wrapper struct parameterized by those
+/// types. See [`StripWires`] for an example.
+///
+/// `Src` and `Dst` are bounded by [`DriverTypes`] (not [`Driver<'dr>`](Driver))
+/// so the trait itself carries no lifetime parameter. The full [`Driver`]
+/// bound is instead introduced on individual methods like [`Gadget::map`]
+/// and [`GadgetKind::map_gadget`](crate::gadgets::GadgetKind::map_gadget),
+/// where source and destination lifetimes are constrained via `where`
+/// clauses.
 pub trait WireMap<F: Field> {
-    /// The source [`DriverTypes`] whose wires are being converted.
+    /// The source driver whose wires are being converted.
+    ///
+    /// Must implement [`Driver<'dr>`](Driver) at every call site that
+    /// passes this `WireMap` to [`Gadget::map`].
     type Src: DriverTypes<ImplField = F>;
 
-    /// The destination [`DriverTypes`] whose wires are produced.
+    /// The destination driver whose wires are produced.
+    ///
+    /// Must implement [`Driver<'dr>`](Driver) at every call site that
+    /// passes this `WireMap` to [`Gadget::map`].
     type Dst: DriverTypes<ImplField = F>;
 
     /// Converts a wire from the source driver to the destination driver.
@@ -54,6 +68,27 @@ pub trait WireMap<F: Field> {
         &mut self,
         wire: &<Self::Src as DriverTypes>::ImplWire,
     ) -> Result<<Self::Dst as DriverTypes>::ImplWire>;
+
+    /// Maps a gadget from [`Src`](Self::Src) to [`Dst`](Self::Dst) using a
+    /// fresh default instance of this wire map.
+    ///
+    /// The source driver is inferred from the gadget; the destination can be
+    /// inferred from the return context or spelled out explicitly:
+    ///
+    /// ```ignore
+    /// let output: Bound<'_, Dst, _> = MyWireMap::remap(&gadget)?;
+    /// let output = MyWireMap::<_, Dst>::remap(&gadget)?;
+    /// ```
+    fn remap<'src, 'dst, G: Gadget<'src, Self::Src>>(
+        gadget: &G,
+    ) -> Result<Bound<'dst, Self::Dst, G::Kind>>
+    where
+        Self: Default,
+        Self::Src: Driver<'src, F = F>,
+        Self::Dst: Driver<'dst, F = F>,
+    {
+        gadget.map(&mut Self::default())
+    }
 }
 
 /// A [`WireMap`] that passes wires through unchanged by cloning them.
@@ -67,33 +102,6 @@ pub struct CloneWires<Src: DriverTypes, Dst: DriverTypes>(PhantomData<(Src, Dst)
 impl<Src: DriverTypes, Dst: DriverTypes> Default for CloneWires<Src, Dst> {
     fn default() -> Self {
         CloneWires(PhantomData)
-    }
-}
-
-impl<F: Field, Src, Dst> CloneWires<Src, Dst>
-where
-    Src: DriverTypes<ImplField = F>,
-    Dst: DriverTypes<ImplField = F, ImplWire = Src::ImplWire>,
-{
-    /// Maps a gadget to a destination driver by cloning its wires.
-    ///
-    /// `Src` is inferred from the gadget; `Dst` can be inferred from the
-    /// return context or spelled out explicitly:
-    ///
-    /// ```ignore
-    /// // Inferred from context:
-    /// let output: Bound<'_, DstDriver, _> = CloneWires::convert(&gadget)?;
-    /// // Explicit:
-    /// let output = CloneWires::<_, DstDriver>::convert(&gadget)?;
-    /// ```
-    pub fn convert<'src, 'dst, G: Gadget<'src, Src>>(
-        gadget: &G,
-    ) -> Result<Bound<'dst, Dst, G::Kind>>
-    where
-        Src: Driver<'src, F = F>,
-        Dst: Driver<'dst, F = F, Wire = Src::Wire>,
-    {
-        gadget.map(&mut Self::default())
     }
 }
 
@@ -122,15 +130,15 @@ where
 /// type gets its own blanket [`WireMap`] impl.
 ///
 /// [`Routine::predict`]: crate::routines::Routine::predict
-pub struct EraseWires<D: DriverTypes>(PhantomData<D>);
+pub struct StripWires<D: DriverTypes>(PhantomData<D>);
 
-impl<D: DriverTypes> Default for EraseWires<D> {
+impl<D: DriverTypes> Default for StripWires<D> {
     fn default() -> Self {
-        EraseWires(PhantomData)
+        StripWires(PhantomData)
     }
 }
 
-impl<F: Field, D: DriverTypes<ImplField = F>> WireMap<F> for EraseWires<D> {
+impl<F: Field, D: DriverTypes<ImplField = F>> WireMap<F> for StripWires<D> {
     type Src = D;
     type Dst = Emulator<Wireless<D::MaybeKind, F>>;
 

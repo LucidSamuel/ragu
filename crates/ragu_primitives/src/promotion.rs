@@ -29,6 +29,10 @@ pub trait Promotion<F: Field>: GadgetKind<F> {
 }
 
 /// A driver that mimics another driver but strips away witness data.
+///
+/// Bounded by [`DriverTypes`] rather than [`Driver<'dr>`](Driver) so the
+/// struct itself carries no lifetime parameter. The full [`Driver<'dr>`](Driver)
+/// bound is introduced at the impl level where the lifetime is needed.
 #[doc(hidden)]
 pub struct DemotedDriver<D: DriverTypes> {
     _marker: core::marker::PhantomData<D>,
@@ -115,7 +119,7 @@ impl<'dr, D: Driver<'dr>, G: Gadget<'dr, D>> Demoted<'dr, D, G> {
     /// Strips a gadget of its witness data and returns a demoted version of it.
     pub fn new(gadget: &G) -> Result<Self> {
         Ok(Demoted {
-            gadget: CloneWires::<_, DemotedDriver<D>>::convert(gadget)?,
+            gadget: CloneWires::<_, DemotedDriver<D>>::remap(gadget)?,
         })
     }
 
