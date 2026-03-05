@@ -16,10 +16,10 @@ no intermediate collection required.
 
 ## The Closure Pattern {#the-closure-pattern}
 
-[`add()`] and [`enforce_zero()`] accept closures so drivers that don't need the
-result can avoid building the expression altogether. Drivers that do track
-constraints call the closure with an empty expression of their own concrete
-type, and circuit code builds on it using only the [`LinearExpression`] trait
+[`add()`] and [`enforce_zero()`] accept closures so that drivers which don't
+track constraints can skip the expression entirely. When a driver does invoke
+the closure, it supplies an empty expression of its own concrete type; circuit
+code builds on that expression using only the [`LinearExpression`] trait
 methods.[^hidden-types]
 
 The central implementation method is [`add_term`], which appends a wire with an

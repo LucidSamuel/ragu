@@ -1,11 +1,11 @@
 # Gadgets
 
 A **gadget** is the structural unit of all algorithms expressed as arithmetic
-circuits. They usually consist of _wires_, the _witness_ information required to
-reason about their possible assignments, and represent the _constraints_ that
-impose invariants over these assignments. Gadgets consolidate these components
-into an opaque type that guards how the underlying wires are manipulated and
-optimizes how their witness information is represented.
+circuits. They usually consist of _wires_ and _witness_ information about their
+possible assignments, and represent the _constraints_ that impose invariants
+over those assignments. Gadgets consolidate these components into an opaque type
+that guards how the underlying wires are manipulated and optimizes how their
+witness information is represented.
 
 As an example, one of the simplest gadgets is the [`Boolean`][boolean-gadget]
 gadget which internally represents a wire that is constrained to be $0$ or $1$
@@ -45,7 +45,7 @@ This gadget is a _compositional_ gadget: it contains another gadget (a
 Gadgets usually can (and should) implement the [`Gadget`][gadget-trait] trait,
 which imposes a set of expectations and API requirements on the structure that
 is useful for efficient circuit synthesis. All implementations of this trait
-must satisfy a set of requirements:
+must satisfy the following requirements:
 
 * **They must be fungible.** A gadget's behavior during circuit synthesis must
   be fully determined by its type, not by any particular instance's state. This

@@ -76,10 +76,10 @@ contribution from another without re-executing the body.
 
 ### Parameterization
 
-Although gadgets must be fungible, routines are not parameterized by a driver
-and so they are free to carry non-trivial state. This allows them to hold
-configuration, references, or precomputed data that outlive any particular
-driver, provided their execution remains deterministic.
+Unlike gadgets, routines are not parameterized by a driver and are free to carry
+non-trivial state. This allows them to hold configuration, references, or
+precomputed data that outlive any particular driver, provided their execution
+remains deterministic.
 
 ```rust,ignore
 struct ScaledTxz {

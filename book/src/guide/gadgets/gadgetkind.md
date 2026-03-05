@@ -52,11 +52,10 @@ method.
 
 ## `enforce_equal_gadget`
 
-Gadgets offer the [`GadgetKind::enforce_equal_gadget`][enforce-equal] method
-to specify how two instances can be enforced to be equivalent. In
-theory, a gadget can provide a more efficient implementation of this
-comparison than a generic method that simply creates linear constraints
-between two gadgets' wires.
+Gadgets offer the [`GadgetKind::enforce_equal_gadget`][enforce-equal] method to
+specify how two instances are enforced to be equivalent. A gadget may provide a
+specialized implementation that is more efficient than constraining
+corresponding wires individually.
 
 ## Safety
 
@@ -65,7 +64,7 @@ Notice that the [`Gadget`][gadget-trait] trait is safe to implement, but the
 both traits, but it is the [`GadgetKind`][gadgetkind-trait] trait that
 imposes a memory-safety requirement on the types that implement it: gadgets
 should implement `Send` if their wires are `Send` as well. This is impossible
-to express in today's Rust type system, justifying the type.
+to express in today's Rust type system, which is why the trait is `unsafe`.
 
 However, due to the complexity of the API contract we generally need to
 [automatically derive](index.md#automatic-derivation) the

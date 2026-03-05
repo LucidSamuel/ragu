@@ -19,6 +19,14 @@ code-review) layer additional rules on top of these.
   doesn't need a comment. If it isn't obvious, these words are dishonest.
 - "Note that" is almost always filler. Delete it and the sentence usually
   improves.
+- "In fact" and "in theory" are filler or hedging. If the statement is
+  factual, it stands on its own; if it is theoretical, qualify it with the
+  actual limitation. "Arguably" hedges a claim the author should either
+  commit to or qualify differently.
+- Neutral connectives ("also", "additionally") can understate a property
+  that motivates a design decision. When a fact is the *reason* for a
+  design choice, use language that conveys its significance — e.g.,
+  "frequently" rather than "also" if frequency is the point.
 - Vague catch-all qualifiers — "whatever," "any way," "however they want" —
   conceal specific reasoning. When describing a design motivation, name the
   actual benefit. "So they can represent wires in whatever way suits their
@@ -37,14 +45,26 @@ code-review) layer additional rules on top of these.
   clauses. Don't rely on bare comma juxtaposition to imply the relationship.
   "One might accumulate a field element, another might append terms" → "one
   might accumulate a field element, and another might append terms."
+- Ensure pronouns have unambiguous antecedents. When multiple nouns in a
+  sentence could be the referent, repeat the noun or restructure. "The
+  constraints that govern them" — does "them" refer to wires, values, or
+  assignments? Use "those assignments" instead.
+- When contrasting variants (normal vs. exceptional, common vs. rare),
+  present the common case first to establish a baseline, then contrast
+  with the special case. This gives the reader a foothold before
+  introducing the unusual behavior.
 
 ## Word Repetition
 
-- Avoid repeating the same word within a sentence. Rephrase with a synonym or
-  restructure. Example: "Developed for use with the Pasta curves used in Zcash"
+- Avoid repeating the same word in close proximity (within a sentence or
+  across a few consecutive lines). Rephrase with a synonym or restructure.
+  Example: "Developed for use with the Pasta curves used in Zcash"
   → "Developed for the Pasta curves employed in Zcash".
 - Within a paragraph, vary word choice when natural alternatives exist (e.g.,
   "verify" / "check" / "confirm"; "construct" / "build" / "create").
+- Avoid restating the same fact in different words within a paragraph. If
+  a concept is already stated, a second formulation that adds no new
+  information should be cut or merged with the first.
 - **Exempt**: technical terms, proper nouns, acronyms, and domain-specific
   vocabulary. Terminological consistency takes precedence over variety — do not
   replace a defined term with a synonym for the sake of variety.
