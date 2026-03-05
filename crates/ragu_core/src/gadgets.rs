@@ -115,13 +115,10 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     type Kind: GadgetKind<D::F, Rebind<'dr, D> = Self>;
 
     /// Proxy for the `GadgetKind::map_gadget` method.
-    fn map<'dr2, WM: WireMap<D::F, Src = D>>(
+    fn map<'dst, WM: WireMap<D::F, Src = D, Dst: Driver<'dst, F = D::F>>>(
         &self,
         ndr: &mut WM,
-    ) -> Result<Bound<'dr2, WM::Dst, Self::Kind>>
-    where
-        WM::Dst: Driver<'dr2, F = D::F>,
-    {
+    ) -> Result<Bound<'dst, WM::Dst, Self::Kind>> {
         Self::Kind::map_gadget(self, ndr)
     }
 
@@ -196,13 +193,10 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     type Rebind<'dr, D: Driver<'dr, F = F>>: Gadget<'dr, D, Kind = Self>;
 
     /// Maps a gadget of this kind to a new driver type.
-    fn map_gadget<'dr, 'dr2, WM: WireMap<F>>(
-        this: &Bound<'dr, WM::Src, Self>,
+    fn map_gadget<'src, 'dst, WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>>(
+        this: &Bound<'src, WM::Src, Self>,
         ndr: &mut WM,
-    ) -> Result<Bound<'dr2, WM::Dst, Self>>
-    where
-        WM::Src: Driver<'dr, F = F>,
-        WM::Dst: Driver<'dr2, F = F>;
+    ) -> Result<Bound<'dst, WM::Dst, Self>>;
 
     /// Enforces that two gadgets' wires are equal.
     ///

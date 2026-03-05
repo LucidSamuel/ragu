@@ -24,14 +24,14 @@ mod unit_impl {
     unsafe impl<F: Field> GadgetKind<F> for () {
         type Rebind<'dr, D: Driver<'dr, F = F>> = ();
 
-        fn map_gadget<'dr, 'dr2, WM: WireMap<F>>(
-            _: &Bound<'dr, WM::Src, Self>,
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+        >(
+            _: &Bound<'src, WM::Src, Self>,
             _: &mut WM,
-        ) -> Result<Bound<'dr2, WM::Dst, Self>>
-        where
-            WM::Src: Driver<'dr, F = F>,
-            WM::Dst: Driver<'dr2, F = F>,
-        {
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
             Ok(())
         }
 
@@ -69,14 +69,14 @@ mod array_impl {
     unsafe impl<F: Field, G: GadgetKind<F>, const N: usize> GadgetKind<F> for [PhantomData<G>; N] {
         type Rebind<'dr, D: Driver<'dr, F = F>> = [Bound<'dr, D, G>; N];
 
-        fn map_gadget<'dr, 'dr2, WM: WireMap<F>>(
-            this: &Bound<'dr, WM::Src, Self>,
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
             ndr: &mut WM,
-        ) -> Result<Bound<'dr2, WM::Dst, Self>>
-        where
-            WM::Src: Driver<'dr, F = F>,
-            WM::Dst: Driver<'dr2, F = F>,
-        {
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
             // TODO(ebfull): perhaps replace with core::array::try_from_fn when
             // stable (see https://github.com/rust-lang/rust/issues/89379)
             let mut result = Vec::with_capacity(N);
@@ -131,14 +131,14 @@ mod pair_impl {
     {
         type Rebind<'dr, D: Driver<'dr, F = F>> = (Bound<'dr, D, G1>, Bound<'dr, D, G2>);
 
-        fn map_gadget<'dr, 'dr2, WM: WireMap<F>>(
-            this: &Bound<'dr, WM::Src, Self>,
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
             ndr: &mut WM,
-        ) -> Result<Bound<'dr2, WM::Dst, Self>>
-        where
-            WM::Src: Driver<'dr, F = F>,
-            WM::Dst: Driver<'dr2, F = F>,
-        {
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
             Ok((G1::map_gadget(&this.0, ndr)?, G2::map_gadget(&this.1, ndr)?))
         }
 
@@ -182,14 +182,14 @@ mod box_impl {
     unsafe impl<F: Field, G: GadgetKind<F>> GadgetKind<F> for PhantomData<Box<G>> {
         type Rebind<'dr, D: Driver<'dr, F = F>> = Box<Bound<'dr, D, G>>;
 
-        fn map_gadget<'dr, 'dr2, WM: WireMap<F>>(
-            this: &Bound<'dr, WM::Src, Self>,
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
             ndr: &mut WM,
-        ) -> Result<Bound<'dr2, WM::Dst, Self>>
-        where
-            WM::Src: Driver<'dr, F = F>,
-            WM::Dst: Driver<'dr2, F = F>,
-        {
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
             Ok(Box::new(G::map_gadget(this, ndr)?))
         }
 

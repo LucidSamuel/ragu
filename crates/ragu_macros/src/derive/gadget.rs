@@ -255,10 +255,10 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
             unsafe impl #gadget_kind_generic_params #ragu_core_path::gadgets::GadgetKind<#driverfield_ident> for #struct_ident #kind_subst_arguments  {
                 type Rebind<#driver_lifetime, #driver_ident: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>> = #struct_ident #rebind_arguments;
 
-                fn map_gadget<#driver_lifetime, 'dr2, WM: #ragu_core_path::convert::WireMap<#driverfield_ident>>(
+                fn map_gadget<#driver_lifetime, 'dst, WM: #ragu_core_path::convert::WireMap<#driverfield_ident, Src: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, Dst: #ragu_core_path::drivers::Driver<'dst, F = #driverfield_ident>>>(
                     this: &#ragu_core_path::gadgets::Bound<#driver_lifetime, WM::Src, Self>,
                     ndr: &mut WM,
-                ) -> #ragu_core_path::Result<#ragu_core_path::gadgets::Bound<'dr2, WM::Dst, Self>> where WM::Src: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, WM::Dst: #ragu_core_path::drivers::Driver<'dr2, F = #driverfield_ident> {
+                ) -> #ragu_core_path::Result<#ragu_core_path::gadgets::Bound<'dst, WM::Dst, Self>> {
                     fn is_send<T: Send>(_: &T) { }
                     fn just<D: #ragu_core_path::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> #ragu_core_path::drivers::DriverValue<D, R> {
                         <#ragu_core_path::drivers::DriverValue<D, R> as #ragu_core_path::maybe::Maybe<R>>::just(f)
@@ -408,10 +408,10 @@ fn test_gadget_derive_boolean_customdriver() {
                 type Rebind<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>> =
                     Boolean<'my_dr, MyD>;
 
-                fn map_gadget<'my_dr, 'dr2, WM: ::ragu_core::convert::WireMap<DriverField>>(
+                fn map_gadget<'my_dr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
                     this: &::ragu_core::gadgets::Bound<'my_dr, WM::Src, Self>,
                     ndr: &mut WM,
-                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dr2, WM::Dst, Self>> where WM::Src: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, WM::Dst: ::ragu_core::drivers::Driver<'dr2, F = DriverField> {
+                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
                     fn is_send<T: Send>(_: &T) { }
                     fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
                         <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)
@@ -499,10 +499,10 @@ fn test_gadget_derive() {
             {
                 type Rebind<'mydr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
 
-                fn map_gadget<'mydr, 'dr2, WM: ::ragu_core::convert::WireMap<DriverField>>(
+                fn map_gadget<'mydr, 'dst, WM: ::ragu_core::convert::WireMap<DriverField, Src: ::ragu_core::drivers::Driver<'mydr, F = DriverField>, Dst: ::ragu_core::drivers::Driver<'dst, F = DriverField>>>(
                     this: &::ragu_core::gadgets::Bound<'mydr, WM::Src, Self>,
                     ndr: &mut WM,
-                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dr2, WM::Dst, Self>> where WM::Src: ::ragu_core::drivers::Driver<'mydr, F = DriverField>, WM::Dst: ::ragu_core::drivers::Driver<'dr2, F = DriverField> {
+                ) -> ::ragu_core::Result<::ragu_core::gadgets::Bound<'dst, WM::Dst, Self>> {
                     fn is_send<T: Send>(_: &T) { }
                     fn just<D: ::ragu_core::drivers::DriverTypes, R: Send>(f: impl FnOnce() -> R) -> ::ragu_core::drivers::DriverValue<D, R> {
                         <::ragu_core::drivers::DriverValue<D, R> as ::ragu_core::maybe::Maybe<R>>::just(f)

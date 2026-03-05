@@ -254,12 +254,12 @@ impl<M: MaybeKind, F: Field> Emulator<Wireless<M, F>> {
 
     /// Runs [`Routine::predict`] on a fresh wireless emulator, converting the
     /// input gadget from the source driver automatically via [`WirelessFrom`].
-    pub fn predict<'w, 'dr, D, Ro>(
+    pub fn predict<'dst, 'src, D, Ro>(
         routine: &Ro,
-        input: &Bound<'dr, D, Ro::Input>,
-    ) -> Result<Prediction<Bound<'w, Self, Ro::Output>, DriverValue<Self, Ro::Aux<'w>>>>
+        input: &Bound<'src, D, Ro::Input>,
+    ) -> Result<Prediction<Bound<'dst, Self, Ro::Output>, DriverValue<Self, Ro::Aux<'dst>>>>
     where
-        D: Driver<'dr, F = F, MaybeKind = M>,
+        D: Driver<'src, F = F, MaybeKind = M>,
         Ro: Routine<F>,
     {
         let input = input.map(&mut WirelessFrom::default())?;
@@ -466,14 +466,14 @@ mod tests {
     unsafe impl<FieldType: Field> crate::gadgets::GadgetKind<FieldType> for TwoWiresKind {
         type Rebind<'dr, D: Driver<'dr, F = FieldType>> = TwoWires<'dr, D>;
 
-        fn map_gadget<'dr, 'dr2, WM: WireMap<FieldType>>(
-            this: &Bound<'dr, WM::Src, Self>,
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<FieldType, Src: Driver<'src, F = FieldType>, Dst: Driver<'dst, F = FieldType>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
             ndr: &mut WM,
-        ) -> Result<Bound<'dr2, WM::Dst, Self>>
-        where
-            WM::Src: Driver<'dr, F = FieldType>,
-            WM::Dst: Driver<'dr2, F = FieldType>,
-        {
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
             Ok(TwoWires {
                 a: ndr.convert_wire(&this.a)?,
                 b: ndr.convert_wire(&this.b)?,
