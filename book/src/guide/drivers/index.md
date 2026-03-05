@@ -3,16 +3,16 @@
 Ragu requires the same algorithms to execute both natively—where only the
 computation’s result matters—and as arithmetic circuits describing the same
 computation. The protocol’s non-uniform design amplifies this: there is no
-one-time preprocessing step, so circuit code is also evaluated in additional
-settings for algebraic or structural manipulation, where only a subset of the
-usual synthesis machinery is needed. Maintaining separate implementations across
-these contexts would quickly become untenable.
+one-time preprocessing step, so circuit code is frequently evaluated in
+additional settings for algebraic or structural manipulation, where only a
+subset of the usual synthesis machinery is needed. Maintaining separate
+implementations across these contexts would quickly become untenable.
 
 The **[`Driver`]** trait eliminates this duplication: we write circuit code
 once, generic over a driver, and concrete drivers specialize their
 interpretation for each context. In particular, drivers can choose wire
 representations and gate expensive work (such as witness assignment) so contexts
-don’t pay for unused machinery, often through compile-time specialization.
+don’t pay for unneeded capabilities, often through compile-time specialization.
 
 ## The [`Driver`] Trait {#driver-trait}
 
@@ -25,9 +25,9 @@ and the synthesis context it runs in.
 The driver exposes three core operations:
 
 * [`mul()`]: returns wires $(a, b, c)$ with the initial constraint $a \cdot b =
-      c$. This operation simultaneously _assigns_ them values: `mul` is called
-      with a closure that returns the three value assignments for the new wires.
-      The closure is evaluated only in contexts where assignments are required.
+      c$, simultaneously assigning their values. The caller provides a closure
+      that returns the three assignments; it is evaluated only in contexts where
+      witness data is needed.
 * [`enforce_zero()`]: enforces that a linear combination of previously created
       wires equals zero. This operation takes a closure that is only executed
       when the driver needs to know about the constraint system. The closure is
@@ -78,9 +78,8 @@ data to workers without `Arc`.
 
 ### Equality
 
-The [`enforce_equal()`] method constrains two wires to have the same value. By
-default it calls [`enforce_zero()`] on their difference, but drivers may
-override it.
+The [`enforce_equal()`] method is a convenience helper that constrains two wires
+to have the same value by calling [`enforce_zero()`] on their difference.
 
 ## Concrete Drivers
 

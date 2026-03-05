@@ -44,13 +44,13 @@ methods cover extraction, transformation, and construction:
 
 ### [`take`], [`as_ref`], [`as_mut`], and [`snag`] {#take-as_ref-snag}
 
-[`take`] extracts the enclosed value, analogous to [`Option::unwrap()`], but it
-always succeeds at runtime—without branching, overhead, or panics.
-`Empty::take()` is instead a compile-time trap: it contains a `const {
-panic!(...) }` that the compiler evaluates before code generation. In practice
-this is unreachable: when [`MaybeKind`] `= Empty`, drivers never invoke witness
-closures, so after monomorphization the dead-code elimination pass removes those
-call sites entirely.
+[`take`] extracts the enclosed value, analogous to [`Option::unwrap()`], except
+that it is infallible, without branching, overhead or panics. `Always::take()`
+returns the inner value directly, while `Empty::take()` is a compile-time trap:
+it contains a `const { panic!(...) }` that the compiler evaluates before code
+generation. In practice this is unreachable: when `MaybeKind = Empty`, drivers
+never invoke witness closures, so after monomorphization the dead-code
+elimination pass removes those call sites entirely.
 
 [`as_ref`] and [`as_mut`] are the equivalents of [`Option::as_ref()`] and
 [`Option::as_mut()`]. [`snag`] is shorthand for `.as_ref().take()`. Because
