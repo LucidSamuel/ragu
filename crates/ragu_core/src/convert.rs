@@ -146,3 +146,222 @@ impl<F: Field, D: DriverTypes<ImplField = F>> WireMap<F> for StripWires<D> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ff::Field;
+    use ragu_arithmetic::Coeff;
+    use ragu_pasta::Fp;
+
+    use crate::{
+        Result,
+        convert::WireMap,
+        drivers::{
+            Driver,
+            emulator::{Emulator, Wired, Wireless},
+        },
+        gadgets::{Bound, Gadget, GadgetKind},
+        maybe::Always,
+    };
+
+    type F = Fp;
+    type Emu = Emulator<Wireless<Always<()>, F>>;
+
+    struct TwoWires<'dr, D: Driver<'dr>> {
+        a: D::Wire,
+        b: D::Wire,
+        _marker: core::marker::PhantomData<&'dr ()>,
+    }
+
+    impl<'dr, D: Driver<'dr>> Clone for TwoWires<'dr, D> {
+        fn clone(&self) -> Self {
+            TwoWires {
+                a: self.a.clone(),
+                b: self.b.clone(),
+                _marker: core::marker::PhantomData,
+            }
+        }
+    }
+
+    struct TwoWiresKind;
+
+    /// # Safety
+    /// `D::Wire: Send` implies `TwoWires<'dr, D>: Send` since the struct
+    /// only contains wires and `PhantomData`.
+    unsafe impl<FieldType: Field> GadgetKind<FieldType> for TwoWiresKind {
+        type Rebind<'dr, D: Driver<'dr, F = FieldType>> = TwoWires<'dr, D>;
+
+        fn map_gadget<
+            'src,
+            'dst,
+            WM: WireMap<FieldType, Src: Driver<'src, F = FieldType>, Dst: Driver<'dst, F = FieldType>>,
+        >(
+            this: &Bound<'src, WM::Src, Self>,
+            wm: &mut WM,
+        ) -> Result<Bound<'dst, WM::Dst, Self>> {
+            Ok(TwoWires {
+                a: wm.convert_wire(&this.a)?,
+                b: wm.convert_wire(&this.b)?,
+                _marker: core::marker::PhantomData,
+            })
+        }
+
+        fn enforce_equal_gadget<
+            'dr,
+            D1: Driver<'dr, F = FieldType>,
+            D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
+        >(
+            dr: &mut D1,
+            a: &Bound<'dr, D2, Self>,
+            b: &Bound<'dr, D2, Self>,
+        ) -> Result<()> {
+            dr.enforce_equal(&a.a, &b.a)?;
+            dr.enforce_equal(&a.b, &b.b)?;
+            Ok(())
+        }
+    }
+
+    impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for TwoWires<'dr, D> {
+        type Kind = TwoWiresKind;
+    }
+
+    struct OneWire<'dr, D: Driver<'dr>> {
+        w: D::Wire,
+        _marker: core::marker::PhantomData<&'dr ()>,
+    }
+
+    impl<'dr, D: Driver<'dr>> Clone for OneWire<'dr, D> {
+        fn clone(&self) -> Self {
+            OneWire {
+                w: self.w.clone(),
+                _marker: core::marker::PhantomData,
+            }
+        }
+    }
+
+    struct OneWireKind;
+
+    /// # Safety
+    /// `D::Wire: Send` implies `OneWire<'dr, D>: Send` since the struct
+    /// only contains a wire and `PhantomData`.
+    unsafe impl<FieldType: Field> GadgetKind<FieldType> for OneWireKind {
+        type Rebind<'dr, D: Driver<'dr, F = FieldType>> = OneWire<'dr, D>;
+
+        fn map_gadget<'dr, 'dr2, WM: WireMap<FieldType>>(
+            this: &Bound<'dr, WM::Src, Self>,
+            ndr: &mut WM,
+        ) -> Result<Bound<'dr2, WM::Dst, Self>>
+        where
+            WM::Src: Driver<'dr, F = FieldType>,
+            WM::Dst: Driver<'dr2, F = FieldType>,
+        {
+            Ok(OneWire {
+                w: ndr.convert_wire(&this.w)?,
+                _marker: core::marker::PhantomData,
+            })
+        }
+
+        fn enforce_equal_gadget<
+            'dr,
+            D1: Driver<'dr, F = FieldType>,
+            D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
+        >(
+            dr: &mut D1,
+            a: &Bound<'dr, D2, Self>,
+            b: &Bound<'dr, D2, Self>,
+        ) -> Result<()> {
+            dr.enforce_equal(&a.w, &b.w)?;
+            Ok(())
+        }
+    }
+
+    impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for OneWire<'dr, D> {
+        type Kind = OneWireKind;
+    }
+
+    #[test]
+    fn stateful_wiremap_produces_different_results_on_repeated_use() -> Result<()> {
+        struct IncrementingMap {
+            counter: u64,
+        }
+
+        impl WireMap<F> for IncrementingMap {
+            type Src = Emulator<Wired<F>>;
+            type Dst = Emulator<Wired<F>>;
+
+            fn convert_wire(&mut self, _wire: &F) -> Result<F> {
+                self.counter += 1;
+                Ok(F::from(self.counter))
+            }
+        }
+
+        let mut dr = Emulator::<Wired<F>>::extractor();
+        let a = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(100))))?;
+        let b = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(200))))?;
+        let gadget = TwoWires {
+            a,
+            b,
+            _marker: core::marker::PhantomData,
+        };
+
+        let mut map = IncrementingMap { counter: 0 };
+
+        let mapped1: TwoWires<'_, Emulator<Wired<F>>> = gadget.map(&mut map)?;
+        assert_eq!(mapped1.a, F::from(1));
+        assert_eq!(mapped1.b, F::from(2));
+
+        let mapped2: TwoWires<'_, Emulator<Wired<F>>> = gadget.map(&mut map)?;
+        assert_eq!(mapped2.a, F::from(3));
+        assert_eq!(mapped2.b, F::from(4));
+
+        assert_eq!(map.counter, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn wiremap_partial_failure_leaves_dirty_state() -> Result<()> {
+        struct FailOnEven {
+            call_count: usize,
+        }
+
+        impl WireMap<F> for FailOnEven {
+            type Src = Emu;
+            type Dst = core::marker::PhantomData<F>;
+
+            fn convert_wire(&mut self, _: &()) -> Result<()> {
+                self.call_count += 1;
+                if self.call_count.is_multiple_of(2) {
+                    Err(crate::Error::InvalidWitness("even call".into()))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        let gadget: TwoWires<'_, Emu> = TwoWires {
+            a: (),
+            b: (),
+            _marker: core::marker::PhantomData,
+        };
+
+        let mut map = FailOnEven { call_count: 0 };
+
+        let result = gadget.map(&mut map);
+        assert!(result.is_err());
+        assert_eq!(map.call_count, 2);
+
+        let one_wire: OneWire<'_, Emu> = OneWire {
+            w: (),
+            _marker: core::marker::PhantomData,
+        };
+        let result2 = one_wire.map(&mut map);
+        assert!(result2.is_ok());
+        assert_eq!(map.call_count, 3);
+
+        let result3 = gadget.map(&mut map);
+        assert!(result3.is_err());
+        assert_eq!(map.call_count, 4);
+
+        Ok(())
+    }
+}

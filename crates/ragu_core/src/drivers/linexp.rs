@@ -122,3 +122,74 @@ fn test_linexp_trivial() {
         ])
     );
 }
+
+#[test]
+fn direct_sum_gain_factor() {
+    use ragu_pasta::Fp;
+
+    let acc = DirectSum::<Fp>::default()
+        .add(&Fp::from(5))
+        .gain(Coeff::Arbitrary(Fp::from(2)))
+        .add(&Fp::from(3))
+        .gain(Coeff::NegativeOne)
+        .add(&Fp::from(4));
+
+    assert_eq!(acc.value, Fp::from(3));
+}
+
+#[test]
+fn direct_sum_all_coeff_arms() {
+    use ragu_pasta::Fp;
+
+    let wire = Fp::from(10);
+    let acc = DirectSum::<Fp>::default()
+        // Zero: no-op
+        .add_term(&wire, Coeff::Zero)
+        // One: +10
+        .add_term(&wire, Coeff::One)
+        // Two: +20
+        .add_term(&wire, Coeff::Two)
+        // NegativeOne: -10
+        .add_term(&wire, Coeff::NegativeOne)
+        // Arbitrary(3): +30
+        .add_term(&wire, Coeff::Arbitrary(Fp::from(3)))
+        // NegativeArbitrary(2): -20
+        .add_term(&wire, Coeff::NegativeArbitrary(Fp::from(2)));
+
+    // 0 + 10 + 20 - 10 + 30 - 20 = 30
+    assert_eq!(acc.value, Fp::from(30));
+}
+
+#[test]
+fn direct_sum_gain_interactions() {
+    use alloc::vec;
+    use ragu_pasta::Fp;
+
+    // gain(Zero) annihilates subsequent terms
+    let acc = DirectSum::<Fp>::default()
+        .add(&Fp::from(5))
+        .gain(Coeff::Zero)
+        .add(&Fp::from(100));
+    assert_eq!(acc.value, Fp::from(5));
+
+    // gain(NegativeOne) flips signs
+    let acc = DirectSum::<Fp>::default()
+        .add(&Fp::from(10))
+        .gain(Coeff::NegativeOne)
+        .add(&Fp::from(3));
+    assert_eq!(acc.value, Fp::from(7));
+
+    // Chained gain changes
+    let acc = DirectSum::<Fp>::default()
+        .gain(Coeff::Arbitrary(Fp::from(2)))
+        .add(&Fp::from(5))       // 2*5 = 10
+        .gain(Coeff::Arbitrary(Fp::from(3)))
+        .add(&Fp::from(1));      // (2*3)*1 = 6 => total 16
+    assert_eq!(acc.value, Fp::from(16));
+
+    // extend with empty iterator
+    let acc = DirectSum::<Fp>::default()
+        .add(&Fp::from(7))
+        .extend(vec![]);
+    assert_eq!(acc.value, Fp::from(7));
+}
