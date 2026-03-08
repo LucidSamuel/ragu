@@ -230,7 +230,7 @@ impl<'dr, D: Driver<'dr>, P: ragu_arithmetic::PoseidonPermutation<D::F>> Sponge<
     ///
     /// This method allows resuming a sponge and then performing custom operations
     /// before squeezing. Used by the `Transcript` API.
-    pub fn resume(_dr: &mut D, state: SpongeState<'dr, D, P>, params: &'dr P) -> Self {
+    pub fn resume(state: SpongeState<'dr, D, P>, params: &'dr P) -> Self {
         Sponge {
             mode: Mode::Squeeze {
                 values: state.get_rate(),
@@ -518,7 +518,7 @@ mod tests {
             let value = Element::alloc(dr, value)?;
             sponge.absorb(dr, &value)?;
             let state = sponge.save_state(dr).expect("save_state should succeed");
-            let mut sponge = Sponge::resume(dr, state, Pasta::circuit_poseidon(params));
+            let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
             let squeezed = sponge.squeeze(dr)?;
             save_resume_output.set(*squeezed.value().take());
             Ok(())

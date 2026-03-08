@@ -17,7 +17,7 @@
 //!
 //! // Save/resume for multi-circuit protocols
 //! let state = transcript.save_state(dr)?;
-//! let mut resumed = Transcript::resume_from_state(dr, state, params);
+//! let mut resumed = Transcript::resume_from_state(state, params);
 //! let challenge = resumed.challenge(dr)?; // must squeeze first
 //! let mut transcript = resumed.into_transcript(); // then can absorb again
 //! ```
@@ -58,6 +58,15 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     ///
     /// The `tag` is absorbed as field elements (length-prefixed, 16 bytes per
     /// element via u128 conversion) to bind the transcript to a protocol context.
+    ///
+    /// # Field size constraint
+    ///
+    /// Assumes the field modulus exceeds 128 bits so that each 16-byte chunk
+    /// maps to a unique field element. See [#51] and [#1] for the broader
+    /// effort to decouple Ragu from Pasta-specific field assumptions.
+    ///
+    /// [#51]: https://github.com/tachyon-zcash/ragu/issues/51
+    /// [#1]: https://github.com/tachyon-zcash/ragu/issues/1
     pub(crate) fn new(dr: &mut D, params: &'dr P, tag: &[u8]) -> Result<Self>
     where
         D::F: PrimeField,
@@ -101,11 +110,10 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     /// Call [`ResumedTranscript::into_transcript`] to transition back to a full
     /// transcript that supports absorbing.
     pub(crate) fn resume_from_state(
-        dr: &mut D,
         state: TranscriptState<'dr, D, P>,
         params: &'dr P,
     ) -> ResumedTranscript<'dr, D, P> {
-        let sponge = Sponge::resume(dr, state, params);
+        let sponge = Sponge::resume(state, params);
         ResumedTranscript {
             sponge,
             params,
@@ -216,8 +224,7 @@ mod tests {
             .save_state(&mut dr)
             .expect("save_state should succeed");
 
-        let mut resumed =
-            Transcript::resume_from_state(&mut dr, state, Pasta::circuit_poseidon(params));
+        let mut resumed = Transcript::resume_from_state(state, Pasta::circuit_poseidon(params));
         let challenge2 = resumed.challenge(&mut dr)?;
 
         // Both flows should produce the same challenge
@@ -302,7 +309,7 @@ mod tests {
         let mut t = Transcript::new(&mut dr, poseidon, b"resume-test")?;
         v1.write(&mut dr, &mut t)?;
         let state = t.save_state(&mut dr).expect("save_state should succeed");
-        let mut resumed = Transcript::resume_from_state(&mut dr, state, poseidon);
+        let mut resumed = Transcript::resume_from_state(state, poseidon);
         let c1 = *resumed.challenge(&mut dr)?.value().take();
         let mut t = resumed.into_transcript();
         v2.write(&mut dr, &mut t)?;

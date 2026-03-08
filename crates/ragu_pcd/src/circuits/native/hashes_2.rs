@@ -168,11 +168,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
         // Resume transcript from saved state (error_m already absorbed in hashes_1)
         // and squeeze mu, nu (challenges from error_m absorption)
-        let mut resumed = Transcript::resume_from_state(
-            dr,
-            error_n.sponge_state,
-            C::circuit_poseidon(self.params),
-        );
+        let mut resumed =
+            Transcript::resume_from_state(error_n.sponge_state, C::circuit_poseidon(self.params));
         let mu = resumed.challenge(dr)?;
         unified_output.mu.set(mu);
 
