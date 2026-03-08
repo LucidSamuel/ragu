@@ -58,23 +58,11 @@ $c$ later to satisfy the constraint.
 
 ### The `'dr` Lifetime
 
-Drivers are parameterized by a special `'dr` lifetime that enables efficient
-borrowing throughout circuit code. Without it, the trait's associated types
-would carry an implicit `'static` bound, and every reference would have to be
-replaced with reference counting.
-
-The lifetime lets a driver's `Wire` type hold a plain reference into the
-driver's backing storage. It also propagates into witness and instance methods,
-so circuits (and [gadgets](../gadgets/index.md)) can borrow their input data
-rather than requiring callers to clone or wrap it in `Arc`.
-
-```admonish info
-`'dr` also enables zero-cost scoped parallelism for [`Routine`]s. The trait's
-predict/execute split and `Aux<'dr>` associated type are scaffolding for a
-driver that dispatches routine execution to worker threads: binding `'dr` to the
-thread scope's lifetime lets routines hold borrowed references and send auxiliary
-data to workers without `Arc`.
-```
+Drivers are parameterized by a lifetime `'dr` that ties [routines] to the
+driver's scope. The [`routine()`] method bounds routines by `'dr`, ensuring
+that any data a routine borrows outlives the driver. This enables a
+parallel-dispatch driver to bind `'dr` to a thread scope's lifetime so that
+routines holding borrowed references can be safely sent to worker threads.
 
 ### `DriverTypes` {#drivertypes}
 
@@ -121,6 +109,7 @@ to have the same value by calling [`enforce_zero()`] on their difference.
 [`alloc()`]: ragu_core::drivers::Driver::alloc
 [`Driver`]: ragu_core::drivers::Driver
 [`Routine`]: ragu_core::routines::Routine
+[`routine()`]: ragu_core::drivers::Driver::routine
 [`enforce_equal()`]: ragu_core::drivers::Driver::enforce_equal
 [`Wire`]: ragu_core::drivers::Driver::Wire
 [`DriverTypes`]: ragu_core::drivers::DriverTypes
@@ -129,3 +118,4 @@ to have the same value by calling [`enforce_zero()`] on their difference.
 [`DriverValue`]: ragu_core::drivers::DriverValue
 [`Maybe`]: ragu_core::maybe::Maybe
 [`Fn`]: https://doc.rust-lang.org/std/ops/trait.Fn.html
+[routines]: ../routines.md
