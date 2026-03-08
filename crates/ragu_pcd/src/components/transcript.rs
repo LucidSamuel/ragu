@@ -281,4 +281,36 @@ mod tests {
 
         Ok(())
     }
+
+    /// Verifies that splitting a transcript across a save/resume boundary
+    /// produces the same challenges as a straight-through transcript.
+    #[test]
+    fn test_resume_squeeze_absorb_squeeze() -> Result<()> {
+        let params = Pasta::baked();
+        let poseidon = Pasta::circuit_poseidon(params);
+        let mut dr = Sim::new();
+
+        let v1 = Element::constant(&mut dr, Fp::from(42));
+        let v2 = Element::constant(&mut dr, Fp::from(99));
+
+        let mut t = Transcript::new(&mut dr, poseidon, b"resume-test")?;
+        v1.write(&mut dr, &mut t)?;
+        let expected_c1 = *t.challenge(&mut dr)?.value().take();
+        v2.write(&mut dr, &mut t)?;
+        let expected_c2 = *t.challenge(&mut dr)?.value().take();
+
+        let mut t = Transcript::new(&mut dr, poseidon, b"resume-test")?;
+        v1.write(&mut dr, &mut t)?;
+        let state = t.save_state(&mut dr).expect("save_state should succeed");
+        let mut resumed = Transcript::resume_from_state(&mut dr, state, poseidon);
+        let c1 = *resumed.challenge(&mut dr)?.value().take();
+        let mut t = resumed.into_transcript();
+        v2.write(&mut dr, &mut t)?;
+        let c2 = *t.challenge(&mut dr)?.value().take();
+
+        assert_eq!(c1, expected_c1);
+        assert_eq!(c2, expected_c2);
+
+        Ok(())
+    }
 }
