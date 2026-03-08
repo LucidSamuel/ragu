@@ -10,10 +10,10 @@
 \revdot:\, \langle \kern-0.5em \langle \kern0.1em #1, #2 \kern0.1em \rangle \kern-0.5em \rangle \,
 \conv:\revdot{#1}{#2}
 \endo:\underbar{#1}
+\set:\left\{#1\right\}
 \inst:\mathtt{x}
 \wit:\mathtt{w}
 \sample:\overset{\$}{\leftarrow}
-\endo:\underbar{#1}
 \iseq:\overset{?}{=}
 \com:\mathsf{Commit}
 \nil:\bot

@@ -19,8 +19,8 @@ here.
 
 Bulletproof IPA proceeds in $k=\log_2 n$ rounds, indexed by $j=k,\ldots,1$.
 In each round, the prover sends some cross terms $L_j, R_j\in\G$ to the verifier
-who samples a challenge $u_j\sample\F$. Then the prover use the challenge to 
-fold/halve the instance and witness from the last round:
+who samples a challenge $u_j\sample\F$. Then the prover uses the
+challenge to fold the instance and witness from the last round:
 
 $$
 \begin{align}
@@ -34,7 +34,8 @@ $$
 The verifier can fold the instance $\v{G}, \v{H}$ on its own, effectively 
 reducing the instance $\inst$ to half of its size.
 After $k$ rounds of folding, in the last $j=1$ round, the prover sends over
-$\v{a}^0, \v{b}^0$, which are just single element vector, for verification.
+$\v{a}^{(0)}, \v{b}^{(0)}$, which are single-element vectors, for
+verification.
 In the non-interactive argument, as an optimization, the verifier computes the 
 final $\v{G}^{(0)}=(G_0), \v{H}^{(0)}=(H_0)$ in a single multi-scalar 
 multiplication (MSM) instead of computing them round-by-round.
@@ -62,11 +63,13 @@ Interested readers may also find a more detailed exposition in
 [Halo2's Appendix](https://zcash.github.io/halo2/background/pc-ipa.html).
 
 For polynomial $f(X)\in\F[X]$ with coefficient vector $\v{f}\in\F^n$, 
-we commit the polynomial using Pedersen commitment over its coefficient: 
+we commit to the polynomial using a Pedersen commitment over its
+coefficients:
 $F\leftarrow \dot{\v{f}}{\v{G}}$ where $\v{G}$ is the list of group generators.
 
 To prove $f(x)=y$, we set $\v{b}=\v{x^{n}}=(1,x,x^2,\ldots,x^{n-1})$, 
-we discard $\v{H}=\vec{0_\G}$, then PCS evaluation proof is exactly an IPA:
+we discard $\v{H}=\vec{0_\G}$, then the PCS evaluation proof is
+exactly an IPA:
 given $\v{G}, P, Q, x, y$, there exists $\v{f}$ such that 
 $P=F+y\cdot Q=\dot{\v{f}}{\v{G}} + \dot{\v{f}}{\v{b}}\cdot Q$.
 Therefore the _PCS evaluation proof is exactly an IPA proof_.

@@ -8,12 +8,12 @@ scalars and field elements are in lowercase, e.g. $a, b, c\in\F$.
 ## Vectors
 
 We write a vector $\v{a} \in \F^n$ in bold type, and generally use capital
-letters like $\v{G} \in \mathbb{G}^n$ to represent vectors of group elements.
+letters like $\v{G} \in \G^n$ to represent vectors of group elements.
 All vectors are zero-indexed.
 Vector concatenation is denoted as $\v{a}\|\v{b}\in\F^{2n}$.
 
 Dot (inner) products as $\dot{\v{a}}{\v{b}}=\sum_i \v{a}_i\cdot\v{b}_i \in\F$
-and Hadamard (pair-wise) products as $\v{a} \circ \v{b}\in\F^n$.
+and Hadamard (pairwise) products as $\v{a} \circ \v{b}\in\F^n$.
 
 We use $\v{z^{n}}$ to denote power vector $(z^0, z^1, \cdots, z^{n - 1})$.
 One natural exception in notation: 
@@ -30,7 +30,8 @@ such that $\v{\hat{a}}_i = \v{a}_{n - 1 - i} \forall i$.
 
 We use a special notation $\revdot{\v{a}}{\v{b}}$ for 
 $\dot{\v{a}}{\rv{b}} = \dot{\rv{a}}{\v{b}}$,
-which we referred to as **revdot products**, a special case of dot products.
+which we refer to as **revdot products**, a special case of dot
+products.
 
 
 ## Polynomials

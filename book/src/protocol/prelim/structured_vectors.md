@@ -93,7 +93,7 @@ $$
 p(X) = c_{n-1} + c_{n-2}X + \dots + c_{0}X^{n-1}
 $$
 
-$q(x)$ is constructed from the coefficients of the upper half.
+$q(X)$ is constructed from the coefficients of the upper half.
 
 > This reduction requires the prover to compute $a \cdot b$, which can be done
 > efficiently with an FFT, but should still be performed as infrequently as

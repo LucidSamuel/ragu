@@ -43,7 +43,7 @@ well-formed check on each of the stage polynomials. The stage mask is
 defined by the start and size of the portion of the partial trace that is
 reserved for that polynomial; in order to be safe, all wires in $a(X)$
 should be set to zero if they are not within this range. The stage mask
-simply enforces that everything must be nonzero in this range via simple
+simply enforces that everything outside this range is zero via simple
 linear constraints.
 
 In order to check that a stage polynomial satisfies this well-formed check,
@@ -51,15 +51,22 @@ we perform a revdot claim like so:
 
 $$\revdot{\v{a}}{\v{s}}$$
 
-where $\v{s}$ is the polynomial derived from the stage mask. Notice, this is expressly different from the traditional revdot claim that would be seen in a full circuit evaluation, which takes the form
+where $\v{s}$ is the polynomial derived from the stage mask. This is
+expressly different from the traditional revdot claim that would be
+seen in a full circuit evaluation, which takes the form
 
 $$
 \revdot{\v{r}}{\v{r} \circ \v{z^{4n}} + \v{s} + \v{t}}
 $$
 
-because the stage polynomials must individually only be well-formed, not necessarily satisfy any multiplication constraints or any non-trivial linear constraints. Those are enforced on the stage (and the final trace) later in the multi-stage circuit.
+because the stage polynomials must individually only be well-formed,
+not necessarily satisfy any multiplication constraints or any
+non-trivial linear constraints. Those are enforced on the stage (and
+the final trace) later in the multi-stage circuit.
 
-Note that two stages that must be enforced in this way can share a revdot claim! That is, enforcing this on $\v{a}$ and $\v{b}$ can be combined using a challenge
+Two stages that must be enforced in this way can share a revdot
+claim. Enforcing this on $\v{a}$ and $\v{b}$ can be combined using a
+challenge
 
 $$\revdot{\v{a} + z \v{b}}{\v{s}}$$
 

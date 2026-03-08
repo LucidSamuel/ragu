@@ -57,7 +57,7 @@ C = \begin{bmatrix}
 $$
 
 As we can see, R1CS is (sometimes) slightly more compact in the sense that it
-"squeezes" more linchecks in a single row -- the second rows of $A, B, C$ does
+"squeezes" more linchecks in a single row — the second rows of $A, B, C$ does
 lincheck for the left, right, and public input wire respectively.
 
 ## Bootle16 to R1CS

@@ -124,7 +124,7 @@ version of $\frac{4M+N}{15}$ when $M = N$. Therefore, the blowup factor for
 $k = 4$ is: $\frac{M}{3} / \frac{M}{4} = \mathbf{1.33x}$. The same math works
 for $k = 8$, since the base circuits would be $\frac{M}{8}$, so the total
 circuits required would be $\frac{M}{7}$ and the blowup factor is
-$\frac{M}{8} / \frac{M}{7} = \mathbf{1.14x}$.
+$\frac{M}{7} / \frac{M}{8} = \mathbf{1.14x}$.
 
 In summary, endoscalars provide a bridge for moving scalar values between
 circuits in a curve cycle, with three core operations (extract, lift, and

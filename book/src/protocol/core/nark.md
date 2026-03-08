@@ -40,7 +40,8 @@ seems wasteful.
 
 ### The Decomposition Trick
 
-Instead of committing to the full product, we decompose it into two smaller pieces:
+Instead of committing to the full product, we decompose it into two
+smaller pieces:
 
 $$c(X) = c_{lo}(X) + X^{4n}\cdot c_{hi}(X)$$
 
@@ -221,18 +222,21 @@ Ragu NARK works as follows:
      $\bar{B}\leftarrow\com(b(X);\gamma_b)$
    - evaluates $c=k(y)\in\F$
    - sends $(S, \bar{A}, \bar{B}, c)\in\G^3\times\F$ to the verifier[^resend-A]
-4. Prover and Verifier engage in **wiring consistency protocol**, ensuring $S$ is
-the correct commitment to partially evaluated univariate polynomial $s(X,y)$
+4. Prover and Verifier engage in **wiring consistency protocol**,
+   ensuring $S$ is the correct commitment to partially evaluated
+   univariate polynomial $s(X,y)$
    - Prover sends the full $s(X,y)$ over
    - Verifier checks by re-evaluating $s(X,y)$ and re-commit $S$
-5. Prover and Verifier engage in **revdot product protocol**, ensuring the relation
-  $\revdot{\v{a}}{\v{b}}=c$
+5. Prover and Verifier engage in **revdot product protocol**,
+   ensuring the relation $\revdot{\v{a}}{\v{b}}=c$
    - Prover sends the full $\v{a},\v{b}\in\F^{4n}$ and their blinding factors
      $\gamma_a,\gamma_b\in\F$ over
-   - Verifier checks by recomputing the revdot product and re-commit $\bar{A},\bar{B}$
+   - Verifier checks by recomputing the revdot product and
+     recommitting $\bar{A},\bar{B}$
 6. Verifier sends back challenge $x\sample\F$
 7. Prover sends evaluations $evals=(a(xz), s(x, y), b(x))\in\F^3$ over
-8. Verifier locally computes $t(x,z)$ and checks $b(x)\iseq a(xz) + s(x,y) +t(x,z)$
+8. Verifier locally computes $t(x,z)$ and checks
+   $b(x)\iseq a(xz) + s(x,y) +t(x,z)$
 9. Prover and Verifier engage in a **batched evaluation protocol**, ensuring that
   the following (commitment, point, eval) evaluation claims are correct:
   $(\bar{A}, 0, 1),(\bar{A}, xz, a(xz)),
@@ -283,14 +287,16 @@ them now, our NARK is structurally similar to the eventual recursion logic.
 **Why run PCS evaluation protocol at all?**<br> In step 5, the
 verifier receives the full $\v{a}$, so why run an evaluation protocol for
 $a(x)$ and $a(xz)$? During actual recursion, the prover never sends polynomial
-coefficients directly. Instead, commitments in evaluation claims are accumulated
-forward. Our NARK is consistent with future recursion in its modular presentation.
+coefficients directly. Instead, commitments in evaluation claims are
+accumulated forward. Our NARK is consistent with future recursion in
+its modular presentation.
 
 **Why no zero-knowledge?**<br> The prover sends unmasked witness vectors
 $\v{a},\v{b}$, making this NARK not zero-knowledge. This is intentional. Ragu
 avoids leakage through **rerandomization** rather than requiring zero-knowledge
 NARK. Each PCD step can merge with a random trivial proof to rerandomize the
-original proof. This differs from [[BCLMS21]](https://eprint.iacr.org/2020/1618),
+original proof. This differs from
+[[BCLMS20]](https://eprint.iacr.org/2020/1618),
 which builds zk-PCD from a split-accumulation scheme for zk-NARK.
 
 **Why verify the revdot product directly?**<br> The prover cannot simply check

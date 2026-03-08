@@ -11,7 +11,7 @@ $$
 m(\omega^i, X, Y) = s_i(X, Y)
 $$
 
-for some root of unity $\omega \in \mathbb{F}$ of sufficiently large
+for some root of unity $\omega \in \F$ of sufficiently large
 $2^k$ order to index all circuits. Evaluating the registry at any
 domain point $W = \omega^i$ recovers exactly the $i$-th circuit's
 wiring polynomial.
@@ -33,7 +33,7 @@ Given two representations of a polynomial $p(W, X, Y)$, we verify
 consistency by evaluating at random challenge points. By the
 Schwartz-Zippel lemma, if two distinct polynomials of degree $d$ are
 evaluated at a random point, they agree with probability at most
-$d/|\mathbb{F}|$.
+$d/|\F|$.
 
 The protocol uses *partial evaluations* to reduce the dimensionality
 of the polynomial equality checks. We fix variables at specific
@@ -42,10 +42,10 @@ each evaluation at most one variable remains free:
 
 | Evaluation | Type | Description |
 |------------|------|-------------|
-| $p(W, x, y)$ | $\mathbb{F}[W]$ | Univariate in $W$ for fixed $x$ and $y$ |
-| $p(w, X, y)$ | $\mathbb{F}[X]$ | Univariate in $X$ for fixed $w$ and $y$ |
-| $p(w, x, Y)$ | $\mathbb{F}[Y]$ | Univariate in $Y$ for fixed $w$ and $x$ |
-| $p(w, x, y)$ | $\mathbb{F}$ | Point evaluation |
+| $p(W, x, y)$ | $\F[W]$ | Univariate in $W$ for fixed $x$ and $y$ |
+| $p(w, X, y)$ | $\F[X]$ | Univariate in $X$ for fixed $w$ and $y$ |
+| $p(w, x, Y)$ | $\F[Y]$ | Univariate in $Y$ for fixed $w$ and $x$ |
+| $p(w, x, y)$ | $\F$ | Point evaluation |
 
 This mirrors the technique used in the [sumcheck] protocol: within a
 protocol, we alternate between (univariate) restrictions of a
@@ -88,7 +88,7 @@ m(\omega^i, X, y) \;\equiv\; s_i(X, y)
 $$
 
 More generally, the protocol needs to evaluate the registry at
-*arbitrary* challenge points $w \in \mathbb{F}$ (not necessarily a
+*arbitrary* challenge points $w \in \F$ (not necessarily a
 root of unity $\omega$). We use Lagrange coefficients for polynomial
 interpolation. Suppose the registry is defined on the points
 ${\omega^0, \omega^1, ..., \omega^{n-1}}$ with
@@ -97,7 +97,7 @@ $$
 f_i(X,y) \;=\; m(\omega^i, X, y) \;=\; s_i(X,y)
 $$
 
-Then for any $w \in \mathbb{F}$
+Then for any $w \in \F$
 
 $$
 m(w, X, y) \;=\; \sum_{i=0}^{n-1} \ell_i(w)\, f_i(X,y)
@@ -109,7 +109,7 @@ $$
 \ell_i(w) \;=\; \prod_{\substack{0\le j< n\\ j\ne i}} \frac{w-\omega^j}{\omega^i-\omega^j}.
 $$
 
-This gives you a polynomial that *(i)* passes through all circuit
+This gives a polynomial that *(i)* passes through all circuit
 evaluations at their respective $\omega^i$ points, and *(ii)*
 evaluates to the correct interpolated value at the random challenge
 point $W = w$.

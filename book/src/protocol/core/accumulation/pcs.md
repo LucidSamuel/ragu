@@ -118,7 +118,7 @@ The accumulation prover:
 
 To avoid non-native arithmetic in the accumulation verifier's
 logic, as [noted previously][split-up], Ragu makes two adaptations
-that enables splitting of folding work across a curve cycle.
+that enable splitting of folding work across a curve cycle.
 
 [split-up]: ./index.md#split-up-folding-work
 
@@ -136,11 +136,12 @@ v \in\F &= \sum_i \alpha^i\cdot\frac{p_i(u)-y_i}{u-x_i} + \sum_i\beta^i\cdot p_i
 \end{align*}
 $$
 
-where $\bar{P}$ is the folded commitment in the updated PCS commitment, $v$ is
-the updated evaluation of the folded underlying polynomial (at a new evaluation
-point $u$). While the verifier can enforce $v$ computation natively in the
-circuit, directly enforcing $\bar{P}$'s derivation would require expensive
-non-native scalar multiplication.
+where $\bar{P}$ is the folded commitment in the updated PCS
+commitment, $v$ is the updated evaluation of the folded underlying
+polynomial (at a new evaluation point $u$). Although the verifier can
+enforce $v$ computation natively in the circuit, directly enforcing
+$\bar{P}$'s derivation would require expensive non-native scalar
+multiplication.
 
 Naturally, Ragu splits the folding work between the 2-cycle curves such that
 each side only executes native arithmetic. Concretely, the primary merge circuit
@@ -189,13 +190,13 @@ incurring non-native arithmetic?
 Naively, we can hash all elements in $\inst$ on both circuits, mark the digest
 as a public input, and enforce their equivalence. However, computing comparable
 digests over two fields inevitably requires either non-native arithmetic or
-bit decomposition on all values -- both prohibitively expensive.
+bit decomposition on all values — both prohibitively expensive.
 
 Instead, Ragu proposes two encodings of the same input $\inst$ such that the
 encoded values contains either purely $\F_p$ elements or $\F_q$ elements.
 Then, by marking these encoded values as the witness for a dedicated
 [stage](../../extensions/staging.md), Ragu can leverage the
-[staging well-formedness checks]()
+[staging well-formedness checks](../../extensions/staging.md)
 to enforce the same underlying input during the _recursion at the next step_.
 
 **Encoding in the primary circuit** (over $\F_p$):
@@ -253,7 +254,7 @@ either the stage checks or the staged commitment check at $CS_{merge}^{(2)}$ in
 step $i+1$ to fail. That means the output accumulator at the end of step $i+1$
 cannot have satisfying witness with overwhelming probability.
 Therefore, accumulation decider or the outer PCD verifier will always reject the
-$\acc_{i+1}$ -- preventing inconsistent instance input $\inst$ across the two
+$\acc_{i+1}$ — preventing inconsistent instance input $\inst$ across the two
 merge circuits in the last recursion step.
 
 ### Transcript Bridging
@@ -269,7 +270,7 @@ $\endo{s}\cdot c\in\F_p$ in the primary circuit and also native
 scalar multiplication (a.k.a. _endoscaling_)
 $\endo{s}\cdot P\in\G^{(1)}$ in the secondary circuit.
 
-Naively, we would maintain two sets of endoscalars -- one for
+Naively, we would maintain two sets of endoscalars — one for
 verifier challenges from the primary circuit, and the other from the
 secondary circuit.
 Notice that the two merge circuits accept exactly the same input[^same-input].
@@ -284,7 +285,7 @@ secondary merge circuit accepts $(\inst_i, \acc'_{i+1})$. But that notation is
 only for visual clarity. Since the perfect complementary splitting
 of the folding work, two merge circuits will update different values
 in the $\acc_i$. There is
-no internal dependency between merge circuits within the same step -- they both
+no internal dependency between merge circuits within the same step — they both
 parse $(\inst_i, \acc_i)$ as the same, general input expression:
 $\inst\in\F_p^\ast\times \G_p^\ast\times \F_q^\ast\times \G_q^\ast$.
 

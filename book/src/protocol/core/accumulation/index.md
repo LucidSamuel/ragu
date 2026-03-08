@@ -58,8 +58,9 @@ the previous proof.
 
 One bottleneck of full recursion is that SNARK verifier logic can be expensive.
 For example, our Bulletproof verifier is linear, leading to an IVC prover
-circuit that's prohibitively expensive to recurse. [Halo]
-introduced a technique, later formalized by
+circuit that's prohibitively expensive to recurse.
+[Halo](https://eprint.iacr.org/2019/1021) introduced a technique,
+later formalized by
 [[BCMS20]](https://eprint.iacr.org/2020/499) as _accumulation schemes_, that
 replaces full-blown SNARK verification with a sublinear accumulator verifier
 who only _partially verifies_ $\pi_i$ and accumulates statements about the
@@ -80,7 +81,7 @@ partially verifies a new NARK proof $\pi_i$, then folds the remaining unverified
 statements with the previously accumulated statement $\acc_i$ into a new
 $\acc_{i+1}$ through random linear combination. To enable verification of
 correct accumulation by $\mathsf{Acc.V}$, the accumulation prover also includes
-all necessary cross terms in $\pf_{i+1}$. Note that accumulation proof
+all necessary cross terms in $\pf_{i+1}$. The accumulation proof
 $\pf_{i+1}$ is an internal value consumed by the NARK prover as a subroutine of
 the outer IVC prover, not an output of the IVC prover.
 
@@ -97,7 +98,7 @@ _folding scheme_ is introduced to describe the technique of maximally delaying
 NARK verification work and only "fold" the committed public instances of a
 running-instance (i.e. accumulator) and the NARK for the last step (i.e.
 $\pi_i$). For all practical purposes, these two formalizations are equivalent.
-In fact, Ragu also does "pure instance folding" and we subsequently use
+Ragu also does "pure instance folding" and we subsequently use
 "accumulation" and "folding" interchangeably.
 ```
 
@@ -194,7 +195,7 @@ parts of the NARK instance and accumulator managed by the prover.
 
 ## 2-arity PCD
 
-IVC proves linear chains of computation. But what if your computation is a tree?
+IVC proves linear chains of computation. But what if the computation is a tree?
 Consider a distributed system where multiple branches of computation fuse: each
 node needs to verify that both its children's states are valid before producing
 its own output.
