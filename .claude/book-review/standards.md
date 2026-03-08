@@ -89,6 +89,10 @@ Specific anti-patterns to avoid:
   noun with a demonstrative that refers back to items named in the preceding
   clause (e.g., "these primitives" after "wires and witness data") is
   standard prose, not an inconsistency. Do not flag these.
+- **Trope rules are density-sensitive.** Many anti-trope rules (in
+  grammar.md and prose.md) flag patterns that are acceptable in
+  isolation. Flag them when they repeat within a section or when
+  several appear together — not on a single occurrence.
 
 ## Deferred Issues
 

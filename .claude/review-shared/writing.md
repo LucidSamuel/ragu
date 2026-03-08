@@ -17,8 +17,12 @@ code-review) layer additional rules on top of these.
 
 - Avoid "simply", "just", "obviously", "clearly". If something is obvious, it
   doesn't need a comment. If it isn't obvious, these words are dishonest.
+  This extends to indirect assertions of clarity — "the reality is simpler",
+  "history is unambiguous". Don't tell the reader your point is clear;
+  demonstrate it.
 - "Note that" is almost always filler. Delete it and the sentence usually
-  improves.
+  improves. The same applies to "It's worth noting", "It bears mentioning",
+  "Importantly", "Interestingly", and "Notably".
 - "In fact" and "in theory" are filler or hedging. If the statement is
   factual, it stands on its own; if it is theoretical, qualify it with the
   actual limitation. "Arguably" hedges a claim the author should either
@@ -32,6 +36,20 @@ code-review) layer additional rules on top of these.
   actual benefit. "So they can represent wires in whatever way suits their
   context" → "so they can represent wires in an efficient way that suits their
   context."
+- Avoid overused LLM vocabulary: "delve", "certainly", "utilize", "leverage"
+  (verb), "robust", "streamline", "harness". These words are not inherently
+  wrong, but their overuse by language models has made them conspicuous.
+
+## Inflated Language
+
+- Don't reach for adverbs like "quietly", "deeply", "fundamentally", or
+  "remarkably" to make mundane descriptions feel significant. If something
+  is important, the sentence should show it without adverbial signaling.
+- Prefer plain nouns over grandiose ones. Avoid "tapestry", "landscape",
+  "paradigm", "synergy", and "ecosystem" (when used loosely) as vague
+  filler. Name the actual thing.
+- Prefer "is" or "are" over pompous substitutes like "serves as", "stands
+  as", "marks", or "represents" when the simpler verb suffices.
 
 ## Sentence Structure
 
