@@ -106,7 +106,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
         params: &'dr P,
     ) -> ResumedTranscript<'dr, D, P> {
         let sponge = Sponge::resume(dr, state, params);
-        ResumedTranscript { sponge, params }
+        ResumedTranscript { sponge, params, squeezed: false }
     }
 }
 
@@ -120,16 +120,25 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
 pub(crate) struct ResumedTranscript<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> {
     sponge: Sponge<'dr, D, P>,
     params: &'dr P,
+    squeezed: bool,
 }
 
 impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> ResumedTranscript<'dr, D, P> {
     /// Squeezes a single field element challenge.
     pub(crate) fn challenge(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
+        self.squeezed = true;
         self.sponge.squeeze(dr)
     }
 
     /// Transitions back to a full transcript that supports absorbing.
+    ///
+    /// # Panics
+    ///
+    /// Panics if no challenges have been squeezed since resuming. Calling
+    /// `into_transcript` without squeezing would silently discard the buffered
+    /// rate values from the saved state.
     pub(crate) fn into_transcript(self) -> Transcript<'dr, D, P> {
+        assert!(self.squeezed, "must squeeze at least once before transitioning back to absorb mode");
         Transcript {
             sponge: self.sponge,
             params: self.params,
