@@ -35,7 +35,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let native_rx = native_preamble::Stage::<C, R, HEADER_SIZE>::rx(&preamble_witness)?;
         let native_blind = C::CircuitField::random(&mut *rng);
-        let native_commitment = native_rx.commit(C::host_generators(self.params), native_blind);
+        let native_commitment =
+            native_rx.commit_to_affine(C::host_generators(self.params), native_blind);
 
         let nested_preamble_witness = nested::stages::preamble::Witness {
             native_preamble: native_commitment,
@@ -46,7 +47,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let nested_rx =
             nested::stages::preamble::Stage::<C::HostCurve, R>::rx(&nested_preamble_witness)?;
         let nested_blind = C::ScalarField::random(&mut *rng);
-        let nested_commitment = nested_rx.commit(C::nested_generators(self.params), nested_blind);
+        let nested_commitment =
+            nested_rx.commit_to_affine(C::nested_generators(self.params), nested_blind);
 
         Ok((
             proof::Preamble {

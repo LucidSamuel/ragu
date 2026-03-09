@@ -37,7 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             .native_registry
             .assemble(&trace, S::INDEX.circuit_index(self.num_application_steps)?)?;
         let blind = C::CircuitField::random(&mut *rng);
-        let commitment = rx.commit(C::host_generators(self.params), blind);
+        let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
 
         let ((left_header, right_header), aux) = aux;
 

@@ -104,9 +104,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         let zero_unstructured = unstructured::Polynomial::<C::CircuitField, R>::new();
 
         let host_commitment =
-            zero_structured_host.commit(C::host_generators(self.params), host_blind);
-        let nested_commitment =
-            zero_structured_nested.commit(C::nested_generators(self.params), nested_blind);
+            zero_structured_host.commit_to_affine(C::host_generators(self.params), host_blind);
+        let nested_commitment = zero_structured_nested
+            .commit_to_affine(C::nested_generators(self.params), nested_blind);
 
         Proof {
             application: Application {

@@ -213,12 +213,15 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         result
     }
 
-    /// Compute a commitment to this polynomial using the provided generators.
+    /// Compute a commitment to this polynomial in projective form. Use
+    /// [`batch_to_affine`](ragu_arithmetic::batch_to_affine) to efficiently
+    /// convert multiple projective commitments to affine with a single
+    /// field inversion.
     pub fn commit<C: CurveAffine<ScalarExt = F>>(
         &self,
         generators: &impl ragu_arithmetic::FixedGenerators<C>,
         blind: F,
-    ) -> C {
+    ) -> C::Curve {
         self.assert_bounds();
 
         assert!(generators.g().len() >= R::num_coeffs()); // TODO(ebfull)
@@ -243,7 +246,18 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
                 .chain(d_start.iter().take(self.d.len()))
                 .chain(Some(generators.h())),
         )
-        .into() // TODO(ebfull)
+    }
+
+    /// Compute a commitment to this polynomial, normalized to affine. For
+    /// multiple commitments, prefer [`commit`](Self::commit) with
+    /// [`batch_to_affine`](ragu_arithmetic::batch_to_affine) to share a
+    /// single field inversion.
+    pub fn commit_to_affine<C: CurveAffine<ScalarExt = F>>(
+        &self,
+        generators: &impl ragu_arithmetic::FixedGenerators<C>,
+        blind: F,
+    ) -> C {
+        self.commit(generators, blind).into()
     }
 
     /// Reduce this polynomial into its unstructured representation,
@@ -593,8 +607,8 @@ fn test_commit_consistency() {
         poly.d.push(Fp::random(&mut rand::rng()));
     }
 
-    let structured_commitment = poly.commit(generators, blind);
-    let unstructured_commitment = poly.unstructured().commit(generators, blind);
+    let structured_commitment = poly.commit_to_affine(generators, blind);
+    let unstructured_commitment = poly.unstructured().commit_to_affine(generators, blind);
 
     assert_eq!(structured_commitment, unstructured_commitment);
 }

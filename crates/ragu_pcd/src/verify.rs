@@ -105,7 +105,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             .proof
             .p
             .poly
-            .commit(C::host_generators(self.params), pcd.proof.p.blind)
+            .commit_to_affine(C::host_generators(self.params), pcd.proof.p.blind)
             == pcd.proof.p.commitment;
 
         // Check registry_xy polynomial evaluation at the sampled w.
