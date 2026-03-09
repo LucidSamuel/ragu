@@ -435,11 +435,44 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         self.scope = saved;
 
         // Remap child output wires as fresh parent allocations.
-        // The geometric sequences deliberately advance past the remap
-        // positions so that remapped output wires and subsequent local
-        // allocations receive distinct values.  Only the pairing state
-        // is saved/restored; the real drivers (sxy, sx, sy) don't remap
-        // outputs at all, so there is no alignment to maintain.
+        //
+        // The output remap calls `alloc` for each output wire, which may
+        // call `mul` internally. This has two side effects on the parent
+        // scope:
+        //
+        // 1. Geometric sequences advance — `current_a`, `current_b`,
+        //    `current_c` move past the remap gates.
+        // 2. `available_b` changes — the remap may consume a pending
+        //    b-wire or create a new one.
+        //
+        // Effect (1) is kept; effect (2) is rolled back. The asymmetry is
+        // deliberate:
+        //
+        // Sequences must advance because the remapped output wires need
+        // evaluations that are distinct from each other and from any
+        // subsequent parent allocation. Letting the sequences advance past
+        // the remap positions achieves this — each output wire lands at a
+        // unique geometric position in the parent's sequence space.
+        //
+        // `available_b` must be restored because in the real drivers
+        // (sxy, sx, sy), output wires are received directly from the
+        // child's evaluation — no parent gates are consumed and the
+        // parent's pairing state is untouched. The output remap is a
+        // Counter-only operation that exists solely to assign parent-scope
+        // evaluations to child output wires. If the remap were allowed to
+        // mutate `available_b`, the parent's subsequent allocation pattern
+        // would diverge from the real drivers: a pending b-wire could be
+        // consumed or created by the remap, changing which wire types
+        // subsequent `alloc` calls return. Restoring `available_b` keeps
+        // the parent's pairing trajectory identical to the real drivers.
+        //
+        // After a routine call where the parent had a pending b-wire, the
+        // stashed wire retains its pre-call geometric value while the
+        // sequences have jumped forward past the remap positions. This
+        // creates a non-contiguous gap in the parent's sequence coverage.
+        // The gap is harmless — the stashed wire already has a distinct
+        // value, and Schwartz–Zippel only requires that all wire
+        // evaluations be distinct, not contiguous.
         let saved_b = self.scope.available_b.take();
 
         let parent_output = self.uncounted(|c| Ro::Output::map_gadget(&output, c))?;
