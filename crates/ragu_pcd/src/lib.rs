@@ -29,7 +29,6 @@ pub mod header;
 mod internal;
 mod proof;
 pub mod step;
-#[cfg(feature = "test-utils")]
 pub mod test_utils;
 mod verify;
 
