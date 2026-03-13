@@ -85,14 +85,25 @@ theorem soundness (curveParams : Spec.CurveParams p) : Soundness (F p) elaborate
   ] at h_holds ⊢
 
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
-
   obtain ⟨h_P1_mem, h_P2_mem⟩ := h_assumptions
   rw [add_neg_eq_zero] at c2
 
   constructor
   · intro h
-    specialize c2
-    sorry
+    have h_neq : ¬input_P2_x = input_P1_x := Ne.symm h
+    specialize c2 h_neq
+    rw [c2, c3, c2] at c4
+    rw [c2] at c3
+    rw [c4, c3]
+    clear c1 c2 c3 c4
+    simp [Spec.Point.add_incomplete, h]
+
+    let h_lemma := Lemmas.add_incomplete_preserves_membership ⟨input_P1_x, input_P1_y⟩ ⟨input_P2_x, input_P2_y⟩ curveParams
+    simp [Spec.Point.add_incomplete, h] at h_lemma
+    specialize h_lemma h_P1_mem h_P2_mem
+    ring_nf at ⊢ h_lemma
+    simp_all only [id_eq, inv_pow, and_self]
+
   · simp_all only [id_eq, add_neg_cancel, mul_zero, implies_true, zero_mul, mul_eq_zero, false_or,
     true_and]
     rw [add_neg_eq_zero]
