@@ -26,11 +26,16 @@ def Point.isOnCurve (point : Point (F p)) (curveParams : CurveParams p) : Prop :
 def CurveParams.noOrderTwoPoints (curveParams : CurveParams p) : Prop :=
   (∀ point : Spec.Point (F p), (point.isOnCurve curveParams) → point.y ≠ 0)
 
-
 def Point.negate (point : Point (F p)) : Point (F p) :=
   {
     x := point.x,
     y := -point.y
+  }
+
+def Point.endo (point : Point (F p)) (curveParams : CurveParams p) : Point (F p) :=
+  {
+    x := curveParams.ζ * point.x,
+    y := point.y
   }
 
 def Point.double (point : Point (F p)) : Option (Point (F p)) :=
