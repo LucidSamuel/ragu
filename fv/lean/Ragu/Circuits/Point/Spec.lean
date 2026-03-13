@@ -38,6 +38,22 @@ def Point.endo (point : Point (F p)) (curveParams : CurveParams p) : Point (F p)
     y := point.y
   }
 
+/--
+  Add two affine point
+
+  Returns some point only if the result is affine as well, otherwise return none
+-/
+def Point.add_incomplete (point_1 : Point (F p)) (point_2 : Point (F p)) : Option (Point (F p)) :=
+  -- a / 0 is defined to be 0 for fields, therefore to make the spec precise
+  -- we return None if the x coordinates of the points are equal
+  if point_1.x = point_2.x then none else
+  let lambda := (point_2.y - point_1.y) / (point_2.x - point_1.x)
+  let x3 := lambda^2 - point_1.x - point_2.x
+  some {
+    x := x3,
+    y := lambda * (point_1.x - x3) - point_1.y
+  }
+
 def Point.double (point : Point (F p)) : Option (Point (F p)) :=
   -- a / 0 is defined to be 0 for fields, therefore to make the spec precise
   -- we return None if point.y is zero
