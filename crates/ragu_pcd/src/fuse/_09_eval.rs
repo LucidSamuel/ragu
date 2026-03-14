@@ -48,7 +48,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 // each of these restrictions.
                 registry_wx0: s_prime.registry_wx0_poly.eval(u),
                 registry_wx1: s_prime.registry_wx1_poly.eval(u),
-                registry_wy: error_m.registry_wy_poly.eval(u),
+                registry_wy: error_m.native.registry_wy_poly.eval(u),
                 a_poly: ab.a_poly.eval(u),
                 b_poly: ab.b_poly.eval(u),
                 registry_xy: query.registry_xy_poly.eval(u),

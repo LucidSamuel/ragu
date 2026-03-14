@@ -78,7 +78,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let (error_m, error_m_witness, claims) =
             self.compute_errors_m(rng, &native_registry, &y, &z, &left, &right)?;
-        let error_m_commitment = Point::constant(&mut dr, error_m.nested_commitment)?;
+        let error_m_commitment = Point::constant(&mut dr, error_m.nested.commitment)?;
         error_m_commitment.write(&mut dr, &mut transcript)?;
 
         // Clone-then-save: `save_state` consumes the transcript, but we need

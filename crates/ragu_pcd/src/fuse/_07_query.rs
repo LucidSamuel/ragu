@@ -83,7 +83,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &error_m.registry_wy_poly,
+                &error_m.native.registry_wy_poly,
             ),
             right: native::ChildEvaluationsWitness::from_proof(
                 right,
@@ -91,7 +91,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &error_m.registry_wy_poly,
+                &error_m.native.registry_wy_poly,
             ),
         };
 

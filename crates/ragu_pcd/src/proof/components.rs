@@ -46,16 +46,26 @@ pub(crate) struct SPrime<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct ErrorM<C: Cycle, R: Rank> {
+pub(crate) struct NativeErrorM<C: Cycle, R: Rank> {
     pub(crate) registry_wy_poly: structured::Polynomial<C::CircuitField, R>,
     pub(crate) registry_wy_blind: C::CircuitField,
     pub(crate) registry_wy_commitment: C::HostCurve,
-    pub(crate) native_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) native_blind: C::CircuitField,
-    pub(crate) native_commitment: C::HostCurve,
-    pub(crate) nested_rx: structured::Polynomial<C::ScalarField, R>,
-    pub(crate) nested_blind: C::ScalarField,
-    pub(crate) nested_commitment: C::NestedCurve,
+    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
+    pub(crate) blind: C::CircuitField,
+    pub(crate) commitment: C::HostCurve,
+}
+
+#[derive(Clone)]
+pub(crate) struct NestedErrorM<C: Cycle, R: Rank> {
+    pub(crate) rx: structured::Polynomial<C::ScalarField, R>,
+    pub(crate) blind: C::ScalarField,
+    pub(crate) commitment: C::NestedCurve,
+}
+
+#[derive(Clone)]
+pub(crate) struct ErrorM<C: Cycle, R: Rank> {
+    pub(crate) native: NativeErrorM<C, R>,
+    pub(crate) nested: NestedErrorM<C, R>,
 }
 
 #[derive(Clone)]

@@ -109,9 +109,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     proof.error_n.native_commitment,
                 );
                 acc.acc(
-                    &proof.error_m.native_rx,
-                    proof.error_m.native_blind,
-                    proof.error_m.native_commitment,
+                    &proof.error_m.native.rx,
+                    proof.error_m.native.blind,
+                    proof.error_m.native.commitment,
                 );
                 acc.acc(&proof.ab.a_poly, proof.ab.a_blind, proof.ab.a_commitment);
                 acc.acc(&proof.ab.b_poly, proof.ab.b_blind, proof.ab.b_commitment);
@@ -169,9 +169,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 s_prime.registry_wx1_commitment,
             );
             acc.acc(
-                &error_m.registry_wy_poly,
-                error_m.registry_wy_blind,
-                error_m.registry_wy_commitment,
+                &error_m.native.registry_wy_poly,
+                error_m.native.registry_wy_blind,
+                error_m.native.registry_wy_commitment,
             );
             acc.acc(&ab.a_poly, ab.a_blind, ab.a_commitment);
             acc.acc(&ab.b_poly, ab.b_blind, ab.b_commitment);

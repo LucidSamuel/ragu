@@ -47,6 +47,41 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     where
         D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
     {
+        let (native_error_m, error_m_witness, builder) =
+            self.compute_native_error_m(rng, native_registry, y, z, left, right)?;
+
+        let nested_error_m = self.compute_nested_error_m(
+            rng,
+            native_error_m.commitment,
+            native_error_m.registry_wy_commitment,
+        )?;
+
+        Ok((
+            proof::ErrorM {
+                native: native_error_m,
+                nested: nested_error_m,
+            },
+            error_m_witness,
+            builder,
+        ))
+    }
+
+    fn compute_native_error_m<'dr, 'rx, D, RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        native_registry: &RegistryAt<'_, C::CircuitField, R>,
+        y: &Element<'dr, D>,
+        z: &Element<'dr, D>,
+        left: &'rx Proof<C, R>,
+        right: &'rx Proof<C, R>,
+    ) -> Result<(
+        proof::NativeErrorM<C, R>,
+        native::Witness<C, NativeParameters>,
+        claims::Builder<'_, 'rx, C::CircuitField, R>,
+    )>
+    where
+        D: Driver<'dr, F = C::CircuitField, MaybeKind = Always<()>>,
+    {
         let y = *y.value().take();
         let z = *z.value().take();
 
@@ -72,29 +107,38 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             native_rx.commit(host_gen, native_blind),
         ]);
 
-        let nested_error_m_witness = nested::Witness {
-            native_error_m: native_commitment,
-            registry_wy: registry_wy_commitment,
-        };
-        let nested_rx = nested::Stage::<C::HostCurve, R>::rx(&nested_error_m_witness)?;
-        let nested_blind = C::ScalarField::random(&mut *rng);
-        let nested_commitment =
-            nested_rx.commit_to_affine(C::nested_generators(self.params), nested_blind);
-
         Ok((
-            proof::ErrorM {
+            proof::NativeErrorM {
                 registry_wy_poly,
                 registry_wy_blind,
                 registry_wy_commitment,
-                native_rx,
-                native_blind,
-                native_commitment,
-                nested_rx,
-                nested_blind,
-                nested_commitment,
+                rx: native_rx,
+                blind: native_blind,
+                commitment: native_commitment,
             },
             error_m_witness,
             builder,
         ))
+    }
+
+    fn compute_nested_error_m<RNG: CryptoRng>(
+        &self,
+        rng: &mut RNG,
+        native_commitment: C::HostCurve,
+        registry_wy_commitment: C::HostCurve,
+    ) -> Result<proof::NestedErrorM<C, R>> {
+        let nested_error_m_witness = nested::Witness {
+            native_error_m: native_commitment,
+            registry_wy: registry_wy_commitment,
+        };
+        let rx = nested::Stage::<C::HostCurve, R>::rx(&nested_error_m_witness)?;
+        let blind = C::ScalarField::random(&mut *rng);
+        let commitment = rx.commit_to_affine(C::nested_generators(self.params), blind);
+
+        Ok(proof::NestedErrorM {
+            rx,
+            blind,
+            commitment,
+        })
     }
 }
