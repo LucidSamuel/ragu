@@ -28,10 +28,10 @@
 //! ## Staging
 //!
 //! This circuit is a multi-stage circuit based on the
-//! [`error_n`][super::stages::error_n] stage, which inherits in the
+//! [`error_n`][super::super::stages::error_n] stage, which inherits in the
 //! following chain:
-//! - [`preamble`][super::stages::preamble] (skipped)
-//! - [`error_n`][super::stages::error_n] (unenforced)
+//! - [`preamble`][super::super::stages::preamble] (skipped)
+//! - [`error_n`][super::super::stages::error_n] (unenforced)
 //!
 //! ## Instance
 //!
@@ -54,7 +54,7 @@
 //! [$u$]: unified::Output::u
 //! [`nested_eval_commitment`]: unified::Output::nested_eval_commitment
 //! [$\beta$]: unified::Output::pre_beta
-//! [`error_n`]: super::stages::error_n
+//! [`error_n`]: super::super::stages::error_n
 //! [`WithSuffix`]: crate::components::suffix::WithSuffix
 //! [`Transcript::resume_from_state`]: crate::components::transcript::Transcript::resume_from_state
 
@@ -73,7 +73,7 @@ use ragu_primitives::GadgetExt;
 
 use core::marker::PhantomData;
 
-use super::{
+use super::super::{
     stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
@@ -109,14 +109,14 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Para
 /// Witness data for the second hash circuit.
 ///
 /// Combines the unified instance with the
-/// [`error_n`](super::stages::error_n) stage witness needed to resume
+/// [`error_n`](super::super::stages::error_n) stage witness needed to resume
 /// the Fiat-Shamir transcript from the saved sponge state.
 pub struct Witness<'a, C: Cycle, FP: fold_revdot::Parameters> {
     /// The unified instance containing expected challenge values and
     /// accumulated coverage from prior circuits.
     pub unified: unified::Instance<C>,
 
-    /// Witness for the [`error_n`](super::stages::error_n) stage
+    /// Witness for the [`error_n`](super::super::stages::error_n) stage
     /// (unenforced).
     ///
     /// Provides the saved sponge state for transcript resumption.

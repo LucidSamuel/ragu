@@ -32,9 +32,9 @@
 //!
 //! Uses [`unified::Output`] as its instance via [`unified::InternalOutputKind`].
 //!
-//! [`preamble`]: super::stages::preamble
-//! [`query`]: super::stages::query
-//! [`eval`]: super::stages::eval
+//! [`preamble`]: super::super::stages::preamble
+//! [`query`]: super::super::stages::query
+//! [`eval`]: super::super::stages::eval
 //! [$v$]: unified::Output::v
 //! [$\alpha$]: unified::Output::alpha
 //! [$\beta$]: unified::Output::pre_beta
@@ -66,9 +66,9 @@ use crate::components::claims::{
 };
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
 
-use super::InternalCircuitIndex;
-use super::InternalCircuitValues;
-use super::{
+use super::super::InternalCircuitIndex;
+use super::super::InternalCircuitValues;
+use super::super::{
     stages::{
         eval as native_eval, preamble as native_preamble,
         query::{self as native_query, ChildEvaluations},

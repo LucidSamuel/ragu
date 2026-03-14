@@ -12,11 +12,7 @@ use crate::step;
 
 pub mod stages;
 
-pub(crate) mod compute_v;
-pub(crate) mod full_collapse;
-pub(crate) mod hashes_1;
-pub(crate) mod hashes_2;
-pub(crate) mod partial_collapse;
+pub(crate) mod circuits;
 pub(crate) mod unified;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -190,19 +186,19 @@ pub(crate) fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
                 registry.register_internal_final_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
             }
             Hashes1Circuit => {
-                registry.register_internal_circuit(hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits))?
+                registry.register_internal_circuit(circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits))?
             }
             Hashes2Circuit => {
-                registry.register_internal_circuit(hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params))?
+                registry.register_internal_circuit(circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params))?
             }
             PartialCollapseCircuit => {
-                registry.register_internal_circuit(partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+                registry.register_internal_circuit(circuits::partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
             }
             FullCollapseCircuit => {
-                registry.register_internal_circuit(full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+                registry.register_internal_circuit(circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
             }
             ComputeVCircuit => {
-                registry.register_internal_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new())?
+                registry.register_internal_circuit(circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new())?
             }
         };
     }

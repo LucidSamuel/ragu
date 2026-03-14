@@ -46,9 +46,9 @@
 //! [$c$]: unified::Output::c
 //! [$\mu$]: unified::Output::mu
 //! [$\nu$]: unified::Output::nu
-//! [`error_m`]: super::stages::error_m
-//! [`error_n`]: super::stages::error_n
-//! [`preamble`]: super::stages::preamble
+//! [`error_m`]: super::super::stages::error_m
+//! [`error_n`]: super::super::stages::error_n
+//! [`preamble`]: super::super::stages::preamble
 //! [`hashes_1`]: super::hashes_1
 //! [`FoldProducts::fold_products_m`]: fold_revdot::FoldProducts::fold_products_m
 //! [`TwoProofKySource`]: crate::components::claims::native::TwoProofKySource
@@ -68,7 +68,7 @@ use ragu_primitives::{Element, vec::FixedVec};
 
 use core::marker::PhantomData;
 
-use super::{
+use super::super::{
     stages::{error_m as native_error_m, error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };

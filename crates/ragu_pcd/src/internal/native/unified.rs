@@ -14,8 +14,8 @@
 //! internal circuits are fixed by the protocol while application circuits
 //! vary, this distinction is critical for soundness.
 //!
-//! [`hashes_1`]: super::hashes_1
-//! [`hashes_2`]: super::hashes_2
+//! [`hashes_1`]: super::circuits::hashes_1
+//! [`hashes_2`]: super::circuits::hashes_2
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::Rank;
@@ -101,8 +101,8 @@ macro_rules! define_unified_instance {
         /// - **Challenges**: Fiat-Shamir challenges computed by [`hashes_1`] and [`hashes_2`]
         /// - **Final values**: The revdot claim $c$ and expected evaluation $v$
         ///
-        /// [`hashes_1`]: super::hashes_1
-        /// [`hashes_2`]: super::hashes_2
+        /// [`hashes_1`]: super::circuits::hashes_1
+        /// [`hashes_2`]: super::circuits::hashes_2
         #[derive(Gadget, Write, Consistent)]
         pub struct Output<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> {
             $(

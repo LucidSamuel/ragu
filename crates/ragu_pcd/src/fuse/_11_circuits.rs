@@ -57,11 +57,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         };
 
         let (hashes_1_trace, unified) =
-            native::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
+            native::circuits::hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
                 self.params,
                 total_circuit_counts(self.num_application_steps).1,
             )
-            .rx(native::hashes_1::Witness {
+            .rx(native::circuits::hashes_1::Witness {
                 unified,
                 preamble_witness,
                 error_n_witness,
@@ -73,27 +73,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let hashes_1_rx_blind = C::CircuitField::random(&mut *rng);
 
         let (hashes_2_trace, unified) =
-            native::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(self.params).rx(
-                native::hashes_2::Witness {
-                    unified,
-                    error_n_witness,
-                },
-            )?;
+            native::circuits::hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(
+                self.params,
+            )
+            .rx(native::circuits::hashes_2::Witness {
+                unified,
+                error_n_witness,
+            })?;
         let hashes_2_rx = self.native_registry.assemble(
             &hashes_2_trace,
             native::InternalCircuitIndex::Hashes2Circuit.circuit_index(),
         )?;
         let hashes_2_rx_blind = C::CircuitField::random(&mut *rng);
 
-        let (partial_collapse_trace, unified) =
-            native::partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new().rx(
-                native::partial_collapse::Witness {
-                    preamble_witness,
-                    unified,
-                    error_n_witness,
-                    error_m_witness,
-                },
-            )?;
+        let (partial_collapse_trace, unified) = native::circuits::partial_collapse::Circuit::<
+            C,
+            R,
+            HEADER_SIZE,
+            NativeParameters,
+        >::new()
+        .rx(native::circuits::partial_collapse::Witness {
+            preamble_witness,
+            unified,
+            error_n_witness,
+            error_m_witness,
+        })?;
         let partial_collapse_rx = self.native_registry.assemble(
             &partial_collapse_trace,
             native::InternalCircuitIndex::PartialCollapseCircuit.circuit_index(),
@@ -101,26 +105,27 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let partial_collapse_rx_blind = C::CircuitField::random(&mut *rng);
 
         let (full_collapse_trace, unified) =
-            native::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new().rx(
-                native::full_collapse::Witness {
+            native::circuits::full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new()
+                .rx(native::circuits::full_collapse::Witness {
                     unified,
                     preamble_witness,
                     error_n_witness,
-                },
-            )?;
+                })?;
         let full_collapse_rx = self.native_registry.assemble(
             &full_collapse_trace,
             native::InternalCircuitIndex::FullCollapseCircuit.circuit_index(),
         )?;
         let full_collapse_rx_blind = C::CircuitField::random(&mut *rng);
 
-        let (compute_v_trace, unified) = native::compute_v::Circuit::<C, R, HEADER_SIZE>::new()
-            .rx(native::compute_v::Witness {
-                unified,
-                preamble_witness,
-                query_witness,
-                eval_witness,
-            })?;
+        let (compute_v_trace, unified) =
+            native::circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx(
+                native::circuits::compute_v::Witness {
+                    unified,
+                    preamble_witness,
+                    query_witness,
+                    eval_witness,
+                },
+            )?;
         let compute_v_rx = self.native_registry.assemble(
             &compute_v_trace,
             native::InternalCircuitIndex::ComputeVCircuit.circuit_index(),

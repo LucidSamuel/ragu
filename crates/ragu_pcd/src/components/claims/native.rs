@@ -33,12 +33,12 @@ use crate::internal::{self, native::InternalCircuitIndex};
 /// Note: [`hashes_1`] separately uses `unified_bridge_ky` because its public
 /// inputs include child proof headers (see [`hashes_1::Output`]).
 ///
-/// [`hashes_1`]: crate::internal::native::hashes_1
-/// [`hashes_1::Output`]: crate::internal::native::hashes_1::Output
-/// [`hashes_2`]: crate::internal::native::hashes_2
-/// [`partial_collapse`]: crate::internal::native::partial_collapse
-/// [`full_collapse`]: crate::internal::native::full_collapse
-/// [`compute_v`]: crate::internal::native::compute_v
+/// [`hashes_1`]: crate::internal::native::circuits::hashes_1
+/// [`hashes_1::Output`]: crate::internal::native::circuits::hashes_1::Output
+/// [`hashes_2`]: crate::internal::native::circuits::hashes_2
+/// [`partial_collapse`]: crate::internal::native::circuits::partial_collapse
+/// [`full_collapse`]: crate::internal::native::circuits::full_collapse
+/// [`compute_v`]: crate::internal::native::circuits::compute_v
 /// [`unified::InternalOutputKind`]: crate::internal::native::unified::InternalOutputKind
 pub const NUM_UNIFIED_CIRCUITS: usize = 4;
 

@@ -41,10 +41,10 @@
 //! [$\mu$]: unified::Output::mu
 //! [$\nu$]: unified::Output::nu
 //! [$c$]: unified::Output::c
-//! [`error_n`]: super::stages::error_n
-//! [`preamble`]: super::stages::preamble
+//! [`error_n`]: super::super::stages::error_n
+//! [`preamble`]: super::super::stages::preamble
 //! [`FoldProducts::fold_products_n`]: fold_revdot::FoldProducts::fold_products_n
-//! [`is_base_case`]: super::stages::preamble::Output::is_base_case
+//! [`is_base_case`]: super::super::stages::preamble::Output::is_base_case
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -60,7 +60,7 @@ use ragu_core::{
 
 use core::marker::PhantomData;
 
-use super::{
+use super::super::{
     stages::{error_n, preamble},
     unified::{self, OutputBuilder},
 };
@@ -99,7 +99,7 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_rev
     /// Witness for the [`preamble`] stage
     /// (unenforced).
     ///
-    /// Provides access to [`is_base_case`](super::stages::preamble::Output::is_base_case)
+    /// Provides access to [`is_base_case`](super::super::stages::preamble::Output::is_base_case)
     /// for conditional constraint enforcement.
     pub preamble_witness: &'a preamble::Witness<'a, C, R, HEADER_SIZE>,
 

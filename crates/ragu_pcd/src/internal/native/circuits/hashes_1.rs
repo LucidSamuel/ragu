@@ -15,24 +15,24 @@
 //! - Call [`Transcript::save_state`] to capture the transcript state for resumption
 //!   in [`hashes_2`][super::hashes_2]. This applies a permutation (the third) since we're at the
 //!   absorb-to-squeeze boundary.
-//! - Verify the saved state matches the witnessed value from [`error_n`][super::stages::error_n].
+//! - Verify the saved state matches the witnessed value from [`error_n`][super::super::stages::error_n].
 //!
 //! The squeezed $w, y, z$ challenges are set in the unified instance by this
 //! circuit. **The rest of the transcript computations are performed in the
 //! [`hashes_2`][super::hashes_2] circuit.** The sponge state is witnessed in
-//! the [`error_n`][super::stages::error_n] stage and verified here to
+//! the [`error_n`][super::super::stages::error_n] stage and verified here to
 //! enable resumption in `hashes_2`.
 //!
 //! ### $k(y)$ evaluations
 //!
 //! This circuit also is responsible for using the derived $y$ value to compute
 //! the $k(y)$ (instance polynomial evaluations) for the child proofs. These
-//! are witnessed in the [`error_n`][super::stages::error_n] stage and
+//! are witnessed in the [`error_n`][super::super::stages::error_n] stage and
 //! enforced to be consistent by this circuit.
 //!
 //! ### Valid circuit IDs
 //!
-//! The circuit IDs in the [`preamble`][super::stages::preamble] are
+//! The circuit IDs in the [`preamble`][super::super::stages::preamble] are
 //! enforced to be valid roots of unity in the registry domain (the domain over
 //! which circuits are indexed). Other circuits can thus assume this check has
 //! been performed.
@@ -40,16 +40,16 @@
 //! ## Staging
 //!
 //! This circuit is a multi-stage circuit based on the
-//! [`error_n`][super::stages::error_n] stage, which inherits in the
+//! [`error_n`][super::super::stages::error_n] stage, which inherits in the
 //! following chain:
-//! - [`preamble`][super::stages::preamble] (unenforced)
-//! - [`error_n`][super::stages::error_n] (unenforced)
+//! - [`preamble`][super::super::stages::preamble] (unenforced)
+//! - [`error_n`][super::super::stages::error_n] (unenforced)
 //!
 //! ## Instance
 //!
 //! The instance is special for this internal circuit: it contains a
 //! concatenation of the unified instance and the `left` and `right` child
-//! proofs' output headers from the [`preamble`][super::stages::preamble]
+//! proofs' output headers from the [`preamble`][super::super::stages::preamble]
 //! stage (i.e., the headers that the
 //! child steps produced, not the headers they consumed). This allows the
 //! verifier to ensure consistency with the headers enforced on the application
@@ -91,7 +91,7 @@ use ragu_primitives::{
 
 use core::marker::PhantomData;
 
-use super::{
+use super::super::{
     stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
@@ -163,13 +163,13 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_rev
     /// accumulated coverage from prior circuits.
     pub unified: unified::Instance<C>,
 
-    /// Witness for the [`preamble`](super::stages::preamble) stage
+    /// Witness for the [`preamble`](super::super::stages::preamble) stage
     /// (unenforced).
     ///
     /// Provides output headers and data for computing $k(y)$ evaluations.
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
 
-    /// Witness for the [`error_n`](super::stages::error_n) stage
+    /// Witness for the [`error_n`](super::super::stages::error_n) stage
     /// (unenforced).
     ///
     /// Provides the saved sponge state and pre-computed $k(y)$ values for
