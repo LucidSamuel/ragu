@@ -162,95 +162,51 @@ pub(crate) fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>
 ) -> Result<RegistryBuilder<'params, C::CircuitField, R>> {
     let initial_internal_circuits = registry.num_internal_circuits();
 
-    // Insert the stages.
-    {
-        // preamble stage
-        registry =
-            registry.register_internal_mask::<stages::preamble::Stage<C, R, HEADER_SIZE>>()?;
-
-        // error_m stage
-        registry = registry
-            .register_internal_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, NativeParameters>>(
-            )?;
-
-        // error_n stage
-        registry = registry
-            .register_internal_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, NativeParameters>>(
-            )?;
-
-        // query stage
-        registry = registry.register_internal_mask::<stages::query::Stage<C, R, HEADER_SIZE>>()?;
-
-        // eval stage
-        registry = registry.register_internal_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?;
+    for &id in &InternalCircuitIndex::ALL {
+        use InternalCircuitIndex::*;
+        registry = match id {
+            PreambleStage => {
+                registry.register_internal_mask::<stages::preamble::Stage<C, R, HEADER_SIZE>>()?
+            }
+            ErrorMStage => {
+                registry.register_internal_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+            }
+            ErrorNStage => {
+                registry.register_internal_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+            }
+            QueryStage => {
+                registry.register_internal_mask::<stages::query::Stage<C, R, HEADER_SIZE>>()?
+            }
+            EvalStage => {
+                registry.register_internal_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
+            }
+            ErrorMFinalStaged => {
+                registry.register_internal_final_mask::<stages::error_m::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+            }
+            ErrorNFinalStaged => {
+                registry.register_internal_final_mask::<stages::error_n::Stage<C, R, HEADER_SIZE, NativeParameters>>()?
+            }
+            EvalFinalStaged => {
+                registry.register_internal_final_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?
+            }
+            Hashes1Circuit => {
+                registry.register_internal_circuit(hashes_1::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params, log2_circuits))?
+            }
+            Hashes2Circuit => {
+                registry.register_internal_circuit(hashes_2::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new(params))?
+            }
+            PartialCollapseCircuit => {
+                registry.register_internal_circuit(partial_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+            }
+            FullCollapseCircuit => {
+                registry.register_internal_circuit(full_collapse::Circuit::<C, R, HEADER_SIZE, NativeParameters>::new())?
+            }
+            ComputeVCircuit => {
+                registry.register_internal_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new())?
+            }
+        };
     }
 
-    // Insert the "final stage polynomials" for each stage.
-    //
-    // These are sometimes shared by multiple circuits. Each unique `Final`
-    // stage is only registered once here.
-    {
-        // preamble -> error_n -> error_m -> [CIRCUIT] (partial_collapse)
-        registry = registry.register_internal_final_mask::<stages::error_m::Stage<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >>()?;
-
-        // preamble -> error_n -> [CIRCUIT] (hashes_1, hashes_2, full_collapse)
-        registry = registry.register_internal_final_mask::<stages::error_n::Stage<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >>()?;
-
-        // preamble -> query -> eval -> [CIRCUIT] (compute_v)
-        registry =
-            registry.register_internal_final_mask::<stages::eval::Stage<C, R, HEADER_SIZE>>()?;
-    }
-
-    // Insert the internal circuits.
-    {
-        // hashes_1
-        registry = registry.register_internal_circuit(hashes_1::Circuit::<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >::new(params, log2_circuits))?;
-
-        // hashes_2
-        registry = registry.register_internal_circuit(hashes_2::Circuit::<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >::new(params))?;
-
-        // partial_collapse
-        registry = registry.register_internal_circuit(partial_collapse::Circuit::<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >::new())?;
-
-        // full_collapse
-        registry = registry.register_internal_circuit(full_collapse::Circuit::<
-            C,
-            R,
-            HEADER_SIZE,
-            NativeParameters,
-        >::new())?;
-
-        // compute_v
-        registry =
-            registry.register_internal_circuit(compute_v::Circuit::<C, R, HEADER_SIZE>::new())?;
-    }
-
-    // Verify we registered the expected number of internal circuits.
     assert_eq!(
         registry.num_internal_circuits(),
         initial_internal_circuits + NUM_INTERNAL_CIRCUITS,
