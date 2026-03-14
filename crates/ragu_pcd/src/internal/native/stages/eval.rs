@@ -15,8 +15,6 @@ use core::marker::PhantomData;
 
 use crate::Proof;
 
-pub(crate) use crate::internal::native::InternalCircuitIndex::EvalStage as STAGING_ID;
-
 /// Pre-computed polynomial evaluations at $u$ (from the parent fuse operation)
 /// for a child proof.
 pub struct ChildEvaluationsWitness<F> {

@@ -34,8 +34,6 @@ use crate::Proof;
 
 use crate::internal::native::{InternalCircuitIndex, InternalCircuitValues, NUM_INTERNAL_CIRCUITS};
 
-pub(crate) use InternalCircuitIndex::QueryStage as STAGING_ID;
-
 /// Witness for a child proof's polynomial evaluations.
 pub struct ChildEvaluationsWitness<F> {
     /// Preamble stage `rx` polynomial evaluation at $xz$.

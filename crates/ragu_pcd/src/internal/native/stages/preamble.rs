@@ -22,8 +22,6 @@ use core::marker::PhantomData;
 
 use crate::{Proof, header::Header, internal::native::unified, step::internal::padded};
 
-pub(crate) use crate::internal::native::InternalCircuitIndex::PreambleStage as STAGING_ID;
-
 type HeaderVec<'dr, D, const HEADER_SIZE: usize> = FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>>;
 
 /// Witness data for a single child proof in the preamble stage.

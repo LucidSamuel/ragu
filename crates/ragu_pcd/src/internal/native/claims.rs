@@ -241,15 +241,15 @@ where
     processor.stage(InternalCircuitIndex::EvalFinalStaged, source.rx(ComputeV))?;
 
     // Native stages (aggregated across all proofs)
-    processor.stage(super::stages::preamble::STAGING_ID, source.rx(Preamble))?;
+    processor.stage(InternalCircuitIndex::PreambleStage, source.rx(Preamble))?;
 
-    processor.stage(super::stages::error_m::STAGING_ID, source.rx(ErrorM))?;
+    processor.stage(InternalCircuitIndex::ErrorMStage, source.rx(ErrorM))?;
 
-    processor.stage(super::stages::error_n::STAGING_ID, source.rx(ErrorN))?;
+    processor.stage(InternalCircuitIndex::ErrorNStage, source.rx(ErrorN))?;
 
-    processor.stage(super::stages::query::STAGING_ID, source.rx(Query))?;
+    processor.stage(InternalCircuitIndex::QueryStage, source.rx(Query))?;
 
-    processor.stage(super::stages::eval::STAGING_ID, source.rx(Eval))?;
+    processor.stage(InternalCircuitIndex::EvalStage, source.rx(Eval))?;
 
     Ok(())
 }

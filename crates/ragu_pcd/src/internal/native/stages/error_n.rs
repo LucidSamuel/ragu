@@ -19,8 +19,6 @@ use ragu_primitives::{
 
 use core::marker::PhantomData;
 
-pub(crate) use crate::internal::native::InternalCircuitIndex::ErrorNStage as STAGING_ID;
-
 use crate::components::fold_revdot::{self, ErrorTermsLen};
 
 /// $k(Y)$ evaluation values for a single child proof.

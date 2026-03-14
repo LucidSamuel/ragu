@@ -18,8 +18,6 @@ use ragu_primitives::{
 
 use core::marker::PhantomData;
 
-pub(crate) use crate::internal::native::InternalCircuitIndex::ErrorMStage as STAGING_ID;
-
 use crate::components::fold_revdot::{self, ErrorTermsLen};
 
 /// Witness data for the error_m stage (layer 1).
