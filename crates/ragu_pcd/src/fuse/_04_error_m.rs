@@ -50,19 +50,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let y = *y.value().take();
         let z = *z.value().take();
 
-        let registry_wy_poly = native_registry.y(y);
-        let registry_wy_blind = C::CircuitField::random(&mut *rng);
-
         let source = FuseProofSource { left, right };
         let mut builder = claims::Builder::new(&self.native_registry, y, z);
         claims::native::build(&source, &mut builder)?;
 
-        let error_terms =
-            fold_revdot::compute_errors_m::<_, R, NativeParameters>(&builder.a, &builder.b);
-
-        let error_m_witness = native::Witness::<C, NativeParameters> { error_terms };
+        let error_m_witness = native::Witness::<C, NativeParameters> {
+            error_terms: fold_revdot::compute_errors_m::<_, R, NativeParameters>(
+                &builder.a, &builder.b,
+            ),
+        };
         let native_rx = native::Stage::<C, R, HEADER_SIZE, NativeParameters>::rx(&error_m_witness)?;
+
         let native_blind = C::CircuitField::random(&mut *rng);
+
+        let registry_wy_poly = native_registry.y(y);
+        let registry_wy_blind = C::CircuitField::random(&mut *rng);
+
         let host_gen = C::host_generators(self.params);
         let [registry_wy_commitment, native_commitment] = ragu_arithmetic::batch_to_affine([
             registry_wy_poly.commit(host_gen, registry_wy_blind),
