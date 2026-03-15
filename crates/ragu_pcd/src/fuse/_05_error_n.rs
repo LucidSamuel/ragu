@@ -22,10 +22,8 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    components::{
-        claims,
-        fold_revdot::{self, NativeParameters},
-    },
+    components::fold_revdot::{self, NativeParameters},
+    internal::claims,
     internal::{
         native::{
             claims as native_claims,

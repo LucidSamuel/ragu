@@ -14,7 +14,7 @@ use ragu_circuits::polynomials::{Rank, structured};
 use ragu_core::Result;
 
 use super::InternalCircuitIndex;
-use crate::components::claims::{Builder, Source, sum_polynomials};
+use crate::internal::claims::{Builder, Source, sum_polynomials};
 
 /// Enum identifying which nested field rx polynomial to retrieve from a proof.
 #[derive(Clone, Copy, Debug)]

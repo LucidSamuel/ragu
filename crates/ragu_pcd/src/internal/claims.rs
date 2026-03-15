@@ -11,7 +11,7 @@ use ragu_circuits::{
 ///
 /// Returns `Cow::Borrowed` for a single polynomial, `Cow::Owned` for multiple.
 /// Panics if the iterator is empty.
-pub(crate) fn sum_polynomials<'rx, F: PrimeField, R: Rank>(
+pub fn sum_polynomials<'rx, F: PrimeField, R: Rank>(
     mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
 ) -> Cow<'rx, structured::Polynomial<F, R>> {
     let first = rxs.next().expect("must provide at least one rx polynomial");
@@ -58,10 +58,10 @@ pub trait Source {
 /// Accumulates (a, b) polynomial pairs for each claim type, using
 /// the registry polynomial to transform rx polynomials appropriately.
 pub struct Builder<'m, 'rx, F: PrimeField, R: Rank> {
-    pub(crate) registry: &'m Registry<'m, F, R>,
-    pub(crate) y: F,
-    pub(crate) z: F,
-    pub(crate) tz: structured::Polynomial<F, R>,
+    pub registry: &'m Registry<'m, F, R>,
+    pub y: F,
+    pub z: F,
+    pub tz: structured::Polynomial<F, R>,
     /// The accumulated `a` polynomials for revdot claims.
     pub a: Vec<Cow<'rx, structured::Polynomial<F, R>>>,
     /// The accumulated `b` polynomials for revdot claims.
@@ -81,7 +81,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
         }
     }
 
-    pub(crate) fn circuit_impl(
+    pub fn circuit_impl(
         &mut self,
         circuit_id: CircuitIndex,
         rx: Cow<'rx, structured::Polynomial<F, R>>,
@@ -97,7 +97,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Builder<'m, 'rx, F, R> {
     }
 
     /// Shared stage accumulation logic for both native and nested Processor impls.
-    pub(crate) fn stage_impl(
+    pub fn stage_impl(
         &mut self,
         circuit_id: CircuitIndex,
         mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,

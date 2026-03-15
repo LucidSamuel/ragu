@@ -3,6 +3,7 @@
 //! Contains native and nested curve circuits that implement the recursive
 //! verification logic, including proof components and internal circuit registration.
 
+pub(crate) mod claims;
 pub(crate) mod native;
 pub(crate) mod nested;
 

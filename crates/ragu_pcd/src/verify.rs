@@ -14,8 +14,8 @@ use core::iter::once;
 
 use crate::{
     Application, Pcd, Proof,
-    components::claims,
     header::Header,
+    internal::claims,
     internal::native::stages::preamble::ProofInputs,
     internal::{native::claims as native_claims, nested::claims as nested_claims},
 };
@@ -137,7 +137,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
 mod native {
     use super::*;
-    use crate::components::claims::Source;
+    use crate::internal::claims::Source;
     use crate::internal::native::claims::{KySource, RxComponent};
 
     pub use crate::internal::native::claims::ky_values;
@@ -195,7 +195,7 @@ mod native {
 
 mod nested {
     use super::*;
-    use crate::components::claims::Source;
+    use crate::internal::claims::Source;
     use crate::internal::nested::claims::{KySource, RxComponent};
 
     pub use crate::internal::nested::claims::ky_values;

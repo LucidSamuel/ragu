@@ -16,10 +16,8 @@ use rand::CryptoRng;
 
 use crate::{
     Application, Proof,
-    components::{
-        claims,
-        fold_revdot::{self, NativeParameters},
-    },
+    components::fold_revdot::{self, NativeParameters},
+    internal::claims,
     internal::{
         native::{claims as native_claims, stages::error_m as native},
         nested::stages::error_m as nested,

@@ -23,7 +23,7 @@ use ragu_core::drivers::Driver;
 use ragu_primitives::Element;
 
 use super::InternalCircuitIndex;
-use crate::components::claims::{Builder, Source, sum_polynomials};
+use crate::internal::claims::{Builder, Source, sum_polynomials};
 
 /// Number of circuits using unified $k(y)$ in [`build`].
 ///

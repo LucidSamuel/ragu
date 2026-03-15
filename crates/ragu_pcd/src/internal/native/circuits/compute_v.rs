@@ -61,8 +61,8 @@ use alloc::{vec, vec::Vec};
 use core::marker::PhantomData;
 
 use super::super::claims::{self, Processor, RxComponent};
-use crate::components::claims::Source;
 use crate::components::fold_revdot::{NativeParameters, Parameters, fold_two_layer};
+use crate::internal::claims::Source;
 
 use super::super::InternalCircuitIndex;
 use super::super::InternalCircuitValues;
