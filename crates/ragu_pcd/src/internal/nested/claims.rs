@@ -76,7 +76,7 @@ where
     P: Processor<S::Rx>,
 {
     use super::NUM_ENDOSCALING_POINTS;
-    use crate::components::endoscalar::NumStepsLen;
+    use crate::internal::endoscalar::NumStepsLen;
     use ragu_primitives::vec::Len;
 
     let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();
@@ -136,7 +136,7 @@ pub trait KySource {
 /// - Infinite zeros (for stage checks)
 pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     use super::NUM_ENDOSCALING_POINTS;
-    use crate::components::endoscalar::NumStepsLen;
+    use crate::internal::endoscalar::NumStepsLen;
     use ragu_primitives::vec::Len;
 
     let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len();

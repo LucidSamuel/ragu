@@ -41,7 +41,7 @@ use alloc::vec;
 const ENDOSCALINGS_PER_STEP: usize = 4;
 
 /// Number of inputs (excluding initial) for `NUM_POINTS`.
-pub(crate) struct InputsLen<const NUM_POINTS: usize>;
+pub struct InputsLen<const NUM_POINTS: usize>;
 
 impl<const NUM_POINTS: usize> Len for InputsLen<NUM_POINTS> {
     fn len() -> usize {
@@ -51,7 +51,7 @@ impl<const NUM_POINTS: usize> Len for InputsLen<NUM_POINTS> {
 }
 
 /// Number of steps (= interstitials) for `NUM_POINTS`.
-pub(crate) struct NumStepsLen<const NUM_POINTS: usize>;
+pub struct NumStepsLen<const NUM_POINTS: usize>;
 
 impl<const NUM_POINTS: usize> Len for NumStepsLen<NUM_POINTS> {
     fn len() -> usize {

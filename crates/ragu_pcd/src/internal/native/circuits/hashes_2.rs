@@ -55,8 +55,8 @@
 //! [`nested_eval_commitment`]: unified::Output::nested_eval_commitment
 //! [$\beta$]: unified::Output::pre_beta
 //! [`error_n`]: super::super::stages::error_n
-//! [`WithSuffix`]: crate::components::suffix::WithSuffix
-//! [`Transcript::resume_from_state`]: crate::components::transcript::Transcript::resume_from_state
+//! [`WithSuffix`]: crate::internal::suffix::WithSuffix
+//! [`Transcript::resume_from_state`]: crate::internal::transcript::Transcript::resume_from_state
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -77,8 +77,8 @@ use super::super::{
     stages::{error_n as native_error_n, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
-use crate::components::transcript::Transcript;
 use crate::internal::fold_revdot;
+use crate::internal::transcript::Transcript;
 
 /// Second hash circuit for Fiat-Shamir challenge derivation.
 ///

@@ -69,8 +69,8 @@
 //! [$w$]: unified::Output::w
 //! [$y$]: unified::Output::y
 //! [$z$]: unified::Output::z
-//! [`WithSuffix`]: crate::components::suffix::WithSuffix
-//! [`Transcript::save_state`]: crate::components::transcript::Transcript::save_state
+//! [`WithSuffix`]: crate::internal::suffix::WithSuffix
+//! [`Transcript::save_state`]: crate::internal::transcript::Transcript::save_state
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -96,8 +96,8 @@ use super::super::{
     unified::{self, OutputBuilder},
 };
 use crate::RAGU_TAG;
-use crate::components::{suffix::WithSuffix, transcript::Transcript};
 use crate::internal::fold_revdot;
+use crate::internal::{suffix::WithSuffix, transcript::Transcript};
 
 /// Public output of the first hash circuit.
 ///

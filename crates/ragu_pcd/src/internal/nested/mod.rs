@@ -12,7 +12,7 @@ use ragu_circuits::{
 use ragu_core::Result;
 use ragu_primitives::vec::Len;
 
-use crate::components::endoscalar::{EndoscalarStage, EndoscalingStep, NumStepsLen, PointsStage};
+use crate::internal::endoscalar::{EndoscalarStage, EndoscalingStep, NumStepsLen, PointsStage};
 
 /// Number of curve points accumulated during `compute_p` for nested field
 /// endoscaling verification.
@@ -24,13 +24,13 @@ use crate::components::endoscalar::{EndoscalarStage, EndoscalingStep, NumStepsLe
 ///
 /// The endoscaling circuits process these 37 points across
 /// `NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()` = 9 steps.
-pub(crate) const NUM_ENDOSCALING_POINTS: usize = 37;
+pub const NUM_ENDOSCALING_POINTS: usize = 37;
 
 /// Index of internal nested circuits registered into the registry.
 ///
 /// These correspond to the circuit objects registered in [`register_all`].
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum InternalCircuitIndex {
+pub enum InternalCircuitIndex {
     /// `EndoscalingStep` circuit at given step.
     EndoscalingStep(u32),
     /// `EndoscalarStage` stage mask.
@@ -46,7 +46,7 @@ impl InternalCircuitIndex {
     ///
     /// Circuit indices follow the `RegistryBuilder::finalize()` concatenation
     /// order: internal circuits first, then internal masks.
-    pub(crate) fn circuit_index(self) -> CircuitIndex {
+    pub fn circuit_index(self) -> CircuitIndex {
         let num_steps = NumStepsLen::<NUM_ENDOSCALING_POINTS>::len() as u32;
         match self {
             Self::EndoscalingStep(step) => CircuitIndex::from_u32(step),
@@ -57,7 +57,7 @@ impl InternalCircuitIndex {
     }
 }
 
-pub(crate) mod claims;
+pub mod claims;
 
 pub mod stages;
 
@@ -65,7 +65,7 @@ pub mod stages;
 ///
 /// Circuits are registered as internal to ensure they occupy prefix indices
 /// before application steps.
-pub(crate) fn register_all<'params, C: Cycle, R: Rank>(
+pub fn register_all<'params, C: Cycle, R: Rank>(
     mut registry: RegistryBuilder<'params, C::ScalarField, R>,
 ) -> Result<RegistryBuilder<'params, C::ScalarField, R>> {
     // Circuits first, then masks — matching RegistryBuilder::finalize()

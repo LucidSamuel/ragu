@@ -19,8 +19,8 @@ use ragu_primitives::vec::Len;
 
 use alloc::vec;
 
-use crate::components::endoscalar::NumStepsLen;
 use crate::header::Header;
+use crate::internal::endoscalar::NumStepsLen;
 use crate::internal::native::claims::RxComponent;
 use crate::internal::nested::NUM_ENDOSCALING_POINTS;
 

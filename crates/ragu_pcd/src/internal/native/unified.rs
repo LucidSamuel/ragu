@@ -27,7 +27,7 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, Point, consistent::Consistent, io::Write};
 
-use crate::{components::suffix::WithSuffix, proof::Proof};
+use crate::{internal::suffix::WithSuffix, proof::Proof};
 
 /// The gadget kind for internal circuit outputs.
 ///

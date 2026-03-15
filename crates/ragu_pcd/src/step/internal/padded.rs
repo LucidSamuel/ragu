@@ -12,7 +12,7 @@ use ragu_primitives::{
 use core::marker::PhantomData;
 
 use crate::Header;
-use crate::components::suffix::WithSuffix;
+use crate::internal::suffix::WithSuffix;
 
 /// A header gadget padded to a fixed size with a suffix element appended.
 ///
@@ -134,7 +134,7 @@ mod tests {
     };
 
     use super::Padded;
-    use crate::components::suffix::WithSuffix;
+    use crate::internal::suffix::WithSuffix;
 
     #[derive(Gadget, Write)]
     struct MySillyGadget<'dr, D: Driver<'dr>> {

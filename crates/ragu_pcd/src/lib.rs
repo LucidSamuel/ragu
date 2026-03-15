@@ -11,7 +11,6 @@ extern crate alloc;
 #[cfg(feature = "multicore")]
 extern crate std;
 
-mod components;
 mod fuse;
 pub mod header;
 mod internal;

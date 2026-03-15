@@ -33,7 +33,7 @@ use ragu_primitives::{
 };
 
 /// Transcript wrapper around Poseidon [`Sponge`] for Fiat-Shamir transforms.
-pub(crate) struct Transcript<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> {
+pub struct Transcript<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> {
     sponge: Sponge<'dr, D, P>,
     params: &'dr P,
 }
@@ -51,7 +51,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Clone for Transcript<'dr
 ///
 /// This is a gadget that can be passed between circuits, with the state
 /// constraint-checked during multi-circuit protocols.
-pub(crate) type TranscriptState<'dr, D, P> = SpongeState<'dr, D, P>;
+pub type TranscriptState<'dr, D, P> = SpongeState<'dr, D, P>;
 
 impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     /// Creates a new transcript with mandatory domain separation.
@@ -67,7 +67,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     ///
     /// [#51]: https://github.com/tachyon-zcash/ragu/issues/51
     /// [#1]: https://github.com/tachyon-zcash/ragu/issues/1
-    pub(crate) fn new(dr: &mut D, params: &'dr P, tag: &[u8]) -> Result<Self>
+    pub fn new(dr: &mut D, params: &'dr P, tag: &[u8]) -> Result<Self>
     where
         D::F: PrimeField,
     {
@@ -88,7 +88,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     }
 
     /// Squeezes a single field element challenge from the transcript.
-    pub(crate) fn challenge(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
+    pub fn challenge(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
         self.sponge.squeeze(dr)
     }
 
@@ -97,7 +97,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     /// This consumes the transcript and applies a permutation to transition
     /// into squeeze mode. The returned state can be passed to another circuit
     /// for resumption via [`Self::resume_from_state`].
-    pub(crate) fn save_state(
+    pub fn save_state(
         self,
         dr: &mut D,
     ) -> core::result::Result<TranscriptState<'dr, D, P>, SaveError> {
@@ -109,7 +109,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
     /// Returns a [`ResumedTranscript`] that only permits squeezing challenges.
     /// Call [`ResumedTranscript::into_transcript`] to transition back to a full
     /// transcript that supports absorbing.
-    pub(crate) fn resume_from_state(
+    pub fn resume_from_state(
         state: TranscriptState<'dr, D, P>,
         params: &'dr P,
     ) -> ResumedTranscript<'dr, D, P> {
@@ -129,7 +129,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> Transcript<'dr, D, P> {
 /// prevents the caller from accidentally absorbing (which would silently discard
 /// those values). Call [`into_transcript`][Self::into_transcript] to transition
 /// back to a full [`Transcript`] that supports absorbing.
-pub(crate) struct ResumedTranscript<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> {
+pub struct ResumedTranscript<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> {
     sponge: Sponge<'dr, D, P>,
     params: &'dr P,
     squeezed: bool,
@@ -137,7 +137,7 @@ pub(crate) struct ResumedTranscript<'dr, D: Driver<'dr>, P: PoseidonPermutation<
 
 impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> ResumedTranscript<'dr, D, P> {
     /// Squeezes a single field element challenge.
-    pub(crate) fn challenge(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
+    pub fn challenge(&mut self, dr: &mut D) -> Result<Element<'dr, D>> {
         self.squeezed = true;
         self.sponge.squeeze(dr)
     }
@@ -149,7 +149,7 @@ impl<'dr, D: Driver<'dr>, P: PoseidonPermutation<D::F>> ResumedTranscript<'dr, D
     /// Panics if no challenges have been squeezed since resuming. Calling
     /// `into_transcript` without squeezing would silently discard the buffered
     /// rate values from the saved state.
-    pub(crate) fn into_transcript(self) -> Transcript<'dr, D, P> {
+    pub fn into_transcript(self) -> Transcript<'dr, D, P> {
         assert!(
             self.squeezed,
             "must squeeze at least once before transitioning back to absorb mode"
