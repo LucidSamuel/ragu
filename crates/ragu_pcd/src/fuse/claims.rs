@@ -25,7 +25,7 @@ use crate::{
     Proof,
     internal::{
         claims::{Builder, Source, sum_polynomials},
-        fold_revdot::{CommitmentDecomposition, Decomposed},
+        fold_revdot::{CommitmentDecomposition, TrackedPoly},
         native::{InternalCircuitIndex, RxComponent, claims::Processor},
     },
 };
@@ -40,8 +40,8 @@ pub struct Atom<'rx, K, F: PrimeField, R: Rank> {
     pub poly: &'rx structured::Polynomial<F, R>,
 }
 
-// Manual Copy/Clone: derive(Copy) would incorrectly require F: Copy and R: Copy,
-// but Atom only contains a reference and a K, both of which are always Copy.
+// Manual Copy/Clone: derive(Copy) would add spurious F: Copy and R: Copy bounds.
+// Atom only holds a reference (always Copy) and a K (bounded K: Copy here).
 impl<K: Copy, F: PrimeField, R: Rank> Clone for Atom<'_, K, F, R> {
     fn clone(&self) -> Self {
         *self
@@ -122,18 +122,18 @@ impl<'rx, C: Cycle, R: Rank> Source for FuseProofSource<'rx, C, R> {
 /// polynomials (and therefore their commitments). The decomposition is
 /// consumed in `_06_ab` to compute `a_commitment` via MSM.
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FuseAtom, F, R>, CircuitIndex>
-    for Builder<'m, 'rx, Decomposed<'rx, FuseAtom, F, R>, F, R>
+    for Builder<'m, 'rx, TrackedPoly<'rx, FuseAtom, F, R>, F, R>
 {
     fn raw_claim(&mut self, a: Atom<'rx, FuseAtom, F, R>, b: Atom<'rx, FuseAtom, F, R>) {
         self.a
-            .push(Decomposed::single(Cow::Borrowed(a.poly), a.key));
+            .push(TrackedPoly::single(Cow::Borrowed(a.poly), a.key));
         self.b.push(Cow::Borrowed(b.poly));
     }
 
     fn circuit(&mut self, circuit_id: CircuitIndex, rx: Atom<'rx, FuseAtom, F, R>) {
         self.circuit_impl(
             circuit_id,
-            Decomposed::single(Cow::Borrowed(rx.poly), rx.key),
+            TrackedPoly::single(Cow::Borrowed(rx.poly), rx.key),
         );
     }
 
@@ -149,7 +149,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FuseAtom, F, R>, Circu
         };
         let circuit_id = id.circuit_index();
         let poly = sum_polynomials(atoms.iter().map(|a| a.poly));
-        self.circuit_impl(circuit_id, Decomposed::new(poly, decomp));
+        self.circuit_impl(circuit_id, TrackedPoly::new(poly, decomp));
     }
 
     fn stage(
@@ -172,7 +172,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FuseAtom, F, R>, Circu
         terms.reverse();
         let decomp = CommitmentDecomposition { terms };
 
-        self.stage_impl(id.circuit_index(), Decomposed::new(folded, decomp));
+        self.stage_impl(id.circuit_index(), TrackedPoly::new(folded, decomp));
         Ok(())
     }
 }

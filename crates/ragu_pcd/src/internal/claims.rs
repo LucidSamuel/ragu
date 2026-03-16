@@ -62,7 +62,11 @@ pub trait Source {
 ///
 /// The type parameter `A` determines what is stored in the `a` vector:
 /// - Verify path: `A = Cow<'rx, Polynomial>` (plain polynomial references)
-/// - Fuse path: `A = Decomposed<'rx, FuseAtom, F, R>` (polynomial + commitment decomposition)
+/// - Fuse path: `A =` [`TrackedPoly`]`<'rx,` [`FuseAtom`]`, F, R>` (polynomial +
+///   commitment decomposition)
+///
+/// [`TrackedPoly`]: super::fold_revdot::TrackedPoly
+/// [`FuseAtom`]: crate::fuse::claims::FuseAtom
 pub struct Builder<'m, 'rx, A, F: PrimeField, R: Rank> {
     pub registry: &'m Registry<'m, F, R>,
     pub y: F,
@@ -112,9 +116,9 @@ where
     /// Horner-fold polynomial references. Returns `Cow::Borrowed` for a single
     /// element, `Cow::Owned` for multiple.
     ///
-    /// The fold gives item `i` coefficient `z^(n-1-i)`. Any decomposition
-    /// tracking must use the same coefficients (see the fuse `Processor` impl
-    /// in `fuse::claims`).
+    /// The fold gives item `i` coefficient `z^(n-1-i)`. Callers that track
+    /// commitment decompositions must assign the same coefficients to the
+    /// corresponding source keys.
     pub fn fold_stage_polys(
         &self,
         mut rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,

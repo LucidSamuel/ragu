@@ -42,7 +42,7 @@ use alloc::vec::Vec;
 use crate::{
     Application,
     internal::{
-        fold_revdot::{self, Decomposed},
+        fold_revdot::{self, TrackedPoly},
         native, nested,
     },
     proof,
@@ -56,7 +56,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     pub(super) fn compute_ab<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        a: FixedVec<Decomposed<'_, FuseAtom, C::CircuitField, R>, NativeN>,
+        a: FixedVec<TrackedPoly<'_, FuseAtom, C::CircuitField, R>, NativeN>,
         b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
@@ -82,7 +82,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     fn compute_native_ab<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        a: FixedVec<Decomposed<'_, FuseAtom, C::CircuitField, R>, NativeN>,
+        a: FixedVec<TrackedPoly<'_, FuseAtom, C::CircuitField, R>, NativeN>,
         b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
@@ -96,7 +96,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime_inv = mu_prime.invert().expect("mu_prime must be non-zero");
         let mu_prime_nu_prime = mu_prime * nu_prime;
 
-        let Decomposed {
+        let TrackedPoly {
             poly: a_poly,
             decomp: a_decomp,
         } = fold_revdot::fold_polys_n::<_, _, native::RevdotParameters>(a, mu_prime_inv);

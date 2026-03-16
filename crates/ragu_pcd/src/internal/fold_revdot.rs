@@ -38,7 +38,7 @@ impl<F: Field, R: Rank> Foldable<F> for structured::Polynomial<F, R> {
 /// Each term `(key, coefficient)` records that this polynomial includes
 /// `coefficient * source[key]`. The same key may appear multiple times;
 /// duplicates are summed during resolution. The key type `K` is chosen by
-/// the caller (the fuse path uses [`FuseAtom`](super::super::fuse::claims::FuseAtom)).
+/// the caller (the fuse path uses [`FuseAtom`](crate::fuse::claims::FuseAtom)).
 #[derive(Clone)]
 pub struct CommitmentDecomposition<K, F: Field> {
     pub terms: Vec<(K, F)>,
@@ -73,12 +73,12 @@ impl<K: Copy, F: Field> CommitmentDecomposition<K, F> {
 ///
 /// [`Cow`]: alloc::borrow::Cow
 #[derive(Clone)]
-pub struct Decomposed<'a, K, F: Field, R: Rank> {
+pub struct TrackedPoly<'a, K, F: Field, R: Rank> {
     pub poly: Cow<'a, structured::Polynomial<F, R>>,
     pub decomp: CommitmentDecomposition<K, F>,
 }
 
-impl<K, F: Field, R: Rank> Default for Decomposed<'_, K, F, R> {
+impl<K, F: Field, R: Rank> Default for TrackedPoly<'_, K, F, R> {
     fn default() -> Self {
         Self {
             poly: Default::default(),
@@ -87,7 +87,7 @@ impl<K, F: Field, R: Rank> Default for Decomposed<'_, K, F, R> {
     }
 }
 
-impl<'a, K: Copy, F: Field, R: Rank> Decomposed<'a, K, F, R> {
+impl<'a, K: Copy, F: Field, R: Rank> TrackedPoly<'a, K, F, R> {
     pub fn new(
         poly: Cow<'a, structured::Polynomial<F, R>>,
         decomp: CommitmentDecomposition<K, F>,
@@ -100,7 +100,7 @@ impl<'a, K: Copy, F: Field, R: Rank> Decomposed<'a, K, F, R> {
     }
 }
 
-impl<K: Copy, F: Field, R: Rank> Foldable<F> for Decomposed<'_, K, F, R> {
+impl<K: Copy, F: Field, R: Rank> Foldable<F> for TrackedPoly<'_, K, F, R> {
     fn fold_scale(&mut self, by: F) {
         self.poly.to_mut().scale(by);
         for (_, coeff) in &mut self.decomp.terms {
@@ -113,7 +113,7 @@ impl<K: Copy, F: Field, R: Rank> Foldable<F> for Decomposed<'_, K, F, R> {
     }
 }
 
-impl<K, F: Field, R: Rank> Borrow<structured::Polynomial<F, R>> for Decomposed<'_, K, F, R> {
+impl<K, F: Field, R: Rank> Borrow<structured::Polynomial<F, R>> for TrackedPoly<'_, K, F, R> {
     fn borrow(&self) -> &structured::Polynomial<F, R> {
         &self.poly
     }

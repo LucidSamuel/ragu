@@ -24,7 +24,7 @@ use crate::{
     Application,
     internal::{
         claims,
-        fold_revdot::{self, Decomposed},
+        fold_revdot::{self, TrackedPoly},
         native,
         native::stages::error_n::{ChildKyValues, KyValues},
         nested,
@@ -45,7 +45,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         claims: claims::Builder<
             '_,
             'rx,
-            Decomposed<'rx, FuseAtom, C::CircuitField, R>,
+            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
             C::CircuitField,
             R,
         >,
@@ -59,7 +59,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::ErrorN<C, R>,
         native::stages::error_n::Witness<C, native::RevdotParameters>,
-        FixedVec<Decomposed<'rx, FuseAtom, C::CircuitField, R>, NativeN>,
+        FixedVec<TrackedPoly<'rx, FuseAtom, C::CircuitField, R>, NativeN>,
         FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
     )>
     where

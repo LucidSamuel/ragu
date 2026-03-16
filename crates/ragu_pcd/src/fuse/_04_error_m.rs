@@ -18,7 +18,7 @@ use crate::{
     Application,
     internal::{
         claims,
-        fold_revdot::{self, Decomposed},
+        fold_revdot::{self, TrackedPoly},
         native, nested,
     },
     proof,
@@ -37,7 +37,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::ErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<'_, 'rx, Decomposed<'rx, FuseAtom, C::CircuitField, R>, C::CircuitField, R>,
+        claims::Builder<
+            '_,
+            'rx,
+            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
+            C::CircuitField,
+            R,
+        >,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -76,7 +82,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::NativeErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<'_, 'rx, Decomposed<'rx, FuseAtom, C::CircuitField, R>, C::CircuitField, R>,
+        claims::Builder<
+            '_,
+            'rx,
+            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
+            C::CircuitField,
+            R,
+        >,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
