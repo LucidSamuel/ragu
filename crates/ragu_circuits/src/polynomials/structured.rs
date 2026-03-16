@@ -122,13 +122,16 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Inner product of `self` with the reversed `other`.
     pub fn revdot(&self, other: &Self) -> F {
-        self.u
-            .iter()
-            .zip(other.v.iter())
-            .chain(self.v.iter().zip(other.u.iter()))
-            .chain(self.w.iter().zip(other.d.iter()))
-            .chain(self.d.iter().zip(other.w.iter()))
-            .fold(F::ZERO, |acc, (a, b)| acc + (*a * *b))
+        fn dot<F: Field>(a: &[F], b: &[F]) -> F {
+            a.iter()
+                .zip(b.iter())
+                .fold(F::ZERO, |acc, (a, b)| acc + (*a * *b))
+        }
+
+        dot(&self.u, &other.v)
+            + dot(&self.v, &other.u)
+            + dot(&self.w, &other.d)
+            + dot(&self.d, &other.w)
     }
 
     /// Add the coefficients of `other` to `self`.
