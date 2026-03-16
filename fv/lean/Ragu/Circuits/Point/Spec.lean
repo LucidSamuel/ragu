@@ -73,6 +73,14 @@ def EpAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.p :=
   h_small_order := by native_decide
 }
 
+def EqAffineParams: Circuits.Point.Spec.CurveParams Core.Primes.q :=
+{
+  b := 5,
+  ζ := 0x6819a58283e528e511db4d81cf70f5a0fed467d47c033af2aa9d2e050aa0e4f,
+  h_small_order := by native_decide
+}
+
+
 end Ragu.Circuits.Point.Spec
 
 namespace Ragu.Circuits.Point.Lemmas
