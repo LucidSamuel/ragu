@@ -156,10 +156,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         }
 
         let mut coeffs = Vec::new();
-        while let Some(first) = iters[0].next() {
-            let c = iters[1..]
+        let (first, rest) = iters.split_first_mut().unwrap();
+        for val in first.by_ref() {
+            let c = rest
                 .iter_mut()
-                .fold(first, |acc, iter| alpha * acc + iter.next().unwrap());
+                .fold(val, |acc, iter| alpha * acc + iter.next().unwrap());
             coeffs.push(c);
         }
         coeffs.reverse();
