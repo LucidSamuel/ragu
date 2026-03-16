@@ -39,9 +39,14 @@ use rand::CryptoRng;
 
 use crate::{
     Application,
-    internal::{fold_revdot, native, nested},
+    internal::{
+        fold_revdot::{self, Decomposed},
+        native, nested,
+    },
     proof,
 };
+
+use super::claims::FuseAtom;
 
 type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
@@ -49,7 +54,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     pub(super) fn compute_ab<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        a: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
+        a: FixedVec<Decomposed<'_, FuseAtom, C::CircuitField, R>, NativeN>,
         b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
@@ -74,7 +79,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     fn compute_native_ab<'dr, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        a: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
+        a: FixedVec<Decomposed<'_, FuseAtom, C::CircuitField, R>, NativeN>,
         b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
@@ -87,7 +92,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu_prime_inv = mu_prime.invert().expect("mu_prime must be non-zero");
         let mu_prime_nu_prime = mu_prime * nu_prime;
 
-        let a_poly = fold_revdot::fold_polys_n::<_, _, native::RevdotParameters>(a, mu_prime_inv);
+        let a_poly = fold_revdot::fold_polys_n::<_, _, native::RevdotParameters>(a, mu_prime_inv)
+            .poly
+            .into_owned();
         let a_blind = C::CircuitField::random(&mut *rng);
         let b_poly =
             fold_revdot::fold_polys_n::<_, _, native::RevdotParameters>(b, mu_prime_nu_prime);

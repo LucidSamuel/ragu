@@ -20,30 +20,32 @@ use ragu_core::{
 use ragu_primitives::{Element, vec::FixedVec};
 use rand::CryptoRng;
 
-use alloc::borrow::Cow;
-
 use crate::{
     Application,
     internal::{
-        claims, fold_revdot, native,
+        claims,
+        fold_revdot::{self, Decomposed},
+        native,
         native::stages::error_n::{ChildKyValues, KyValues},
         nested,
     },
     proof,
 };
 
+use super::claims::FuseAtom;
+
 type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
-    pub(super) fn compute_errors_n<'dr, D, RNG: CryptoRng>(
+    pub(super) fn compute_errors_n<'dr, 'rx, D, RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, native::RevdotParameters>,
         claims: claims::Builder<
             '_,
-            '_,
-            Cow<'_, structured::Polynomial<C::CircuitField, R>>,
+            'rx,
+            Decomposed<'rx, FuseAtom, C::CircuitField, R>,
             C::CircuitField,
             R,
         >,
@@ -57,7 +59,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::ErrorN<C, R>,
         native::stages::error_n::Witness<C, native::RevdotParameters>,
-        FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
+        FixedVec<Decomposed<'rx, FuseAtom, C::CircuitField, R>, NativeN>,
         FixedVec<structured::Polynomial<C::CircuitField, R>, NativeN>,
     )>
     where

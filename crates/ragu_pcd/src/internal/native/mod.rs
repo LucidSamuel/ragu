@@ -280,7 +280,7 @@ impl<T> RxValues<T> {
 /// Identifies a native-field polynomial within a proof — either one of the
 /// two AB polynomials (which are not rx polynomials) or one of the 11 rx
 /// polynomials addressed by [`RxIndex`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RxComponent {
     /// The `a` polynomial from the AB proof (revdot claim).
     AbA,

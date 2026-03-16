@@ -14,15 +14,17 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
-use alloc::borrow::Cow;
-
 use crate::{
     Application,
-    internal::{claims, fold_revdot, native, nested},
+    internal::{
+        claims,
+        fold_revdot::{self, Decomposed},
+        native, nested,
+    },
     proof,
 };
 
-use super::claims::FuseProofSource;
+use super::claims::{FuseAtom, FuseProofSource};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_errors_m<'dr, 'rx, D, RNG: CryptoRng>(
@@ -35,13 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::ErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<
-            '_,
-            'rx,
-            Cow<'rx, ragu_circuits::polynomials::structured::Polynomial<C::CircuitField, R>>,
-            C::CircuitField,
-            R,
-        >,
+        claims::Builder<'_, 'rx, Decomposed<'rx, FuseAtom, C::CircuitField, R>, C::CircuitField, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -80,13 +76,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::NativeErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<
-            '_,
-            'rx,
-            Cow<'rx, ragu_circuits::polynomials::structured::Polynomial<C::CircuitField, R>>,
-            C::CircuitField,
-            R,
-        >,
+        claims::Builder<'_, 'rx, Decomposed<'rx, FuseAtom, C::CircuitField, R>, C::CircuitField, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
