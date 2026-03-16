@@ -40,13 +40,14 @@ pub struct ChildWitness<C: CurveAffine> {
 impl<C: CurveAffine> ChildWitness<C> {
     /// Construct from a child proof's commitments.
     pub fn from_proof<CC: Cycle<HostCurve = C>, R: Rank>(proof: &Proof<CC, R>) -> Self {
+        use crate::internal::native::RxIndex;
         Self {
-            application: proof.application.commitment,
-            hashes_1: proof.circuits.hashes_1_commitment,
-            hashes_2: proof.circuits.hashes_2_commitment,
-            partial_collapse: proof.circuits.partial_collapse_commitment,
-            full_collapse: proof.circuits.full_collapse_commitment,
-            compute_v: proof.circuits.compute_v_commitment,
+            application: proof[RxIndex::Application].commitment,
+            hashes_1: proof[RxIndex::Hashes1].commitment,
+            hashes_2: proof[RxIndex::Hashes2].commitment,
+            partial_collapse: proof[RxIndex::PartialCollapse].commitment,
+            full_collapse: proof[RxIndex::FullCollapse].commitment,
+            compute_v: proof[RxIndex::ComputeV].commitment,
         }
     }
 }

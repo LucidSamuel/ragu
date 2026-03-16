@@ -173,7 +173,7 @@ impl<'rx, C: Cycle, R: Rank> FuseProofSource<'rx, C, R> {
         match component {
             RxComponent::AbA => (proof.ab.native.a_commitment, proof.ab.native.a_blind),
             RxComponent::AbB => (proof.ab.native.b_commitment, proof.ab.native.b_blind),
-            RxComponent::Rx(idx) => proof.rx_commitment_blind(idx),
+            RxComponent::Rx(idx) => (proof[idx].commitment, proof[idx].blind),
         }
     }
 }

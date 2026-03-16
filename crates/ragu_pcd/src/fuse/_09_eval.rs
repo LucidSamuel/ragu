@@ -66,7 +66,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
     ) -> Result<(
-        proof::NativeEval<C, R>,
+        proof::RxTriple<C, R>,
         native::stages::eval::Witness<C::CircuitField>,
     )>
     where
@@ -95,7 +95,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
 
         Ok((
-            proof::NativeEval {
+            proof::RxTriple {
                 rx,
                 blind,
                 commitment,

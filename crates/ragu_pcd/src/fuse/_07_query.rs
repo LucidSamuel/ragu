@@ -43,7 +43,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             self.params,
             rng,
             nested::stages::query::Stage::<C::HostCurve, R>::rx(&nested::stages::query::Witness {
-                native_query: native_query.commitment,
+                native_query: native_query.rx_triple.commitment,
                 registry_xy: native_query.registry_xy_commitment,
             })?,
         );
@@ -117,9 +117,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_xy_poly,
                 registry_xy_blind,
                 registry_xy_commitment,
-                rx,
-                blind,
-                commitment,
+                rx_triple: proof::RxTriple {
+                    rx,
+                    blind,
+                    commitment,
+                },
             },
             query_witness,
         ))

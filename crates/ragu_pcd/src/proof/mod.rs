@@ -60,84 +60,35 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) circuits: InternalCircuits<C, R>,
 }
 
+impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
+    type Output = RxTriple<C, R>;
+    fn index(&self, idx: RxIndex) -> &RxTriple<C, R> {
+        use RxIndex::*;
+        match idx {
+            Preamble => &self.preamble.native,
+            ErrorM => &self.error_m.native.rx_triple,
+            ErrorN => &self.error_n.native,
+            Query => &self.query.native.rx_triple,
+            Eval => &self.eval.native,
+            Application => &self.application.rx_triple,
+            Hashes1 => &self.circuits.hashes_1,
+            Hashes2 => &self.circuits.hashes_2,
+            PartialCollapse => &self.circuits.partial_collapse,
+            FullCollapse => &self.circuits.full_collapse,
+            ComputeV => &self.circuits.compute_v,
+        }
+    }
+}
+
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Augment a recursive proof with some data, described by a [`Header`].
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data<'_>) -> Pcd<'_, C, R, H> {
         Pcd { proof: self, data }
     }
 
-    /// Returns the `(rx, commitment, blind)` triple for the given [`RxIndex`].
-    fn rx_triple(
-        &self,
-        idx: RxIndex,
-    ) -> (
-        &structured::Polynomial<C::CircuitField, R>,
-        C::HostCurve,
-        C::CircuitField,
-    ) {
-        use RxIndex::*;
-        match idx {
-            Preamble => (
-                &self.preamble.native.rx,
-                self.preamble.native.commitment,
-                self.preamble.native.blind,
-            ),
-            ErrorM => (
-                &self.error_m.native.rx,
-                self.error_m.native.commitment,
-                self.error_m.native.blind,
-            ),
-            ErrorN => (
-                &self.error_n.native.rx,
-                self.error_n.native.commitment,
-                self.error_n.native.blind,
-            ),
-            Query => (
-                &self.query.native.rx,
-                self.query.native.commitment,
-                self.query.native.blind,
-            ),
-            Eval => (
-                &self.eval.native.rx,
-                self.eval.native.commitment,
-                self.eval.native.blind,
-            ),
-            Application => (
-                &self.application.rx,
-                self.application.commitment,
-                self.application.blind,
-            ),
-            Hashes1 => (
-                &self.circuits.hashes_1_rx,
-                self.circuits.hashes_1_commitment,
-                self.circuits.hashes_1_blind,
-            ),
-            Hashes2 => (
-                &self.circuits.hashes_2_rx,
-                self.circuits.hashes_2_commitment,
-                self.circuits.hashes_2_blind,
-            ),
-            PartialCollapse => (
-                &self.circuits.partial_collapse_rx,
-                self.circuits.partial_collapse_commitment,
-                self.circuits.partial_collapse_blind,
-            ),
-            FullCollapse => (
-                &self.circuits.full_collapse_rx,
-                self.circuits.full_collapse_commitment,
-                self.circuits.full_collapse_blind,
-            ),
-            ComputeV => (
-                &self.circuits.compute_v_rx,
-                self.circuits.compute_v_commitment,
-                self.circuits.compute_v_blind,
-            ),
-        }
-    }
-
     /// Returns the rx polynomial for the given [`RxIndex`].
     pub(crate) fn rx_poly(&self, idx: RxIndex) -> &structured::Polynomial<C::CircuitField, R> {
-        self.rx_triple(idx).0
+        &self[idx].rx
     }
 
     /// Returns the native-field rx polynomial for the given [`RxComponent`].
@@ -148,14 +99,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         match component {
             RxComponent::AbA => &self.ab.native.a_poly,
             RxComponent::AbB => &self.ab.native.b_poly,
-            RxComponent::Rx(idx) => self.rx_poly(idx),
+            RxComponent::Rx(idx) => &self[idx].rx,
         }
-    }
-
-    /// Returns the `(commitment, blind)` pair for the given [`RxIndex`].
-    pub(crate) fn rx_commitment_blind(&self, idx: RxIndex) -> (C::HostCurve, C::CircuitField) {
-        let (_, commitment, blind) = self.rx_triple(idx);
-        (commitment, blind)
     }
 }
 
@@ -183,21 +128,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             commitment: nested_commitment,
         };
 
+        let trivial_rx_triple = || RxTriple {
+            rx: zero_structured_host.clone(),
+            blind: host_blind,
+            commitment: host_commitment,
+        };
+
         Proof {
             application: Application {
                 circuit_id: CircuitIndex::new(0),
                 left_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
                 right_header: vec![C::CircuitField::ZERO; HEADER_SIZE],
-                rx: zero_structured_host.clone(),
-                blind: host_blind,
-                commitment: host_commitment,
+                rx_triple: trivial_rx_triple(),
             },
             preamble: Preamble {
-                native: NativePreamble {
-                    rx: zero_structured_host.clone(),
-                    blind: host_blind,
-                    commitment: host_commitment,
-                },
+                native: trivial_rx_triple(),
                 bridge: trivial_bridge.clone(),
             },
             s_prime: SPrime {
@@ -216,18 +161,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     registry_wy_poly: zero_structured_host.clone(),
                     registry_wy_blind: host_blind,
                     registry_wy_commitment: host_commitment,
-                    rx: zero_structured_host.clone(),
-                    blind: host_blind,
-                    commitment: host_commitment,
+                    rx_triple: trivial_rx_triple(),
                 },
                 bridge: trivial_bridge.clone(),
             },
             error_n: ErrorN {
-                native: NativeErrorN {
-                    rx: zero_structured_host.clone(),
-                    blind: host_blind,
-                    commitment: host_commitment,
-                },
+                native: trivial_rx_triple(),
                 bridge: trivial_bridge.clone(),
             },
             ab: AB {
@@ -247,9 +186,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     registry_xy_poly: zero_unstructured.clone(),
                     registry_xy_blind: host_blind,
                     registry_xy_commitment: host_commitment,
-                    rx: zero_structured_host.clone(),
-                    blind: host_blind,
-                    commitment: host_commitment,
+                    rx_triple: trivial_rx_triple(),
                 },
                 bridge: trivial_bridge.clone(),
             },
@@ -262,11 +199,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 bridge: trivial_bridge.clone(),
             },
             eval: Eval {
-                native: NativeEval {
-                    rx: zero_structured_host.clone(),
-                    blind: host_blind,
-                    commitment: host_commitment,
-                },
+                native: trivial_rx_triple(),
                 bridge: trivial_bridge,
             },
             p: P {
@@ -287,21 +220,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             challenges: Challenges::trivial(),
             circuits: InternalCircuits {
-                hashes_1_rx: zero_structured_host.clone(),
-                hashes_1_blind: host_blind,
-                hashes_1_commitment: host_commitment,
-                hashes_2_rx: zero_structured_host.clone(),
-                hashes_2_blind: host_blind,
-                hashes_2_commitment: host_commitment,
-                partial_collapse_rx: zero_structured_host.clone(),
-                partial_collapse_blind: host_blind,
-                partial_collapse_commitment: host_commitment,
-                full_collapse_rx: zero_structured_host.clone(),
-                full_collapse_blind: host_blind,
-                full_collapse_commitment: host_commitment,
-                compute_v_rx: zero_structured_host,
-                compute_v_blind: host_blind,
-                compute_v_commitment: host_commitment,
+                hashes_1: trivial_rx_triple(),
+                hashes_2: trivial_rx_triple(),
+                partial_collapse: trivial_rx_triple(),
+                full_collapse: trivial_rx_triple(),
+                compute_v: trivial_rx_triple(),
             },
         }
     }

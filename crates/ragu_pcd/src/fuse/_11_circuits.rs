@@ -73,7 +73,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &hashes_1_trace,
             native::InternalCircuitIndex::Hashes1Circuit.circuit_index(),
         )?;
-        let hashes_1_rx_blind = C::CircuitField::random(&mut *rng);
+        let hashes_1_blind = C::CircuitField::random(&mut *rng);
 
         let (hashes_2_trace, unified) = native::circuits::hashes_2::Circuit::<
             C,
@@ -89,7 +89,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &hashes_2_trace,
             native::InternalCircuitIndex::Hashes2Circuit.circuit_index(),
         )?;
-        let hashes_2_rx_blind = C::CircuitField::random(&mut *rng);
+        let hashes_2_blind = C::CircuitField::random(&mut *rng);
 
         let (partial_collapse_trace, unified) = native::circuits::partial_collapse::Circuit::<
             C,
@@ -107,7 +107,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &partial_collapse_trace,
             native::InternalCircuitIndex::PartialCollapseCircuit.circuit_index(),
         )?;
-        let partial_collapse_rx_blind = C::CircuitField::random(&mut *rng);
+        let partial_collapse_blind = C::CircuitField::random(&mut *rng);
 
         let (full_collapse_trace, unified) = native::circuits::full_collapse::Circuit::<
             C,
@@ -124,7 +124,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &full_collapse_trace,
             native::InternalCircuitIndex::FullCollapseCircuit.circuit_index(),
         )?;
-        let full_collapse_rx_blind = C::CircuitField::random(&mut *rng);
+        let full_collapse_blind = C::CircuitField::random(&mut *rng);
 
         let (compute_v_trace, unified) =
             native::circuits::compute_v::Circuit::<C, R, HEADER_SIZE>::new().rx(
@@ -139,7 +139,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &compute_v_trace,
             native::InternalCircuitIndex::ComputeVCircuit.circuit_index(),
         )?;
-        let compute_v_rx_blind = C::CircuitField::random(&mut *rng);
+        let compute_v_blind = C::CircuitField::random(&mut *rng);
 
         // Cross-circuit coverage validation (prover-time development assertion,
         // not a verifier check): all internal recursion circuits together must
@@ -149,35 +149,45 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
         let host_gen = C::host_generators(self.params);
         let [
-            hashes_1_rx_commitment,
-            hashes_2_rx_commitment,
-            partial_collapse_rx_commitment,
-            full_collapse_rx_commitment,
-            compute_v_rx_commitment,
+            hashes_1_commitment,
+            hashes_2_commitment,
+            partial_collapse_commitment,
+            full_collapse_commitment,
+            compute_v_commitment,
         ] = ragu_arithmetic::batch_to_affine([
-            hashes_1_rx.commit(host_gen, hashes_1_rx_blind),
-            hashes_2_rx.commit(host_gen, hashes_2_rx_blind),
-            partial_collapse_rx.commit(host_gen, partial_collapse_rx_blind),
-            full_collapse_rx.commit(host_gen, full_collapse_rx_blind),
-            compute_v_rx.commit(host_gen, compute_v_rx_blind),
+            hashes_1_rx.commit(host_gen, hashes_1_blind),
+            hashes_2_rx.commit(host_gen, hashes_2_blind),
+            partial_collapse_rx.commit(host_gen, partial_collapse_blind),
+            full_collapse_rx.commit(host_gen, full_collapse_blind),
+            compute_v_rx.commit(host_gen, compute_v_blind),
         ]);
 
         Ok(proof::InternalCircuits {
-            hashes_1_rx,
-            hashes_1_blind: hashes_1_rx_blind,
-            hashes_1_commitment: hashes_1_rx_commitment,
-            hashes_2_rx,
-            hashes_2_blind: hashes_2_rx_blind,
-            hashes_2_commitment: hashes_2_rx_commitment,
-            partial_collapse_rx,
-            partial_collapse_blind: partial_collapse_rx_blind,
-            partial_collapse_commitment: partial_collapse_rx_commitment,
-            full_collapse_rx,
-            full_collapse_blind: full_collapse_rx_blind,
-            full_collapse_commitment: full_collapse_rx_commitment,
-            compute_v_rx,
-            compute_v_blind: compute_v_rx_blind,
-            compute_v_commitment: compute_v_rx_commitment,
+            hashes_1: proof::RxTriple {
+                rx: hashes_1_rx,
+                blind: hashes_1_blind,
+                commitment: hashes_1_commitment,
+            },
+            hashes_2: proof::RxTriple {
+                rx: hashes_2_rx,
+                blind: hashes_2_blind,
+                commitment: hashes_2_commitment,
+            },
+            partial_collapse: proof::RxTriple {
+                rx: partial_collapse_rx,
+                blind: partial_collapse_blind,
+                commitment: partial_collapse_commitment,
+            },
+            full_collapse: proof::RxTriple {
+                rx: full_collapse_rx,
+                blind: full_collapse_blind,
+                commitment: full_collapse_commitment,
+            },
+            compute_v: proof::RxTriple {
+                rx: compute_v_rx,
+                blind: compute_v_blind,
+                commitment: compute_v_commitment,
+            },
         })
     }
 }

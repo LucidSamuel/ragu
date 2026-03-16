@@ -52,7 +52,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             rng,
             nested::stages::error_m::Stage::<C::HostCurve, R>::rx(
                 &nested::stages::error_m::Witness {
-                    native_error_m: native_error_m.commitment,
+                    native_error_m: native_error_m.rx_triple.commitment,
                     registry_wy: native_error_m.registry_wy_commitment,
                 },
             )?,
@@ -121,9 +121,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_wy_poly,
                 registry_wy_blind,
                 registry_wy_commitment,
-                rx: native_rx,
-                blind: native_blind,
-                commitment: native_commitment,
+                rx_triple: proof::RxTriple {
+                    rx: native_rx,
+                    blind: native_blind,
+                    commitment: native_commitment,
+                },
             },
             error_m_witness,
             builder,

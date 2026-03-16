@@ -23,9 +23,7 @@ use rand::CryptoRng;
 use crate::{
     Application,
     internal::{
-        claims,
-        fold_revdot,
-        native,
+        claims, fold_revdot, native,
         native::stages::error_n::{ChildKyValues, KyValues},
         nested,
     },
@@ -164,14 +162,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         error_n_witness: &native::stages::error_n::Witness<C, native::RevdotParameters>,
-    ) -> Result<proof::NativeErrorN<C, R>> {
+    ) -> Result<proof::RxTriple<C, R>> {
         let rx = native::stages::error_n::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
             error_n_witness,
         )?;
         let blind = C::CircuitField::random(&mut *rng);
         let commitment = rx.commit_to_affine(C::host_generators(self.params), blind);
 
-        Ok(proof::NativeErrorN {
+        Ok(proof::RxTriple {
             rx,
             blind,
             commitment,

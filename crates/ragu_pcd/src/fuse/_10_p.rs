@@ -92,64 +92,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             for proof in [left, right] {
                 for &id in &RxIndex::ALL {
-                    use RxIndex::*;
-                    match id {
-                        Preamble => acc.acc(
-                            &proof.preamble.native.rx,
-                            proof.preamble.native.blind,
-                            proof.preamble.native.commitment,
-                        ),
-                        ErrorM => acc.acc(
-                            &proof.error_m.native.rx,
-                            proof.error_m.native.blind,
-                            proof.error_m.native.commitment,
-                        ),
-                        ErrorN => acc.acc(
-                            &proof.error_n.native.rx,
-                            proof.error_n.native.blind,
-                            proof.error_n.native.commitment,
-                        ),
-                        Query => acc.acc(
-                            &proof.query.native.rx,
-                            proof.query.native.blind,
-                            proof.query.native.commitment,
-                        ),
-                        Eval => acc.acc(
-                            &proof.eval.native.rx,
-                            proof.eval.native.blind,
-                            proof.eval.native.commitment,
-                        ),
-                        Application => acc.acc(
-                            &proof.application.rx,
-                            proof.application.blind,
-                            proof.application.commitment,
-                        ),
-                        Hashes1 => acc.acc(
-                            &proof.circuits.hashes_1_rx,
-                            proof.circuits.hashes_1_blind,
-                            proof.circuits.hashes_1_commitment,
-                        ),
-                        Hashes2 => acc.acc(
-                            &proof.circuits.hashes_2_rx,
-                            proof.circuits.hashes_2_blind,
-                            proof.circuits.hashes_2_commitment,
-                        ),
-                        PartialCollapse => acc.acc(
-                            &proof.circuits.partial_collapse_rx,
-                            proof.circuits.partial_collapse_blind,
-                            proof.circuits.partial_collapse_commitment,
-                        ),
-                        FullCollapse => acc.acc(
-                            &proof.circuits.full_collapse_rx,
-                            proof.circuits.full_collapse_blind,
-                            proof.circuits.full_collapse_commitment,
-                        ),
-                        ComputeV => acc.acc(
-                            &proof.circuits.compute_v_rx,
-                            proof.circuits.compute_v_blind,
-                            proof.circuits.compute_v_commitment,
-                        ),
-                    }
+                    let t = &proof[id];
+                    acc.acc(&t.rx, t.blind, t.commitment);
                 }
                 acc.acc(
                     &proof.ab.native.a_poly,

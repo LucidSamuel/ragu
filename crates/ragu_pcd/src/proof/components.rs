@@ -17,14 +17,28 @@ use rand::CryptoRng;
 
 use alloc::vec::Vec;
 
+/// A grouped `(rx, blind, commitment)` triple for a native-field rx polynomial.
+///
+/// The `commitment` is the Pedersen commitment to `rx` under blinding scalar
+/// `blind`.
+#[derive(Clone)]
+pub struct RxTriple<C: Cycle, R: Rank> {
+    /// The rx polynomial.
+    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
+
+    /// The Pedersen blinding scalar for `rx`.
+    pub(crate) blind: C::CircuitField,
+
+    /// The Pedersen commitment to `rx` under `blind`.
+    pub(crate) commitment: C::HostCurve,
+}
+
 #[derive(Clone)]
 pub(crate) struct Application<C: Cycle, R: Rank> {
     pub(crate) circuit_id: CircuitIndex,
     pub(crate) left_header: Vec<C::CircuitField>,
     pub(crate) right_header: Vec<C::CircuitField>,
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
+    pub(crate) rx_triple: RxTriple<C, R>,
 }
 
 #[derive(Clone)]
@@ -51,15 +65,8 @@ impl<C: Cycle, R: Rank> Bridge<C, R> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativePreamble<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
-
-#[derive(Clone)]
 pub(crate) struct Preamble<C: Cycle, R: Rank> {
-    pub(crate) native: NativePreamble<C, R>,
+    pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 
@@ -84,9 +91,7 @@ pub(crate) struct NativeErrorM<C: Cycle, R: Rank> {
     pub(crate) registry_wy_poly: structured::Polynomial<C::CircuitField, R>,
     pub(crate) registry_wy_blind: C::CircuitField,
     pub(crate) registry_wy_commitment: C::HostCurve,
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
+    pub(crate) rx_triple: RxTriple<C, R>,
 }
 
 #[derive(Clone)]
@@ -96,15 +101,8 @@ pub(crate) struct ErrorM<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeErrorN<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
-
-#[derive(Clone)]
 pub(crate) struct ErrorN<C: Cycle, R: Rank> {
-    pub(crate) native: NativeErrorN<C, R>,
+    pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 
@@ -130,9 +128,7 @@ pub(crate) struct NativeQuery<C: Cycle, R: Rank> {
     pub(crate) registry_xy_poly: unstructured::Polynomial<C::CircuitField, R>,
     pub(crate) registry_xy_blind: C::CircuitField,
     pub(crate) registry_xy_commitment: C::HostCurve,
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
+    pub(crate) rx_triple: RxTriple<C, R>,
 }
 
 #[derive(Clone)]
@@ -155,15 +151,8 @@ pub(crate) struct F<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeEval<C: Cycle, R: Rank> {
-    pub(crate) rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) blind: C::CircuitField,
-    pub(crate) commitment: C::HostCurve,
-}
-
-#[derive(Clone)]
 pub(crate) struct Eval<C: Cycle, R: Rank> {
-    pub(crate) native: NativeEval<C, R>,
+    pub(crate) native: RxTriple<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 
@@ -255,19 +244,9 @@ impl<C: Cycle> Challenges<C> {
 
 #[derive(Clone)]
 pub(crate) struct InternalCircuits<C: Cycle, R: Rank> {
-    pub(crate) hashes_1_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) hashes_1_blind: C::CircuitField,
-    pub(crate) hashes_1_commitment: C::HostCurve,
-    pub(crate) hashes_2_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) hashes_2_blind: C::CircuitField,
-    pub(crate) hashes_2_commitment: C::HostCurve,
-    pub(crate) partial_collapse_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) partial_collapse_blind: C::CircuitField,
-    pub(crate) partial_collapse_commitment: C::HostCurve,
-    pub(crate) full_collapse_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) full_collapse_blind: C::CircuitField,
-    pub(crate) full_collapse_commitment: C::HostCurve,
-    pub(crate) compute_v_rx: structured::Polynomial<C::CircuitField, R>,
-    pub(crate) compute_v_blind: C::CircuitField,
-    pub(crate) compute_v_commitment: C::HostCurve,
+    pub(crate) hashes_1: RxTriple<C, R>,
+    pub(crate) hashes_2: RxTriple<C, R>,
+    pub(crate) partial_collapse: RxTriple<C, R>,
+    pub(crate) full_collapse: RxTriple<C, R>,
+    pub(crate) compute_v: RxTriple<C, R>,
 }
