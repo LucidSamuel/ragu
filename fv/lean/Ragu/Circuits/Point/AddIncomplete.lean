@@ -76,15 +76,15 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Out
   )
 
 instance elaborated : ElaboratedCircuit (F p) Inputs Outputs where
-  main := main
+  main
   localLength _ := 12
 
 theorem soundness (curveParams : Spec.CurveParams p) : GeneralFormalCircuit.Soundness (F p) elaborated (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
-    Element.Square.circuit, Element.Square.Spec, Element.Square.Assumptions,
-    Element.DivNonzero.circuit, Element.DivNonzero.Spec, Element.DivNonzero.Assumptions,
-    Element.Mul.circuit, Element.Mul.Spec, Element.Mul.Assumptions
+    Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
 
   obtain ⟨c1, c2, c3, c4⟩ := h_holds

@@ -20,8 +20,7 @@ def main (idx : ℕ) (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
   assertZero (x*y - z)
   return ⟨x, y, z⟩
 
-def Assumptions (_idx : ℕ) (_inputs : Unit) :=
-  True
+def Assumptions (_idx : ℕ) (_inputs : Unit) := True
 
 def Spec (_inputs : Unit) (out_point : Row (F p)) :=
   out_point.x * out_point.y = out_point.z

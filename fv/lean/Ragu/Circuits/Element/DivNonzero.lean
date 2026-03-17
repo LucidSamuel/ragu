@@ -23,14 +23,13 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var field (F p)) := do
 
   return quotient
 
-def Assumptions (input : Inputs (F p)) :=
-  input.y ≠ 0
+def Assumptions (input : Inputs (F p)) := input.y ≠ 0
 
 def Spec (input : Inputs (F p)) (out : field (F p)) :=
   out = input.x / input.y
 
 instance elaborated : ElaboratedCircuit (F p) Inputs field where
-  main := main
+  main
   localLength _ := 3
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
@@ -56,12 +55,6 @@ theorem completeness : Completeness (F p) elaborated Assumptions := by
   · ring
 
 def circuit : FormalCircuit (F p) Inputs field :=
-  {
-    elaborated with
-    Assumptions,
-    Spec,
-    soundness,
-    completeness
-  }
+  { elaborated with Assumptions, Spec, soundness, completeness }
 
 end Ragu.Circuits.Element.DivNonzero

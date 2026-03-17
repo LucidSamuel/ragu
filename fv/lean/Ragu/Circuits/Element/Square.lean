@@ -17,19 +17,18 @@ def main (input : Var Element (F p)) : Circuit (F p) (Var Element (F p)) := do
     wire := ←Mul.circuit ⟨x, x⟩
   }
 
-def Assumptions (_input : Element (F p)) :=
-  True
+def Assumptions (_input : Element (F p)) := True
 
 def Spec (input : Element (F p)) (out : Element (F p)) :=
   out.wire = input.wire^2
 
 instance elaborated : ElaboratedCircuit (F p) Element Element where
-  main := main
+  main
   localLength _ := 3
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
-  simp [circuit_norm, Mul.circuit, Mul.Spec, Mul.Assumptions] at h_holds ⊢
+  simp [circuit_norm, Mul.circuit, Mul.Assumptions, Mul.Spec] at h_holds ⊢
   rw [h_holds]
   ring
 
