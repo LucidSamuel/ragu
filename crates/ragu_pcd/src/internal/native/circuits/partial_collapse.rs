@@ -64,7 +64,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, vec::FixedVec};
+use ragu_primitives::vec::FixedVec;
 
 use core::marker::PhantomData;
 
@@ -163,17 +163,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
         // Sources include:
         // - Child c values from preamble (the children's final revdot claims)
         // - Application and unified k(y) evaluations from error_n
-        let ky = TwoProofKySource {
-            left_raw_c: preamble.left.unified.c.clone(),
-            right_raw_c: preamble.right.unified.c.clone(),
-            left_app: error_n.left.application.clone(),
-            right_app: error_n.right.application.clone(),
-            left_bridge: error_n.left.unified_bridge.clone(),
-            right_bridge: error_n.right.unified_bridge.clone(),
-            left_unified: error_n.left.unified.clone(),
-            right_unified: error_n.right.unified.clone(),
-            zero: Element::zero(dr),
-        };
+        let ky = TwoProofKySource::new(
+            dr,
+            preamble.left.unified.c.clone(),
+            preamble.right.unified.c.clone(),
+            &error_n.left,
+            &error_n.right,
+        );
         let mut ky = ky_values(&ky);
 
         // Verify each group's layer 1 reduction. For each group, fold the

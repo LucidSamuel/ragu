@@ -75,29 +75,34 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                     .witness(dr, preamble_witness.as_ref().map(|w| *w))?;
 
                 let y = Element::alloc(dr, y)?;
-                let left_application_ky = preamble.left.application_ky(dr, &y)?;
-                let right_application_ky = preamble.right.application_ky(dr, &y)?;
                 let (left_unified_ky, left_unified_bridge_ky) =
                     preamble.left.unified_ky_values(dr, &y)?;
                 let (right_unified_ky, right_unified_bridge_ky) =
                     preamble.right.unified_ky_values(dr, &y)?;
 
+                let left_ky = native::stages::error_n::ChildKyOutputs {
+                    application: preamble.left.application_ky(dr, &y)?,
+                    unified: left_unified_ky,
+                    unified_bridge: left_unified_bridge_ky,
+                };
+                let right_ky = native::stages::error_n::ChildKyOutputs {
+                    application: preamble.right.application_ky(dr, &y)?,
+                    unified: right_unified_ky,
+                    unified_bridge: right_unified_bridge_ky,
+                };
+
                 let mu = Element::alloc(dr, mu)?;
                 let nu = Element::alloc(dr, nu)?;
 
                 // Build k(y) values in claim order.
-                let ky = native::claims::TwoProofKySource {
-                    left_raw_c: preamble.left.unified.c.clone(),
-                    right_raw_c: preamble.right.unified.c.clone(),
-                    left_app: left_application_ky.clone(),
-                    right_app: right_application_ky.clone(),
-                    left_bridge: left_unified_bridge_ky.clone(),
-                    right_bridge: right_unified_bridge_ky.clone(),
-                    left_unified: left_unified_ky.clone(),
-                    right_unified: right_unified_ky.clone(),
-                    zero: Element::zero(dr),
-                };
-                let mut ky = native::claims::ky_values(&ky);
+                let ky_source = native::claims::TwoProofKySource::new(
+                    dr,
+                    preamble.left.unified.c.clone(),
+                    preamble.right.unified.c.clone(),
+                    &left_ky,
+                    &right_ky,
+                );
+                let mut ky = native::claims::ky_values(&ky_source);
 
                 let fold_products = fold_revdot::FoldProducts::new(dr, &mu, &nu)?;
 
@@ -114,14 +119,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
                 let ky = KyValues {
                     left: ChildKyValues {
-                        application: *left_application_ky.value().take(),
-                        unified: *left_unified_ky.value().take(),
-                        unified_bridge: *left_unified_bridge_ky.value().take(),
+                        application: *left_ky.application.value().take(),
+                        unified: *left_ky.unified.value().take(),
+                        unified_bridge: *left_ky.unified_bridge.value().take(),
                     },
                     right: ChildKyValues {
-                        application: *right_application_ky.value().take(),
-                        unified: *right_unified_ky.value().take(),
-                        unified_bridge: *right_unified_bridge_ky.value().take(),
+                        application: *right_ky.application.value().take(),
+                        unified: *right_ky.unified.value().take(),
+                        unified_bridge: *right_ky.unified_bridge.value().take(),
                     },
                 };
 

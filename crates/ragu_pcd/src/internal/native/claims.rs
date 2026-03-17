@@ -265,6 +265,10 @@ pub trait KySource {
 /// Chains the $k(y)$ sources in the order required by [`build`],
 /// with `unified_ky` repeated [`NUM_UNIFIED_CIRCUITS`] times,
 /// followed by infinite zeros for stage claims.
+///
+/// The `unified_ky` and `unified_bridge_ky` values are computed by
+/// [`ProofInputs::unified_ky_values`](super::stages::preamble::ProofInputs::unified_ky_values)
+/// via Horner evaluation of the circuit instance polynomial.
 pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     source
         .raw_c()
@@ -284,6 +288,29 @@ pub struct TwoProofKySource<'dr, D: Driver<'dr>> {
     pub left_unified: Element<'dr, D>,
     pub right_unified: Element<'dr, D>,
     pub zero: Element<'dr, D>,
+}
+
+impl<'dr, D: Driver<'dr>> TwoProofKySource<'dr, D> {
+    /// Create a [`TwoProofKySource`] from child k(y) outputs and raw c values.
+    pub fn new(
+        dr: &mut D,
+        left_raw_c: Element<'dr, D>,
+        right_raw_c: Element<'dr, D>,
+        left_ky: &super::stages::error_n::ChildKyOutputs<'dr, D>,
+        right_ky: &super::stages::error_n::ChildKyOutputs<'dr, D>,
+    ) -> Self {
+        Self {
+            left_raw_c,
+            right_raw_c,
+            left_app: left_ky.application.clone(),
+            right_app: right_ky.application.clone(),
+            left_bridge: left_ky.unified_bridge.clone(),
+            right_bridge: right_ky.unified_bridge.clone(),
+            left_unified: left_ky.unified.clone(),
+            right_unified: right_ky.unified.clone(),
+            zero: Element::zero(dr),
+        }
+    }
 }
 
 impl<'dr, D: Driver<'dr>> KySource for TwoProofKySource<'dr, D> {
