@@ -11,16 +11,24 @@ variable {p : ℕ} [Fact p.Prime] [NeZero (2 : F p)]
 
 def main (input : Var Spec.Point (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let ⟨x, y⟩ := input
-  -- Square(x) → x²
+
+  -- delta = 3x^2 / 2y
+  let double_y := y + y
   let ⟨x2⟩ ← subcircuit Element.Square.circuit ⟨x⟩
-  -- DivNonzero(3x², 2y) → delta
-  let delta ← subcircuit Element.DivNonzero.circuit ⟨(3 : F p) * x2, y + y⟩
-  -- Square(delta) → delta²
+  let x2_scaled := (3 : F p) * x2
+  let delta ← subcircuit Element.DivNonzero.circuit ⟨x2_scaled, double_y⟩
+
+  -- x3 = delta^2 - 2x
+  let double_x := x + x
   let ⟨delta2⟩ ← subcircuit Element.Square.circuit ⟨delta⟩
-  let x3 := delta2 - (x + x)
-  -- Mul(delta, x - x3)
-  let y3_part ← subcircuit Element.Mul.circuit ⟨delta, x - x3⟩
-  return ⟨x3, y3_part - y⟩
+  let x3 := delta2 - double_x
+
+  -- y3 = delta * (x - x3) - y
+  let x_sub_x3 := x - x3
+  let delta_x_sub_3 ← subcircuit Element.Mul.circuit ⟨delta, x_sub_x3⟩
+  let y3 := delta_x_sub_3 - y
+
+  return ⟨x3, y3⟩
 
 def Assumptions (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (_data : ProverData (F p)) :=
   input.isOnCurve curveParams ∧
