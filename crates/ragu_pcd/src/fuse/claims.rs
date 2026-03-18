@@ -206,6 +206,11 @@ impl<'rx, C: Cycle, R: Rank> Source for FuseProofSource<'rx, C, R> {
     }
 }
 
+/// [`Builder`](crate::internal::claims::Builder) specialized for the fuse pipeline, where `A`
+/// polynomials carry [`CommitmentDecomposition`]s via [`TrackedPoly`].
+pub(super) type FuseBuilder<'m, 'rx, F, R> =
+    Builder<'m, 'rx, TrackedPoly<'rx, FuseAtom, F, R>, F, R>;
+
 /// Fuse-path [`Processor`] implementation.
 ///
 /// Each method pairs the polynomial with a [`CommitmentDecomposition`] that

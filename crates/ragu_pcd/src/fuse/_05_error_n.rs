@@ -23,14 +23,14 @@ use rand::CryptoRng;
 use crate::{
     Application,
     internal::{
-        claims, fold_revdot, native,
+        fold_revdot, native,
         native::stages::error_n::{ChildKyValues, KyValues},
         nested,
     },
     proof,
 };
 
-use super::claims::{FuseAtom, TrackedPoly};
+use super::claims::{FuseAtom, FuseBuilder, TrackedPoly};
 
 type NativeN = <native::RevdotParameters as fold_revdot::Parameters>::N;
 
@@ -40,13 +40,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         error_m_witness: &native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims: claims::Builder<
-            '_,
-            'rx,
-            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
-            C::CircuitField,
-            R,
-        >,
+        claims: FuseBuilder<'_, 'rx, C::CircuitField, R>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
         nu: &Element<'dr, D>,

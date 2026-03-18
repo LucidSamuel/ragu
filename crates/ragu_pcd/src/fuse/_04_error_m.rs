@@ -20,7 +20,7 @@ use crate::{
     proof,
 };
 
-use super::claims::{FuseAtom, FuseProofSource, TrackedPoly};
+use super::claims::{FuseBuilder, FuseProofSource};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_errors_m<'dr, 'rx, D, RNG: CryptoRng>(
@@ -33,13 +33,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::ErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<
-            '_,
-            'rx,
-            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
-            C::CircuitField,
-            R,
-        >,
+        FuseBuilder<'_, 'rx, C::CircuitField, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
@@ -78,13 +72,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
     ) -> Result<(
         proof::NativeErrorM<C, R>,
         native::stages::error_m::Witness<C, native::RevdotParameters>,
-        claims::Builder<
-            '_,
-            'rx,
-            TrackedPoly<'rx, FuseAtom, C::CircuitField, R>,
-            C::CircuitField,
-            R,
-        >,
+        FuseBuilder<'_, 'rx, C::CircuitField, R>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,
