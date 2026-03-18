@@ -298,8 +298,14 @@ mod tests {
         )> {
             let left_enc = Encoded::new(dr, left.clone())?;
             let right_enc = Encoded::new(dr, right.clone())?;
-            let output_enc = Encoded::new(dr, left.clone())?;
-            Ok(((left_enc, right_enc, output_enc), left))
+            let mut sponge = Sponge::new(dr, Pasta::circuit_poseidon(Pasta::baked()));
+            sponge.absorb(dr, left_enc.as_gadget())?;
+            sponge.absorb(dr, right_enc.as_gadget())?;
+            let output = sponge.squeeze(dr)?;
+            let output_value = output.value().map(|v| *v);
+            let output_enc = Encoded::from_gadget(output);
+
+            Ok(((left_enc, right_enc, output_enc), output_value))
         }
     }
 
