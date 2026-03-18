@@ -11,7 +11,10 @@
 #![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_primitives` requires the `alloc` feature to be enabled.");
 extern crate alloc;
+
 extern crate self as ragu_primitives;
 
 mod boolean;

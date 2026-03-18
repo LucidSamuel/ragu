@@ -24,6 +24,8 @@
 #![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
+#[cfg(not(feature = "alloc"))]
+compile_error!("`ragu_pasta` requires the `alloc` feature to be enabled.");
 extern crate alloc;
 
 #[macro_use]
