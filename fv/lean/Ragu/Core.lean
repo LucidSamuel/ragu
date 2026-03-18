@@ -24,7 +24,7 @@ instance : Field (F q) := inferInstance
 instance : NeZero (2 : F p) where
   out := by native_decide
 
-instance : NeZero (2 : F p) where
+instance : NeZero (2 : F q) where
   out := by native_decide
 
 end Ragu.Core.Primes

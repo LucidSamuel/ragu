@@ -32,7 +32,7 @@ theorem soundness (curveParams : Spec.CurveParams p) : Soundness (F p) (elaborat
   exact h_assumptions
 
 theorem completeness (curveParams : Spec.CurveParams p) : Completeness (F p) (elaborated curveParams) (Assumptions curveParams) := by
-  sorry
+  circuit_proof_start
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Spec.Point Spec.Point :=
   {
