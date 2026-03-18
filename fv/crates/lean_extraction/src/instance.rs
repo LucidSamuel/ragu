@@ -135,13 +135,20 @@ pub trait CircuitInstance {
         path
     }
 
+    fn generated_file(module_name: &str, autogen_root: impl AsRef<Path>) -> (PathBuf, String) {
+        (
+            Self::autogen_file_path(module_name, autogen_root),
+            Self::render_generated(module_name),
+        )
+    }
+
     /// Run the circuit and write the generated Lean module to the autogen tree.
     fn export(module_name: &str, autogen_root: impl AsRef<Path>) -> std::io::Result<PathBuf> {
-        let path = Self::autogen_file_path(module_name, autogen_root);
+        let (path, contents) = Self::generated_file(module_name, autogen_root);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&path, Self::render_generated(module_name))?;
+        fs::write(&path, contents)?;
         Ok(path)
     }
 }
