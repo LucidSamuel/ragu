@@ -24,9 +24,9 @@ with dummy accumulator inputs, forming a lopsided binary tree structure.
 The primary type that applications interact with is `Pcd` (proof-carrying data):
 
 ```rust
-pub struct Pcd<'source, C: Cycle, R: Rank, H: Header<C::CircuitField>> {
+pub struct Pcd<C: Cycle, R: Rank, H: Header<C::CircuitField>> {
     proof: Proof<C, R>,
-    data: H::Data<'source>,
+    data: H::Data,
 }
 ```
 
