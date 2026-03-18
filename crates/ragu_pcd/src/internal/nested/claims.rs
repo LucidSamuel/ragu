@@ -152,8 +152,8 @@ pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::nested::{InternalCircuitIndex, NUM_ENDOSCALING_POINTS};
-    use crate::components::endoscalar::NumStepsLen;
+    use crate::internal::endoscalar::NumStepsLen;
+    use crate::internal::nested::{InternalCircuitIndex, NUM_ENDOSCALING_POINTS};
     use alloc::vec::Vec;
     use ragu_primitives::vec::Len;
 
@@ -173,7 +173,7 @@ mod tests {
     /// Mock Source providing a single proof with unique rx tags.
     struct SingleProofSource;
 
-    impl super::super::Source for SingleProofSource {
+    impl Source for SingleProofSource {
         type RxComponent = RxComponent;
         type Rx = (RxComponent, usize);
         type AppCircuitId = ();

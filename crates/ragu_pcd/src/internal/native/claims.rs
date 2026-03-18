@@ -340,7 +340,7 @@ impl<'dr, D: Driver<'dr>> KySource for TwoProofKySource<'dr, D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::circuits::native::InternalCircuitIndex;
+    use crate::internal::native::InternalCircuitIndex;
     use alloc::{vec, vec::Vec};
 
     /// Mock KySource using string labels to trace ordering.
@@ -373,7 +373,7 @@ mod tests {
     /// Mock Source providing two proofs with tagged rx values.
     struct TwoProofSource;
 
-    impl super::super::Source for TwoProofSource {
+    impl Source for TwoProofSource {
         type RxComponent = RxComponent;
         type Rx = (&'static str, usize);
         type AppCircuitId = usize;
@@ -382,17 +382,17 @@ mod tests {
             let label = match component {
                 RxComponent::AbA => "AbA",
                 RxComponent::AbB => "AbB",
-                RxComponent::Application => "Application",
-                RxComponent::Hashes1 => "Hashes1",
-                RxComponent::Hashes2 => "Hashes2",
-                RxComponent::PartialCollapse => "PartialCollapse",
-                RxComponent::FullCollapse => "FullCollapse",
-                RxComponent::ComputeV => "ComputeV",
-                RxComponent::Preamble => "Preamble",
-                RxComponent::ErrorM => "ErrorM",
-                RxComponent::ErrorN => "ErrorN",
-                RxComponent::Query => "Query",
-                RxComponent::Eval => "Eval",
+                RxComponent::Rx(RxIndex::Application) => "Application",
+                RxComponent::Rx(RxIndex::Hashes1) => "Hashes1",
+                RxComponent::Rx(RxIndex::Hashes2) => "Hashes2",
+                RxComponent::Rx(RxIndex::PartialCollapse) => "PartialCollapse",
+                RxComponent::Rx(RxIndex::FullCollapse) => "FullCollapse",
+                RxComponent::Rx(RxIndex::ComputeV) => "ComputeV",
+                RxComponent::Rx(RxIndex::Preamble) => "Preamble",
+                RxComponent::Rx(RxIndex::ErrorM) => "ErrorM",
+                RxComponent::Rx(RxIndex::ErrorN) => "ErrorN",
+                RxComponent::Rx(RxIndex::Query) => "Query",
+                RxComponent::Rx(RxIndex::Eval) => "Eval",
             };
             [(label, 0), (label, 1)].into_iter()
         }
@@ -528,14 +528,14 @@ mod tests {
             ("internal_circuit", "FullCollapseCircuit"),
             ("internal_circuit", "ComputeVCircuit"),
             ("internal_circuit", "ComputeVCircuit"),
-            ("stage", "ErrorMFinalStaged"),
-            ("stage", "ErrorNFinalStaged"),
-            ("stage", "EvalFinalStaged"),
             ("stage", "PreambleStage"),
             ("stage", "ErrorMStage"),
             ("stage", "ErrorNStage"),
             ("stage", "QueryStage"),
             ("stage", "EvalStage"),
+            ("stage", "ErrorMFinalStaged"),
+            ("stage", "ErrorNFinalStaged"),
+            ("stage", "EvalFinalStaged"),
         ];
 
         assert_eq!(names, expected);
