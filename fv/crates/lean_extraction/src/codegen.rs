@@ -91,7 +91,7 @@ def exportedOperations (input_var : Var (ProvableVector field inputLen) (F p)) :
 }
 
 pub fn render_exported_output<F: Field + std::fmt::Debug>(wires: &[Expr<F>]) -> String {
-    let mut output = format!(
+    let mut output = String::from(
         "set_option linter.unusedVariables false in\n\
 @[reducible]\n\
 def exportedOutput (input_var : Var (ProvableVector field inputLen) (F p)) : Vector (Expression (F p)) outputLen := #v[\n"
