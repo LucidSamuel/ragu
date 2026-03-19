@@ -16,7 +16,7 @@ use ragu_circuits::polynomials::structured;
 #[cfg(feature = "std")]
 use rand::{SeedableRng, rngs::StdRng};
 
-pub(crate) type R = ragu_circuits::polynomials::ProductionRank;
+pub type R = ragu_circuits::polynomials::ProductionRank;
 
 use ff::PrimeField;
 use ragu_circuits::polynomials::Rank;
@@ -335,9 +335,10 @@ fn seed_behavioral_proof() -> &'static crate::Proof<Pasta, R> {
     CACHED.get_or_init(|| {
         let app = behavioral_app();
         let mut rng = StdRng::seed_from_u64(502);
-        app.seed(&mut rng, step::internal::trivial::Trivial::new(), ())
-            .unwrap()
-            .0
+        let (pcd, _aux) = app
+            .seed(&mut rng, step::internal::trivial::Trivial::new(), ())
+            .unwrap();
+        pcd.into_parts().0
     })
 }
 
@@ -424,14 +425,16 @@ fn deterministic_internal_circuit_synthesis() {
         .unwrap();
 
     let mut rng1 = StdRng::seed_from_u64(502_100);
-    let (proof1, _) = app
+    let (pcd1, _) = app
         .seed(&mut rng1, step::internal::trivial::Trivial::new(), ())
         .unwrap();
+    let (proof1, _) = pcd1.into_parts();
 
     let mut rng2 = StdRng::seed_from_u64(502_100);
-    let (proof2, _) = app
+    let (pcd2, _) = app
         .seed(&mut rng2, step::internal::trivial::Trivial::new(), ())
         .unwrap();
+    let (proof2, _) = pcd2.into_parts();
 
     let c1 = &proof1.circuits;
     let c2 = &proof2.circuits;
@@ -461,7 +464,13 @@ fn seeded_internal_circuits_are_nontrivial() {
     let c = &proof.circuits;
     assert!(is_nonzero(&c.hashes_1.rx), "hashes_1 is trivial");
     assert!(is_nonzero(&c.hashes_2.rx), "hashes_2 is trivial");
-    assert!(is_nonzero(&c.inner_collapse.rx), "inner_collapse is trivial");
-    assert!(is_nonzero(&c.outer_collapse.rx), "outer_collapse is trivial");
+    assert!(
+        is_nonzero(&c.inner_collapse.rx),
+        "inner_collapse is trivial"
+    );
+    assert!(
+        is_nonzero(&c.outer_collapse.rx),
+        "outer_collapse is trivial"
+    );
     assert!(is_nonzero(&c.compute_v.rx), "compute_v is trivial");
 }
