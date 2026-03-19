@@ -174,11 +174,11 @@ mod tests {
     struct SingleProofSource;
 
     impl Source for SingleProofSource {
-        type RxComponent = RxComponent;
-        type Rx = (RxComponent, usize);
+        type RxComponent = RxIndex;
+        type Rx = (RxIndex, usize);
         type AppCircuitId = ();
 
-        fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+        fn rx(&self, component: RxIndex) -> impl Iterator<Item = Self::Rx> {
             core::iter::once((component, 0))
         }
 
@@ -194,18 +194,26 @@ mod tests {
         calls: Vec<(&'static str, &'static str, usize)>,
     }
 
-    impl Processor<(RxComponent, usize)> for RecordingProcessor {
+    impl Processor<(RxIndex, usize)> for RecordingProcessor {
         fn internal_circuit(
             &mut self,
             id: InternalCircuitIndex,
-            rxs: impl Iterator<Item = (RxComponent, usize)>,
+            rxs: impl Iterator<Item = (RxIndex, usize)>,
         ) {
             let rx_count = rxs.count();
             let name = match id {
+                InternalCircuitIndex::EndoscalingStep(_) => "EndoscalingStep",
                 InternalCircuitIndex::EndoscalarStage => "EndoscalarStage",
                 InternalCircuitIndex::PointsStage => "PointsStage",
                 InternalCircuitIndex::PointsFinalStaged => "PointsFinalStaged",
-                InternalCircuitIndex::EndoscalingStep(_) => "EndoscalingStep",
+                InternalCircuitIndex::BridgePreamble => "BridgePreamble",
+                InternalCircuitIndex::BridgeSPrime => "BridgeSPrime",
+                InternalCircuitIndex::BridgeInnerError => "BridgeInnerError",
+                InternalCircuitIndex::BridgeOuterError => "BridgeOuterError",
+                InternalCircuitIndex::BridgeAB => "BridgeAB",
+                InternalCircuitIndex::BridgeQuery => "BridgeQuery",
+                InternalCircuitIndex::BridgeF => "BridgeF",
+                InternalCircuitIndex::BridgeEval => "BridgeEval",
             };
             self.calls.push(("circuit", name, rx_count));
         }
@@ -213,14 +221,22 @@ mod tests {
         fn stage(
             &mut self,
             id: InternalCircuitIndex,
-            rxs: impl Iterator<Item = (RxComponent, usize)>,
+            rxs: impl Iterator<Item = (RxIndex, usize)>,
         ) -> Result<()> {
             let rx_count = rxs.count();
             let name = match id {
+                InternalCircuitIndex::EndoscalingStep(_) => "EndoscalingStep",
                 InternalCircuitIndex::EndoscalarStage => "EndoscalarStage",
                 InternalCircuitIndex::PointsStage => "PointsStage",
                 InternalCircuitIndex::PointsFinalStaged => "PointsFinalStaged",
-                InternalCircuitIndex::EndoscalingStep(_) => "EndoscalingStep",
+                InternalCircuitIndex::BridgePreamble => "BridgePreamble",
+                InternalCircuitIndex::BridgeSPrime => "BridgeSPrime",
+                InternalCircuitIndex::BridgeInnerError => "BridgeInnerError",
+                InternalCircuitIndex::BridgeOuterError => "BridgeOuterError",
+                InternalCircuitIndex::BridgeAB => "BridgeAB",
+                InternalCircuitIndex::BridgeQuery => "BridgeQuery",
+                InternalCircuitIndex::BridgeF => "BridgeF",
+                InternalCircuitIndex::BridgeEval => "BridgeEval",
             };
             self.calls.push(("stage", name, rx_count));
             Ok(())
@@ -263,22 +279,34 @@ mod tests {
             assert_eq!(call.1, "EndoscalingStep");
         }
 
-        // Next 3 calls should be stage calls
+        // Next 11 calls should be stage calls (3 original + 8 bridge)
         assert_eq!(processor.calls[num_steps], ("stage", "EndoscalarStage", 1));
         assert_eq!(processor.calls[num_steps + 1], ("stage", "PointsStage", 1));
         assert_eq!(
-            processor.calls[num_steps + 2].0,
-            "stage",
-            "third stage call"
-        );
-        assert_eq!(
-            processor.calls[num_steps + 2].1,
-            "PointsFinalStaged",
+            processor.calls[num_steps + 2],
+            ("stage", "PointsFinalStaged", num_steps),
             "third stage is PointsFinalStaged"
         );
+        assert_eq!(
+            processor.calls[num_steps + 3],
+            ("stage", "BridgePreamble", 1)
+        );
+        assert_eq!(processor.calls[num_steps + 4], ("stage", "BridgeSPrime", 1));
+        assert_eq!(
+            processor.calls[num_steps + 5],
+            ("stage", "BridgeInnerError", 1)
+        );
+        assert_eq!(
+            processor.calls[num_steps + 6],
+            ("stage", "BridgeOuterError", 1)
+        );
+        assert_eq!(processor.calls[num_steps + 7], ("stage", "BridgeAB", 1));
+        assert_eq!(processor.calls[num_steps + 8], ("stage", "BridgeQuery", 1));
+        assert_eq!(processor.calls[num_steps + 9], ("stage", "BridgeF", 1));
+        assert_eq!(processor.calls[num_steps + 10], ("stage", "BridgeEval", 1));
 
-        // Total calls: num_steps circuits + 3 stages
-        assert_eq!(processor.calls.len(), num_steps + 3);
+        // Total calls: num_steps circuits + 11 stages
+        assert_eq!(processor.calls.len(), num_steps + 11);
         Ok(())
     }
 

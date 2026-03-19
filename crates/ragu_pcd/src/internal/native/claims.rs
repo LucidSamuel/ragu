@@ -385,12 +385,12 @@ mod tests {
                 RxComponent::Rx(RxIndex::Application) => "Application",
                 RxComponent::Rx(RxIndex::Hashes1) => "Hashes1",
                 RxComponent::Rx(RxIndex::Hashes2) => "Hashes2",
-                RxComponent::Rx(RxIndex::PartialCollapse) => "PartialCollapse",
-                RxComponent::Rx(RxIndex::FullCollapse) => "FullCollapse",
+                RxComponent::Rx(RxIndex::InnerCollapse) => "InnerCollapse",
+                RxComponent::Rx(RxIndex::OuterCollapse) => "OuterCollapse",
                 RxComponent::Rx(RxIndex::ComputeV) => "ComputeV",
                 RxComponent::Rx(RxIndex::Preamble) => "Preamble",
-                RxComponent::Rx(RxIndex::ErrorM) => "ErrorM",
-                RxComponent::Rx(RxIndex::ErrorN) => "ErrorN",
+                RxComponent::Rx(RxIndex::InnerError) => "InnerError",
+                RxComponent::Rx(RxIndex::OuterError) => "OuterError",
                 RxComponent::Rx(RxIndex::Query) => "Query",
                 RxComponent::Rx(RxIndex::Eval) => "Eval",
             };
@@ -418,17 +418,17 @@ mod tests {
     fn ici_name(id: InternalCircuitIndex) -> &'static str {
         match id {
             InternalCircuitIndex::PreambleStage => "PreambleStage",
-            InternalCircuitIndex::ErrorMStage => "ErrorMStage",
-            InternalCircuitIndex::ErrorNStage => "ErrorNStage",
+            InternalCircuitIndex::InnerErrorStage => "InnerErrorStage",
+            InternalCircuitIndex::OuterErrorStage => "OuterErrorStage",
             InternalCircuitIndex::QueryStage => "QueryStage",
             InternalCircuitIndex::EvalStage => "EvalStage",
-            InternalCircuitIndex::ErrorMFinalStaged => "ErrorMFinalStaged",
-            InternalCircuitIndex::ErrorNFinalStaged => "ErrorNFinalStaged",
+            InternalCircuitIndex::InnerErrorFinalStaged => "InnerErrorFinalStaged",
+            InternalCircuitIndex::OuterErrorFinalStaged => "OuterErrorFinalStaged",
             InternalCircuitIndex::EvalFinalStaged => "EvalFinalStaged",
             InternalCircuitIndex::Hashes1Circuit => "Hashes1Circuit",
             InternalCircuitIndex::Hashes2Circuit => "Hashes2Circuit",
-            InternalCircuitIndex::PartialCollapseCircuit => "PartialCollapseCircuit",
-            InternalCircuitIndex::FullCollapseCircuit => "FullCollapseCircuit",
+            InternalCircuitIndex::InnerCollapseCircuit => "InnerCollapseCircuit",
+            InternalCircuitIndex::OuterCollapseCircuit => "OuterCollapseCircuit",
             InternalCircuitIndex::ComputeVCircuit => "ComputeVCircuit",
         }
     }
@@ -511,7 +511,7 @@ mod tests {
 
         // Expected order (2 proofs each):
         // 2 raw claims, 2 app circuits,
-        // 2 hashes_1, 2 hashes_2, 2 partial_collapse, 2 full_collapse, 2 compute_v,
+        // 2 hashes_1, 2 hashes_2, 2 inner_collapse, 2 outer_collapse, 2 compute_v,
         // 8 stages
         let expected: Vec<(&str, &str)> = vec![
             ("raw", "raw"),
@@ -522,19 +522,19 @@ mod tests {
             ("internal_circuit", "Hashes1Circuit"),
             ("internal_circuit", "Hashes2Circuit"),
             ("internal_circuit", "Hashes2Circuit"),
-            ("internal_circuit", "PartialCollapseCircuit"),
-            ("internal_circuit", "PartialCollapseCircuit"),
-            ("internal_circuit", "FullCollapseCircuit"),
-            ("internal_circuit", "FullCollapseCircuit"),
+            ("internal_circuit", "InnerCollapseCircuit"),
+            ("internal_circuit", "InnerCollapseCircuit"),
+            ("internal_circuit", "OuterCollapseCircuit"),
+            ("internal_circuit", "OuterCollapseCircuit"),
             ("internal_circuit", "ComputeVCircuit"),
             ("internal_circuit", "ComputeVCircuit"),
             ("stage", "PreambleStage"),
-            ("stage", "ErrorMStage"),
-            ("stage", "ErrorNStage"),
+            ("stage", "InnerErrorStage"),
+            ("stage", "OuterErrorStage"),
             ("stage", "QueryStage"),
             ("stage", "EvalStage"),
-            ("stage", "ErrorMFinalStaged"),
-            ("stage", "ErrorNFinalStaged"),
+            ("stage", "InnerErrorFinalStaged"),
+            ("stage", "OuterErrorFinalStaged"),
             ("stage", "EvalFinalStaged"),
         ];
 
@@ -563,12 +563,12 @@ mod tests {
         // hashes_2: 2 rx each (Hashes2 + ErrorN)
         assert_eq!(internal[2], ("Hashes2Circuit", 2));
         assert_eq!(internal[3], ("Hashes2Circuit", 2));
-        // partial_collapse: 4 rx each (PC + Preamble + ErrorM + ErrorN)
-        assert_eq!(internal[4], ("PartialCollapseCircuit", 4));
-        assert_eq!(internal[5], ("PartialCollapseCircuit", 4));
-        // full_collapse: 3 rx each (FC + Preamble + ErrorN)
-        assert_eq!(internal[6], ("FullCollapseCircuit", 3));
-        assert_eq!(internal[7], ("FullCollapseCircuit", 3));
+        // inner_collapse: 4 rx each (IC + Preamble + InnerError + OuterError)
+        assert_eq!(internal[4], ("InnerCollapseCircuit", 4));
+        assert_eq!(internal[5], ("InnerCollapseCircuit", 4));
+        // outer_collapse: 3 rx each (OC + Preamble + OuterError)
+        assert_eq!(internal[6], ("OuterCollapseCircuit", 3));
+        assert_eq!(internal[7], ("OuterCollapseCircuit", 3));
         // compute_v: 4 rx each (CV + Preamble + Query + Eval)
         assert_eq!(internal[8], ("ComputeVCircuit", 4));
         assert_eq!(internal[9], ("ComputeVCircuit", 4));
