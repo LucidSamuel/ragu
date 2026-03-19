@@ -240,13 +240,18 @@ mod nested {
 #[cfg(test)]
 mod tests {
     use ff::Field;
-    use ragu_circuits::{polynomials::ProductionRank, registry::CircuitIndex};
+    use ragu_arithmetic::{Cycle, FixedGenerators};
+    use ragu_circuits::polynomials::ProductionRank;
     use ragu_pasta::Pasta;
+    use ragu_primitives::{GadgetExt, Point};
     use rand::{SeedableRng, rngs::StdRng};
 
     use super::*;
     use crate::ApplicationBuilder;
+    use crate::step::internal::trivial::Trivial;
 
+    type CF = <Pasta as Cycle>::CircuitField;
+    type NestedCurve = <Pasta as Cycle>::NestedCurve;
     type TestR = ProductionRank;
     const HEADER_SIZE: usize = 4;
 
@@ -257,51 +262,416 @@ mod tests {
             .expect("failed to create test application")
     }
 
-    #[test]
-    fn verify_rejects_invalid_circuit_id() {
+    fn create_seeded_proof(
+        seed: u64,
+    ) -> (
+        crate::Application<'static, Pasta, TestR, HEADER_SIZE>,
+        crate::proof::Proof<Pasta, TestR>,
+    ) {
         let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
-
-        // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
-
-        // Corrupt the circuit_id to be outside the registry domain
-        proof.circuit_id = CircuitIndex::new(u32::MAX as usize);
-
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verify should reject invalid circuit_id");
+        let mut rng = StdRng::seed_from_u64(seed);
+        let (pcd, _aux) = app
+            .seed(&mut rng, Trivial::new(), ())
+            .expect("seeded proof should not fail");
+        let (proof, _data) = pcd.into_parts();
+        (app, proof)
     }
 
     #[test]
-    fn verify_rejects_wrong_left_header_size() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
-
-        // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
-
-        // Corrupt left_header to have wrong size
-        proof.left_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE + 1];
-
+    fn verify_accepts_seeded_proof() {
+        let (app, proof) = create_seeded_proof(42);
+        let mut rng = StdRng::seed_from_u64(9999);
         let pcd = proof.carry::<()>(());
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verify should reject wrong left_header size");
+        assert!(result, "a freshly seeded proof must be accepted");
     }
 
     #[test]
-    fn verify_rejects_wrong_right_header_size() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
+    fn verify_transcript_replay_challenges_match() {
+        let pasta = Pasta::baked();
+        let (_app, proof) = create_seeded_proof(7);
 
-        // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
+        let dr = &mut ragu_core::drivers::emulator::Emulator::execute();
+        let poseidon = Pasta::circuit_poseidon(pasta);
+        let mut t = crate::internal::transcript::Transcript::new(dr, poseidon, crate::RAGU_TAG)
+            .expect("transcript init should not fail");
 
-        // Corrupt right_header to have wrong size
-        proof.right_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE - 1];
+        let preamble_commit =
+            Point::<_, NestedCurve>::constant(dr, proof.bridge_preamble_commitment())
+                .expect("point constant should not fail");
+        preamble_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let w = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
 
+        let s_prime_commit =
+            Point::<_, NestedCurve>::constant(dr, proof.bridge_s_prime_commitment())
+                .expect("point constant should not fail");
+        s_prime_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let y = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+        let z = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let inner_error_commit =
+            Point::<_, NestedCurve>::constant(dr, proof.bridge_inner_error_commitment())
+                .expect("point constant should not fail");
+        inner_error_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let mu = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+        let nu = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let outer_error_commit =
+            Point::<_, NestedCurve>::constant(dr, proof.bridge_outer_error_commitment())
+                .expect("point constant should not fail");
+        outer_error_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let mu_prime = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+        let nu_prime = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let ab_commit = Point::<_, NestedCurve>::constant(dr, proof.bridge_ab_commitment())
+            .expect("point constant should not fail");
+        ab_commit.write(dr, &mut t).expect("write should not fail");
+        let x = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let query_commit = Point::<_, NestedCurve>::constant(dr, proof.bridge_query_commitment())
+            .expect("point constant should not fail");
+        query_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let alpha = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let f_commit = Point::<_, NestedCurve>::constant(dr, proof.bridge_f_commitment())
+            .expect("point constant should not fail");
+        f_commit.write(dr, &mut t).expect("write should not fail");
+        let u = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        let eval_commit = Point::<_, NestedCurve>::constant(dr, proof.bridge_eval_commitment())
+            .expect("point constant should not fail");
+        eval_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let pre_beta = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        assert_eq!(w, proof.w, "w mismatch");
+        assert_eq!(y, proof.y, "y mismatch");
+        assert_eq!(z, proof.z, "z mismatch");
+        assert_eq!(mu, proof.mu, "mu mismatch");
+        assert_eq!(nu, proof.nu, "nu mismatch");
+        assert_eq!(mu_prime, proof.mu_prime, "mu_prime mismatch");
+        assert_eq!(nu_prime, proof.nu_prime, "nu_prime mismatch");
+        assert_eq!(x, proof.x, "x mismatch");
+        assert_eq!(alpha, proof.alpha, "alpha mismatch");
+        assert_eq!(u, proof.u, "u mismatch");
+        assert_eq!(pre_beta, proof.pre_beta, "pre_beta mismatch");
+    }
+
+    macro_rules! seeded_rejects {
+        ($test_name:ident, $seed:expr, |$proof:ident| $corrupt:expr) => {
+            #[test]
+            fn $test_name() {
+                let (app, mut $proof) = create_seeded_proof($seed);
+                $corrupt;
+                let mut rng = StdRng::seed_from_u64(99999);
+                let pcd = $proof.carry::<()>(());
+                let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+                assert!(
+                    !result,
+                    concat!(stringify!($test_name), ": verifier must reject")
+                );
+            }
+        };
+    }
+
+    seeded_rejects!(rejects_corrupt_w_challenge, 1, |proof| {
+        proof.w = CF::random(&mut StdRng::seed_from_u64(777))
+    });
+
+    seeded_rejects!(rejects_corrupt_y_challenge, 2, |proof| {
+        proof.y = CF::random(&mut StdRng::seed_from_u64(778))
+    });
+
+    seeded_rejects!(rejects_corrupt_z_challenge, 3, |proof| {
+        proof.z = CF::random(&mut StdRng::seed_from_u64(779))
+    });
+
+    seeded_rejects!(rejects_corrupt_mu_challenge, 4, |proof| {
+        proof.mu = CF::random(&mut StdRng::seed_from_u64(780))
+    });
+
+    seeded_rejects!(rejects_corrupt_nu_challenge, 5, |proof| {
+        proof.nu = CF::random(&mut StdRng::seed_from_u64(781))
+    });
+
+    seeded_rejects!(rejects_corrupt_mu_prime_challenge, 6, |proof| {
+        proof.mu_prime = CF::random(&mut StdRng::seed_from_u64(782))
+    });
+
+    seeded_rejects!(rejects_corrupt_nu_prime_challenge, 7, |proof| {
+        proof.nu_prime = CF::random(&mut StdRng::seed_from_u64(783))
+    });
+
+    seeded_rejects!(rejects_corrupt_x_challenge, 8, |proof| {
+        proof.x = CF::random(&mut StdRng::seed_from_u64(784))
+    });
+
+    seeded_rejects!(rejects_corrupt_alpha_challenge, 9, |proof| {
+        proof.alpha = CF::random(&mut StdRng::seed_from_u64(785))
+    });
+
+    seeded_rejects!(rejects_corrupt_u_challenge, 10, |proof| {
+        proof.u = CF::random(&mut StdRng::seed_from_u64(786))
+    });
+
+    seeded_rejects!(rejects_corrupt_pre_beta_challenge, 11, |proof| {
+        proof.pre_beta = CF::random(&mut StdRng::seed_from_u64(787))
+    });
+
+    seeded_rejects!(rejects_corrupt_preamble_bridge_commitment, 21, |proof| {
+        proof.bridge_preamble_commitment = *Pasta::nested_generators(Pasta::baked()).h()
+    });
+
+    seeded_rejects!(rejects_corrupt_s_prime_bridge_commitment, 22, |proof| {
+        proof.bridge_s_prime_commitment = *Pasta::nested_generators(Pasta::baked()).h()
+    });
+
+    seeded_rejects!(rejects_corrupt_inner_error_bridge_commitment, 23, |proof| {
+        proof.bridge_inner_error_commitment = *Pasta::nested_generators(Pasta::baked()).h()
+    });
+
+    seeded_rejects!(rejects_corrupt_f_bridge_commitment, 27, |proof| {
+        proof.bridge_f_commitment = *Pasta::nested_generators(Pasta::baked()).h()
+    });
+
+    seeded_rejects!(rejects_corrupt_preamble_native_rx, 29, |proof| {
+        proof.native_preamble_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_inner_error_native_rx, 30, |proof| {
+        proof.native_inner_error_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_outer_error_native_rx, 31, |proof| {
+        proof.native_outer_error_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_query_native_rx, 32, |proof| {
+        proof.native_query_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_eval_native_rx, 33, |proof| {
+        proof.native_eval_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_application_rx, 34, |proof| {
+        proof.native_application_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_hashes_1_rx, 35, |proof| {
+        proof.native_hashes_1_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_hashes_2_rx, 36, |proof| {
+        proof.native_hashes_2_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_inner_collapse_rx, 37, |proof| {
+        proof.native_inner_collapse_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_outer_collapse_rx, 38, |proof| {
+        proof.native_outer_collapse_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_compute_v_rx, 39, |proof| {
+        proof.native_compute_v_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_registry_xy_poly, 40, |proof| {
+        proof.native_registry_xy_poly = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_p_poly, 41, |proof| {
+        proof.native_p_poly = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_nested_endoscalar_rx, 42, |proof| {
+        proof.nested_endoscalar_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_nested_points_rx, 43, |proof| {
+        proof.nested_points_rx = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    // NB-1: Early-return guard tests (circuit_id and header size)
+    seeded_rejects!(rejects_corrupt_circuit_id, 50, |proof| {
+        proof.circuit_id = CircuitIndex::new(9999)
+    });
+
+    seeded_rejects!(rejects_corrupt_left_header_length, 51, |proof| {
+        proof.left_header.push(CF::ZERO)
+    });
+
+    seeded_rejects!(rejects_corrupt_right_header_length, 52, |proof| {
+        proof.right_header.pop();
+    });
+
+    // NB-2: native_a_poly and native_b_poly feed the revdot claim
+    seeded_rejects!(rejects_corrupt_native_a_poly, 53, |proof| {
+        proof.native_a_poly = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    seeded_rejects!(rejects_corrupt_native_b_poly, 54, |proof| {
+        proof.native_b_poly = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    // NB-3: Bridge rx polynomials (direct polynomial corruption)
+    // These document verification gaps: the verifier does not yet independently
+    // validate bridge rx polynomials. Un-ignore once verify() gains bridge
+    // polynomial checks.
+    #[test]
+    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
+    fn rejects_corrupt_bridge_preamble_rx() {
+        let (app, mut proof) = create_seeded_proof(55);
+        proof.bridge_preamble_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
+        let mut rng = StdRng::seed_from_u64(99999);
         let pcd = proof.carry::<()>(());
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verify should reject wrong right_header size");
+        assert!(!result, "verifier must reject corrupt bridge_preamble_rx");
+    }
+
+    #[test]
+    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
+    fn rejects_corrupt_bridge_s_prime_rx() {
+        let (app, mut proof) = create_seeded_proof(56);
+        proof.bridge_s_prime_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
+        let mut rng = StdRng::seed_from_u64(99999);
+        let pcd = proof.carry::<()>(());
+        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+        assert!(!result, "verifier must reject corrupt bridge_s_prime_rx");
+    }
+
+    #[test]
+    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
+    fn rejects_corrupt_bridge_inner_error_rx() {
+        let (app, mut proof) = create_seeded_proof(57);
+        proof.bridge_inner_error_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
+        let mut rng = StdRng::seed_from_u64(99999);
+        let pcd = proof.carry::<()>(());
+        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+        assert!(
+            !result,
+            "verifier must reject corrupt bridge_inner_error_rx"
+        );
+    }
+
+    #[test]
+    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
+    fn rejects_corrupt_bridge_f_rx() {
+        let (app, mut proof) = create_seeded_proof(58);
+        proof.bridge_f_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
+        let mut rng = StdRng::seed_from_u64(99999);
+        let pcd = proof.carry::<()>(());
+        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+        assert!(!result, "verifier must reject corrupt bridge_f_rx");
+    }
+
+    // NB-4: nested_endoscaling_step_rxs vector
+    seeded_rejects!(rejects_corrupt_nested_endoscaling_step_rxs, 59, |proof| {
+        proof.nested_endoscaling_step_rxs[0] = ragu_circuits::polynomials::sparse::Polynomial::new()
+    });
+
+    // NB-5: bridge_alpha scalar
+    // Verification gap: bridge_alpha feeds cached bridge polynomials but the
+    // verifier does not independently validate it. Un-ignore once verify()
+    // gains a bridge_alpha check.
+    #[test]
+    #[ignore = "verification gap: bridge_alpha not independently checked"]
+    fn rejects_corrupt_bridge_alpha() {
+        let (app, mut proof) = create_seeded_proof(60);
+        proof.bridge_alpha = <Pasta as Cycle>::ScalarField::random(&mut StdRng::seed_from_u64(800));
+        let mut rng = StdRng::seed_from_u64(99999);
+        let pcd = proof.carry::<()>(());
+        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+        assert!(!result, "verifier must reject corrupt bridge_alpha");
+    }
+
+    // NB-6: Corrupt commitment → challenge mismatch transcript replay
+    #[test]
+    fn verify_transcript_corrupt_commitment_shifts_challenges() {
+        let pasta = Pasta::baked();
+        let (_app, mut proof) = create_seeded_proof(7);
+
+        // Corrupt a bridge commitment that is absorbed early in the transcript.
+        proof.bridge_preamble_commitment = *Pasta::nested_generators(pasta).h();
+
+        let dr = &mut ragu_core::drivers::emulator::Emulator::execute();
+        let poseidon = Pasta::circuit_poseidon(pasta);
+        let mut t = crate::internal::transcript::Transcript::new(dr, poseidon, crate::RAGU_TAG)
+            .expect("transcript init should not fail");
+
+        let preamble_commit =
+            Point::<_, NestedCurve>::constant(dr, proof.bridge_preamble_commitment())
+                .expect("point constant should not fail");
+        preamble_commit
+            .write(dr, &mut t)
+            .expect("write should not fail");
+        let w = *t
+            .challenge(dr)
+            .expect("challenge should not fail")
+            .value()
+            .take();
+
+        // The corrupted commitment should produce a different w challenge.
+        assert_ne!(
+            w, proof.w,
+            "corrupted preamble commitment must shift the w challenge"
+        );
     }
 }
