@@ -20,8 +20,9 @@
 
 # Formally verified Ragu circuits
 
-- [Introduction]()
-- [Extraction of Ragu circuits]()
+- [Introduction](./ragu/introduction.md)
+- [Extraction of Ragu circuits](./ragu/extraction.md)
+- [Inputs, outputs, and serialization](./ragu/input-outputs-serialization.md)
 - [Assumptions]()
+- [CI integration](./ragu/ci.md)
 - [Adding more instances]()
-- [CI integration]()
