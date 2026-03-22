@@ -30,7 +30,7 @@
 use ff::Field;
 use ragu_arithmetic::{Cycle, FixedGenerators as _};
 use ragu_circuits::{
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     staging::StageExt,
 };
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
@@ -54,7 +54,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         a: FixedVec<TrackedPoly<'_, FoldKey, C::CircuitField, R>, NativeNumGroups>,
-        b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeNumGroups>,
+        b: FixedVec<sparse::Polynomial<C::CircuitField, R>, NativeNumGroups>,
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
@@ -80,7 +80,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         a: FixedVec<TrackedPoly<'_, FoldKey, C::CircuitField, R>, NativeNumGroups>,
-        b: FixedVec<structured::Polynomial<C::CircuitField, R>, NativeNumGroups>,
+        b: FixedVec<sparse::Polynomial<C::CircuitField, R>, NativeNumGroups>,
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,

@@ -52,19 +52,19 @@
 //! coefficients of $s(X, y)$ in a specific order based on wire type. Rather
 //! than building a flat coefficient vector and reinterpreting it, the backward
 //! view provides direct access to the $a$, $b$, and $c$ coefficient regions.
-//! See [`structured::View`] for details.
+//! See [`sparse::view::View`] for details.
 //!
 //! ### Coefficient Order
 //!
-//! The output polynomial $s(X, y)$ has its coefficients stored in structured
-//! form via [`structured::View`]. Each wire type ($a$, $b$, $c$) occupies a
-//! separate coefficient region with its appropriate exponent range.
+//! The output polynomial $s(X, y)$ is built via [`sparse::view::View`],
+//! with each wire type ($a$, $b$, $c$) occupying a separate coefficient
+//! region with its appropriate exponent range.
 //!
 //! [`common`]: super::common
 //! [`sx`]: super::sx
 //! [`sxy`]: super::sxy
 //! [`Driver::add`]: ragu_core::drivers::Driver::add
-//! [`structured::View`]: crate::polynomials::structured::View
+//! [`sparse::view::View`]: crate::polynomials::sparse::view::View
 
 use ff::Field;
 use ragu_arithmetic::Coeff;
@@ -84,7 +84,7 @@ use super::DriverExt;
 use crate::{
     Circuit, DriverScope,
     floor_planner::ConstraintSegment,
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     registry,
 };
 
@@ -236,12 +236,12 @@ struct VirtualWire<F: Field> {
     value: Coeff<F>,
 }
 
-/// Manages virtual wires and the backward view into $s(X, y)$.
+/// Manages virtual wires and the coefficient buffers for the backward view of $s(X, y)$.
 ///
 /// The virtual table maintains:
 /// - A vector of [`VirtualWire`]s representing deferred linear combinations
 /// - A free list for reusing virtual wire slots after resolution
-/// - A backward view into the structured polynomial for direct coefficient access
+/// - Mutable references to the backward view's $a$, $b$, $c$ coefficient vectors
 ///
 /// See [`Self::free`] for the resolution algorithm and reference counting details.
 struct VirtualTable<'sy, F: Field, R: Rank> {
@@ -258,21 +258,25 @@ struct VirtualTable<'sy, F: Field, R: Rank> {
     /// `wires`.
     free: Vec<usize>,
 
-    /// Backward view into the structured polynomial $s(X, y)$.
+    /// Backward-view wire buffers for the polynomial $s(X, y)$.
     ///
     /// Provides direct mutable access to the $a$, $b$, $c$ coefficient vectors.
     /// When allocated wires (A/B/C) receive values during resolution, they are
     /// written here. See the [module documentation](self) for the backward view
     /// concept.
-    sy: structured::View<'sy, F, R, structured::Backward>,
+    a: &'sy mut Vec<F>,
+    b: &'sy mut Vec<F>,
+    c: &'sy mut Vec<F>,
+
+    _marker: core::marker::PhantomData<R>,
 }
 
 impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
     fn add(&mut self, index: WireIndex, value: Coeff<F>) {
         *match index {
-            WireIndex::A(i) => &mut self.sy.a[i],
-            WireIndex::B(i) => &mut self.sy.b[i],
-            WireIndex::C(i) => &mut self.sy.c[i],
+            WireIndex::A(i) => &mut self.a[i],
+            WireIndex::B(i) => &mut self.b[i],
+            WireIndex::C(i) => &mut self.c[i],
             WireIndex::Virtual(i) => {
                 self.wires[i].value = self.wires[i].value + value;
                 return;
@@ -667,14 +671,14 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     y: F,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
-) -> Result<structured::Polynomial<F, R>> {
-    let mut sy = structured::Polynomial::<F, R>::new();
+) -> Result<sparse::Polynomial<F, R>> {
+    let mut view = sparse::view::View::<F, R, sparse::view::Backward>::new();
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
         // wire coefficient.
-        sy.backward().c.push(F::ONE);
-        return Ok(sy);
+        view.c.push(F::ONE);
+        return Ok(view.build());
     }
 
     let total_multiplications: usize = floor_plan
@@ -694,15 +698,18 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         let virtual_table = RefCell::new(VirtualTable::<F, R> {
             wires: vec![],
             free: vec![],
-            sy: sy.backward(),
+            a: &mut view.a,
+            b: &mut view.b,
+            c: &mut view.c,
+            _marker: core::marker::PhantomData,
         });
 
         // Pre-allocate backward view slots for all multiplication gates.
         {
             let mut table = virtual_table.borrow_mut();
-            table.sy.a.resize(total_multiplications, F::ZERO);
-            table.sy.b.resize(total_multiplications, F::ZERO);
-            table.sy.c.resize(total_multiplications, F::ZERO);
+            table.a.resize(total_multiplications, F::ZERO);
+            table.b.resize(total_multiplications, F::ZERO);
+            table.c.resize(total_multiplications, F::ZERO);
         }
 
         {
@@ -759,5 +766,5 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         assert_eq!(virtual_table.free.len(), virtual_table.wires.len());
     }
 
-    Ok(sy)
+    Ok(view.build())
 }

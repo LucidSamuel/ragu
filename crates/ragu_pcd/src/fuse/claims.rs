@@ -17,7 +17,7 @@ use core::borrow::Borrow;
 use ff::{Field, PrimeField};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
 use ragu_core::Result;
@@ -76,7 +76,7 @@ impl<K: Copy, F: Field> CommitmentDecomposition<K, F> {
 /// [`fold_outer`]: crate::internal::fold_revdot::fold_outer
 #[derive(Clone)]
 pub(super) struct TrackedPoly<'a, K, F: Field, R: Rank> {
-    pub(super) poly: Cow<'a, structured::Polynomial<F, R>>,
+    pub(super) poly: Cow<'a, sparse::Polynomial<F, R>>,
     pub(super) decomp: CommitmentDecomposition<K, F>,
 }
 
@@ -91,13 +91,13 @@ impl<K, F: Field, R: Rank> Default for TrackedPoly<'_, K, F, R> {
 
 impl<'a, K: Copy, F: Field, R: Rank> TrackedPoly<'a, K, F, R> {
     pub(super) fn new(
-        poly: Cow<'a, structured::Polynomial<F, R>>,
+        poly: Cow<'a, sparse::Polynomial<F, R>>,
         decomp: CommitmentDecomposition<K, F>,
     ) -> Self {
         Self { poly, decomp }
     }
 
-    pub(super) fn single(poly: Cow<'a, structured::Polynomial<F, R>>, key: K) -> Self {
+    pub(super) fn single(poly: Cow<'a, sparse::Polynomial<F, R>>, key: K) -> Self {
         Self::new(poly, CommitmentDecomposition::single(key))
     }
 }
@@ -115,8 +115,8 @@ impl<K: Copy, F: Field, R: Rank> Foldable<F> for TrackedPoly<'_, K, F, R> {
     }
 }
 
-impl<K, F: Field, R: Rank> Borrow<structured::Polynomial<F, R>> for TrackedPoly<'_, K, F, R> {
-    fn borrow(&self) -> &structured::Polynomial<F, R> {
+impl<K, F: Field, R: Rank> Borrow<sparse::Polynomial<F, R>> for TrackedPoly<'_, K, F, R> {
+    fn borrow(&self) -> &sparse::Polynomial<F, R> {
         &self.poly
     }
 }
@@ -128,7 +128,7 @@ impl<K, F: Field, R: Rank> Borrow<structured::Polynomial<F, R>> for TrackedPoly<
 /// `A` polynomial retains a link back to its commitment.
 pub(super) struct Atom<'rx, K, F: Field, R: Rank> {
     pub(super) key: K,
-    pub(super) poly: &'rx structured::Polynomial<F, R>,
+    pub(super) poly: &'rx sparse::Polynomial<F, R>,
 }
 
 // Manual Copy/Clone: derive(Copy) would add spurious F: Copy and R: Copy bounds.

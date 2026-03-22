@@ -1,9 +1,7 @@
 //! Representations and views of polynomials used in Ragu's proof system.
 
 pub mod sparse;
-pub mod structured;
 pub mod txz;
-pub mod unstructured;
 
 use ff::Field;
 
@@ -41,40 +39,38 @@ pub trait Rank:
     }
 
     /// Computes the coefficients of $$t(X, z) = -\sum_{i=0}^{n - 1} X^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})$$ for some $z \in \mathbb{F}$.
-    fn tz<F: Field>(z: F) -> structured::Polynomial<F, Self> {
-        let mut tmp = structured::Polynomial::new();
+    fn tz<F: Field>(z: F) -> sparse::Polynomial<F, Self> {
+        let mut view = sparse::view::View::<F, Self, sparse::view::Backward>::new();
         if z != F::ZERO {
-            let tmp = tmp.backward();
             let zinv = z.invert().unwrap();
             let zpow = z.pow_vartime([2 * Self::n() as u64]);
             let mut l = -zpow * zinv;
             let mut r = -zpow;
             for _ in 0..Self::n() {
-                tmp.c.push(l + r);
+                view.c.push(l + r);
                 l *= zinv;
                 r *= z;
             }
         }
 
-        tmp
+        view.build()
     }
 
     /// Computes the coefficients of $$t(x, Z) = -\sum_{i=0}^{n - 1} x^{4n - 1 - i} (Z^{2n - 1 - i} + Z^{2n + i})$$ for some $x \in \mathbb{F}$.
-    fn tx<F: Field>(x: F) -> structured::Polynomial<F, Self> {
-        let mut tmp = structured::Polynomial::new();
+    fn tx<F: Field>(x: F) -> sparse::Polynomial<F, Self> {
+        let mut view = sparse::view::View::<F, Self, sparse::view::Backward>::new();
         if x != F::ZERO {
-            let tmp = tmp.backward();
             let mut xi = -x.pow([3 * Self::n() as u64]);
             for _ in 0..Self::n() {
-                tmp.a.push(xi);
-                tmp.b.push(xi);
+                view.a.push(xi);
+                view.b.push(xi);
                 xi *= x;
             }
-            tmp.a.reverse();
-            tmp.b.reverse();
+            view.a.reverse();
+            view.b.reverse();
         }
 
-        tmp
+        view.build()
     }
 
     /// Computes $$t(x, z) = -\sum_{i=0}^{n - 1} x^{4n - 1 - i} (z^{2n - 1 - i} + z^{2n + i})$$ for some $x, z \in \mathbb{F}$.
@@ -140,26 +136,29 @@ fn test_tz() {
 
     type DemoR = TestRank;
 
-    let mut poly = structured::Polynomial::<Fp, DemoR>::new();
+    // Construct a polynomial with all a and b wires = ONE.
+    let mut view = sparse::view::View::<Fp, DemoR, sparse::view::Forward>::new();
     for _ in 0..DemoR::n() {
-        poly.u.push(Fp::ONE);
-        poly.v.push(Fp::ONE);
+        view.a.push(Fp::ONE);
+        view.b.push(Fp::ONE);
     }
+    let mut poly = view.build();
     let z = Fp::random(&mut rand::rng());
     poly.dilate(z);
     poly.negate();
+    let poly_dense = poly.to_dense();
 
-    let mut expected_tz = structured::Polynomial::<Fp, DemoR>::new();
-    {
-        let expected_tz = expected_tz.backward();
-        for i in 0..DemoR::n() {
-            expected_tz.c.push(poly.u[i] + poly.v[i]);
-        }
+    // Construct the expected tz via backward view with c[i] = poly[2n+i] + poly[2n-1-i].
+    let n = DemoR::n();
+    let mut expected_view = sparse::view::View::<Fp, DemoR, sparse::view::Backward>::new();
+    for i in 0..n {
+        expected_view
+            .c
+            .push(poly_dense[2 * n + i] + poly_dense[2 * n - 1 - i]);
     }
+    let expected_tz = expected_view.build().to_dense();
 
-    let expected_tz = expected_tz.unstructured().coeffs;
-
-    assert_eq!(expected_tz, DemoR::tz::<Fp>(z).unstructured().coeffs);
+    assert_eq!(expected_tz, DemoR::tz::<Fp>(z).to_dense());
 }
 
 #[test]
@@ -172,29 +171,11 @@ fn test_txz_consistency() {
     let tx0 = DemoR::txz(x, Fp::ZERO);
     let t0z: Fp = DemoR::txz(Fp::ZERO, z);
     let t00 = DemoR::txz(Fp::ZERO, Fp::ZERO);
-    assert_eq!(
-        txz,
-        ragu_arithmetic::eval(&DemoR::tz::<Fp>(z).unstructured().coeffs, x)
-    );
-    assert_eq!(
-        tx0,
-        ragu_arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, x)
-    );
-    assert_eq!(
-        txz,
-        ragu_arithmetic::eval(&DemoR::tx::<Fp>(x).unstructured().coeffs, z)
-    );
-    assert_eq!(
-        t0z,
-        ragu_arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, z)
-    );
+    assert_eq!(txz, DemoR::tz::<Fp>(z).eval(x));
+    assert_eq!(tx0, DemoR::tz::<Fp>(Fp::ZERO).eval(x));
+    assert_eq!(txz, DemoR::tx::<Fp>(x).eval(z));
+    assert_eq!(t0z, DemoR::tx::<Fp>(Fp::ZERO).eval(z));
 
-    assert_eq!(
-        t00,
-        ragu_arithmetic::eval(&DemoR::tz::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
-    );
-    assert_eq!(
-        t00,
-        ragu_arithmetic::eval(&DemoR::tx::<Fp>(Fp::ZERO).unstructured().coeffs, Fp::ZERO)
-    );
+    assert_eq!(t00, DemoR::tz::<Fp>(Fp::ZERO).eval(Fp::ZERO));
+    assert_eq!(t00, DemoR::tx::<Fp>(Fp::ZERO).eval(Fp::ZERO));
 }

@@ -15,7 +15,7 @@ use core::iter::{once, repeat_n};
 
 use ff::PrimeField;
 use ragu_circuits::{
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
 use ragu_core::Result;
@@ -75,26 +75,22 @@ pub trait Processor<Rx, AppCircuitId> {
     fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
 }
 
-impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R>, CircuitIndex>
-    for Builder<'m, 'rx, Cow<'rx, structured::Polynomial<F, R>>, F, R>
+impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, CircuitIndex>
+    for Builder<'m, 'rx, Cow<'rx, sparse::Polynomial<F, R>>, F, R>
 {
-    fn raw_claim(
-        &mut self,
-        a: &'rx structured::Polynomial<F, R>,
-        b: &'rx structured::Polynomial<F, R>,
-    ) {
+    fn raw_claim(&mut self, a: &'rx sparse::Polynomial<F, R>, b: &'rx sparse::Polynomial<F, R>) {
         self.a.push(Cow::Borrowed(a));
         self.b.push(Cow::Borrowed(b));
     }
 
-    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx structured::Polynomial<F, R>) {
+    fn circuit(&mut self, circuit_id: CircuitIndex, rx: &'rx sparse::Polynomial<F, R>) {
         self.circuit_impl(circuit_id, Cow::Borrowed(rx));
     }
 
     fn internal_circuit(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+        rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
     ) {
         let circuit_id = id.circuit_index();
         let rx = sum_polynomials(rxs);
@@ -104,7 +100,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx structured::Polynomial<F, R
     fn bonding(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx structured::Polynomial<F, R>>,
+        rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
     ) -> Result<()> {
         let circuit_id = id.circuit_index();
         let folded = self.fold_bonding_polys(rxs);

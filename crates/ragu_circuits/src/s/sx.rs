@@ -79,15 +79,12 @@ use ragu_core::{
 };
 use ragu_primitives::GadgetExt;
 
-use alloc::vec;
+use alloc::{vec, vec::Vec};
 
 use crate::{
     Circuit, DriverScope,
     floor_planner::ConstraintSegment,
-    polynomials::{
-        Rank,
-        unstructured::{self, Polynomial},
-    },
+    polynomials::{Rank, sparse},
     registry,
 };
 
@@ -133,7 +130,7 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// Each [`enforce_zero`](Driver::enforce_zero) call appends one
     /// coefficient. The vector is reversed at the end of [`eval`] to produce
     /// the canonical order.
-    result: unstructured::Polynomial<F, R>,
+    result: Vec<F>,
 
     /// Per-routine scoped state.
     scope: SxScope<F>,
@@ -339,9 +336,9 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     x: F,
     key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
-) -> Result<unstructured::Polynomial<F, R>> {
+) -> Result<sparse::Polynomial<F, R>> {
     if x == F::ZERO {
-        return Ok(Polynomial::new());
+        return Ok(sparse::Polynomial::new());
     }
 
     let x_inv = x.invert().expect("x is not zero");
@@ -353,7 +350,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let one = xn4 * x_inv;
 
     let mut evaluator = Evaluator::<F, R> {
-        result: unstructured::Polynomial::new(),
+        result: vec![F::ZERO; R::num_coeffs()],
         scope: SxScope {
             available_b: None,
             current_u_x: base_u_x,
@@ -409,5 +406,5 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     }
     assert_eq!(evaluator.result[0], evaluator.one);
 
-    Ok(evaluator.result)
+    Ok(sparse::Polynomial::from_coeffs(evaluator.result))
 }

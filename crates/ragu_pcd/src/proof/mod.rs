@@ -12,7 +12,7 @@ pub(crate) use components::*;
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Rank, structured, unstructured},
+    polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
 use ragu_primitives::vec::Len;
@@ -97,8 +97,8 @@ impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
 }
 
 impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
-    type Output = structured::Polynomial<C::ScalarField, R>;
-    fn index(&self, idx: nested::RxIndex) -> &structured::Polynomial<C::ScalarField, R> {
+    type Output = sparse::Polynomial<C::ScalarField, R>;
+    fn index(&self, idx: nested::RxIndex) -> &sparse::Polynomial<C::ScalarField, R> {
         use nested::RxIndex::*;
         match idx {
             EndoscalingStep(step) => &self.p.nested.step_rxs[step as usize],
@@ -123,10 +123,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     }
 
     /// Returns the native-field rx polynomial for the given [`RxIndex`].
-    pub(crate) fn native_rx_poly(
-        &self,
-        idx: RxIndex,
-    ) -> &structured::Polynomial<C::CircuitField, R> {
+    pub(crate) fn native_rx_poly(&self, idx: RxIndex) -> &sparse::Polynomial<C::CircuitField, R> {
         &self[idx].rx
     }
 
@@ -134,7 +131,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     pub(crate) fn nested_rx_poly(
         &self,
         idx: nested::RxIndex,
-    ) -> &structured::Polynomial<C::ScalarField, R> {
+    ) -> &sparse::Polynomial<C::ScalarField, R> {
         &self[idx]
     }
 
@@ -142,7 +139,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     pub(crate) fn native_rx(
         &self,
         component: RxComponent,
-    ) -> &structured::Polynomial<C::CircuitField, R> {
+    ) -> &sparse::Polynomial<C::CircuitField, R> {
         match component {
             RxComponent::AbA => &self.ab.native.a_poly,
             RxComponent::AbB => &self.ab.native.b_poly,
@@ -160,23 +157,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         let host_blind = C::CircuitField::ONE;
         let bridge_blind = C::ScalarField::ONE;
 
-        let zero_structured_host = structured::Polynomial::<C::CircuitField, R>::new();
-        let zero_structured_nested = structured::Polynomial::<C::ScalarField, R>::new();
-        let zero_unstructured = unstructured::Polynomial::<C::CircuitField, R>::new();
+        let zero_host = sparse::Polynomial::<C::CircuitField, R>::new();
+        let zero_nested = sparse::Polynomial::<C::ScalarField, R>::new();
 
         let host_commitment =
-            zero_structured_host.commit_to_affine(C::host_generators(self.params), host_blind);
-        let bridge_commitment = zero_structured_nested
+            zero_host.commit_to_affine(C::host_generators(self.params), host_blind);
+        let bridge_commitment = zero_nested
             .commit_to_affine(C::nested_generators(self.params), bridge_blind);
 
         let trivial_bridge = Bridge {
-            rx: zero_structured_nested.clone(),
+            rx: zero_nested.clone(),
             blind: bridge_blind,
             commitment: bridge_commitment,
         };
 
         let trivial_rx_triple = || RxTriple {
-            rx: zero_structured_host.clone(),
+            rx: zero_host.clone(),
             blind: host_blind,
             commitment: host_commitment,
         };
@@ -194,10 +190,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             s_prime: SPrime {
                 native: NativeSPrime {
-                    registry_wx0_poly: zero_unstructured.clone(),
+                    registry_wx0_poly: zero_host.clone(),
                     registry_wx0_blind: host_blind,
                     registry_wx0_commitment: host_commitment,
-                    registry_wx1_poly: zero_unstructured.clone(),
+                    registry_wx1_poly: zero_host.clone(),
                     registry_wx1_blind: host_blind,
                     registry_wx1_commitment: host_commitment,
                 },
@@ -205,7 +201,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             inner_error: InnerError {
                 native: NativeInnerError {
-                    registry_wy_poly: zero_structured_host.clone(),
+                    registry_wy_poly: zero_host.clone(),
                     registry_wy_blind: host_blind,
                     registry_wy_commitment: host_commitment,
                     rx_triple: trivial_rx_triple(),
@@ -218,10 +214,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             ab: AB {
                 native: NativeAB {
-                    a_poly: zero_structured_host.clone(),
+                    a_poly: zero_host.clone(),
                     a_blind: host_blind,
                     a_commitment: host_commitment,
-                    b_poly: zero_structured_host.clone(),
+                    b_poly: zero_host.clone(),
                     b_blind: host_blind,
                     b_commitment: host_commitment,
                     c: C::CircuitField::ZERO,
@@ -230,7 +226,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             query: Query {
                 native: NativeQuery {
-                    registry_xy_poly: zero_unstructured.clone(),
+                    registry_xy_poly: zero_host.clone(),
                     registry_xy_blind: host_blind,
                     registry_xy_commitment: host_commitment,
                     rx_triple: trivial_rx_triple(),
@@ -239,7 +235,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             f: F {
                 native: NativeF {
-                    poly: zero_unstructured.clone(),
+                    poly: zero_host.clone(),
                     blind: host_blind,
                     commitment: host_commitment,
                 },
@@ -251,18 +247,18 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             },
             p: P {
                 native: NativeP {
-                    poly: zero_unstructured.clone(),
+                    poly: zero_host.clone(),
                     blind: host_blind,
                     commitment: host_commitment,
                     v: C::CircuitField::ZERO,
                 },
                 nested: NestedP {
                     step_rxs: vec![
-                        zero_structured_nested.clone();
+                        zero_nested.clone();
                         NumStepsLen::<NUM_ENDOSCALING_POINTS>::len()
                     ],
-                    endoscalar_rx: zero_structured_nested.clone(),
-                    points_rx: zero_structured_nested.clone(),
+                    endoscalar_rx: zero_nested.clone(),
+                    points_rx: zero_nested.clone(),
                 },
             },
             challenges: Challenges::trivial(),

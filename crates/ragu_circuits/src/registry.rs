@@ -25,7 +25,7 @@ use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
 use crate::{
     BondingObject, Circuit, CircuitObject,
     floor_planner::ConstraintSegment,
-    polynomials::{Rank, structured, unstructured},
+    polynomials::{Rank, sparse},
 };
 
 /// Represents a simple numeric index of a circuit in the registry.
@@ -360,13 +360,13 @@ impl<F: PrimeField> From<F> for OmegaKey {
 }
 
 impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
-    /// Assembles a [`Trace`](crate::Trace) into a [`structured::Polynomial`] using
+    /// Assembles a [`Trace`](crate::Trace) into a [`sparse::Polynomial`] using
     /// this registry's key and the floor plan for the specified circuit.
     pub fn assemble(
         &self,
         trace: &crate::trace::Trace<F>,
         circuit: CircuitIndex,
-    ) -> Result<structured::Polynomial<F, R>> {
+    ) -> Result<sparse::Polynomial<F, R>> {
         trace.assemble_with_key(&self.key, &self.floor_plans[usize::from(circuit)])
     }
 
@@ -390,8 +390,8 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $W$.
-    pub fn xy(&self, x: F, y: F) -> unstructured::Polynomial<F, R> {
-        let mut coeffs = unstructured::Polynomial::default();
+    pub fn xy(&self, x: F, y: F) -> sparse::Polynomial<F, R> {
+        let mut coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
             coeffs[j] = circuit.sxy(x, y, &self.key, &self.floor_plans[i]);
@@ -400,7 +400,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let domain = &self.domain;
         domain.ifft(&mut coeffs[..domain.n()]);
 
-        coeffs
+        sparse::Polynomial::from_coeffs(coeffs)
     }
 
     /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
@@ -408,7 +408,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     ///
     /// Wraps [`Registry::at`] and [`RegistryAt::y`].
     /// See [`CircuitIndex::omega_j`] for more details.
-    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> structured::Polynomial<F, R> {
+    pub fn circuit_y(&self, i: CircuitIndex, y: F) -> sparse::Polynomial<F, R> {
         let w: F = i.omega_j();
         self.at(w).y(y)
     }
@@ -429,12 +429,12 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial unrestricted at $X$.
-    pub fn wy(&self, w: F, y: F) -> structured::Polynomial<F, R> {
+    pub fn wy(&self, w: F, y: F) -> sparse::Polynomial<F, R> {
         self.at(w).y(y)
     }
 
     /// Evaluate the registry polynomial unrestricted at $Y$.
-    pub fn wx(&self, w: F, x: F) -> unstructured::Polynomial<F, R> {
+    pub fn wx(&self, w: F, x: F) -> sparse::Polynomial<F, R> {
         self.at(w).x(x)
     }
 
@@ -502,10 +502,10 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
 
 impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     /// Evaluate the registry polynomial restricted at $W$, unrestricted at $Y$.
-    pub fn y(&self, y: F) -> structured::Polynomial<F, R> {
+    pub fn y(&self, y: F) -> sparse::Polynomial<F, R> {
         self.registry.w_cached(
             &self.cache,
-            structured::Polynomial::default,
+            sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
                 let mut tmp = circuit.sy(y, &self.registry.key, floor_plan);
                 tmp.scale(coeff);
@@ -515,14 +515,14 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     }
 
     /// Evaluate the registry polynomial restricted at $W$, unrestricted at $X$.
-    pub fn x(&self, x: F) -> unstructured::Polynomial<F, R> {
+    pub fn x(&self, x: F) -> sparse::Polynomial<F, R> {
         self.registry.w_cached(
             &self.cache,
-            unstructured::Polynomial::default,
+            sparse::Polynomial::default,
             |circuit, floor_plan, coeff, poly| {
                 let mut tmp = circuit.sx(x, &self.registry.key, floor_plan);
                 tmp.scale(coeff);
-                poly.add_unstructured(&tmp);
+                poly.add_assign(&tmp);
             },
         )
     }

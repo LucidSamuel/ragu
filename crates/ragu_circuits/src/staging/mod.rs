@@ -60,7 +60,7 @@
 //!
 //! [`StageExt::rx`] produces a staging polynomial for a given stage, given a
 //! witness. The well-formedness check can be performed by applying a revdot
-//! claim between the resulting [`Polynomial`](structured::Polynomial) and the
+//! claim between the resulting [`Polynomial`](sparse::Polynomial) and the
 //! stage's [staging mask](StageExt::mask).
 //!
 //! ```rust,ignore
@@ -131,7 +131,7 @@ use alloc::boxed::Box;
 
 use crate::{
     BondingObject, Circuit, WithAux,
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
 };
 
 pub use builder::{StageBuilder, StageGuard};
@@ -327,7 +327,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage.
-    fn rx_configured(&self, witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>> {
+    fn rx_configured(&self, witness: Self::Witness<'_>) -> Result<sparse::Polynomial<F, R>> {
         let values = {
             let mut dr = Emulator::extractor();
             let out = self.witness(&mut dr, Always::maybe_just(|| witness))?;
@@ -343,41 +343,38 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         assert!(values.len() <= Self::values());
 
         let mut values = values.into_iter();
-        let mut rx = structured::Polynomial::new();
-        {
-            let rx = rx.forward();
+        let mut view = sparse::view::View::<F, R, sparse::view::Forward>::new();
 
-            let len = 1 + Self::skip_multiplications() + Self::num_multiplications();
-            rx.a.reserve_exact(len);
-            rx.b.reserve_exact(len);
-            rx.c.reserve_exact(len);
+        let len = 1 + Self::skip_multiplications() + Self::num_multiplications();
+        view.a.reserve_exact(len);
+        view.b.reserve_exact(len);
+        view.c.reserve_exact(len);
 
-            // ONE is not set.
-            rx.a.push(F::ZERO);
-            rx.b.push(F::ZERO);
-            rx.c.push(F::ZERO);
+        // ONE is not set.
+        view.a.push(F::ZERO);
+        view.b.push(F::ZERO);
+        view.c.push(F::ZERO);
 
-            for _ in 0..Self::skip_multiplications() {
-                rx.a.push(F::ZERO);
-                rx.b.push(F::ZERO);
-                rx.c.push(F::ZERO);
-            }
-
-            for _ in 0..Self::num_multiplications() {
-                let a = values.next().unwrap_or(F::ZERO);
-                let b = values.next().unwrap_or(F::ZERO);
-                rx.a.push(a);
-                rx.b.push(b);
-                rx.c.push(a * b);
-            }
+        for _ in 0..Self::skip_multiplications() {
+            view.a.push(F::ZERO);
+            view.b.push(F::ZERO);
+            view.c.push(F::ZERO);
         }
 
-        Ok(rx)
+        for _ in 0..Self::num_multiplications() {
+            let a = values.next().unwrap_or(F::ZERO);
+            let b = values.next().unwrap_or(F::ZERO);
+            view.a.push(a);
+            view.b.push(b);
+            view.c.push(a * b);
+        }
+
+        Ok(view.build())
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage, using a
     /// default implementation.
-    fn rx(witness: Self::Witness<'_>) -> Result<structured::Polynomial<F, R>>
+    fn rx(witness: Self::Witness<'_>) -> Result<sparse::Polynomial<F, R>>
     where
         Self: Default,
     {

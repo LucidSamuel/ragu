@@ -3,7 +3,7 @@
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
@@ -148,7 +148,7 @@ mod native {
 
     impl<'rx, C: Cycle, R: Rank> Source for SingleProofSource<'rx, C, R> {
         type RxComponent = RxComponent;
-        type Rx = &'rx structured::Polynomial<C::CircuitField, R>;
+        type Rx = &'rx sparse::Polynomial<C::CircuitField, R>;
         type AppCircuitId = CircuitIndex;
 
         fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
@@ -207,7 +207,7 @@ mod nested {
 
     impl<'rx, C: Cycle, R: Rank> Source for SingleProofSource<'rx, C, R> {
         type RxComponent = RxIndex;
-        type Rx = &'rx structured::Polynomial<C::ScalarField, R>;
+        type Rx = &'rx sparse::Polynomial<C::ScalarField, R>;
         type AppCircuitId = ();
 
         fn rx(&self, component: RxIndex) -> impl Iterator<Item = Self::Rx> {

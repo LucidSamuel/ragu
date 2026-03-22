@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use crate::{
     CircuitObject,
-    polynomials::{Rank, structured, unstructured},
+    polynomials::{Rank, sparse},
     registry,
 };
 
@@ -114,13 +114,13 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         x: F,
         key: &registry::Key<F>,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
-    ) -> unstructured::Polynomial<F, R> {
+    ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
         let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
         if x == F::ZERO {
-            return unstructured::Polynomial::new();
+            return sparse::Polynomial::new();
         }
 
         let mut coeffs = Vec::with_capacity(R::num_coeffs());
@@ -165,7 +165,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         coeffs.push(F::ZERO); // The constant term is always zero.
         coeffs.reverse();
 
-        unstructured::Polynomial::from_coeffs(coeffs)
+        sparse::Polynomial::from_coeffs(coeffs)
     }
 
     fn sy(
@@ -173,53 +173,50 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         y: F,
         key: &registry::Key<F>,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
-    ) -> structured::Polynomial<F, R> {
+    ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_multiplications + self.num_multiplications < R::n());
         let reserved: usize = R::n() - self.skip_multiplications - self.num_multiplications - 1;
 
-        let mut poly = structured::Polynomial::new();
         if y == F::ZERO {
-            return poly;
+            return sparse::Polynomial::new();
         }
 
         let num_linear_from_gates = 3 * (reserved + self.skip_multiplications);
         let mut yq = y.pow_vartime([(num_linear_from_gates + 1) as u64]);
         let y_inv = y.invert().expect("y is not zero");
 
-        {
-            let poly = poly.backward();
+        let mut view = sparse::view::View::<F, R, sparse::view::Backward>::new();
 
-            // Placeholder contribution: Y^q - k * Y^q.
-            poly.a.push(yq);
-            poly.b.push(F::ZERO);
-            poly.c.push(-key.value() * yq);
+        // Placeholder contribution: Y^q - k * Y^q.
+        view.a.push(yq);
+        view.b.push(F::ZERO);
+        view.c.push(-key.value() * yq);
+        yq *= y_inv;
+
+        for _ in 0..self.skip_multiplications {
+            view.a.push(yq);
             yq *= y_inv;
-
-            for _ in 0..self.skip_multiplications {
-                poly.a.push(yq);
-                yq *= y_inv;
-                poly.b.push(yq);
-                yq *= y_inv;
-                poly.c.push(yq);
-                yq *= y_inv;
-            }
-            for _ in 0..self.num_multiplications {
-                poly.a.push(F::ZERO);
-                poly.b.push(F::ZERO);
-                poly.c.push(F::ZERO);
-            }
-            for _ in 0..reserved {
-                poly.a.push(yq);
-                yq *= y_inv;
-                poly.b.push(yq);
-                yq *= y_inv;
-                poly.c.push(yq);
-                yq *= y_inv;
-            }
+            view.b.push(yq);
+            yq *= y_inv;
+            view.c.push(yq);
+            yq *= y_inv;
+        }
+        for _ in 0..self.num_multiplications {
+            view.a.push(F::ZERO);
+            view.b.push(F::ZERO);
+            view.c.push(F::ZERO);
+        }
+        for _ in 0..reserved {
+            view.a.push(yq);
+            yq *= y_inv;
+            view.b.push(yq);
+            yq *= y_inv;
+            view.c.push(yq);
+            yq *= y_inv;
         }
 
-        poly
+        view.build()
     }
 
     fn constraint_counts(&self) -> (usize, usize) {
@@ -254,7 +251,7 @@ mod tests {
 
     use crate::{
         CircuitObject, WithAux, floor_planner, into_circuit_object, metrics,
-        polynomials::{Rank, structured},
+        polynomials::{Rank, sparse},
         registry,
         staging::StageBuilder,
         tests::SquareCircuit,
@@ -470,14 +467,15 @@ mod tests {
 
         let (_, num_linear_constraints) = circuit.constraint_counts();
         let plan = floor_planner::floor_plan(circuit.segment_records());
-        let mut sy = circuit.sy(y, &k, &plan);
+        let sy = circuit.sy(y, &k, &plan);
 
         // The first gate (ONE gate) should have the highest y-power.
+        // In the backward view, a[0] corresponds to degree 2n-1.
         let expected_y_power = num_linear_constraints - 1;
-        let actual_first_coeff = sy.backward().a[0];
+        let sy_dense = sy.to_dense();
+        let actual_first_coeff = sy_dense[2 * R::n() - 1];
         let expected_first_coeff = y.pow_vartime([expected_y_power as u64]);
 
-        // This verifies the y-power calculation is correct
         assert_eq!(
             actual_first_coeff, expected_first_coeff,
             "First coefficient should have correct y-power"
@@ -564,12 +562,17 @@ mod tests {
                 let sxy = generic.sxy(x, y, &k, &plan) - x_4n_minus_1;
                 let mut sx = generic.sx(x, &k, &plan);
                 {
-                    sx[0] -= x_4n_minus_1;
+                    // Subtract x^(4n-1) from the constant term (degree 0).
+                    let mut correction = sparse::view::View::<Fp, R, sparse::view::Forward>::new();
+                    correction.c.push(x_4n_minus_1);
+                    sx.sub_assign(&correction.build());
                 }
                 let mut sy = generic.sy(y, &k, &plan);
                 {
-                    let sy = sy.backward();
-                    sy.c[0] -= Fp::ONE;
+                    // Subtract 1 from the backward view's c[0], which is degree 4n-1.
+                    let mut correction = sparse::view::View::<Fp, R, sparse::view::Backward>::new();
+                    correction.c.push(Fp::ONE);
+                    sy.sub_assign(&correction.build());
                 }
 
                 prop_assert_eq!(sy.eval(x), sxy);
@@ -943,7 +946,7 @@ mod tests {
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
         let blind = Fp::ZERO;
 
-        let rx: structured::Polynomial<Fp, R> = ChildOfParentAOnlyStage::rx(challenges).unwrap();
+        let rx: sparse::Polynomial<Fp, R> = ChildOfParentAOnlyStage::rx(challenges).unwrap();
         let poly_commitment: EqAffine = rx.commit_to_affine(generators, blind);
 
         let mut manual_commitment = EqAffine::identity();
@@ -969,7 +972,7 @@ mod tests {
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
         let blind = Fp::ZERO;
 
-        let rx: structured::Polynomial<Fp, R> = ParentAOnlyStage::rx(challenges).unwrap();
+        let rx: sparse::Polynomial<Fp, R> = ParentAOnlyStage::rx(challenges).unwrap();
         let poly_commitment: EqAffine = rx.commit_to_affine(generators, blind);
 
         // Manually compute expected commitment using StageExt::generator_index_for_a.

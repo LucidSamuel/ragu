@@ -47,7 +47,7 @@ use ragu_primitives::io::Write;
 
 use alloc::boxed::Box;
 
-use polynomials::{Rank, structured, unstructured};
+use polynomials::{Rank, sparse};
 
 /// Bundles a primary value with auxiliary data.
 ///
@@ -196,7 +196,7 @@ pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
         x: F,
         key: &registry::Key<F>,
         floor_plan: &[floor_planner::ConstraintSegment],
-    ) -> unstructured::Polynomial<F, R>;
+    ) -> sparse::Polynomial<F, R>;
 
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
     fn sy(
@@ -204,7 +204,7 @@ pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
         y: F,
         key: &registry::Key<F>,
         floor_plan: &[floor_planner::ConstraintSegment],
-    ) -> structured::Polynomial<F, R>;
+    ) -> sparse::Polynomial<F, R>;
 
     /// Returns the number of constraints: `(multiplication, linear)`.
     fn constraint_counts(&self) -> (usize, usize);
@@ -259,7 +259,7 @@ where
             x: F,
             key: &registry::Key<F>,
             floor_plan: &[floor_planner::ConstraintSegment],
-        ) -> unstructured::Polynomial<F, R> {
+        ) -> sparse::Polynomial<F, R> {
             s::sx::eval(&self.circuit, x, key, floor_plan)
                 .expect("should succeed if metrics succeeded")
         }
@@ -268,7 +268,7 @@ where
             y: F,
             key: &registry::Key<F>,
             floor_plan: &[floor_planner::ConstraintSegment],
-        ) -> structured::Polynomial<F, R> {
+        ) -> sparse::Polynomial<F, R> {
             s::sy::eval(&self.circuit, y, key, floor_plan)
                 .expect("should succeed if metrics succeeded")
         }

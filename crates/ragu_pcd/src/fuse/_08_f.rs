@@ -12,7 +12,7 @@
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Rank, unstructured},
+    polynomials::{Rank, sparse},
     staging::StageExt,
 };
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
@@ -176,7 +176,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         }
         coeffs.reverse();
 
-        let poly = unstructured::Polynomial::from_coeffs(coeffs);
+        let poly = sparse::Polynomial::from_coeffs(coeffs);
         let blind = C::CircuitField::random(&mut *rng);
         let commitment = poly.commit_to_affine(C::host_generators(self.params), blind);
 

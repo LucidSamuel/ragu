@@ -11,7 +11,7 @@
 use ff::{FromUniformBytes, PrimeField};
 use ragu_circuits::{
     BondingObject, Circuit, Trace,
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_core::Result;
@@ -104,16 +104,12 @@ pub struct TestRegistry<'p, F: PrimeField, R: Rank> {
 impl<F: PrimeField, R: Rank> TestRegistry<'_, F, R> {
     /// Assembles a [`Trace`] into a polynomial for the entry identified
     /// by `handle`, using the registry's key and floor plan.
-    pub fn assemble(
-        &self,
-        trace: &Trace<F>,
-        handle: Handle,
-    ) -> Result<structured::Polynomial<F, R>> {
+    pub fn assemble(&self, trace: &Trace<F>, handle: Handle) -> Result<sparse::Polynomial<F, R>> {
         self.inner.assemble(trace, handle.resolve())
     }
 
     /// Returns $s(X, y)$ for the entry at `handle`.
-    pub fn y(&self, handle: Handle, y: F) -> structured::Polynomial<F, R> {
+    pub fn y(&self, handle: Handle, y: F) -> sparse::Polynomial<F, R> {
         self.inner.circuit_y(handle.resolve(), y)
     }
 

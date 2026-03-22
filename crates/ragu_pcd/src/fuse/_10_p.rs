@@ -15,7 +15,7 @@ use core::ops::AddAssign;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     CircuitExt,
-    polynomials::{Rank, unstructured},
+    polynomials::{Rank, sparse},
     staging::{MultiStage, StageExt},
 };
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
@@ -31,7 +31,7 @@ use crate::{Application, Proof, proof};
 
 /// Accumulates polynomials with their blinds and commitments.
 struct Accumulator<'a, C: Cycle, R: Rank> {
-    poly: &'a mut unstructured::Polynomial<C::CircuitField, R>,
+    poly: &'a mut sparse::Polynomial<C::CircuitField, R>,
     blind: &'a mut C::CircuitField,
     commitments: &'a mut Vec<C::HostCurve>,
     beta: C::CircuitField,
@@ -40,7 +40,7 @@ struct Accumulator<'a, C: Cycle, R: Rank> {
 impl<C: Cycle, R: Rank> Accumulator<'_, C, R> {
     fn acc<P>(&mut self, poly: &P, blind: C::CircuitField, commitment: C::HostCurve)
     where
-        for<'p> unstructured::Polynomial<C::CircuitField, R>: AddAssign<&'p P>,
+        for<'p> sparse::Polynomial<C::CircuitField, R>: AddAssign<&'p P>,
     {
         self.poly.scale(self.beta);
         *self.poly += poly;

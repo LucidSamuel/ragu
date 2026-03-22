@@ -3,7 +3,7 @@
 use ff::Field;
 use ragu_circuits::{
     horner::Horner,
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
 };
 use ragu_core::{Result, drivers::Driver};
 use ragu_primitives::{
@@ -21,7 +21,7 @@ pub trait Foldable<F: Field>: Default + Clone {
     fn fold_add_assign(&mut self, other: &Self);
 }
 
-impl<F: Field, R: Rank> Foldable<F> for structured::Polynomial<F, R> {
+impl<F: Field, R: Rank> Foldable<F> for sparse::Polynomial<F, R> {
     fn fold_scale(&mut self, by: F) {
         self.scale(by);
     }
@@ -137,8 +137,8 @@ pub fn fold_outer<T: Foldable<F>, F: Field, P: Parameters>(
 /// This computes off-diagonal revdot products for each group of `Inner`
 /// polynomials, producing `Outer` groups of error terms.
 fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
-    a: &[impl Borrow<structured::Polynomial<F, R>>],
-    b: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
 ) -> FixedVec<FixedVec<F, NumErrorTerms<Inner>>, Outer> {
     assert_eq!(a.len(), b.len(), "a and b must have same length");
     assert!(
@@ -175,16 +175,16 @@ fn compute_errors_impl<F: Field, R: Rank, Outer: Len, Inner: Len>(
 
 /// Inner error terms: `NumGroups` groups of `GroupSize`*(`GroupSize`-1) off-diagonal revdot products.
 pub fn inner_error_terms<F: Field, R: Rank, P: Parameters>(
-    a: &[impl Borrow<structured::Polynomial<F, R>>],
-    b: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
 ) -> FixedVec<FixedVec<F, NumErrorTerms<P::GroupSize>>, P::NumGroups> {
     compute_errors_impl::<F, R, P::NumGroups, P::GroupSize>(a, b)
 }
 
 /// Outer error terms: `NumGroups`*(`NumGroups`-1) off-diagonal revdot products.
 pub fn outer_error_terms<F: Field, R: Rank, P: Parameters>(
-    a: &[impl Borrow<structured::Polynomial<F, R>>],
-    b: &[impl Borrow<structured::Polynomial<F, R>>],
+    a: &[impl Borrow<sparse::Polynomial<F, R>>],
+    b: &[impl Borrow<sparse::Polynomial<F, R>>],
 ) -> FixedVec<F, NumErrorTerms<P::NumGroups>> {
     compute_errors_impl::<F, R, ConstLen<1>, P::NumGroups>(a, b)
         .into_iter()
@@ -291,7 +291,7 @@ mod tests {
     use super::*;
     use alloc::{vec, vec::Vec};
     use ff::Field;
-    use ragu_circuits::polynomials::{TestRank, structured};
+    use ragu_circuits::polynomials::{TestRank, sparse};
     use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::Fp;
     use ragu_primitives::{Simulator, vec::CollectFixed};
@@ -315,11 +315,11 @@ mod tests {
         let mut rng = rand::rng();
 
         // Create N random polynomial pairs
-        let lhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..n)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..n)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
-        let rhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..n)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..n)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
 
         // Compute ky values: diagonal revdot products
@@ -335,8 +335,8 @@ mod tests {
         let munu = mu * nu;
 
         // Fold polynomials
-        let folded_lhs = structured::Polynomial::fold(lhs.iter(), mu_inv);
-        let folded_rhs = structured::Polynomial::fold(rhs.iter(), munu);
+        let folded_lhs = sparse::Polynomial::fold(lhs.iter(), mu_inv);
+        let folded_rhs = sparse::Polynomial::fold(rhs.iter(), munu);
 
         // Run routine with Emulator
         let dr = &mut Emulator::execute();
@@ -382,11 +382,11 @@ mod tests {
             let mut rng = rand::rng();
 
             // Create `count` random polynomial pairs
-            let lhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
-            let rhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
 
             // Compute diagonal revdot products (ky values)
@@ -486,11 +486,11 @@ mod tests {
             let count = n * m;
 
             // Create N*M random polynomial pairs
-            let lhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
-            let rhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
 
             // Compute ky values: diagonal revdot products
@@ -606,11 +606,11 @@ mod tests {
             let mut rng = rand::rng();
 
             // Create `count` random polynomial pairs (up to m*n)
-            let lhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
-            let rhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-                .map(|_| structured::Polynomial::random(&mut rng))
+            let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+                .map(|_| sparse::Polynomial::random(&mut rng))
                 .collect();
 
             // Random evaluation point
@@ -792,7 +792,7 @@ mod tests {
         let n = <P as Parameters>::NumGroups::len();
 
         // Empty input should produce all-zero folded polynomials
-        let empty: Vec<structured::Polynomial<Fp, TestRank>> = vec![];
+        let empty: Vec<sparse::Polynomial<Fp, TestRank>> = vec![];
         let folded = fold_inner::<_, Fp, P>(&empty, Fp::ONE);
 
         // All N groups should be zero polynomials
@@ -820,7 +820,7 @@ mod tests {
 
         // Create 5 polynomials, which exceeds GroupSize*NumGroups=4
         let polys: Vec<_> = (0..5)
-            .map(|_| structured::Polynomial::<Fp, TestRank>::new())
+            .map(|_| sparse::Polynomial::<Fp, TestRank>::new())
             .collect();
         let _ = fold_inner::<_, Fp, P>(&polys, Fp::ONE);
     }
@@ -830,11 +830,11 @@ mod tests {
         let mut rng = rand::rng();
 
         // Create 3 distinct polynomial pairs
-        let a: Vec<structured::Polynomial<Fp, TestRank>> = (0..3)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let a: Vec<sparse::Polynomial<Fp, TestRank>> = (0..3)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
-        let b: Vec<structured::Polynomial<Fp, TestRank>> = (0..3)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let b: Vec<sparse::Polynomial<Fp, TestRank>> = (0..3)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
 
         // Compute error terms (should be 3*(3-1)=6 terms)
@@ -891,11 +891,11 @@ mod tests {
         // Use a subset of the full capacity to keep test fast
         let count: usize = 20; // Less than M*N=108
 
-        let lhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let lhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
-        let rhs: Vec<structured::Polynomial<Fp, TestRank>> = (0..count)
-            .map(|_| structured::Polynomial::random(&mut rng))
+        let rhs: Vec<sparse::Polynomial<Fp, TestRank>> = (0..count)
+            .map(|_| sparse::Polynomial::random(&mut rng))
             .collect();
 
         let mu = Fp::random(&mut rng);

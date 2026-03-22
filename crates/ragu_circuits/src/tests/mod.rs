@@ -69,18 +69,18 @@ fn consistency_checks<R: Rank>(obj: &dyn CircuitObject<Fp, R>) {
     let s00_eval = obj.sxy(Fp::ZERO, Fp::ZERO, &k, &plan);
 
     let sxY_poly = obj.sx(x, &k, &plan);
-    let sXy_poly = obj.sy(y, &k, &plan).unstructured();
+    let sXy_poly = obj.sy(y, &k, &plan);
     let s0Y_poly = obj.sx(Fp::ZERO, &k, &plan);
-    let sX0_poly = obj.sy(Fp::ZERO, &k, &plan).unstructured();
+    let sX0_poly = obj.sy(Fp::ZERO, &k, &plan);
 
-    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sXy_poly[..], x));
-    assert_eq!(sxy_eval, ragu_arithmetic::eval(&sxY_poly[..], y));
-    assert_eq!(s0y_eval, ragu_arithmetic::eval(&sXy_poly[..], Fp::ZERO));
-    assert_eq!(sx0_eval, ragu_arithmetic::eval(&sxY_poly[..], Fp::ZERO));
-    assert_eq!(s0y_eval, ragu_arithmetic::eval(&s0Y_poly[..], y));
-    assert_eq!(sx0_eval, ragu_arithmetic::eval(&sX0_poly[..], x));
-    assert_eq!(s00_eval, ragu_arithmetic::eval(&s0Y_poly[..], Fp::ZERO));
-    assert_eq!(s00_eval, ragu_arithmetic::eval(&sX0_poly[..], Fp::ZERO));
+    assert_eq!(sxy_eval, sXy_poly.eval(x));
+    assert_eq!(sxy_eval, sxY_poly.eval(y));
+    assert_eq!(s0y_eval, sXy_poly.eval(Fp::ZERO));
+    assert_eq!(sx0_eval, sxY_poly.eval(Fp::ZERO));
+    assert_eq!(s0y_eval, s0Y_poly.eval(y));
+    assert_eq!(sx0_eval, sX0_poly.eval(x));
+    assert_eq!(s00_eval, s0Y_poly.eval(Fp::ZERO));
+    assert_eq!(s00_eval, sX0_poly.eval(Fp::ZERO));
 }
 
 #[test]
@@ -186,10 +186,7 @@ fn test_simple_circuit() {
         )
         .unwrap();
 
-    let a = a.unstructured();
-    let b = b.unstructured();
-
-    assert_eq!(expected, ragu_arithmetic::dot(a.iter(), b.iter().rev()),);
+    assert_eq!(expected, a.revdot(&b));
 }
 
 #[derive(Clone)]

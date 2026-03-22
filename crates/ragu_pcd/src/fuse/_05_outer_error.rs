@@ -9,7 +9,7 @@
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
-    polynomials::{Rank, structured},
+    polynomials::{Rank, sparse},
     staging::{Stage as StageTrait, StageExt},
 };
 use ragu_core::{
@@ -52,7 +52,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         proof::OuterError<C, R>,
         native::stages::outer_error::Witness<C, native::RevdotParameters>,
         FixedVec<TrackedPoly<'rx, FoldKey, C::CircuitField, R>, NativeNumGroups>,
-        FixedVec<structured::Polynomial<C::CircuitField, R>, NativeNumGroups>,
+        FixedVec<sparse::Polynomial<C::CircuitField, R>, NativeNumGroups>,
     )>
     where
         D: Driver<'dr, F = C::CircuitField>,

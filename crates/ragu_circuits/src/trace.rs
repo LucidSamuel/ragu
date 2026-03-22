@@ -2,7 +2,7 @@
 //!
 //! The [`eval`] function in this module processes witness data for a
 //! particular [`Circuit`] and produces raw gate values as a [`Trace`].
-//! The [`Trace`] is later assembled into a [`structured::Polynomial`]
+//! The [`Trace`] is later assembled into a [`sparse::Polynomial`]
 //! by the registry.
 
 use ff::Field;
@@ -21,7 +21,7 @@ use alloc::{vec, vec::Vec};
 #[cfg(feature = "multicore")]
 use std::sync::mpsc;
 
-use super::{Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, registry, structured};
+use super::{Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, registry, sparse};
 use crate::WithAux;
 
 /// A contiguous group of multiplication gates.
@@ -67,7 +67,7 @@ impl<F: Field> AnnotatedSegment<F> {
 /// Trace data produced by evaluating a circuit.
 ///
 /// Pass to [`Registry::assemble`](crate::registry::Registry::assemble)
-/// to obtain the corresponding [`structured::Polynomial`].
+/// to obtain the corresponding [`sparse::Polynomial`].
 pub struct Trace<F> {
     /// Gate groups in DFS order. Segment 0 is the root segment;
     /// segments 1+ are created by [`Driver::routine`] calls.
@@ -75,7 +75,7 @@ pub struct Trace<F> {
 }
 
 impl<F: Field> Trace<F> {
-    /// Assembles this trace into a [`structured::Polynomial`] using
+    /// Assembles this trace into a [`sparse::Polynomial`] using
     /// the provided registry [`Key`](registry::Key).
     ///
     /// Each segment is scattered to the absolute position assigned by
@@ -86,7 +86,7 @@ impl<F: Field> Trace<F> {
         &self,
         key: &registry::Key<F>,
         floor_plan: &[ConstraintSegment],
-    ) -> Result<structured::Polynomial<F, R>> {
+    ) -> Result<sparse::Polynomial<F, R>> {
         assert_eq!(
             floor_plan.len(),
             self.segments.len(),
@@ -108,40 +108,38 @@ impl<F: Field> Trace<F> {
             return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
         }
 
-        let mut poly = structured::Polynomial::<F, R>::new();
-        {
-            let view = poly.forward();
+        let mut view = sparse::view::View::<F, R, sparse::view::Forward>::new();
 
-            // Pre-allocate zero-filled vectors for random-access scatter.
-            view.a.resize(total_gates, F::ZERO);
-            view.b.resize(total_gates, F::ZERO);
-            view.c.resize(total_gates, F::ZERO);
+        // Pre-allocate zero-filled vectors for random-access scatter.
+        view.a.resize(total_gates, F::ZERO);
+        view.b.resize(total_gates, F::ZERO);
+        view.c.resize(total_gates, F::ZERO);
 
-            // Scatter each segment to its floor-plan position.
-            for (seg_idx, seg) in self.segments.iter().enumerate() {
-                let segment = &floor_plan[seg_idx];
+        // Scatter each segment to its floor-plan position.
+        for (seg_idx, seg) in self.segments.iter().enumerate() {
+            let segment = &floor_plan[seg_idx];
 
-                // Verify segment size matches floor plan expectation.
-                assert_eq!(
-                    seg.a.len(),
-                    segment.num_multiplication_constraints,
-                    "segment {} size must match floor plan",
-                    seg_idx
-                );
+            // Verify segment size matches floor plan expectation.
+            assert_eq!(
+                seg.a.len(),
+                segment.num_multiplication_constraints,
+                "segment {} size must match floor plan",
+                seg_idx
+            );
 
-                let offset = segment.multiplication_start;
-                view.a[offset..offset + seg.a.len()].copy_from_slice(&seg.a);
-                view.b[offset..offset + seg.b.len()].copy_from_slice(&seg.b);
-                view.c[offset..offset + seg.c.len()].copy_from_slice(&seg.c);
-            }
-
-            // Overwrite segment 0's zeroed ONE gate placeholder with
-            // actual key values.
-            view.a[0] = key.value();
-            view.b[0] = key.inverse();
-            view.c[0] = F::ONE;
+            let offset = segment.multiplication_start;
+            view.a[offset..offset + seg.a.len()].copy_from_slice(&seg.a);
+            view.b[offset..offset + seg.b.len()].copy_from_slice(&seg.b);
+            view.c[offset..offset + seg.c.len()].copy_from_slice(&seg.c);
         }
-        Ok(poly)
+
+        // Overwrite segment 0's zeroed ONE gate placeholder with
+        // actual key values.
+        view.a[0] = key.value();
+        view.b[0] = key.inverse();
+        view.c[0] = F::ONE;
+
+        Ok(view.build())
     }
 }
 
