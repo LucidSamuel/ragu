@@ -85,7 +85,7 @@ impl<T, R: Rank> Polynomial<T, R> {
 
     /// Creates a polynomial from pre-built blocks. The caller must ensure
     /// blocks are sorted, non-overlapping, non-empty, and within capacity.
-    pub(super) fn from_blocks(blocks: Vec<(usize, Vec<T>)>) -> Self {
+    fn from_blocks(blocks: Vec<(usize, Vec<T>)>) -> Self {
         let poly = Self {
             blocks,
             _marker: PhantomData,
@@ -180,50 +180,31 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 // ---------------------------------------------------------------------------
 
 impl<T, R: Rank> Polynomial<T, R> {
-    /// Returns `true` if no coefficients are stored.
-    ///
-    /// For polynomials over a field, this is equivalent to the polynomial
-    /// being zero after operations that prune zeros: [`add_assign`](Polynomial::add_assign),
-    /// [`sub_assign`](Polynomial::sub_assign), [`scale`](Polynomial::scale),
-    /// and [`from_coeffs`](Polynomial::from_coeffs). Operations like
-    /// [`negate`](Polynomial::negate) and [`dilate`](Polynomial::dilate)
-    /// do not prune.
-    pub fn is_empty(&self) -> bool {
-        self.blocks.is_empty()
-    }
-
-    /// Returns a reference to the block list.
-    pub fn blocks(&self) -> &[(usize, Vec<T>)] {
-        &self.blocks
-    }
-
-    /// Total number of stored (non-zero) coefficients.
-    pub fn num_nonzero(&self) -> usize {
-        self.blocks.iter().map(|(_, data)| data.len()).sum()
-    }
-
-    /// Iterates over all stored `(degree_index, &value)` pairs.
-    pub fn iter_nonzero(&self) -> impl Iterator<Item = (usize, &T)> {
-        self.blocks
-            .iter()
-            .flat_map(|(start, data)| data.iter().enumerate().map(move |(i, v)| (start + i, v)))
-    }
-
-    /// Iterates mutably over all stored `(degree_index, &mut value)` pairs.
-    pub fn iter_nonzero_mut(&mut self) -> impl Iterator<Item = (usize, &mut T)> {
-        self.blocks.iter_mut().flat_map(|(start, data)| {
-            let s = *start;
-            data.iter_mut().enumerate().map(move |(i, v)| (s + i, v))
-        })
-    }
-
     /// Applies a closure to every stored element.
-    pub fn apply_all(&mut self, mut op: impl FnMut(&mut T)) {
+    fn apply_all(&mut self, mut op: impl FnMut(&mut T)) {
         for (_, data) in &mut self.blocks {
             for elem in data.iter_mut() {
                 op(elem);
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl<T, R: Rank> Polynomial<T, R> {
+    /// Returns `true` if no coefficients are stored.
+    fn is_empty(&self) -> bool {
+        self.blocks.is_empty()
+    }
+
+    /// Returns a reference to the block list.
+    fn blocks(&self) -> &[(usize, Vec<T>)] {
+        &self.blocks
+    }
+
+    /// Total number of stored (non-zero) coefficients.
+    fn num_nonzero(&self) -> usize {
+        self.blocks.iter().map(|(_, data)| data.len()).sum()
     }
 }
 
@@ -233,7 +214,7 @@ impl<T, R: Rank> Polynomial<T, R> {
 
 impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Expands to a dense coefficient vector of length `R::num_coeffs()`.
-    pub fn to_dense(&self) -> Vec<F> {
+    fn to_dense(&self) -> Vec<F> {
         let mut dense = alloc::vec![F::ZERO; R::num_coeffs()];
         for (start, data) in &self.blocks {
             dense[*start..*start + data.len()].copy_from_slice(data);
