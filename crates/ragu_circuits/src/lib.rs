@@ -180,31 +180,22 @@ impl<F: Field, C: Circuit<F>> CircuitExt<F> for C {}
 /// A trait for (partially) evaluating $s(X, Y)$ for some circuit.
 ///
 /// Constructed internally from a [`Circuit`] implementation.
+///
+/// The registry key constraint is **not** part of these evaluations; it is
+/// injected at the [`Registry`] level at the fixed $Y^{4n-1}$ position.
+///
+/// [`Registry`]: registry::Registry
 pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
     /// Evaluates the polynomial $s(x, y)$ for some $x, y \in \mathbb{F}$.
-    fn sxy(
-        &self,
-        x: F,
-        y: F,
-        key: &registry::Key<F>,
-        floor_plan: &[floor_planner::ConstraintSegment],
-    ) -> F;
+    fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F;
 
     /// Computes the polynomial restriction $s(x, Y)$ for some $x \in \mathbb{F}$.
-    fn sx(
-        &self,
-        x: F,
-        key: &registry::Key<F>,
-        floor_plan: &[floor_planner::ConstraintSegment],
-    ) -> sparse::Polynomial<F, R>;
+    fn sx(&self, x: F, floor_plan: &[floor_planner::ConstraintSegment])
+    -> sparse::Polynomial<F, R>;
 
     /// Computes the polynomial restriction $s(X, y)$ for some $y \in \mathbb{F}$.
-    fn sy(
-        &self,
-        y: F,
-        key: &registry::Key<F>,
-        floor_plan: &[floor_planner::ConstraintSegment],
-    ) -> sparse::Polynomial<F, R>;
+    fn sy(&self, y: F, floor_plan: &[floor_planner::ConstraintSegment])
+    -> sparse::Polynomial<F, R>;
 
     /// Returns the number of constraints: `(multiplication, linear)`.
     fn constraint_counts(&self) -> (usize, usize);
@@ -228,9 +219,11 @@ where
 {
     let metrics = metrics::eval(&circuit)?;
 
-    if metrics.num_linear_constraints > R::num_coeffs() {
+    // Reserve the last coefficient slot (Y^{4n-1}) for the registry key
+    // constraint, which is injected at the registry level.
+    if metrics.num_linear_constraints >= R::num_coeffs() {
         return Err(Error::LinearBoundExceeded {
-            limit: R::num_coeffs(),
+            limit: R::num_coeffs() - 1,
         });
     }
 
@@ -244,33 +237,23 @@ where
     }
 
     impl<F: Field, C: Circuit<F>, R: Rank> CircuitObject<F, R> for ProcessedCircuit<C> {
-        fn sxy(
-            &self,
-            x: F,
-            y: F,
-            key: &registry::Key<F>,
-            floor_plan: &[floor_planner::ConstraintSegment],
-        ) -> F {
-            s::sxy::eval::<_, _, R>(&self.circuit, x, y, key, floor_plan)
+        fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F {
+            s::sxy::eval::<_, _, R>(&self.circuit, x, y, floor_plan)
                 .expect("should succeed if metrics succeeded")
         }
         fn sx(
             &self,
             x: F,
-            key: &registry::Key<F>,
             floor_plan: &[floor_planner::ConstraintSegment],
         ) -> sparse::Polynomial<F, R> {
-            s::sx::eval(&self.circuit, x, key, floor_plan)
-                .expect("should succeed if metrics succeeded")
+            s::sx::eval(&self.circuit, x, floor_plan).expect("should succeed if metrics succeeded")
         }
         fn sy(
             &self,
             y: F,
-            key: &registry::Key<F>,
             floor_plan: &[floor_planner::ConstraintSegment],
         ) -> sparse::Polynomial<F, R> {
-            s::sy::eval(&self.circuit, y, key, floor_plan)
-                .expect("should succeed if metrics succeeded")
+            s::sy::eval(&self.circuit, y, floor_plan).expect("should succeed if metrics succeeded")
         }
         fn constraint_counts(&self) -> (usize, usize) {
             (

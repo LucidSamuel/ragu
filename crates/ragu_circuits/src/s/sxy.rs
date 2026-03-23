@@ -61,7 +61,7 @@ use ragu_primitives::GadgetExt;
 
 use alloc::vec;
 
-use crate::{Circuit, DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, registry};
+use crate::{Circuit, DriverScope, floor_planner::ConstraintSegment, polynomials::Rank};
 
 use super::{
     DriverExt,
@@ -230,12 +230,13 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
     /// # Errors
     ///
     /// Returns [`Error::LinearBoundExceeded`] if the constraint count reaches
-    /// [`Rank::num_coeffs()`].
+    /// `Rank::num_coeffs() - 1` (the last slot is reserved for the registry
+    /// key constraint).
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         let q = self.scope.linear_constraints;
-        if q == R::num_coeffs() {
+        if q >= R::num_coeffs() - 1 {
             return Err(Error::LinearBoundExceeded {
-                limit: R::num_coeffs(),
+                limit: R::num_coeffs() - 1,
             });
         }
         self.scope.linear_constraints += 1;
@@ -308,19 +309,12 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 /// - `circuit`: The circuit whose wiring polynomial to evaluate.
 /// - `x`: The evaluation point for the $X$ variable.
 /// - `y`: The evaluation point for the $Y$ variable.
-/// - `key`: The registry key that binds this evaluation to a [`Registry`] context by
-///   enforcing `key_wire - key = 0` as a constraint. This randomizes
-///   evaluations of $s(x, y)$, preventing trivial forgeries across registry
-///   contexts.
 /// - `floor_plan`: Per-routine absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
-///
-/// [`Registry`]: crate::registry::Registry
 pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     circuit: &C,
     x: F,
     y: F,
-    key: &registry::Key<F>,
     floor_plan: &[ConstraintSegment],
 ) -> Result<F> {
     if x == F::ZERO {
@@ -364,11 +358,10 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         _marker: core::marker::PhantomData,
     };
 
-    // Allocate the key_wire and ONE wires
-    let (key_wire, _, _one_wire) = evaluator.mul(|| unreachable!())?;
-
-    // Registry key constraint
-    evaluator.enforce_registry_key(&key_wire, key)?;
+    // Allocate the ONE gate (gate 0). The registry key constraint that binds
+    // the a-wire of this gate to the registry digest is injected at the
+    // registry level, not here.
+    evaluator.mul(|| unreachable!())?;
 
     let mut outputs = vec![];
 

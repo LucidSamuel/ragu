@@ -60,18 +60,17 @@ impl Circuit<Fp> for SquareCircuit {
 fn consistency_checks<R: Rank>(obj: &dyn CircuitObject<Fp, R>) {
     let x = Fp::random(&mut rand::rng());
     let y = Fp::random(&mut rand::rng());
-    let k = registry::Key::new(Fp::random(&mut rand::rng()));
     let plan = floor_planner::floor_plan(obj.segment_records());
 
-    let sxy_eval = obj.sxy(x, y, &k, &plan);
-    let s0y_eval = obj.sxy(Fp::ZERO, y, &k, &plan);
-    let sx0_eval = obj.sxy(x, Fp::ZERO, &k, &plan);
-    let s00_eval = obj.sxy(Fp::ZERO, Fp::ZERO, &k, &plan);
+    let sxy_eval = obj.sxy(x, y, &plan);
+    let s0y_eval = obj.sxy(Fp::ZERO, y, &plan);
+    let sx0_eval = obj.sxy(x, Fp::ZERO, &plan);
+    let s00_eval = obj.sxy(Fp::ZERO, Fp::ZERO, &plan);
 
-    let sxY_poly = obj.sx(x, &k, &plan);
-    let sXy_poly = obj.sy(y, &k, &plan);
-    let s0Y_poly = obj.sx(Fp::ZERO, &k, &plan);
-    let sX0_poly = obj.sy(Fp::ZERO, &k, &plan);
+    let sxY_poly = obj.sx(x, &plan);
+    let sXy_poly = obj.sy(y, &plan);
+    let s0Y_poly = obj.sx(Fp::ZERO, &plan);
+    let sX0_poly = obj.sy(Fp::ZERO, &plan);
 
     assert_eq!(sxy_eval, sXy_poly.eval(x));
     assert_eq!(sxy_eval, sxY_poly.eval(y));
@@ -163,7 +162,7 @@ fn test_simple_circuit() {
     let a = assignment.clone();
     let mut b = assignment.clone();
     b.dilate(z);
-    b.add_assign(&obj.sy(y, &k, &plan));
+    b.add_assign(&obj.sy(y, &plan));
     b.add_assign(&MyRank::tz(z));
 
     let expected = MySimpleCircuit
