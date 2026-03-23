@@ -104,29 +104,11 @@ impl<T, R: Rank> Polynomial<T, R> {
 /// within a block rather than triggering a split. Inline zeros waste MSM
 /// slots in [`commit`](Polynomial::commit), so this is kept small. The
 /// tolerance covers only the per-block overhead (allocation, merge
-/// iterations in [`combine_assign`](Polynomial::combine_assign)) — eval and
-/// dilate gap-skip costs are handled by [`pow_gap`], which avoids the
-/// fixed 64-squaring overhead of `pow_vartime` for small exponents.
+/// iterations in [`combine_assign`](Polynomial::combine_assign)) — each
+/// extra block requires a `pow_vartime` call to skip the gap.
 ///
 /// TODO(#608): benchmark to determine the optimal value.
 const GAP_TOLERANCE: usize = 4;
-
-/// Computes `z^gap` using chained multiplication for small gaps and
-/// square-and-multiply for large ones. `ff::Field::pow_vartime` iterates
-/// all 64 bits of a `u64` exponent unconditionally, so for gaps below 64
-/// chained multiplication is significantly cheaper.
-#[inline]
-fn pow_gap<F: Field>(z: F, gap: usize) -> F {
-    if gap < 64 {
-        let mut acc = F::ONE;
-        for _ in 0..gap {
-            acc *= z;
-        }
-        acc
-    } else {
-        z.pow_vartime([gap as u64])
-    }
-}
 
 /// Splits `data` into runs of coefficients and appends each run to `out` as
 /// `(base + run_offset, run_values)`. Zero gaps of up to [`GAP_TOLERANCE`]
@@ -380,7 +362,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         for (start, data) in self.blocks.iter().rev() {
             let gap = prev_start - (start + data.len());
             if gap > 0 {
-                result *= pow_gap(z, gap);
+                result *= z.pow_vartime([gap as u64]);
             }
             for coeff in data.iter().rev() {
                 result = result * z + *coeff;
@@ -388,7 +370,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
             prev_start = *start;
         }
         if prev_start > 0 {
-            result *= pow_gap(z, prev_start);
+            result *= z.pow_vartime([prev_start as u64]);
         }
         result
     }
@@ -401,7 +383,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         for (start, data) in &mut self.blocks {
             let gap = *start - prev_end;
             if gap > 0 {
-                power *= pow_gap(z, gap);
+                power *= z.pow_vartime([gap as u64]);
             }
             for coeff in data.iter_mut() {
                 *coeff *= power;

@@ -177,8 +177,7 @@ impl<T, R: Rank> View<T, R, Backward> {
 
 impl<T, R: Rank, P: Perspective> View<T, R, P> {
     /// Consumes this view, mapping wire buffers to degree positions and
-    /// producing a [`Polynomial`]. The resulting blocks preserve internal
-    /// zeros from the wire buffers.
+    /// producing a [`Polynomial`].
     ///
     /// # Panics
     ///
