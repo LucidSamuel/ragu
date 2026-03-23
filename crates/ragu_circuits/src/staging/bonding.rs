@@ -64,10 +64,10 @@ where
         Self: 'a,
     {
         // Validate: run synthesis with a driver that rejects mul and ONE usage.
-        // TODO: fuse this into the metrics pass inside `into_circuit_object` to
-        // eliminate the separate synthesis and the two-pass divergence risk
-        // (a circuit with interior mutability could theoretically behave
-        // differently across passes).
+        // TODO: we may want to fuse this into the metrics pass inside
+        // `into_circuit_object` to eliminate the separate synthesis and the
+        // two-pass divergence risk (a circuit with interior mutability could
+        // theoretically behave differently across passes).
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
@@ -77,7 +77,7 @@ where
         // Build the CircuitObject via the standard pipeline.
         let inner = into_circuit_object::<_, _, R>(self)?;
 
-        Ok(BondingObject::new(Box::new(Stripped::<F, R>(inner))))
+        Ok(BondingObject::new(Box::new(Stripped::<F, R>::new(inner))))
     }
 }
 
@@ -184,7 +184,13 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
 
 /// Wraps a [`CircuitObject`] and strips the `enforce_one` contribution,
 /// giving a zero constant term in $Y$.
-pub(crate) struct Stripped<'a, F: Field, R: Rank>(pub(crate) Box<dyn CircuitObject<F, R> + 'a>);
+pub(crate) struct Stripped<'a, F: Field, R: Rank>(Box<dyn CircuitObject<F, R> + 'a>);
+
+impl<'a, F: Field, R: Rank> Stripped<'a, F, R> {
+    pub(crate) fn new(inner: Box<dyn CircuitObject<F, R> + 'a>) -> Self {
+        Self(inner)
+    }
+}
 
 impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
     fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
