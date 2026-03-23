@@ -282,12 +282,12 @@ where
 ///    multiplication gates there is no $t(z)$, and the revdot identity
 ///    simplifies to $b = s\_{y}$.
 ///
-/// 2. **$k(y) = 0$ and zero constant term.** Bonding claims require
-///    $k(y) = 0$; to enforce this the constant-term position of $s(X, Y)$
-///    carries no linear constraint, making the constant term zero. General
-///    wiring polynomials always have a constant term of one (constraining
-///    the ONE wire), so the zero constant term distinguishes bonding
-///    polynomials and prevents substitution attacks.
+/// 2. **$k(y) = 0$ and stripped ONE wire.** Bonding claims require
+///    $k(y) = 0$; to enforce this the ONE wire's `enforce_one` constraint
+///    is stripped, zeroing its contribution at $Y^0$. General wiring
+///    polynomials carry the ONE monomial ($x^{2n}$) at the $Y^0$ position,
+///    so its absence distinguishes bonding polynomials and prevents
+///    substitution attacks.
 ///
 /// 3. **Batchable.** Without multiplication gates the revdot identity is
 ///    linear in the trace, so multiple traces can be folded with a random

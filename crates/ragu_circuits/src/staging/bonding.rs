@@ -184,8 +184,8 @@ pub(crate) struct Stripped<'a, F: Field, R: Rank>(pub(crate) Box<dyn CircuitObje
 
 impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
     fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
-        // Remove the ONE wire contribution: x^(4n-1) at y^0.
-        self.0.sxy(x, y, floor_plan) - x.pow_vartime([(4 * R::n() - 1) as u64])
+        // Remove the ONE wire contribution: x^(2n) at y^0.
+        self.0.sxy(x, y, floor_plan) - x.pow_vartime([(2 * R::n()) as u64])
     }
 
     fn sx(&self, x: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
@@ -201,10 +201,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
 
     fn sy(&self, y: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
         let mut poly = self.0.sy(y, floor_plan);
-        // Gate 0's c-wire holds the ONE wire; remove its y^0 contribution.
-        // In the backward perspective, c[0] maps to degree 4n - 1.
+        // Gate 0's b-wire holds the ONE wire; remove its y^0 contribution.
+        // In the backward perspective, b[0] maps to degree 2n.
         let mut correction = sparse::View::<_, R, _>::backward();
-        correction.c.push(F::ONE);
+        correction.b.push(F::ONE);
         poly.sub_assign(&correction.build());
         poly
     }

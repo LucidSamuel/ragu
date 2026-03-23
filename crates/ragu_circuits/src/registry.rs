@@ -273,34 +273,23 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// polynomial evaluations of circuits in the registry.
 ///
 /// [#78]: https://github.com/tachyon-zcash/ragu/issues/78
-pub struct Key<F: Field> {
-    /// Registry digest value
-    val: F,
-    /// Cached inverse of digest
-    inv: F,
-}
+pub struct Key<F: Field>(F);
 
 impl<F: Field> Default for Key<F> {
     fn default() -> Self {
-        Self::new(F::ONE)
+        Self(F::ONE)
     }
 }
 
 impl<F: Field> Key<F> {
-    /// Creates a new registry key from a field element, panic if zero.
+    /// Creates a new registry key from a field element.
     pub fn new(val: F) -> Self {
-        let inv = val.invert().expect("registry digest should never be zero");
-        Self { val, inv }
+        Self(val)
     }
 
     /// Returns the registry key value.
     pub fn value(&self) -> F {
-        self.val
-    }
-
-    /// Returns the cached inverse of the registry key.
-    pub fn inverse(&self) -> F {
-        self.inv
+        self.0
     }
 }
 
@@ -361,13 +350,13 @@ impl<F: PrimeField> From<F> for OmegaKey {
 
 impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Assembles a [`Trace`](crate::Trace) into a [`sparse::Polynomial`] using
-    /// this registry's key and the floor plan for the specified circuit.
+    /// the floor plan for the specified circuit.
     pub fn assemble(
         &self,
         trace: &crate::trace::Trace<F>,
         circuit: CircuitIndex,
     ) -> Result<sparse::Polynomial<F, R>> {
-        trace.assemble_with_key(&self.key, &self.floor_plans[usize::from(circuit)])
+        trace.assemble(&self.floor_plans[usize::from(circuit)])
     }
 
     /// Returns the registry digest value.
@@ -533,8 +522,10 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         );
 
         // Add the registry key contribution at Y^{4n-1}: the a-wire of
-        // gate 0 (X^{2n-1}) minus k times the ONE wire (X^{4n-1}).
+        // gate 0 (X^{2n-1}) minus k times the c-wire of gate 0 (X^{4n-1}).
         // In the backward view, a[0] maps to X^{2n-1} and c[0] to X^{4n-1}.
+        // The prover sets a[0] = c[0] = 0, so this constraint is trivially
+        // satisfied; its role is to embed k into the wiring polynomial.
         // When y = 0, every Y^j for j >= 1 vanishes, so the key term is zero.
         if y != F::ZERO {
             let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
@@ -947,13 +938,6 @@ mod tests {
         }
 
         Ok(())
-    }
-
-    #[test]
-    #[should_panic = "registry digest should never be zero"]
-    fn zero_registry_key_panics() {
-        use ff::Field;
-        let _ = super::Key::new(<Fp as Field>::ZERO);
     }
 
     #[test]

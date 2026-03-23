@@ -123,7 +123,7 @@ enum WireIndex {
 ///
 /// # The `ONE` Wire
 ///
-/// The constant [`Driver::ONE`] is the $c$ wire from gate 0. Since `const`
+/// The constant [`Driver::ONE`] is the $b$ wire from gate 0. Since `const`
 /// items cannot hold references, `ONE` uses `table: None`. This is safe because
 /// the ONE wire is allocated (not virtual) and needs no reference counting.
 ///
@@ -502,7 +502,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
     type Wire = Wire<'table, 'sy, F, R>;
 
     const ONE: Self::Wire = Wire {
-        index: WireIndex::C(0),
+        index: WireIndex::B(0),
         table: None,
     };
 
@@ -664,7 +664,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
         // wire coefficient.
-        view.c.push(F::ONE);
+        view.b.push(F::ONE);
         return Ok(view.build());
     }
 

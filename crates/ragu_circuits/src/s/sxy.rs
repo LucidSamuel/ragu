@@ -119,7 +119,7 @@ struct Evaluator<'fp, F, R> {
     /// The evaluation point $y$, used for Horner accumulation.
     y: F,
 
-    /// Evaluation of the `ONE` wire: $x^{4n - 1}$.
+    /// Evaluation of the `ONE` wire: $x^{2n}$.
     ///
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
@@ -130,6 +130,10 @@ struct Evaluator<'fp, F, R> {
 
     /// Base monomial $x^{2n}$, used to compute routine starting monomials.
     base_v_x: F,
+
+    /// Base monomial $x^{4n-1}$, used to compute routine starting monomials
+    /// for the $c$ wire.
+    base_w_x: F,
 
     /// Floor plan mapping DFS routine index to absolute offsets.
     floor_plan: &'fp [ConstraintSegment],
@@ -263,7 +267,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             available_b: None,
             current_u_x: self.base_u_x * self.x_inv.pow_vartime([multiplication_start as u64]),
             current_v_x: self.base_v_x * self.x.pow_vartime([multiplication_start as u64]),
-            current_w_x: self.one * self.x_inv.pow_vartime([multiplication_start as u64]),
+            current_w_x: self.base_w_x * self.x_inv.pow_vartime([multiplication_start as u64]),
             multiplication_constraints: multiplication_start,
             linear_constraints: linear_start,
             result: F::ZERO,
@@ -328,7 +332,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let base_u_x = xn2 * x_inv; // x^(2n - 1)
     let base_v_x = xn2; // x^(2n)
     let xn4 = xn2.square(); // x^(4n)
-    let one = xn4 * x_inv; // x^(4n - 1)
+    let base_w_x = xn4 * x_inv; // x^(4n - 1)
+    let one = base_v_x; // x^(2n)
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
@@ -341,7 +346,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             available_b: None,
             current_u_x: base_u_x,
             current_v_x: base_v_x,
-            current_w_x: one,
+            current_w_x: base_w_x,
             multiplication_constraints: 0,
             linear_constraints: 0,
             result: F::ZERO,
@@ -353,6 +358,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         one,
         base_u_x,
         base_v_x,
+        base_w_x,
         floor_plan,
         current_routine: 0,
         _marker: core::marker::PhantomData,

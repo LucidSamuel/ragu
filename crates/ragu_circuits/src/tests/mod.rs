@@ -16,7 +16,6 @@ use ragu_primitives::Element;
 use crate::{
     Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
     polynomials::{Rank, TestRank},
-    registry,
 };
 use ragu_core::maybe::Always;
 use ragu_core::routines::Prediction;
@@ -150,9 +149,8 @@ fn test_simple_circuit() {
 
     let obj = into_circuit_object::<_, _, MyRank>(MySimpleCircuit).unwrap();
     let plan = floor_planner::floor_plan(obj.segment_records());
-    let k = registry::Key::default();
 
-    let assignment = trace.assemble_with_key(&k, &plan).unwrap();
+    let assignment = trace.assemble(&plan).unwrap();
 
     consistency_checks::<MyRank>(&*obj);
 

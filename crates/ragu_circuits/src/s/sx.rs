@@ -34,7 +34,7 @@
 //!
 //! Wires are represented as evaluated monomials using the running monomial
 //! pattern described in the [`common`] module. The `ONE` wire evaluates to
-//! $x^{4n - 1}$.
+//! $x^{2n}$.
 //!
 //! [`common`]: super::common
 //!
@@ -52,7 +52,7 @@
 //! and [`sxy`] agree on which constraint maps to which $Y$-power.
 //!
 //! After reversal, the root segment's coefficients are ordered as:
-//! 1. $c\_{0}$: `ONE` wire constraint (the constant $x^{4n - 1}$)
+//! 1. $c\_{0}$: `ONE` wire constraint (the constant $x^{2n}$)
 //! 2. $c\_{1}, \ldots, c\_{p}$: public output constraints
 //! 3. $c\_{p+1}, \ldots, c\_{p+m}$: circuit-specific constraints
 //!
@@ -141,7 +141,7 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// Cached inverse $x^{-1}$, used to advance decreasing monomials.
     x_inv: F,
 
-    /// Evaluation of the `ONE` wire: $x^{4n - 1}$.
+    /// Evaluation of the `ONE` wire: $x^{2n}$.
     ///
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
@@ -152,6 +152,10 @@ struct Evaluator<'fp, F: Field, R: Rank> {
 
     /// Base monomial $x^{2n}$, used to compute routine starting monomials.
     base_v_x: F,
+
+    /// Base monomial $x^{4n-1}$, used to compute routine starting monomials
+    /// for the $c$ wire.
+    base_w_x: F,
 
     /// Floor plan mapping DFS routine index to absolute offsets.
     floor_plan: &'fp [ConstraintSegment],
@@ -283,7 +287,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             available_b: None,
             current_u_x: self.base_u_x * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
             current_v_x: self.base_v_x * self.x.pow_vartime([seg.multiplication_start as u64]),
-            current_w_x: self.one * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
+            current_w_x: self.base_w_x * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
             multiplication_constraints: seg.multiplication_start,
             linear_constraints: seg.linear_start,
         };
@@ -340,7 +344,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let base_u_x = xn2 * x_inv;
     let base_v_x = xn2;
     let xn4 = xn2.square();
-    let one = xn4 * x_inv;
+    let base_w_x = xn4 * x_inv;
+    let one = base_v_x;
 
     let mut evaluator = Evaluator::<F, R> {
         // Zero-initialized: the evaluator fills specific indices during
@@ -351,7 +356,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
             available_b: None,
             current_u_x: base_u_x,
             current_v_x: base_v_x,
-            current_w_x: one,
+            current_w_x: base_w_x,
             multiplication_constraints: 0,
             linear_constraints: 0,
         },
@@ -360,6 +365,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         one,
         base_u_x,
         base_v_x,
+        base_w_x,
         floor_plan,
         current_routine: 0,
         _marker: core::marker::PhantomData,

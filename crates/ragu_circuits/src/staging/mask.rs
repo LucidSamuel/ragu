@@ -176,9 +176,9 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
         let mut view = sparse::View::backward();
 
-        // Skip the ONE gate (gate 0). In the backward wire layout a[0] maps
-        // to X^{2n-1} and c[0] maps to X^{4n-1}; their key contributions are
-        // supplied by RegistryAt::y(), not here.
+        // Skip the ONE gate (gate 0). In the backward wire layout b[0] maps
+        // to X^{2n} (the ONE wire). The registry key contribution at a[0] and
+        // c[0] is supplied by RegistryAt::y(), not here.
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
@@ -457,10 +457,10 @@ mod tests {
         let plan = floor_planner::floor_plan(circuit.segment_records());
         let sy = circuit.sy(y, &plan);
 
-        // The ONE wire (c-wire of gate 0) should have the y^0 coefficient.
-        // In the backward view, c[0] maps to degree 4n-1.
+        // The ONE wire (b-wire of gate 0) should have the y^0 coefficient.
+        // In the backward view, b[0] maps to degree 2n.
         let sy_dense = sy.to_dense();
-        let actual_one_coeff = sy_dense[4 * R::n() - 1];
+        let actual_one_coeff = sy_dense[2 * R::n()];
 
         // The ONE constraint is at Y^0, so its coefficient is y^0 = 1.
         assert_eq!(
