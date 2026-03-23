@@ -49,6 +49,11 @@ What belongs in the book vs. rustdoc.
   independently. This is not duplication; it is each surface doing its job.
 - Pure design rationale or motivational exposition that adds no API
   insight should not be duplicated — use summary + link instead.
+- Exception: design rationale that is too nuanced or implementation-coupled
+  for the book — and that directly helps a developer understand *why* an API
+  is shaped the way it is — belongs in rustdoc even if it reads as
+  motivational. Not all "why" prose is dispensable exposition; some of it is
+  essential context that has no better home.
 - Do not condense rustdoc that already provides a brief, self-contained
   orientation to a module's concepts. If the existing prose is already
   concise, it is not "duplication" — it is the rustdoc doing its job for

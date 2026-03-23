@@ -87,7 +87,7 @@
 //! [`Routine`]: ragu_core::routines::Routine
 //! [`enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 //! [`floor_plan`]: crate::floor_planner::floor_plan
-//! [wiring polynomials]: https://tachyon.z.cash/ragu/protocol/core/nark.html#polynomials
+//! [wiring polynomials]: http://TODO
 
 use ragu_core::{
     Result,

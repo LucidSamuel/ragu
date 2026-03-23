@@ -1,8 +1,5 @@
 //! Driver for executing circuit code natively with minimal overhead.
 //!
-//! The [`Emulator`] executes circuit code directly without enforcing
-//! constraints, making it the simplest [`Driver`] implementation.
-//!
 //! The [`Emulator`] driver never checks multiplication or linear constraints,
 //! but it _can_ be used to collect and compute wire assignments.
 //! When instantiated in [`Wireless`] mode, the emulator simply executes the
