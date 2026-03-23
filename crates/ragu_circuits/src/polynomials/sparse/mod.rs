@@ -204,7 +204,7 @@ impl<T, R: Rank> Polynomial<T, R> {
 
 impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Re-normalizes block structure by stripping leading/trailing zeros
-    /// and splitting interior zero gaps exceeding [`GAP_TOLERANCE`].
+    /// and splitting interior zero gaps exceeding `GAP_TOLERANCE`.
     pub fn sparsify(&mut self) {
         let old = core::mem::take(&mut self.blocks);
         let mut new = Vec::with_capacity(old.len());

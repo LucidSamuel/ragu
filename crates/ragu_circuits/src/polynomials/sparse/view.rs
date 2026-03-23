@@ -183,7 +183,7 @@ impl<F: Field, R: Rank, P: Perspective> View<F, R, P> {
     ///
     /// The resulting polynomial is [`sparsify`](Polynomial::sparsify)-ed:
     /// leading/trailing zeros are stripped and interior zero gaps exceeding
-    /// [`GAP_TOLERANCE`](super::GAP_TOLERANCE) are split into separate blocks.
+    /// `GAP_TOLERANCE` are split into separate blocks.
     ///
     /// # Panics
     ///
