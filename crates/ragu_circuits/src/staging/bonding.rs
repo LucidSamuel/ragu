@@ -64,6 +64,10 @@ where
         Self: 'a,
     {
         // Validate: run synthesis with a driver that rejects mul and ONE usage.
+        // TODO: fuse this into the metrics pass inside `into_circuit_object` to
+        // eliminate the separate synthesis and the two-pass divergence risk
+        // (a circuit with interior mutability could theoretically behave
+        // differently across passes).
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
@@ -210,7 +214,9 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
     }
 
     fn constraint_counts(&self) -> (usize, usize) {
-        self.0.constraint_counts()
+        let (mul, lin) = self.0.constraint_counts();
+        // The inner object includes the `enforce_one` constraint that we strip.
+        (mul, lin - 1)
     }
 
     fn segment_records(&self) -> &[SegmentRecord] {
@@ -381,6 +387,34 @@ mod tests {
         }
     }
 
+    /// Empty bonding circuit: no allocations, no constraints.
+    struct EmptyCircuit;
+
+    impl MultiStageCircuit<Fp, R> for EmptyCircuit {
+        type Last = ();
+        type Instance<'source> = ();
+        type Witness<'source> = ();
+        type Output = ();
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _: &mut D,
+            _: DriverValue<D, ()>,
+        ) -> Result<Bound<'dr, D, ()>> {
+            Ok(())
+        }
+
+        fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            builder: StageBuilder<'a, 'dr, D, R, (), ()>,
+            _: DriverValue<D, ()>,
+        ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
+            let _ = builder.finish();
+            Ok(WithAux::new((), D::unit()))
+        }
+    }
+
     fn bonding_obj() -> Box<dyn CircuitObject<Fp, R>> {
         MultiStage::<Fp, R, _>::new(EqualWires)
             .into_bonding_object()
@@ -485,5 +519,32 @@ mod tests {
 
         let rx_unequal = build_trace(&[(v, w)]);
         assert_ne!(rx_unequal.revdot(&sy), Fp::ZERO);
+    }
+
+    /// An empty bonding circuit (no alloc, no enforce_zero) should succeed
+    /// and produce a polynomial that imposes no constraint on any trace.
+    #[test]
+    fn empty_circuit() {
+        let obj = MultiStage::<Fp, R, _>::new(EmptyCircuit)
+            .into_bonding_object()
+            .unwrap()
+            .into_inner();
+        let floor_plan = floor_planner::floor_plan(obj.segment_records());
+        let key = registry::Key::new(Fp::random(&mut rand::rng()));
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        // Zero constant term still holds.
+        assert_eq!(obj.sxy(Fp::ZERO, y, &key, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(x, Fp::ZERO, &key, &floor_plan), Fp::ZERO);
+
+        // Evaluation consistency.
+        let sxy = obj.sxy(x, y, &key, &floor_plan);
+        assert_eq!(sxy, obj.sx(x, &key, &floor_plan).eval(y));
+        assert_eq!(sxy, obj.sy(y, &key, &floor_plan).eval(x));
+
+        // Revdot is zero for any trace (no constraints to violate).
+        let rx = build_trace(&[(Fp::random(&mut rand::rng()), Fp::random(&mut rand::rng()))]);
+        assert_eq!(rx.revdot(&obj.sy(y, &key, &floor_plan)), Fp::ZERO);
     }
 }
