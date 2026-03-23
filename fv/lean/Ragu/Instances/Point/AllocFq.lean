@@ -14,7 +14,7 @@ def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Exp
     output.y
   ]
 
-def formal_instance : Core.Statements.FormalInstance where
+def formal_instance : Core.Statements.GeneralFormalInstance where
   p
   inputLen
   outputLen
@@ -27,21 +27,19 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  Assumptions input := True
   Spec input output := output.isOnCurve Circuits.Point.Spec.EqAffineParams
 
-  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams
+  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams 0
 
-  same_circuit := by
+  same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, FormalCircuit.toSubcircuit,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
       Circuits.Point.Alloc.circuit, Circuits.Point.Alloc.elaborated, Circuits.Point.Alloc.main,
-      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.elaborated, Circuits.Core.AllocMul.main,
-      Circuits.Element.AllocSquare.circuit, Circuits.Element.AllocSquare.elaborated, Circuits.Element.AllocSquare.main,
+      Circuits.Element.AllocSquare.generalCircuit, Circuits.Element.AllocSquare.elaborated, Circuits.Element.AllocSquare.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     rfl
   same_output := by intro input; rfl
   same_spec := by intro input output; rfl
-  same_assumptions := by intro input; rfl
 
 end Ragu.Instances.Point.AllocFq
