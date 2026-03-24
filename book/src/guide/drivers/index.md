@@ -27,8 +27,9 @@ The driver exposes three core operations:
 * [`mul()`]: returns wires $(a, b, c)$ with the constraint $a \cdot b = c$,
       simultaneously assigning their values. The caller provides a closure that
       returns the three assignments; it is evaluated only in contexts where
-      [witness data](witness.md) is needed. See [`DriverTypes`](#drivertypes) for
-      the underlying [`gate()`] method and its additional $d$ wire.
+      [witness data](witness.md) is needed. See [`DriverTypes`](#drivertypes)
+      for the lower-level [`gate()`] method that [`mul()`] delegates to by
+      default.
 * [`enforce_zero()`]: enforces that a linear combination of previously created
       wires equals zero. This operation takes a closure that is only executed
       when the driver needs to know about the constraint system. The closure is
@@ -74,11 +75,11 @@ details which are agnostic to the `'dr` lifetime. These include associated types
 
 The most important item on `DriverTypes` is [`gate()`]. It allocates four wires
 $(a, b, c, d)$ subject to the constraints $a \cdot b = c$ and $c \cdot d = 0$.
-The second constraint usually makes $d$ useless: whenever $c$ is nonzero, $d$ is
-forced to zero. For this reason [`mul()`] delegates to `gate` by default and
-simply discards $d$, and circuit code should always prefer `mul`. But when $c$ is
-guaranteed to be zero, $d$ becomes unconstrained—code can call `gate` directly
-to access it.
+The second constraint makes $d$ useless in the typical case: whenever $c$ is
+nonzero, $d$ is forced to zero. For this reason [`mul()`] delegates to `gate`
+by default and discards $d$, and circuit code should always prefer `mul`. But
+when $c$ is guaranteed to be zero, $d$ becomes unconstrained—code can call
+`gate` directly and use the returned $d$.
 
 `Driver<'dr>` re-exports the field and wire types as [`F`][driver-f] and
 [`Wire`]; the remaining associated types live only on `DriverTypes` because

@@ -119,13 +119,14 @@ pub trait DriverTypes {
     type LCenforce: LinearExpression<Self::ImplWire, Self::ImplField>;
 
     /// Allocates the wires $(A, B, C, D)$ with the constraints $A \cdot B = C$
-    /// and $C \cdot D = 0$. The second constraint usually makes $D$ useless:
-    /// whenever $C$ is nonzero, $D$ is forced to zero. But when $C$ is
-    /// guaranteed to be zero, $D$ becomes unconstrained and available for use.
+    /// and $C \cdot D = 0$. The second constraint makes $D$ useless in the
+    /// typical case: whenever $C$ is nonzero, $D$ is forced to zero. But when
+    /// $C$ is guaranteed to be zero, $D$ becomes unconstrained and available
+    /// for use.
     ///
-    /// Circuit code should prefer [`Driver::mul`], which wraps this method and
-    /// discards $D$. Only code that exploits an unconstrained $D$ wire should
-    /// call `gate` directly.
+    /// Circuit code should prefer [`Driver::mul`], which delegates to this
+    /// method by default and discards $D$. Only code that needs an
+    /// unconstrained $D$ wire should call `gate` directly.
     ///
     /// The provided closure may be called by the driver if an assignment is
     /// needed. If it is called, any errors are propagated from it, and the
