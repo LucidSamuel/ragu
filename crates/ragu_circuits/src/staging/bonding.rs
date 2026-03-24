@@ -63,11 +63,6 @@ where
     where
         Self: 'a,
     {
-        // Validate: run synthesis with a driver that rejects mul and ONE usage.
-        // TODO: we may want to fuse this into the metrics pass inside
-        // `into_circuit_object` to eliminate the separate synthesis and the
-        // two-pass divergence risk (a circuit with interior mutability could
-        // theoretically behave differently across passes).
         let mut validator = BondingValidator::<F>::new();
         self.witness(&mut validator, Empty)?;
         if let Some(msg) = validator.error {
@@ -538,21 +533,17 @@ mod tests {
             .unwrap()
             .into_inner();
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
-        let key = registry::Key::new(Fp::random(&mut rand::rng()));
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        // Zero constant term still holds.
-        assert_eq!(obj.sxy(Fp::ZERO, y, &key, &floor_plan), Fp::ZERO);
-        assert_eq!(obj.sxy(x, Fp::ZERO, &key, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan), Fp::ZERO);
 
-        // Evaluation consistency.
-        let sxy = obj.sxy(x, y, &key, &floor_plan);
-        assert_eq!(sxy, obj.sx(x, &key, &floor_plan).eval(y));
-        assert_eq!(sxy, obj.sy(y, &key, &floor_plan).eval(x));
+        let sxy = obj.sxy(x, y, &floor_plan);
+        assert_eq!(sxy, obj.sx(x, &floor_plan).eval(y));
+        assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
 
-        // Revdot is zero for any trace (no constraints to violate).
         let rx = build_trace(&[(Fp::random(&mut rand::rng()), Fp::random(&mut rand::rng()))]);
-        assert_eq!(rx.revdot(&obj.sy(y, &key, &floor_plan)), Fp::ZERO);
+        assert_eq!(rx.revdot(&obj.sy(y, &floor_plan)), Fp::ZERO);
     }
 }
