@@ -339,11 +339,6 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 ///
 /// - `circuit`: The circuit whose wiring polynomial to evaluate.
 /// - `x`: The evaluation point for the $X$ variable.
-/// - `key`: The registry key that binds this evaluation to a [`Registry`] context by
-///   enforcing `key_wire - key = 0` as a constraint. This randomizes
-///   evaluations of $s(x, Y)$, preventing trivial forgeries across registry
-///   contexts.
-///
 /// - `floor_plan`: Per-segment absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
 ///
