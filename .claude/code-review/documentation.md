@@ -5,6 +5,8 @@
 Review documentation in Rust source files — doc comments (`///`, `//!`), code
 comments (`//`), and module-level documentation. For shared prose and math
 rules, see `.claude/review-shared/writing.md` and `.claude/review-shared/math.md`.
+For book vs. rustdoc placement rules, see
+`.claude/review-shared/surface-placement.md`.
 
 ## Prose in Doc Comments
 
@@ -57,6 +59,15 @@ rules, see `.claude/review-shared/writing.md` and `.claude/review-shared/math.md
   belongs in a code comment.
 - In non-doc `//` comments, avoid Unicode math symbols. Prefer breaking into
   smaller functions with doc comments that render KaTeX.
+
+## API Contracts
+
+- State the contract; don't spell out consequences of violating it. "Must be
+  smaller than `T`" is sufficient — adding "violations may cause panics or
+  incorrect behavior" is noise, since *any* contract violation can produce
+  incorrect behavior.
+- Exception: `# Safety` sections on `unsafe` items, where the consequences
+  are undefined behavior and the caller must be warned explicitly.
 
 ## Content Guidelines
 

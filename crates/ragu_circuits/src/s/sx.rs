@@ -164,7 +164,7 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// $d$ wire.
     base_d_x: F,
 
-    /// Floor plan mapping DFS routine index to absolute offsets.
+    /// Floor plan mapping DFS segment index to absolute offsets.
     floor_plan: &'fp [ConstraintSegment],
 
     /// Global monotonic DFS counter for routine entries.
@@ -297,7 +297,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         let seg = &self.floor_plan[self.current_routine];
 
         // Jump to this routine's absolute position in the polynomial;
-        // see the "Routine Scope Jumps" section in the `s` module doc.
+        // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
         let init_scope = SxScope {
             available_b: None,
             current_a_x: self.base_a_x * self.x_inv.pow_vartime([seg.multiplication_start as u64]),
@@ -339,7 +339,7 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 ///
 /// - `circuit`: The circuit whose wiring polynomial to evaluate.
 /// - `x`: The evaluation point for the $X$ variable.
-/// - `floor_plan`: Per-routine absolute offsets, computed by
+/// - `floor_plan`: Per-segment absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
 ///
 /// # Special Cases

@@ -20,7 +20,9 @@
 //! )\right)
 //! $$
 //!
-//! where $\mathbf{a}, \mathbf{b}, \mathbf{c}, \mathbf{d}$ are fixed coefficient
+//! where $q$ is the number of linear constraints (at most
+//! [`num_coeffs()`](crate::polynomials::Rank::num_coeffs)), and
+//! $\mathbf{a}, \mathbf{b}, \mathbf{c}, \mathbf{d}$ are fixed coefficient
 //! matrices determined by the `enforce_zero` (and indirectly,
 //! [`add`](ragu_core::drivers::Driver::add)) calls.
 //!

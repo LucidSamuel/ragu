@@ -58,7 +58,7 @@ overhead. For example, synthesis drivers return the $a$ wire from a `mul`
 operation, stash the associated $b$ wire for the next `alloc` call, and fill in
 $c$ later to satisfy the constraint.
 
-### The `'dr` Lifetime
+### The `'dr` Lifetime {#the-dr-lifetime}
 
 Drivers are parameterized by a lifetime `'dr` that ties [routines] to the
 driver's scope. The [`routine()`] method bounds routines by `'dr`, ensuring

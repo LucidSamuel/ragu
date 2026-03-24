@@ -63,9 +63,6 @@ pub trait Parameters: 'static + Send + Sync + Clone + Copy + Default {
 /// off-diagonal entries of an $m \times m$ matrix, which by definition has $m *
 /// (m - 1)$ terms.
 ///
-/// See the book entry on [folding revdot
-/// claims](https://tachyon.z.cash/_ragu_INTERNAL_ONLY_H83J19XK1/design/structured.html#folding)
-/// for more information.
 pub struct NumErrorTerms<L: Len>(PhantomData<L>);
 
 impl<L: Len> Len for NumErrorTerms<L> {
