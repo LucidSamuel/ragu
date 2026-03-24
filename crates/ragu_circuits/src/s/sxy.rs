@@ -374,6 +374,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let base_b_x = xn2; // x^(2n)
     let xn4 = xn2.square(); // x^(4n)
     let base_c_x = xn4 * x_inv; // x^(4n - 1)
+    let xn_inv = x_inv.pow_vartime([R::n() as u64]); // x^(-n)
+    let base_b_x_inv = xn_inv.square(); // x^(-2n)
     let one = base_b_x; // x^(2n)
 
     if y == F::ZERO {
@@ -400,7 +402,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         base_a_x,
         base_b_x,
         base_c_x,
-        base_b_x_inv: base_b_x.invert().unwrap(),
+        base_b_x_inv,
         floor_plan,
         current_routine: 0,
         _marker: core::marker::PhantomData,

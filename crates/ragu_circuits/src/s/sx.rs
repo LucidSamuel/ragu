@@ -387,6 +387,8 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
     let base_b_x = xn2;
     let xn4 = xn2.square();
     let base_c_x = xn4 * x_inv;
+    let xn_inv = x_inv.pow_vartime([R::n() as u64]);
+    let base_b_x_inv = xn_inv.square();
     let one = base_b_x;
 
     let mut evaluator = Evaluator::<F, R> {
@@ -408,7 +410,7 @@ pub fn eval<F: Field, C: Circuit<F>, R: Rank>(
         base_a_x,
         base_b_x,
         base_c_x,
-        base_b_x_inv: base_b_x.invert().unwrap(),
+        base_b_x_inv,
         floor_plan,
         current_routine: 0,
         _marker: core::marker::PhantomData,
