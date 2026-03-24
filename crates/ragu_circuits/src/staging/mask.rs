@@ -313,10 +313,14 @@ mod tests {
     }
 
     impl<R: Rank> StageMask<R> {
-        /// Returns the generator point for the i-th B coefficient of this stage.
+        /// Returns the generator point for the `coefficient_index`-th $b$-wire
+        /// coefficient of this stage.
         ///
-        /// This is useful for computing commitments to values placed in B positions
-        /// of the witness polynomial, such as challenge coefficients for smuggling.
+        /// The $b$-wire at gate $j$ occupies degree $2n - 1 - j$ in the
+        /// witness polynomial. Gate 0 is the ONE gate (consumed before the
+        /// stage mask), so the first stage gate is gate $1 +
+        /// \text{skip\_multiplications}$ and the index formula becomes $2n - 2
+        /// - \text{skip} - \text{coefficient\_index}$.
         fn generator_for_b_coefficient<C: CurveAffine>(
             &self,
             generators: &impl FixedGenerators<C>,

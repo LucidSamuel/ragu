@@ -203,17 +203,6 @@ impl<T, R: Rank> Polynomial<T, R> {
 }
 
 impl<F: Field, R: Rank> Polynomial<F, R> {
-    /// Re-normalizes block structure by stripping leading/trailing zeros
-    /// and splitting interior zero gaps exceeding `GAP_TOLERANCE`.
-    pub fn sparsify(&mut self) {
-        let old = core::mem::take(&mut self.blocks);
-        let mut new = Vec::with_capacity(old.len());
-        for (start, data) in old {
-            extend_runs(&mut new, start, data);
-        }
-        self.blocks = new;
-    }
-
     /// Returns an iterator over the coefficients of this polynomial in
     /// ascending degree order, yielding `F::ZERO` for gaps between blocks.
     pub fn iter_coeffs(&self) -> impl DoubleEndedIterator<Item = F> + ExactSizeIterator + '_ {

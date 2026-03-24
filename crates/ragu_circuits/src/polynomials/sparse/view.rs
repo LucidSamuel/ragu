@@ -36,7 +36,7 @@ use core::marker::PhantomData;
 
 use ff::Field;
 
-use super::{Polynomial, Rank};
+use super::{Polynomial, Rank, extend_runs};
 
 mod private {
     pub trait Sealed {}
@@ -181,9 +181,9 @@ impl<F: Field, R: Rank, P: Perspective> View<F, R, P> {
     /// Consumes this view, mapping wire buffers to degree positions and
     /// producing a [`Polynomial`].
     ///
-    /// The resulting polynomial is [`sparsify`](Polynomial::sparsify)-ed:
-    /// leading/trailing zeros are stripped and interior zero gaps exceeding
-    /// `GAP_TOLERANCE` are split into separate blocks.
+    /// Raw blocks are compressed via `extend_runs` (stripping leading/trailing
+    /// zeros and splitting interior zero gaps exceeding `GAP_TOLERANCE`) before
+    /// validation by [`Polynomial::from_blocks`].
     ///
     /// # Panics
     ///
@@ -212,10 +212,11 @@ impl<F: Field, R: Rank, P: Perspective> View<F, R, P> {
             self.d.len()
         );
 
-        let blocks = P::map_to_blocks(self.a, self.b, self.c, self.d, n);
-
-        let mut poly = Polynomial::from_blocks(blocks);
-        poly.sparsify();
-        poly
+        let raw_blocks = P::map_to_blocks(self.a, self.b, self.c, self.d, n);
+        let mut blocks = Vec::with_capacity(raw_blocks.len());
+        for (start, data) in raw_blocks {
+            extend_runs(&mut blocks, start, data);
+        }
+        Polynomial::from_blocks(blocks)
     }
 }

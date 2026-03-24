@@ -158,7 +158,12 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// for the $c$ wire.
     base_c_x: F,
 
-    /// Inverse of `base_b_x`, used to derive the d-wire monomial from `current_b_x`.
+    /// Inverse of `base_b_x`: $(x^{2n})^{-1}$. Used in [`gate`](DriverTypes::gate)
+    /// to derive the $d$-wire monomial $x^i$ from `current_b_x` ($x^{2n+i}$)
+    /// without tracking a separate running monomial.
+    ///
+    /// This field is only read by `gate`, not by [`mul`](Driver::mul), so the
+    /// extra multiplication is skipped when callers don't need the $d$ wire.
     base_b_x_inv: F,
 
     /// Floor plan mapping DFS routine index to absolute offsets.
@@ -174,6 +179,32 @@ struct Evaluator<'fp, F: Field, R: Rank> {
 impl<F: Field, R: Rank> DriverScope<SxScope<F>> for Evaluator<'_, F, R> {
     fn scope(&mut self) -> &mut SxScope<F> {
         &mut self.scope
+    }
+}
+
+impl<F: Field, R: Rank> Evaluator<'_, F, R> {
+    /// Advances the gate counter and running monomials, returning the raw
+    /// $(a, b, c)$ monomial evaluations before advancement.
+    ///
+    /// This is the shared core of [`gate`](DriverTypes::gate) and
+    /// [`mul`](Driver::mul). The $d$-wire monomial ($b \cdot \text{base\_b\_x\_inv}$)
+    /// is only computed by `gate`, saving one field multiplication per `mul` call.
+    fn advance_gate(&mut self) -> Result<(F, F, F)> {
+        let index = self.scope.multiplication_constraints;
+        if index == R::n() {
+            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
+        }
+        self.scope.multiplication_constraints += 1;
+
+        let a = self.scope.current_a_x;
+        let b = self.scope.current_b_x;
+        let c = self.scope.current_c_x;
+
+        self.scope.current_a_x *= self.x_inv;
+        self.scope.current_b_x *= self.x;
+        self.scope.current_c_x *= self.x_inv;
+
+        Ok((a, b, c))
     }
 }
 
@@ -198,7 +229,10 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
     /// - $a$: multiplied by $x^{-1}$ (decreasing exponent)
     /// - $b$: multiplied by $x$ (increasing exponent)
     /// - $c$: multiplied by $x^{-1}$ (decreasing exponent)
-    /// - $d$: multiplied by $x$ (increasing exponent)
+    ///
+    /// The $d$-wire monomial $x^i$ is derived from $b = x^{2n+i}$ via
+    /// `base_b_x_inv`. This computation is confined to `gate` and skipped
+    /// by the [`mul`](Driver::mul) override.
     ///
     /// # Errors
     ///
@@ -208,20 +242,8 @@ impl<F: Field, R: Rank> DriverTypes for Evaluator<'_, F, R> {
         &mut self,
         _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
-        let index = self.scope.multiplication_constraints;
-        if index == R::n() {
-            return Err(Error::MultiplicationBoundExceeded { limit: R::n() });
-        }
-        self.scope.multiplication_constraints += 1;
-
-        let a = self.scope.current_a_x;
-        let b = self.scope.current_b_x;
-        let c = self.scope.current_c_x;
-        let d = self.scope.current_b_x * self.base_b_x_inv;
-
-        self.scope.current_a_x *= self.x_inv;
-        self.scope.current_b_x *= self.x;
-        self.scope.current_c_x *= self.x_inv;
+        let (a, b, c) = self.advance_gate()?;
+        let d = b * self.base_b_x_inv;
 
         Ok((
             WireEval::Value(a),
@@ -247,6 +269,16 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
             self.scope.available_d = Some(d);
             Ok(b)
         }
+    }
+
+    /// Advances the gate counter and returns $(a, b, c)$ without computing the
+    /// $d$-wire monomial.
+    fn mul(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
+        let (a, b, c) = self.advance_gate()?;
+        Ok((WireEval::Value(a), WireEval::Value(b), WireEval::Value(c)))
     }
 
     /// Computes a linear combination of wire evaluations.

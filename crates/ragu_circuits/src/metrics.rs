@@ -404,9 +404,8 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         if let Some(wire) = self.scope.available_d.take() {
             Ok(wire)
         } else {
-            let d = self.scope.current_d;
-            let (_, b, _) = self.mul(|| unreachable!())?;
-            self.scope.available_d = Some(WireEval::Value(d));
+            let (_, b, _, d) = self.gate(|| unreachable!())?;
+            self.scope.available_d = Some(d);
             Ok(b)
         }
     }
