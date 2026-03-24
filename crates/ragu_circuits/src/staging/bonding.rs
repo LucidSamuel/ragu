@@ -73,7 +73,7 @@ where
         // Build the CircuitObject via the standard pipeline.
         let inner = into_circuit_object::<_, _, R>(self)?;
 
-        Ok(BondingObject::new(Box::new(Stripped::<F, R>(inner))))
+        Ok(BondingObject::new(Box::new(Stripped::<F, R>::new(inner))))
     }
 }
 
@@ -180,7 +180,13 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
 
 /// Wraps a [`CircuitObject`] and strips the `enforce_one` contribution,
 /// giving a zero constant term in $Y$.
-pub(crate) struct Stripped<'a, F: Field, R: Rank>(pub(crate) Box<dyn CircuitObject<F, R> + 'a>);
+pub(crate) struct Stripped<'a, F: Field, R: Rank>(Box<dyn CircuitObject<F, R> + 'a>);
+
+impl<'a, F: Field, R: Rank> Stripped<'a, F, R> {
+    pub(crate) fn new(inner: Box<dyn CircuitObject<F, R> + 'a>) -> Self {
+        Self(inner)
+    }
+}
 
 impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
     fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
@@ -209,8 +215,12 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
         poly
     }
 
+    // TODO(#614): revisit constraint_counts semantics — ambiguous with
+    // system constraints (enforce_one, registry key, ONE gate).
     fn constraint_counts(&self) -> (usize, usize) {
-        self.0.constraint_counts()
+        let (mul, lin) = self.0.constraint_counts();
+        // The inner object includes the `enforce_one` constraint that we strip.
+        (mul, lin - 1)
     }
 
     fn segment_records(&self) -> &[SegmentRecord] {
@@ -381,6 +391,34 @@ mod tests {
         }
     }
 
+    /// Empty bonding circuit: no allocations, no constraints.
+    struct EmptyCircuit;
+
+    impl MultiStageCircuit<Fp, R> for EmptyCircuit {
+        type Last = ();
+        type Instance<'source> = ();
+        type Witness<'source> = ();
+        type Output = ();
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            _: &mut D,
+            _: DriverValue<D, ()>,
+        ) -> Result<Bound<'dr, D, ()>> {
+            Ok(())
+        }
+
+        fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+            &self,
+            builder: StageBuilder<'a, 'dr, D, R, (), ()>,
+            _: DriverValue<D, ()>,
+        ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
+            let _ = builder.finish();
+            Ok(WithAux::new((), D::unit()))
+        }
+    }
+
     fn bonding_obj() -> Box<dyn CircuitObject<Fp, R>> {
         MultiStage::<Fp, R, _>::new(EqualWires)
             .into_bonding_object()
@@ -485,5 +523,28 @@ mod tests {
 
         let rx_unequal = build_trace(&[(v, w)]);
         assert_ne!(rx_unequal.revdot(&sy), Fp::ZERO);
+    }
+
+    /// An empty bonding circuit (no alloc, no enforce_zero) should succeed
+    /// and produce a polynomial that imposes no constraint on any trace.
+    #[test]
+    fn empty_circuit() {
+        let obj = MultiStage::<Fp, R, _>::new(EmptyCircuit)
+            .into_bonding_object()
+            .unwrap()
+            .into_inner();
+        let floor_plan = floor_planner::floor_plan(obj.segment_records());
+        let x = Fp::random(&mut rand::rng());
+        let y = Fp::random(&mut rand::rng());
+
+        assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
+        assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan), Fp::ZERO);
+
+        let sxy = obj.sxy(x, y, &floor_plan);
+        assert_eq!(sxy, obj.sx(x, &floor_plan).eval(y));
+        assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
+
+        let rx = build_trace(&[(Fp::random(&mut rand::rng()), Fp::random(&mut rand::rng()))]);
+        assert_eq!(rx.revdot(&obj.sy(y, &floor_plan)), Fp::ZERO);
     }
 }

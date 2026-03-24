@@ -440,7 +440,7 @@ mod tests {
 
         let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
         let plan = floor_planner::floor_plan(generic.segment_records());
-        let stripped = crate::staging::bonding::Stripped(generic);
+        let stripped = crate::staging::bonding::Stripped::new(generic);
         let comparison_sxy = stripped.sxy(x, y, &plan);
 
         assert_eq!(stage.sxy(x, y, &[]), comparison_sxy);
@@ -552,7 +552,7 @@ mod tests {
             ).unwrap();
             let plan = floor_planner::floor_plan(generic.segment_records());
 
-            let stripped = crate::staging::bonding::Stripped(generic);
+            let stripped = crate::staging::bonding::Stripped::new(generic);
 
             let check = |x: Fp, y: Fp| {
                 let sxy = stripped.sxy(x, y, &plan);
