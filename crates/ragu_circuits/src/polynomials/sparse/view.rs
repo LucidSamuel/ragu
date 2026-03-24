@@ -183,7 +183,7 @@ impl<F: Field, R: Rank, P: Perspective> View<F, R, P> {
     ///
     /// Raw blocks are compressed via `extend_runs` (stripping leading/trailing
     /// zeros and splitting interior zero gaps exceeding `GAP_TOLERANCE`) before
-    /// validation by [`Polynomial::from_blocks`].
+    /// final validation.
     ///
     /// # Panics
     ///
