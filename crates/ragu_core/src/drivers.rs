@@ -265,8 +265,13 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     ///
     /// # Purity
     ///
-    /// The `Fn` bound signals that this closure should be side-effect-free;
-    /// see [`DriverTypes::gate`] for details.
+    /// The `Fn` bound signals that this closure should be side-effect-free:
+    /// synthesis must produce identical constraints regardless of whether the
+    /// driver invokes it. `Fn` prevents accidental `&mut` captures but does not
+    /// prevent interior mutability; for drivers with `MaybeKind = Empty`, the
+    /// [`Maybe`]/[`DriverValue`] system provides a stronger guarantee—those
+    /// drivers never call this closure, and its body is dead-code-eliminated
+    /// after monomorphization.
     fn mul(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,

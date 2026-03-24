@@ -238,10 +238,11 @@ struct CounterScope<F> {
 /// A [`Driver`] that simultaneously counts constraints and computes routine
 /// identity fingerprints via Schwartz–Zippel evaluation.
 ///
-/// Assigns four independent geometric sequences (bases $x_0, x_1, x_2, x_3$)
-/// to the $a$, $b$, $c$, $d$ wires and accumulates constraint values via Horner's rule
-/// over $y$. When entering a routine, the identity state is saved and reset so
-/// that each routine is fingerprinted independently of its calling context.
+/// Assigns four independent geometric sequences (bases $x_0, x_1, x_2, x_3$) to
+/// the $a$, $b$, $c$, $d$ wires and accumulates constraint values via Horner's
+/// rule over $y$. When entering a routine, the identity state is saved and
+/// reset so that each routine is fingerprinted independently of its calling
+/// context.
 ///
 /// Nested routine outputs are treated as auxiliary inputs to the caller: on
 /// return, output wires are remapped to fresh allocations in the parent scope
@@ -309,10 +310,10 @@ impl<F: FromUniformBytes<64>> Counter<F> {
         let x0 = point(0);
         let x1 = point(1);
         let x2 = point(2);
-        let x3 = point(6);
-        let y = point(3);
-        let h = point(4);
-        let one = point(5);
+        let x3 = point(3);
+        let y = point(4);
+        let h = point(5);
+        let one = point(6);
 
         Self {
             scope: CounterScope {
