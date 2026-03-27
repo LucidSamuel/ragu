@@ -166,9 +166,9 @@ pub trait Stage<F: Field, R: Rank> {
         Self: 'dr;
 
     /// Returns the number of gates to skip before starting this
-    /// stage, not including the ONE gate which is skipped in all stages. **This
-    /// should not be overridden by implementations except by the base
-    /// implementation for `()`**.
+    /// stage. The count includes gate 0 (the ONE gate), so the base
+    /// case `()` returns 1. **This should not be overridden by
+    /// implementations except by the base implementation for `()`**.
     fn skip_gates() -> usize {
         Self::Parent::skip_gates() + Self::Parent::num_gates()
     }
@@ -195,7 +195,7 @@ impl<F: Field, R: Rank> Stage<F, R> for () {
     }
 
     fn skip_gates() -> usize {
-        0
+        1
     }
 }
 
@@ -359,7 +359,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         let mut values = values.into_iter();
         let mut view = sparse::View::forward();
 
-        let len = 1 + Self::skip_gates() + Self::num_gates();
+        let len = Self::skip_gates() + Self::num_gates();
         view.a.reserve_exact(len);
         view.b.reserve_exact(len);
         view.c.reserve_exact(len);
@@ -372,7 +372,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         view.c.push(F::ZERO);
         view.d.push(alpha);
 
-        for _ in 0..Self::skip_gates() {
+        for _ in 0..(Self::skip_gates() - 1) {
             view.a.push(F::ZERO);
             view.b.push(F::ZERO);
             view.c.push(F::ZERO);
@@ -429,7 +429,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// this stage's alloc gates.
     ///
     /// With the `(0, b, 0, d)` gate layout, the first allocated value occupies
-    /// the B-wire position at degree `2n - 1 - (1 + skip + i)`.
+    /// the B-wire position at degree `2n - 1 - skip_gates - i`.
     fn generator_index_for_b(coefficient_index: usize) -> usize {
         assert!(
             coefficient_index < Self::num_gates(),
@@ -438,7 +438,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             Self::num_gates()
         );
 
-        2 * R::n() - 2 - Self::skip_gates() - coefficient_index
+        2 * R::n() - 1 - Self::skip_gates() - coefficient_index
     }
 }
 

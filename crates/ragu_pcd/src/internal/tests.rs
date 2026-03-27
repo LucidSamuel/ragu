@@ -104,11 +104,11 @@ fn test_internal_stage_parameters() {
         }};
     }
 
-    check_stage!(Preamble, skip =   0, num = 225);
-    check_stage!(OuterError,  skip = 225, num = 186);
-    check_stage!(InnerError,  skip = 411, num = 399);
-    check_stage!(Query,   skip = 225, num =  23);
-    check_stage!(Eval,    skip = 248, num =  18);
+    check_stage!(Preamble, skip =   1, num = 225);
+    check_stage!(OuterError,  skip = 226, num = 186);
+    check_stage!(InnerError,  skip = 412, num = 399);
+    check_stage!(Query,   skip = 226, num =  23);
+    check_stage!(Eval,    skip = 249, num =  18);
 }
 
 /// Helper test to print current constraint counts in copy-pasteable format.

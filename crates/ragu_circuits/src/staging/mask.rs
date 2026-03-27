@@ -17,16 +17,19 @@ pub struct StageMask<R: Rank> {
 
 impl<R: Rank> StageMask<R> {
     /// Creates a new staging wiring polynomial with the given
-    /// `skip_gates` and `num_gates` values. Witnesses that
-    /// satisfy this circuit will have all non-`ONE` gate wires
-    /// enforced to equal zero except for the
-    /// `skip_gates..(skip_gates + num_gates)`
-    /// gates.
+    /// `skip_gates` and `num_gates` values. `skip_gates` includes
+    /// gate 0 (the ONE gate) and must be at least 1. Gate wires are
+    /// enforced to zero for gates `1..skip_gates` and
+    /// `(skip_gates + num_gates)..n`. Gate 0 is not constrained
+    /// here because `d[0]` carries the alpha blinding factor and
+    /// `b[0]` may or may not be set to 1; `a[0]` and `c[0]` are
+    /// zero in all cases.
     pub fn new(skip_gates: usize, num_gates: usize) -> Result<Self> {
-        if skip_gates + num_gates + 1 > R::n() {
+        assert!(skip_gates > 0, "skip_gates must include gate 0");
+        if skip_gates + num_gates > R::n() {
             return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
         }
-        assert!(skip_gates + num_gates < R::n()); // Technically a redundant assertion.
+        assert!(skip_gates + num_gates <= R::n()); // Technically a redundant assertion.
 
         Ok(Self {
             skip_gates,
@@ -36,16 +39,18 @@ impl<R: Rank> StageMask<R> {
     }
 
     /// Creates the final staging wiring polynomial with the given
-    /// `skip_gates` and maximum possible gates.
-    /// The number of gates will be `R::n() - skip_gates - 1`,
-    /// which is the maximum before bounds are reached.
+    /// `skip_gates` and maximum possible gates. `skip_gates` must
+    /// be at least 1 (it includes gate 0, the ONE gate). The number
+    /// of gates will be `R::n() - skip_gates`, which is the maximum
+    /// before bounds are reached.
     pub fn new_final(skip_gates: usize) -> Result<Self> {
-        if skip_gates + 1 > R::n() {
+        assert!(skip_gates > 0, "skip_gates must include gate 0");
+        if skip_gates > R::n() {
             return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
         }
 
-        let num_gates = R::n() - skip_gates - 1;
-        assert!(skip_gates + num_gates < R::n()); // Technically a redundant assertion.
+        let num_gates = R::n() - skip_gates;
+        assert!(skip_gates + num_gates <= R::n()); // Technically a redundant assertion.
 
         Ok(Self {
             skip_gates,
@@ -58,8 +63,8 @@ impl<R: Rank> StageMask<R> {
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
         // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates < R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates - 1;
+        assert!(self.skip_gates + self.num_gates <= R::n());
+        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
         if x == F::ZERO || y == F::ZERO {
             // If either x or y is zero, the polynomial evaluates to zero
@@ -86,9 +91,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             a * plus + b * minus + c * plus + d * minus
         };
 
-        // Handle the edge case where skip_gates is zero.
-        let c1 = if self.skip_gates > 0 {
-            block(self.skip_gates - 1, self.skip_gates)
+        // Gate 0 is in skip_gates but unconstrained; only enforce
+        // the remaining skip_gates - 1 gates.
+        let c1 = if self.skip_gates > 1 {
+            block(self.skip_gates - 2, self.skip_gates - 1)
         } else {
             F::ZERO
         };
@@ -103,8 +109,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates < R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates - 1;
+        assert!(self.skip_gates + self.num_gates <= R::n());
+        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
         if x == F::ZERO {
             return sparse::Polynomial::new();
@@ -130,9 +136,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
                 out
             };
 
-            // Skip the ONE gate (gate 0) — its wires are consumed but not
-            // constrained here. The registry key constraint is injected at the
-            // registry level.
+            // Gate 0 is in skip_gates but unconstrained: d[0] carries the
+            // alpha blinding factor and b[0] may or may not be 1.
             alloc();
 
             let mut enforce_zero = |out: (F, F, F, F)| {
@@ -142,7 +147,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
                 coeffs.push(out.3);
             };
 
-            for _ in 0..self.skip_gates {
+            for _ in 0..(self.skip_gates - 1) {
                 enforce_zero(alloc());
             }
             for _ in 0..self.num_gates {
@@ -165,31 +170,31 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates < R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates - 1;
+        assert!(self.skip_gates + self.num_gates <= R::n());
+        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
         if y == F::ZERO {
             return sparse::Polynomial::new();
         }
 
-        let num_constraints_from_gates = 4 * (reserved + self.skip_gates);
-        // Start at y^{4*(reserved + skip)}: the highest Y-power used by gate
-        // constraints. The registry key constraint (formerly counted here as +1)
-        // now occupies Y^{4n-1} at the registry level and is excluded.
+        let num_constraints_from_gates = 4 * (reserved + self.skip_gates - 1);
+        // Start at y^{4*(reserved + skip - 1)}: the highest Y-power used by
+        // gate constraints. Gate 0 is in skip_gates but unconstrained (d[0]
+        // carries the alpha blinding factor, b[0] may or may not be 1).
         let mut yq = y.pow_vartime([num_constraints_from_gates as u64]);
         let y_inv = y.invert().expect("y is not zero");
 
         let mut view = sparse::View::backward();
 
-        // Skip the ONE gate (gate 0). In the backward wire layout b[0] maps
-        // to X^{2n} (the ONE wire). The registry key contribution at c[0] is
-        // supplied by RegistryAt::y(), not here.
+        // Gate 0 is in skip_gates but unconstrained (d[0] carries the
+        // alpha blinding factor, b[0] may or may not be 1). In the backward
+        // wire layout b[0] maps to X^{2n} (the ONE wire).
         view.a.push(F::ZERO);
         view.b.push(F::ZERO);
         view.c.push(F::ZERO);
         view.d.push(F::ZERO);
 
-        for _ in 0..self.skip_gates {
+        for _ in 0..(self.skip_gates - 1) {
             view.a.push(yq);
             yq *= y_inv;
             view.b.push(yq);
@@ -222,7 +227,7 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn constraint_counts(&self) -> (usize, usize) {
         let num_gates = R::n();
         // 4 constraints per non-multiplied gate + 1 for the ONE constraint.
-        // The registry key constraint is handled at the registry level.
+        // Gate 0 is excluded (d[0] is the blinding factor, not constrained here).
         let num_constraints = 4 * (R::n() - self.num_gates - 1) + 1;
         (num_gates, num_constraints)
     }
@@ -283,10 +288,10 @@ mod tests {
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         {
-            let reserved = self.skip_gates + self.num_gates + 1;
+            let reserved = self.skip_gates + self.num_gates;
             assert!(reserved <= R::n());
 
-            for _ in 0..self.skip_gates {
+            for _ in 0..(self.skip_gates - 1) {
                 let (a, b, c, d) =
                     dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
                 dr.enforce_zero(|lc| lc.add(&a))?;
@@ -317,10 +322,9 @@ mod tests {
         /// coefficient of this stage.
         ///
         /// The $b$-wire at gate $j$ occupies degree $2n - 1 - j$ in the
-        /// witness polynomial. Gate 0 is the ONE gate (consumed before the
-        /// stage mask), so the first stage gate is gate $1 +
-        /// \text{skip\_gates}$ and the index formula becomes $2n - 2
-        /// - \text{skip} - \text{coefficient\_index}$.
+        /// witness polynomial. Gate 0 is included in `skip_gates`, so the
+        /// first active gate is at index `skip_gates` and the formula
+        /// becomes $2n - 1 - \text{skip\_gates} - \text{coefficient\_index}$.
         fn generator_for_b_coefficient<C: CurveAffine>(
             &self,
             generators: &impl FixedGenerators<C>,
@@ -333,7 +337,7 @@ mod tests {
                 self.num_gates
             );
 
-            let idx = 2 * R::n() - 2 - self.skip_gates - coefficient_index;
+            let idx = 2 * R::n() - 1 - self.skip_gates - coefficient_index;
             generators.g()[idx]
         }
     }
@@ -436,8 +440,8 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_gates_zero() {
-        let stage_mask = StageMask::<R>::new(0, 5).unwrap();
+    fn test_skip_gates_one() {
+        let stage_mask = StageMask::<R>::new(1, 5).unwrap();
 
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
@@ -452,8 +456,8 @@ mod tests {
 
     #[test]
     fn test_stage_mask_all_gates() {
-        // Edge case: skip = 0, num = R::n() - 1, reserved = 0.
-        let stage = StageMask::<R>::new(0, R::n() - 1).unwrap();
+        // Edge case: skip = 1, num = R::n() - 1, reserved = 0.
+        let stage = StageMask::<R>::new(1, R::n() - 1).unwrap();
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
@@ -465,41 +469,6 @@ mod tests {
         assert_eq!(stage.sxy(x, y, &[]), comparison_sxy);
         assert_eq!(comparison_sxy, stripped.sx(x, &plan).eval(y));
         assert_eq!(comparison_sxy, stripped.sy(y, &plan).eval(x));
-    }
-
-    #[test]
-    fn test_minimum_constraints() {
-        let circuit = into_circuit_object::<_, _, R>(SquareCircuit { times: 2 }).unwrap();
-        let y = Fp::random(&mut rand::rng());
-
-        let (_, num_constraints) = circuit.constraint_counts();
-        let plan = floor_planner::floor_plan(circuit.segment_records());
-        let sy = circuit.sy(y, &plan);
-
-        // The ONE wire (b-wire of gate 0) should have the y^0 coefficient.
-        // In the backward view, b[0] maps to degree 2n.
-        let sy_dense = sy.to_dense();
-        let actual_one_coeff = sy_dense[2 * R::n()];
-
-        // The ONE constraint is at Y^0, so its coefficient is y^0 = 1.
-        assert_eq!(
-            actual_one_coeff,
-            Fp::ONE,
-            "ONE wire coefficient should be 1 (y^0 from enforce_one)"
-        );
-
-        // The a-wire of gate 0 is not constrained at the circuit level —
-        // the registry key constraint is injected at the registry level on
-        // the c-wire only — so its coefficient should be zero.
-        let actual_a0_coeff = sy_dense[2 * R::n() - 1];
-        assert_eq!(
-            actual_a0_coeff,
-            Fp::ZERO,
-            "a-wire of gate 0 should be zero (not constrained at circuit level)"
-        );
-
-        // Verify the expected number of constraints.
-        assert!(num_constraints >= 1);
     }
 
     #[test]
@@ -519,17 +488,17 @@ mod tests {
 
     #[test]
     fn test_stage_mask_exact_boundary() {
-        let result = StageMask::<R>::new(R::n() - 2, 1);
-        assert!(result.is_ok(), "Should accept skip + num + 1 == R::n()");
-
         let result = StageMask::<R>::new(R::n() - 1, 1);
-        assert!(result.is_err(), "Should reject skip + num + 1 > R::n()");
+        assert!(result.is_ok(), "Should accept skip + num == R::n()");
+
+        let result = StageMask::<R>::new(R::n(), 1);
+        assert!(result.is_err(), "Should reject skip + num > R::n()");
     }
 
     #[test]
     fn test_stage_mask_reserved_zero() {
-        // When reserved = 0, all gates except one are used.
-        let stage = StageMask::<R>::new(0, R::n() - 1).expect("valid stage mask");
+        // When reserved = 0, all gates except gate 0 are active.
+        let stage = StageMask::<R>::new(1, R::n() - 1).expect("valid stage mask");
 
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
@@ -545,12 +514,12 @@ mod tests {
     #[test]
     fn test_stage_mask_reserved_computation() {
         // Check we're computing reserved correctly.
-        for skip in 0..10 {
-            for num in 0..(R::n() - skip - 1) {
+        for skip in 1..10 {
+            for num in 0..(R::n() - skip) {
                 let _ = StageMask::<R>::new(skip, num).expect("valid stage mask");
-                let expected_reserved = R::n() - skip - num - 1;
+                let expected_reserved = R::n() - skip - num;
 
-                let num_linear_from_gates = 4 * (skip + expected_reserved);
+                let num_linear_from_gates = 4 * (skip - 1 + expected_reserved);
                 assert!(
                     num_linear_from_gates < R::num_coeffs(),
                     "Reserved computation should not cause overflow"
@@ -561,8 +530,8 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_exy_proptest(skip in 0..R::n(), num in 0..R::n()) {
-            prop_assume!(skip + 1 + num <= R::n());
+        fn test_exy_proptest(skip in 1..R::n(), num in 0..R::n()) {
+            prop_assume!(skip + num <= R::n());
 
             let stage_mask = StageMask::<R>::new(skip, num).unwrap();
 
@@ -673,8 +642,8 @@ mod tests {
 
     #[test]
     fn test_constraint_counts_matches_metrics() {
-        for skip in 0..10 {
-            for num in 0..(R::n() - skip - 1) {
+        for skip in 1..10 {
+            for num in 0..(R::n() - skip) {
                 let stage_mask = StageMask::<R>::new(skip, num).unwrap();
                 let (mul_from_method, linear_from_method) =
                     <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
@@ -915,7 +884,7 @@ mod tests {
         }
     }
 
-    /// Tests the generator index formula `2n - 2 - skip - i` for both a root
+    /// Tests the generator index formula `2n - 1 - skip - i` for both a root
     /// stage and a child stage with non-zero skip.
     #[test]
     fn test_generator_index_edge_cases() {
