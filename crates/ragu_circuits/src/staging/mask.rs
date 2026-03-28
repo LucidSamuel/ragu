@@ -1,7 +1,6 @@
 use ff::Field;
+use ragu_arithmetic::geosum;
 use ragu_core::Result;
-
-use alloc::vec::Vec;
 
 use crate::{
     CircuitObject,
@@ -58,13 +57,55 @@ impl<R: Rank> StageMask<R> {
             _marker: core::marker::PhantomData,
         })
     }
+
+    fn project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
+        let n = R::n();
+        let mut view = sparse::View::<F, R, _>::backward();
+        view.d.resize(n, F::ZERO);
+        view.a.resize(n, F::ZERO);
+        view.b.resize(n, F::ZERO);
+        view.c.resize(n, F::ZERO);
+
+        let mut cur = F::ONE;
+        for j in 0..n {
+            view.d[j] = cur;
+            cur *= p;
+        }
+        for j in (0..n).rev() {
+            view.a[j] = cur;
+            cur *= p;
+        }
+        for j in 0..n {
+            view.b[j] = cur;
+            cur *= p;
+        }
+        for j in (0..n).rev() {
+            view.c[j] = cur;
+            cur *= p;
+        }
+
+        // The `ONE` wire (b[0]) and blinding wire (d[0]) are not
+        // constrained. This ensures s(X, 0) = 0.
+        view.d[0] = F::ZERO;
+        view.b[0] = F::ZERO;
+
+        // The wires active in the stage are not constrained.
+        for i in 0..self.num_gates {
+            let j = self.skip_gates + i;
+            view.a[j] = F::ZERO;
+            view.b[j] = F::ZERO;
+            view.c[j] = F::ZERO;
+            view.d[j] = F::ZERO;
+        }
+
+        view.build()
+    }
 }
 
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_gates + self.num_gates <= R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
         if x == F::ZERO || y == F::ZERO {
             // If either x or y is zero, the polynomial evaluates to zero
@@ -72,35 +113,24 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
             return F::ZERO;
         }
 
-        let x_inv = x.invert().expect("x is not zero");
-        let y2 = y.square();
-        let y3 = y * y2;
-        let y4 = y2.square();
-        let x_y4 = x * y4;
-        let xinv_y4 = x_inv * y4;
+        // Precomputed (ideally):
+        let xy = x * y;
+        let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
+        let xy_inv = xy.invert().expect("xy is not zero");
 
-        let block = |end: usize, len: usize| -> F {
-            let a = y4 * x.pow_vartime([(2 * R::n() - 2 - end) as u64]);
-            let b = y3 * x.pow_vartime([(2 * R::n() + 1 + end) as u64]);
-            let c = y2 * x.pow_vartime([(4 * R::n() - 2 - end) as u64]);
-            let d = y * x.pow_vartime([(end + 1) as u64]);
+        pub fn global<F: Field>(xy: F, xy_2n: F, n: usize) -> F {
+            geosum(xy, n << 2) - xy_2n - F::ONE
+        }
 
-            let plus = ragu_arithmetic::geosum::<F>(x_y4, len);
-            let minus = ragu_arithmetic::geosum::<F>(xinv_y4, len);
+        pub fn notch<F: Field>(xy: F, xy_2n: F, xy_inv: F, g: usize, m: usize) -> F {
+            let gsum = geosum(xy, m);
+            let xy_g = xy.pow_vartime([g as u64]);
+            let xy_h = xy_2n * xy_inv.pow_vartime([(g + m) as u64]);
 
-            a * plus + b * minus + c * plus + d * minus
-        };
+            (F::ONE + xy_2n) * (xy_g + xy_h) * gsum
+        }
 
-        // Gate 0 is in skip_gates but unconstrained; only enforce
-        // the remaining skip_gates - 1 gates.
-        let c1 = if self.skip_gates > 1 {
-            block(self.skip_gates - 2, self.skip_gates - 1)
-        } else {
-            F::ZERO
-        };
-        let c2 = block(R::n() - 2, reserved);
-
-        y.pow_vartime([(4 * reserved) as u64]) * c1 + c2
+        global(xy, xy_2n, R::n()) - notch(xy, xy_2n, xy_inv, self.skip_gates, self.num_gates)
     }
 
     fn sx(
@@ -110,58 +140,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_gates + self.num_gates <= R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
-        if x == F::ZERO {
-            return sparse::Polynomial::new();
-        }
-
-        let mut coeffs = Vec::with_capacity(R::num_coeffs());
-        {
-            let x_inv = x.invert().expect("x is not zero");
-            let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
-            let xn2 = xn.square(); // xn2 = x^(2n)
-            let mut a = xn2 * x_inv; // x^(2n - 1)
-            let mut b = xn2; // x^(2n)
-            let xn4 = xn2.square(); // x^(4n)
-            let mut c = xn4 * x_inv; // x^(4n - 1)
-            let mut d = F::ONE; // x^0
-
-            let mut alloc = || {
-                let out = (a, b, c, d);
-                a *= x_inv;
-                b *= x;
-                c *= x_inv;
-                d *= x;
-                out
-            };
-
-            // Gate 0 is in skip_gates but unconstrained: d[0] carries the
-            // alpha blinding factor and b[0] may or may not be 1.
-            alloc();
-
-            let mut enforce_zero = |out: (F, F, F, F)| {
-                coeffs.push(out.0);
-                coeffs.push(out.1);
-                coeffs.push(out.2);
-                coeffs.push(out.3);
-            };
-
-            for _ in 0..(self.skip_gates - 1) {
-                enforce_zero(alloc());
-            }
-            for _ in 0..self.num_gates {
-                alloc();
-            }
-            for _ in 0..reserved {
-                enforce_zero(alloc());
-            }
-        }
-
-        coeffs.push(F::ZERO); // The constant term is always zero.
-        coeffs.reverse();
-
-        sparse::Polynomial::from_coeffs(coeffs)
+        self.project(x)
     }
 
     fn sy(
@@ -171,64 +151,15 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     ) -> sparse::Polynomial<F, R> {
         // Bound is enforced in `StageMask::new`.
         assert!(self.skip_gates + self.num_gates <= R::n());
-        let reserved: usize = R::n() - self.skip_gates - self.num_gates;
 
-        if y == F::ZERO {
-            return sparse::Polynomial::new();
-        }
-
-        let num_constraints_from_gates = 4 * (reserved + self.skip_gates - 1);
-        // Start at y^{4*(reserved + skip - 1)}: the highest Y-power used by
-        // gate constraints. Gate 0 is in skip_gates but unconstrained (d[0]
-        // carries the alpha blinding factor, b[0] may or may not be 1).
-        let mut yq = y.pow_vartime([num_constraints_from_gates as u64]);
-        let y_inv = y.invert().expect("y is not zero");
-
-        let mut view = sparse::View::backward();
-
-        // Gate 0 is in skip_gates but unconstrained (d[0] carries the
-        // alpha blinding factor, b[0] may or may not be 1). In the backward
-        // wire layout b[0] maps to X^{2n} (the ONE wire).
-        view.a.push(F::ZERO);
-        view.b.push(F::ZERO);
-        view.c.push(F::ZERO);
-        view.d.push(F::ZERO);
-
-        for _ in 0..(self.skip_gates - 1) {
-            view.a.push(yq);
-            yq *= y_inv;
-            view.b.push(yq);
-            yq *= y_inv;
-            view.c.push(yq);
-            yq *= y_inv;
-            view.d.push(yq);
-            yq *= y_inv;
-        }
-        for _ in 0..self.num_gates {
-            view.a.push(F::ZERO);
-            view.b.push(F::ZERO);
-            view.c.push(F::ZERO);
-            view.d.push(F::ZERO);
-        }
-        for _ in 0..reserved {
-            view.a.push(yq);
-            yq *= y_inv;
-            view.b.push(yq);
-            yq *= y_inv;
-            view.c.push(yq);
-            yq *= y_inv;
-            view.d.push(yq);
-            yq *= y_inv;
-        }
-
-        view.build()
+        self.project(y)
     }
 
     fn constraint_counts(&self) -> (usize, usize) {
         let num_gates = R::n();
-        // 4 constraints per non-multiplied gate + 1 for the ONE constraint.
-        // Gate 0 is excluded (d[0] is the blinding factor, not constrained here).
-        let num_constraints = 4 * (R::n() - self.num_gates - 1) + 1;
+        // 4n-2 enforce_zero (all degrees from 4n-2 to 1, with dummies for
+        // active gates and gate 0's inaccessible wires) + 1 enforce_one.
+        let num_constraints = 4 * R::n() - 1;
         (num_gates, num_constraints)
     }
 
@@ -244,7 +175,7 @@ mod tests {
     use ff::Field;
     use group::{Curve, prime::PrimeCurveAffine};
     use proptest::prelude::*;
-    use ragu_arithmetic::{Coeff, CurveAffine, Cycle, FixedGenerators, Uendo};
+    use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, Uendo};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
@@ -288,30 +219,59 @@ mod tests {
             _: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         {
-            let reserved = self.skip_gates + self.num_gates;
-            assert!(reserved <= R::n());
+            assert!(self.skip_gates + self.num_gates <= R::n());
 
-            for _ in 0..(self.skip_gates - 1) {
-                let (a, b, c, d) =
-                    dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_zero(|lc| lc.add(&a))?;
-                dr.enforce_zero(|lc| lc.add(&b))?;
-                dr.enforce_zero(|lc| lc.add(&c))?;
-                dr.enforce_zero(|lc| lc.add(&d))?;
+            // Allocate all n-1 gates upfront. Gate 0 is allocated by the
+            // framework before witness() is called.
+            let mut gates = alloc::vec::Vec::with_capacity(R::n() - 1);
+            for _ in 0..(R::n() - 1) {
+                gates.push(dr.gate(|| unimplemented!())?);
             }
 
-            for _ in 0..self.num_gates {
-                dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-            }
+            let is_active = |j: usize| j >= self.skip_gates && j < self.skip_gates + self.num_gates;
 
-            for _ in 0..(R::n() - reserved) {
-                let (a, b, c, d) =
-                    dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-                dr.enforce_zero(|lc| lc.add(&a))?;
-                dr.enforce_zero(|lc| lc.add(&b))?;
-                dr.enforce_zero(|lc| lc.add(&c))?;
-                dr.enforce_zero(|lc| lc.add(&d))?;
+            // Issue 4n-2 enforce_zero in decreasing degree order so that the
+            // driver assigns y^k to the constraint at degree k. Dummy (empty
+            // LC) constraints fill gaps for active gates and gate 0's
+            // inaccessible wires.
+
+            // c-wires: c[j] at degree 4n-1-j, for j=1..n-1
+            for j in 1..R::n() {
+                if is_active(j) {
+                    dr.enforce_zero(|lc| lc)?;
+                } else {
+                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].2))?;
+                }
             }
+            // b-wires: b[j] at degree 2n+j, for j=n-1..0
+            for j in (0..R::n()).rev() {
+                if j == 0 {
+                    dr.enforce_zero(|lc| lc)?; // b[0]: enforce_one handles it
+                } else if is_active(j) {
+                    dr.enforce_zero(|lc| lc)?;
+                } else {
+                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].1))?;
+                }
+            }
+            // a-wires: a[j] at degree 2n-1-j, for j=0..n-1
+            for j in 0..R::n() {
+                if j == 0 {
+                    dr.enforce_zero(|lc| lc)?; // a[0]: no wire access
+                } else if is_active(j) {
+                    dr.enforce_zero(|lc| lc)?;
+                } else {
+                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].0))?;
+                }
+            }
+            // d-wires: d[j] at degree j, for j=n-1..1
+            for j in (1..R::n()).rev() {
+                if is_active(j) {
+                    dr.enforce_zero(|lc| lc)?;
+                } else {
+                    dr.enforce_zero(|lc| lc.add(&gates[j - 1].3))?;
+                }
+            }
+            // d[0] at degree 0: not issued (unconstrained blinding factor)
 
             Ok(WithAux::new((), D::unit()))
         }
@@ -454,6 +414,16 @@ mod tests {
         assert_eq!(sxy, sy.eval(x));
     }
 
+    /// Gate 0 is allocated by the framework before the Circuit impl
+    /// runs, so a[0] (degree 2n-1) and c[0] (degree 4n-1) are
+    /// inaccessible. This helper computes the correction term
+    /// `(xy)^{2n-1} + (xy)^{4n-1}` to add back to the Circuit
+    /// impl's Stripped output.
+    fn gate0_correction(x: Fp, y: Fp) -> Fp {
+        let xy = x * y;
+        xy.pow_vartime([(2 * R::n() - 1) as u64]) + xy.pow_vartime([(4 * R::n() - 1) as u64])
+    }
+
     #[test]
     fn test_stage_mask_all_gates() {
         // Edge case: skip = 1, num = R::n() - 1, reserved = 0.
@@ -464,11 +434,17 @@ mod tests {
         let generic = into_circuit_object::<_, _, R>(stage.clone()).unwrap();
         let plan = floor_planner::floor_plan(generic.segment_records());
         let stripped = crate::staging::bonding::Stripped::new(generic);
-        let comparison_sxy = stripped.sxy(x, y, &plan);
+        let corrected_sxy = stripped.sxy(x, y, &plan) + gate0_correction(x, y);
 
-        assert_eq!(stage.sxy(x, y, &[]), comparison_sxy);
-        assert_eq!(comparison_sxy, stripped.sx(x, &plan).eval(y));
-        assert_eq!(comparison_sxy, stripped.sy(y, &plan).eval(x));
+        assert_eq!(stage.sxy(x, y, &[]), corrected_sxy);
+        assert_eq!(
+            corrected_sxy,
+            stripped.sx(x, &plan).eval(y) + gate0_correction(x, y)
+        );
+        assert_eq!(
+            corrected_sxy,
+            stripped.sy(y, &plan).eval(x) + gate0_correction(x, y)
+        );
     }
 
     #[test]
@@ -517,9 +493,10 @@ mod tests {
         for skip in 1..10 {
             for num in 0..(R::n() - skip) {
                 let _ = StageMask::<R>::new(skip, num).expect("valid stage mask");
-                let expected_reserved = R::n() - skip - num;
 
-                let num_linear_from_gates = 4 * (skip - 1 + expected_reserved);
+                // The Circuit impl always issues 4n-2 enforce_zero
+                // (with dummies for active gates and gate 0).
+                let num_linear_from_gates = 4 * R::n() - 2;
                 assert!(
                     num_linear_from_gates < R::num_coeffs(),
                     "Reserved computation should not cause overflow"
@@ -543,12 +520,15 @@ mod tests {
             let stripped = crate::staging::bonding::Stripped::new(generic);
 
             let check = |x: Fp, y: Fp| {
-                let sxy = stripped.sxy(x, y, &plan);
-                let sx = stripped.sx(x, &plan);
-                let sy = stripped.sy(y, &plan);
+                let correction = gate0_correction(x, y);
+                let sxy = stripped.sxy(x, y, &plan) + correction;
+                let sx_eval = stripped.sx(x, &plan).eval(y) + correction;
+                let sy_eval = stripped.sy(y, &plan).eval(x) + correction;
 
-                prop_assert_eq!(sy.eval(x), sxy);
-                prop_assert_eq!(sx.eval(y), sxy);
+                // Internal consistency of the Circuit impl (with correction)
+                prop_assert_eq!(sy_eval, sxy);
+                prop_assert_eq!(sx_eval, sxy);
+                // Match against the hand-written CircuitObject
                 prop_assert_eq!(stage_mask.sxy(x, y, &[]), sxy);
                 prop_assert_eq!(stage_mask.sx(x, &[]).eval(y), sxy);
                 prop_assert_eq!(stage_mask.sy(y, &[]).eval(x), sxy);

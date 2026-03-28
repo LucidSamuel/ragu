@@ -77,25 +77,24 @@ for bonding polynomials.
 Thus, we could define the global mask
 
 $$
-s_\text{all}(X, Y) = \sum_{i=0}^{4n - 1} (XY)^i - (XY)^{2n} - 1
+s_\text{global}(X, Y) = \sum_{i=0}^{4n - 1} (XY)^i - (XY)^{2n} - 1
 $$
 
 which enforces that every wire _except_ $b_0$ and $d_0$ are
-zero. Technically,
+zero. We must subtract $(XY)^{2n}$ to ensure $b_0$ is not enforced zero,
+as it may be nonzero in a partial trace polynomial, and is constrained to
+equal $1$ anyway by the circuit wiring polynomial. We must also subtract $1$
+to ensure $s(X, 0) = 0$, which leaves $d_0$ free for use as an arbitrary
+blinding factor.
 
-* We **must** subtract $(XY)^{0} = 1$ so that $s(X, 0) = 0$. This leaves $d_0$ free
-  for use as an arbitrary blinding factor.
-* We do not generally want $b_0$ to be enforced zero by masking polynomials;
-  it is forced to equal $1$ in the final trace polynomial for which its
-  assignment is an invariant, and may or may not equal $1$ in partial trace
-  polynomials. This term can be safely subtracted, and needs to be removed.
-* The regular $\kappa$ constraint by circuit polynomials enforces $c_0 = 0$,
-  which enforces $a_0 = 0$, which means neither of these wires are useful to
-  circuits and should be assigned zero anyway. The constraint $(XY)^{4n - 1}$
-  interferes with the registry key constraint $\kappa (XY)^{4n - 1}$, producing
-  $(\kappa + 1) (XY)^{4n - 1}$, but this is just as satisfiable for $c_0 = 0$,
-  and does not affect its unpredictable evaluation. Therefore, we need not
-  subtract the $(XY)^{4n - 1}$ and $(XY)^{2n - 1}$ terms.
+Given $g = \text{skip\_gates}$ (the starting active gate index) and
+$m = \text{num\_gates}$ (the number of active gates in the stage), we can define
+a specific stage polynomial's masking polynomial as $s_\text{global}$ subtracted
+by
+
+$$
+\sum\limits_{i=0}^{m - 1} \left( (XY)^{g + i} + (XY)^{2n - 1 - g - i} + (XY)^{2n + g + i} + (XY)^{4n - 1 - g - i} \right)
+$$
 
 ### Routing Polynomials
 
