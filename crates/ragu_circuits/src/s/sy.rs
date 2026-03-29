@@ -50,7 +50,7 @@
 //! The wiring constraint $\langle\langle r(X), s(X, y) \rangle\rangle = k(y)$
 //! uses a "revdot" inner product: coefficients of $r(X)$ are matched against
 //! coefficients of $s(X, y)$ in a specific order based on wire type. Rather
-//! than building a flat coefficient vector and reinterpreting it, the backward
+//! than building a flat coefficient vector and reinterpreting it, the wiring
 //! view provides direct access to the $a$, $b$, $c$, and $d$ coefficient regions.
 //! See [`sparse::View`] for details.
 //!

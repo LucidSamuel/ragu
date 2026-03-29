@@ -542,7 +542,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
 
         // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
         // at Y, this is k * y^{4n-1} at X^{4n-1} (c-wire of gate 0 in
-        // the backward layout).
+        // the wiring layout).
         if y != F::ZERO {
             let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
             let mut key_view = sparse::View::<_, R, _>::wiring();

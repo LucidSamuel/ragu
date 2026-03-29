@@ -11,7 +11,7 @@ evaluator drivers.
 
 All circuits place the verifier's public inputs in the first elements of $\v{k}$
 so that the verifier can compute $\dot{\v{k}}{\v{y^{4n}}} = k(y)$ as the
-evaluation of a low degree polynomial. During circuit synthesis, linear
+evaluation of a low degree polynomial. During circuit synthesis,
 constraints are inserted from highest to lowest degree. The evaluation drivers
 (especially $s(x, y)$ and $s(X, y)$) use Horner's rule to evaluate the wiring
 polynomial incrementally, and so the public input constraints (optimally) appear

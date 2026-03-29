@@ -39,7 +39,7 @@ fn arb_sparse_wire_vec() -> impl Strategy<Value = Vec<Fp>> {
 }
 
 /// Build a polynomial via trace view with random wire vectors.
-fn arb_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
+fn arb_trace_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
         arb_wire_vec(),
         arb_wire_vec(),
@@ -57,7 +57,7 @@ fn arb_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
 }
 
 /// Build a polynomial via wiring view with random wire vectors.
-fn arb_backward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
+fn arb_wiring_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
         arb_wire_vec(),
         arb_wire_vec(),
@@ -76,7 +76,7 @@ fn arb_backward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
 
 /// Build a polynomial via trace view with sparse (mostly-zero) wire vectors,
 /// mimicking the alloc optimization pattern.
-fn arb_sparse_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
+fn arb_sparse_trace_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
         arb_sparse_wire_vec(),
         arb_sparse_wire_vec(),
@@ -109,9 +109,9 @@ fn arb_sparse_from_coeffs_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
 /// sparsity patterns.
 fn arb_any_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     prop_oneof![
-        2 => arb_forward_poly(),
-        2 => arb_backward_poly(),
-        3 => arb_sparse_forward_poly(),
+        2 => arb_trace_poly(),
+        2 => arb_wiring_poly(),
+        3 => arb_sparse_trace_poly(),
         2 => arb_sparse_from_coeffs_poly(),
         1 => Just(Polynomial::<Fp, R>::new()),
     ]
@@ -142,7 +142,7 @@ proptest! {
     }
 
     #[test]
-    fn forward_view_degree_mapping(
+    fn trace_view_degree_mapping(
         a in arb_wire_vec(),
         b in arb_wire_vec(),
         c in arb_wire_vec(),
@@ -176,7 +176,7 @@ proptest! {
     }
 
     #[test]
-    fn forward_view_sparse_mapping(
+    fn trace_view_sparse_mapping(
         a in arb_sparse_wire_vec(),
         b in arb_sparse_wire_vec(),
         c in arb_sparse_wire_vec(),
@@ -206,7 +206,7 @@ proptest! {
     }
 
     #[test]
-    fn backward_is_reversal_of_forward(
+    fn wiring_is_reversal_of_trace(
         a in arb_wire_vec(),
         b in arb_wire_vec(),
         c in arb_wire_vec(),
@@ -258,9 +258,9 @@ proptest! {
     }
 
     #[test]
-    fn revdot_forward_against_backward(
-        a in arb_forward_poly(),
-        b in arb_backward_poly(),
+    fn revdot_trace_against_wiring(
+        a in arb_trace_poly(),
+        b in arb_wiring_poly(),
     ) {
         let a_dense = a.to_dense();
         let b_dense = b.to_dense();
@@ -470,7 +470,7 @@ proptest! {
     }
 
     #[test]
-    fn iter_coeffs_sparse_rev(poly in arb_sparse_forward_poly()) {
+    fn iter_coeffs_sparse_rev(poly in arb_sparse_trace_poly()) {
         let mut dense = poly.to_dense();
         dense.reverse();
         let from_iter: Vec<Fp> = poly.iter_coeffs().rev().collect();
