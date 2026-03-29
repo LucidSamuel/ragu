@@ -117,7 +117,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             // Enforce that the square is equal to
             //     (elem + i) if bit == 1
             //     (elem + i) * MULTIPLICATIVE_GENERATOR) if bit == 0
-            // This is done by enforcing the linear constraint:
+            // This is done by enforcing the constraint:
             //
             //     square = bit * (elem + i)
             //            + (1 - bit) * ((elem + i) * MULTIPLICATIVE_GENERATOR)

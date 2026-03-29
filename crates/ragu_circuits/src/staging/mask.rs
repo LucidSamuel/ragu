@@ -28,8 +28,6 @@ impl<R: Rank> StageMask<R> {
         if skip_gates + num_gates > R::n() {
             return Err(ragu_core::Error::GateBoundExceeded { limit: R::n() });
         }
-        assert!(skip_gates + num_gates <= R::n()); // Technically a redundant assertion.
-
         Ok(Self {
             skip_gates,
             num_gates,
@@ -49,7 +47,6 @@ impl<R: Rank> StageMask<R> {
         }
 
         let num_gates = R::n() - skip_gates;
-        assert!(skip_gates + num_gates <= R::n()); // Technically a redundant assertion.
 
         Ok(Self {
             skip_gates,
@@ -60,7 +57,7 @@ impl<R: Rank> StageMask<R> {
 
     fn project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
         let n = R::n();
-        let mut view = sparse::View::<F, R, _>::backward();
+        let mut view = sparse::View::<F, R, _>::wiring();
         view.d.resize(n, F::ZERO);
         view.a.resize(n, F::ZERO);
         view.b.resize(n, F::ZERO);
@@ -105,9 +102,6 @@ impl<R: Rank> StageMask<R> {
 
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     fn sxy(&self, x: F, y: F, _floor_plan: &[crate::floor_planner::ConstraintSegment]) -> F {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates <= R::n());
-
         if x == F::ZERO || y == F::ZERO {
             // If either x or y is zero, the polynomial evaluates to zero
             // (the constant term of a bonding polynomial is always zero).
@@ -140,9 +134,6 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         x: F,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates <= R::n());
-
         self.project(x)
     }
 
@@ -151,9 +142,6 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
         y: F,
         _floor_plan: &[crate::floor_planner::ConstraintSegment],
     ) -> sparse::Polynomial<F, R> {
-        // Bound is enforced in `StageMask::new`.
-        assert!(self.skip_gates + self.num_gates <= R::n());
-
         self.project(y)
     }
 
@@ -490,9 +478,9 @@ mod tests {
 
                 // The Circuit impl always issues 4n-2 enforce_zero
                 // (with dummies for active gates and gate 0).
-                let num_linear_from_gates = 4 * R::n() - 2;
+                let num_constraints_from_gates = 4 * R::n() - 2;
                 assert!(
-                    num_linear_from_gates < R::num_coeffs(),
+                    num_constraints_from_gates < R::num_coeffs(),
                     "Reserved computation should not cause overflow"
                 );
             }

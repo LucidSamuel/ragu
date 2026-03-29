@@ -209,8 +209,8 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
     fn sy(&self, y: F, floor_plan: &[ConstraintSegment]) -> sparse::Polynomial<F, R> {
         let mut poly = self.0.sy(y, floor_plan);
         // Gate 0's b-wire holds the ONE wire; remove its y^0 contribution.
-        // In the backward perspective, b[0] maps to degree 2n.
-        let mut correction = sparse::View::<_, R, _>::backward();
+        // In the wiring perspective, b[0] maps to degree 2n.
+        let mut correction = sparse::View::<_, R, _>::wiring();
         correction.b.push(F::ONE);
         poly.sub_assign(&correction.build());
         poly
@@ -495,7 +495,7 @@ mod tests {
     /// Build a trace with gate 0 as ONE (zeros) and gates 1..n from (b, d)
     /// pairs.
     fn build_trace(gate_values: &[(Fp, Fp)]) -> sparse::Polynomial<Fp, R> {
-        let mut view = sparse::View::<_, R, _>::forward();
+        let mut view = sparse::View::<_, R, _>::trace();
         // ONE gate placeholder.
         view.a.push(Fp::ZERO);
         view.b.push(Fp::ZERO);

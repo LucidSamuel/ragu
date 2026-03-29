@@ -545,7 +545,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         // the backward layout).
         if y != F::ZERO {
             let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
-            let mut key_view = sparse::View::<_, R, _>::backward();
+            let mut key_view = sparse::View::<_, R, _>::wiring();
             key_view.c.push(self.registry.key.value() * y_4n_minus_1);
             poly.add_assign(&key_view.build());
         }

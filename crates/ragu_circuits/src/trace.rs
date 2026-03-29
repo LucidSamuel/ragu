@@ -110,7 +110,7 @@ impl<F: Field> Trace<F> {
             return Err(Error::GateBoundExceeded { limit: R::n() });
         }
 
-        let mut view = sparse::View::forward();
+        let mut view = sparse::View::trace();
 
         // Pre-allocate zero-filled vectors for random-access scatter.
         view.a.resize(total_gates, F::ZERO);

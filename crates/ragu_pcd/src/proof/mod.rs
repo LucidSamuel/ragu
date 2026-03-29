@@ -156,7 +156,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
     pub(crate) fn trivial_proof(&self) -> Proof<C, R> {
         // a[0] = b[0] = c[0] = d[0] = 1, all others zero.
         let ones_host = {
-            let mut view = sparse::View::<_, R, _>::forward();
+            let mut view = sparse::View::<_, R, _>::trace();
             view.a.push(C::CircuitField::ONE);
             view.b.push(C::CircuitField::ONE);
             view.c.push(C::CircuitField::ONE);
@@ -164,7 +164,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             view.build()
         };
         let ones_nested = {
-            let mut view = sparse::View::<_, R, _>::forward();
+            let mut view = sparse::View::<_, R, _>::trace();
             view.a.push(C::ScalarField::ONE);
             view.b.push(C::ScalarField::ONE);
             view.c.push(C::ScalarField::ONE);

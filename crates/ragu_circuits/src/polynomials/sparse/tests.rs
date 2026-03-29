@@ -38,7 +38,7 @@ fn arb_sparse_wire_vec() -> impl Strategy<Value = Vec<Fp>> {
     })
 }
 
-/// Build a polynomial via forward view with random wire vectors.
+/// Build a polynomial via trace view with random wire vectors.
 fn arb_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
         arb_wire_vec(),
@@ -47,7 +47,7 @@ fn arb_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
         arb_wire_vec(),
     )
         .prop_map(|(a, b, c, d)| {
-            let mut view = View::<_, R, _>::forward();
+            let mut view = View::<_, R, _>::trace();
             view.a = a;
             view.b = b;
             view.c = c;
@@ -56,7 +56,7 @@ fn arb_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
         })
 }
 
-/// Build a polynomial via backward view with random wire vectors.
+/// Build a polynomial via wiring view with random wire vectors.
 fn arb_backward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
         arb_wire_vec(),
@@ -65,7 +65,7 @@ fn arb_backward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
         arb_wire_vec(),
     )
         .prop_map(|(a, b, c, d)| {
-            let mut view = View::<_, R, _>::backward();
+            let mut view = View::<_, R, _>::wiring();
             view.a = a;
             view.b = b;
             view.c = c;
@@ -74,7 +74,7 @@ fn arb_backward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
         })
 }
 
-/// Build a polynomial via forward view with sparse (mostly-zero) wire vectors,
+/// Build a polynomial via trace view with sparse (mostly-zero) wire vectors,
 /// mimicking the alloc optimization pattern.
 fn arb_sparse_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
     (
@@ -84,7 +84,7 @@ fn arb_sparse_forward_poly() -> impl Strategy<Value = Polynomial<Fp, R>> {
         arb_sparse_wire_vec(),
     )
         .prop_map(|(a, b, c, d)| {
-            let mut view = View::<_, R, _>::forward();
+            let mut view = View::<_, R, _>::trace();
             view.a = a;
             view.b = b;
             view.c = c;
@@ -149,7 +149,7 @@ proptest! {
         d in arb_wire_vec(),
     ) {
         let n = R::n();
-        let mut view = View::<_, R, _>::forward();
+        let mut view = View::<_, R, _>::trace();
         view.a = a.clone();
         view.b = b.clone();
         view.c = c.clone();
@@ -183,7 +183,7 @@ proptest! {
         d in arb_sparse_wire_vec(),
     ) {
         let n = R::n();
-        let mut view = View::<_, R, _>::forward();
+        let mut view = View::<_, R, _>::trace();
         view.a = a.clone();
         view.b = b.clone();
         view.c = c.clone();
@@ -212,14 +212,14 @@ proptest! {
         c in arb_wire_vec(),
         d in arb_wire_vec(),
     ) {
-        let mut fwd_view = View::<_, R, _>::forward();
+        let mut fwd_view = View::<_, R, _>::trace();
         fwd_view.a = a.clone();
         fwd_view.b = b.clone();
         fwd_view.c = c.clone();
         fwd_view.d = d.clone();
         let fwd = fwd_view.build();
 
-        let mut bwd_view = View::<_, R, _>::backward();
+        let mut bwd_view = View::<_, R, _>::wiring();
         bwd_view.a = a;
         bwd_view.b = b;
         bwd_view.c = c;
@@ -544,7 +544,7 @@ fn single_coefficient_at_degree_boundaries() {
 #[test]
 fn only_a_wire_data() {
     let n = R::n();
-    let mut view = View::<_, R, _>::forward();
+    let mut view = View::<_, R, _>::trace();
     let a_vals: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rand::rng())).collect();
     view.a = a_vals.clone();
     let poly = view.build();
@@ -559,7 +559,7 @@ fn only_a_wire_data() {
 #[test]
 fn only_d_wire_data() {
     let n = R::n();
-    let mut view = View::<_, R, _>::forward();
+    let mut view = View::<_, R, _>::trace();
     let d_vals: Vec<Fp> = (0..n).map(|_| Fp::random(&mut rand::rng())).collect();
     view.d = d_vals.clone();
     let poly = view.build();
@@ -578,7 +578,7 @@ fn alloc_optimization_pattern() {
     // Simulate the alloc optimization: most gates are mul (a,b,c,0),
     // a few are alloc (a,0,0,d).
     let n = R::n();
-    let mut view = View::<_, R, _>::forward();
+    let mut view = View::<_, R, _>::trace();
     for i in 0..n {
         if i % 10 == 0 {
             // Alloc gate: a is non-zero, b=c=0, d is non-zero.
@@ -668,7 +668,7 @@ fn iter_coeffs_fully_drain_both_ends() {
 /// (c = a * b), `rx.revdot(rx_dilated + tz) == 0`.
 #[test]
 fn product_identity() {
-    let mut view = View::<_, R, _>::forward();
+    let mut view = View::<_, R, _>::trace();
     for _ in 0..R::n() {
         let a = Fp::random(&mut rand::rng());
         let b = Fp::random(&mut rand::rng());

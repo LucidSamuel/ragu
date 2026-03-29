@@ -43,9 +43,9 @@
 //!
 //! 4. **Cascading to allocated wires** — Resolution cascades through the
 //!    virtual wire graph until reaching allocated wires ($a$, $b$, $c$, $d$), where
-//!    values are written directly to the backward view of the polynomial.
+//!    values are written directly to the wiring view of the polynomial.
 //!
-//! ### Backward View
+//! ### Wiring View
 //!
 //! The wiring constraint $\langle\langle r(X), s(X, y) \rangle\rangle = k(y)$
 //! uses a "revdot" inner product: coefficients of $r(X)$ are matched against
@@ -90,7 +90,7 @@ use crate::{
 ///
 /// - `A(i)`, `B(i)`, `C(i)`, `D(i)` — Allocated wires from gate $i$, corresponding
 ///   to the $a$, $b$, $c$, $d$ wires respectively. Values are written directly to the
-///   backward view when resolved.
+///   wiring view when resolved.
 ///
 /// - `Virtual(i)` — A virtual wire (linear combination) at index $i$ in the
 ///   [`VirtualTable`]. Uses reference counting for deferred resolution.
@@ -119,7 +119,7 @@ enum WireIndex {
 /// refcount reaches zero, it resolves (see [`VirtualTable::free`]).
 ///
 /// For allocated wires (`A`, `B`, `C`, `D`), reference counting is a no-op since
-/// these wires write directly to the backward view upon resolution.
+/// these wires write directly to the wiring view upon resolution.
 ///
 /// # The `ONE` Wire
 ///
@@ -229,12 +229,12 @@ struct VirtualWire<F: Field> {
     value: Coeff<F>,
 }
 
-/// Manages virtual wires and the coefficient buffers for the backward view of $s(X, y)$.
+/// Manages virtual wires and the coefficient buffers for the wiring view of $s(X, y)$.
 ///
 /// The virtual table maintains:
 /// - A vector of [`VirtualWire`]s representing deferred linear combinations
 /// - A free list for reusing virtual wire slots after resolution
-/// - Mutable references to the backward view's $a$, $b$, $c$ coefficient vectors
+/// - Mutable references to the wiring view's $a$, $b$, $c$ coefficient vectors
 ///
 /// See [`Self::free`] for the resolution algorithm and reference counting details.
 struct VirtualTable<'sy, F: Field, R: Rank> {
@@ -251,12 +251,12 @@ struct VirtualTable<'sy, F: Field, R: Rank> {
     /// `wires`.
     free: Vec<usize>,
 
-    /// Backward-view wire buffers for the polynomial $s(X, y)$.
+    /// Wiring-view wire buffers for the polynomial $s(X, y)$.
     ///
     /// Provides direct mutable access to the $a$, $b$, $c$, $d$ coefficient
     /// vectors. When allocated wires (A/B/C/D) receive values during
     /// resolution, they are written here. See the [module documentation](self)
-    /// for the backward view concept.
+    /// for the wiring view concept.
     a: &'sy mut Vec<F>,
     b: &'sy mut Vec<F>,
     c: &'sy mut Vec<F>,
@@ -501,7 +501,7 @@ impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, '_, 
     /// Consumes a gate, returning wire handles for $(a, b, c, d)$.
     ///
     /// The gate index comes from the absolute floor-plan position tracked in
-    /// `scope.gates`. Backward view slots are
+    /// `scope.gates`. Wiring view slots are
     /// pre-allocated, so no push is needed.
     ///
     /// # Errors
@@ -666,7 +666,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     y: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<sparse::Polynomial<F, R>> {
-    let mut view = sparse::View::backward();
+    let mut view = sparse::View::wiring();
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE
@@ -696,7 +696,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
             _marker: core::marker::PhantomData,
         });
 
-        // Pre-allocate backward view slots for all gates.
+        // Pre-allocate wiring view slots for all gates.
         {
             let mut table = virtual_table.borrow_mut();
             table.a.resize(total_gates, F::ZERO);

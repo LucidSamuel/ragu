@@ -759,7 +759,7 @@ impl Routine<Fp> for DelegatePadEnforceOutput {
 /// wire == 0.
 ///
 /// Paired with [`DelegatePadEnforceOutput`]: both have one local mul
-/// gate and one linear constraint, but this routine enforces a fresh
+/// gate and one constraint, but this routine enforces a fresh
 /// input-independent allocation instead of the child's input-dependent
 /// output.
 #[derive(Clone)]
