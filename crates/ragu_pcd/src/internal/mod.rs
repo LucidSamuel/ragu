@@ -17,6 +17,13 @@ pub mod nested;
 pub mod suffix;
 pub mod transcript;
 
+/// Identifies which of the two child proofs a polynomial came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    Left,
+    Right,
+}
+
 /// Assigns `val` into the next slot and advances the counter.
 pub(crate) const fn push<T: Copy, const N: usize>(
     slots: &mut [Option<T>; N],
