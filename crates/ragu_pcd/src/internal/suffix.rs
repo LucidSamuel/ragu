@@ -42,6 +42,7 @@ where
     Bound<'dr, D, G>: Consistent<'dr, D>,
 {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
-        self.inner.enforce_consistent(dr)
+        self.inner.enforce_consistent(dr)?;
+        self.suffix.enforce_consistent(dr)
     }
 }
