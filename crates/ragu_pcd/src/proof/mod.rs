@@ -135,6 +135,11 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         &self[idx]
     }
 
+    /// Returns the revdot product $c = \text{revdot}(A, B)$.
+    pub(crate) fn c(&self) -> C::CircuitField {
+        self.ab.native.a_poly.revdot(&self.ab.native.b_poly)
+    }
+
     /// Returns the native-field rx polynomial for the given [`RxComponent`].
     pub(crate) fn native_rx(
         &self,
@@ -183,7 +188,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             registry_xy_poly.commit_to_affine(C::host_generators(self.params));
 
         // Derived values must be consistent with the polynomials.
-        let c = ones_host.revdot(&ones_host);
         let v = ones_host.eval(challenges.u);
 
         let trivial_bridge = Bridge {
@@ -224,7 +228,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                     a_commitment: host_commitment,
                     b_poly: ones_host.clone(),
                     b_commitment: host_commitment,
-                    c,
                 },
                 bridge: trivial_bridge.clone(),
             },

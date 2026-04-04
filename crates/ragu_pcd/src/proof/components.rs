@@ -78,7 +78,6 @@ pub(crate) struct NativeAB<C: Cycle, R: Rank> {
     pub(crate) a_commitment: C::HostCurve,
     pub(crate) b_poly: sparse::Polynomial<C::CircuitField, R>,
     pub(crate) b_commitment: C::HostCurve,
-    pub(crate) c: C::CircuitField,
 }
 
 #[derive(Clone)]

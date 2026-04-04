@@ -41,7 +41,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             bridge_outer_error_commitment: outer_error.bridge.commitment,
             mu_prime: challenges.mu_prime,
             nu_prime: challenges.nu_prime,
-            c: ab.native.c,
+            c: ab.native.a_poly.revdot(&ab.native.b_poly),
             bridge_ab_commitment: ab.bridge.commitment,
             x: challenges.x,
             bridge_query_commitment: query.bridge.commitment,

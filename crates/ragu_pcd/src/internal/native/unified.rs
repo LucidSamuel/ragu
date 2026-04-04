@@ -433,7 +433,7 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
             Point::alloc(dr, proof.as_ref().map(|p| p.outer_error.bridge.commitment))?;
         let mu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.mu_prime))?;
         let nu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.nu_prime))?;
-        let c = Element::alloc(dr, proof.as_ref().map(|p| p.ab.native.c))?;
+        let c = Element::alloc(dr, proof.as_ref().map(|p| p.c()))?;
         let bridge_ab_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.ab.bridge.commitment))?;
         let x = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.x))?;

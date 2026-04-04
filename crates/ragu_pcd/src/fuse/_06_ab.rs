@@ -132,14 +132,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let [a_commitment, b_commitment] =
             ragu_arithmetic::batch_to_affine([a_commitment_proj, b_poly.commit(host_gen)]);
 
-        let c = a_poly.revdot(&b_poly);
-
         Ok(proof::NativeAB {
             a_poly,
             a_commitment,
             b_poly,
             b_commitment,
-            c,
         })
     }
 }

@@ -79,7 +79,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Check all native revdot claims.
         let native_revdot_claims = {
             let ky_source = native::SingleProofKySource {
-                raw_c: pcd.proof().ab.native.c,
+                // NOTE: `raw_c` is now computed as `revdot(a, b)` rather
+                // than stored in the proof, so this claim is tautological
+                // in the verifier. It remains meaningful inside the circuit
+                // where `c` is an independently allocated witness element.
+                raw_c: pcd.proof().c(),
                 application_ky,
                 unified_bridge_ky,
                 unified_ky,
@@ -349,21 +353,5 @@ mod tests {
         let pcd = proof.carry::<()>(());
         let result = app.verify(&pcd, &mut rng).expect("verify should not error");
         assert!(!result, "verify should reject corrupted P evaluation");
-    }
-
-    #[test]
-    fn verify_rejects_corrupted_ab_c() {
-        let app = create_test_app();
-        let mut rng = StdRng::seed_from_u64(1234);
-
-        // Create a valid trivial proof
-        let mut proof = app.trivial_proof();
-
-        // Corrupt the ab.c value (raw_c used in revdot claims)
-        proof.ab.native.c = <Pasta as Cycle>::CircuitField::from(99999u64);
-
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verify should reject corrupted ab.c value");
     }
 }
