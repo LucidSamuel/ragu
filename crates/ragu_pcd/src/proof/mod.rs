@@ -208,14 +208,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
                 bridge: trivial_bridge.clone(),
             },
             s_prime: SPrime {
-                native: NativeSPrime {
-                    // registry_wx0/wx1 are not cross-checked by the verifier,
-                    // so placeholder ones polys suffice for the trivial proof.
-                    registry_wx0_poly: ones_host.clone(),
-                    registry_wx0_commitment: host_commitment,
-                    registry_wx1_poly: ones_host.clone(),
-                    registry_wx1_commitment: host_commitment,
-                },
                 bridge: trivial_bridge.clone(),
             },
             inner_error: InnerError {

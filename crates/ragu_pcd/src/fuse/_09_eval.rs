@@ -11,6 +11,7 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
+use super::NativeSPrime;
 use crate::{
     Application, Proof,
     internal::{native, nested},
@@ -24,7 +25,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-        s_prime: &proof::SPrime<C, R>,
+        s_prime: &NativeSPrime<C, R>,
         inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
@@ -63,7 +64,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-        s_prime: &proof::SPrime<C, R>,
+        s_prime: &NativeSPrime<C, R>,
         inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
@@ -84,8 +85,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 // efficient if they're computed simultaneously with assistance
                 // from the registry itself, rather than individually evaluated for
                 // each of these restrictions.
-                registry_wx0: s_prime.native.registry_wx0_poly.eval(u),
-                registry_wx1: s_prime.native.registry_wx1_poly.eval(u),
+                registry_wx0: s_prime.registry_wx0_poly.eval(u),
+                registry_wx1: s_prime.registry_wx1_poly.eval(u),
                 registry_wy: inner_error.native.registry_wy_poly.eval(u),
                 a_poly: ab.native.a_poly.eval(u),
                 b_poly: ab.native.b_poly.eval(u),

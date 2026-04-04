@@ -34,6 +34,14 @@ struct NativeF<C: Cycle, R: Rank> {
     commitment: C::HostCurve,
 }
 
+/// Ephemeral native-field data for $s'(X)$, used only during the fuse step.
+struct NativeSPrime<C: Cycle, R: Rank> {
+    registry_wx0_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx0_commitment: C::HostCurve,
+    registry_wx1_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx1_commitment: C::HostCurve,
+}
+
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
     ///
@@ -75,7 +83,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let w = transcript.challenge(&mut dr)?;
         let native_registry = self.native_registry.at(*w.value().take());
 
-        let s_prime = self.compute_s_prime(rng, &native_registry, &left, &right)?;
+        let (s_prime, native_s_prime) =
+            self.compute_s_prime(rng, &native_registry, &left, &right)?;
         let s_prime_commitment = Point::constant(&mut dr, s_prime.bridge.commitment)?;
         s_prime_commitment.write(&mut dr, &mut transcript)?;
         let y = transcript.challenge(&mut dr)?;
@@ -138,7 +147,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &z,
             &x,
             &alpha,
-            &s_prime,
+            &native_s_prime,
             &inner_error,
             &ab,
             &query,
@@ -150,7 +159,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let u = transcript.challenge(&mut dr)?;
 
         let (eval, eval_witness) =
-            self.compute_eval(rng, &u, &left, &right, &s_prime, &inner_error, &ab, &query)?;
+            self.compute_eval(rng, &u, &left, &right, &native_s_prime, &inner_error, &ab, &query)?;
         let eval_commitment = Point::constant(&mut dr, eval.bridge.commitment)?;
         eval_commitment.write(&mut dr, &mut transcript)?;
         let pre_beta = transcript.challenge(&mut dr)?;
@@ -161,7 +170,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &u,
             &left,
             &right,
-            &s_prime,
+            &native_s_prime,
             &inner_error,
             &ab,
             &query,

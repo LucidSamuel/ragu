@@ -21,7 +21,7 @@ use rand::CryptoRng;
 
 use alloc::{vec, vec::Vec};
 
-use super::NativeF;
+use super::{NativeF, NativeSPrime};
 use crate::{
     Application, Proof,
     internal::{native, native::RxIndex, nested},
@@ -37,7 +37,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         z: &Element<'dr, D>,
         x: &Element<'dr, D>,
         alpha: &Element<'dr, D>,
-        s_prime: &proof::SPrime<C, R>,
+        s_prime: &NativeSPrime<C, R>,
         inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
@@ -81,7 +81,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         z: &Element<'dr, D>,
         x: &Element<'dr, D>,
         alpha: &Element<'dr, D>,
-        s_prime: &proof::SPrime<C, R>,
+        s_prime: &NativeSPrime<C, R>,
         inner_error: &proof::InnerError<C, R>,
         ab: &proof::AB<C, R>,
         query: &proof::Query<C, R>,
@@ -114,15 +114,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             factor_iter(left.query.native.registry_xy_poly.iter_coeffs(), w),
             factor_iter(right.query.native.registry_xy_poly.iter_coeffs(), w),
             factor_iter(
-                s_prime.native.registry_wx0_poly.iter_coeffs(),
+                s_prime.registry_wx0_poly.iter_coeffs(),
                 left.challenges.y,
             ),
             factor_iter(
-                s_prime.native.registry_wx1_poly.iter_coeffs(),
+                s_prime.registry_wx1_poly.iter_coeffs(),
                 right.challenges.y,
             ),
-            factor_iter(s_prime.native.registry_wx0_poly.iter_coeffs(), y),
-            factor_iter(s_prime.native.registry_wx1_poly.iter_coeffs(), y),
+            factor_iter(s_prime.registry_wx0_poly.iter_coeffs(), y),
+            factor_iter(s_prime.registry_wx1_poly.iter_coeffs(), y),
             factor_iter(
                 inner_error.native.registry_wy_poly.iter_coeffs(),
                 left.challenges.x,

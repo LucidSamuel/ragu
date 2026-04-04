@@ -1,6 +1,8 @@
-//! Proof component structs. Each component pairs a `Native*` struct
+//! Proof component structs. Most components pair a `Native*` struct
 //! (host-curve data) with a shared [`Bridge`] struct (cross-curve data
-//! that bridges to the inner verifier).
+//! that bridges to the inner verifier). Bridge-only components
+//! ([`SPrime`], [`F`]) carry only cross-curve data; their native-field
+//! counterparts live in the `fuse` module as ephemeral locals.
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
@@ -54,16 +56,7 @@ pub(crate) struct Preamble<C: Cycle, R: Rank> {
 }
 
 #[derive(Clone)]
-pub(crate) struct NativeSPrime<C: Cycle, R: Rank> {
-    pub(crate) registry_wx0_poly: sparse::Polynomial<C::CircuitField, R>,
-    pub(crate) registry_wx0_commitment: C::HostCurve,
-    pub(crate) registry_wx1_poly: sparse::Polynomial<C::CircuitField, R>,
-    pub(crate) registry_wx1_commitment: C::HostCurve,
-}
-
-#[derive(Clone)]
 pub(crate) struct SPrime<C: Cycle, R: Rank> {
-    pub(crate) native: NativeSPrime<C, R>,
     pub(crate) bridge: Bridge<C, R>,
 }
 

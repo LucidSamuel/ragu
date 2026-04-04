@@ -9,6 +9,7 @@ use ragu_circuits::{polynomials::Rank, registry::RegistryAt, staging::StageExt};
 use ragu_core::Result;
 use rand::CryptoRng;
 
+use super::NativeSPrime;
 use crate::{Application, Proof, internal::nested, proof};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -18,7 +19,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         native_registry: &RegistryAt<'_, C::CircuitField, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-    ) -> Result<proof::SPrime<C, R>> {
+    ) -> Result<(proof::SPrime<C, R>, NativeSPrime<C, R>)> {
         let native = self.compute_native_s_prime(native_registry, left, right)?;
 
         let bridge = proof::Bridge::commit(
@@ -32,7 +33,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )?,
         );
 
-        Ok(proof::SPrime { native, bridge })
+        Ok((proof::SPrime { bridge }, native))
     }
 
     fn compute_native_s_prime(
@@ -40,7 +41,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         native_registry: &RegistryAt<'_, C::CircuitField, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-    ) -> Result<proof::NativeSPrime<C, R>> {
+    ) -> Result<NativeSPrime<C, R>> {
         let x0 = left.challenges.x;
         let x1 = right.challenges.x;
 
@@ -53,7 +54,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 registry_wx1_poly.commit(host_gen),
             ]);
 
-        Ok(proof::NativeSPrime {
+        Ok(NativeSPrime {
             registry_wx0_poly,
             registry_wx0_commitment,
             registry_wx1_poly,
