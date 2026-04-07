@@ -21,9 +21,22 @@ impl Parameters for RevdotParameters {
     type GroupSize = ConstLen<7>;
 }
 
-pub mod stages;
+pub mod stages {
+    pub mod eval;
+    pub mod inner_error;
+    pub mod outer_error;
+    pub mod preamble;
+    pub mod query;
+}
 
-pub mod circuits;
+pub mod circuits {
+    pub mod compute_v;
+    pub mod hashes_1;
+    pub mod hashes_2;
+    pub mod inner_collapse;
+    pub mod outer_collapse;
+}
+
 pub mod claims;
 pub mod unified;
 
