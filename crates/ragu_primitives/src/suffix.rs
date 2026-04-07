@@ -1,10 +1,13 @@
+//! Compositional gadget that appends an extra element during serialization.
+
 use ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,
     gadgets::{Bound, Gadget, GadgetKind, Kind},
 };
-use ragu_primitives::{
+
+use crate::{
     Element,
     consistent::Consistent,
     io::{Buffer, Write},
@@ -21,6 +24,8 @@ pub struct WithSuffix<'dr, D: Driver<'dr>, G: GadgetKind<D::F>> {
 }
 
 impl<'dr, D: Driver<'dr>, G: GadgetKind<D::F>> WithSuffix<'dr, D, G> {
+    /// Create a new `WithSuffix` wrapping `inner` with the given `suffix`
+    /// element appended during serialization.
     pub fn new(inner: Bound<'dr, D, G>, suffix: Element<'dr, D>) -> Self {
         WithSuffix { inner, suffix }
     }

@@ -69,7 +69,7 @@
 //! [$w$]: unified::Output::w
 //! [$y$]: unified::Output::y
 //! [$z$]: unified::Output::z
-//! [`WithSuffix`]: crate::internal::suffix::WithSuffix
+//! [`WithSuffix`]: ragu_primitives::suffix::WithSuffix
 //! [`Transcript::save_state`]: crate::internal::transcript::Transcript::save_state
 
 use core::marker::PhantomData;
@@ -87,7 +87,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Element, GadgetExt,
+    Element, GadgetExt, WithSuffix,
     io::Write,
     vec::{ConstLen, FixedVec},
 };
@@ -98,7 +98,7 @@ use super::super::{
 };
 use crate::{
     RAGU_TAG,
-    internal::{fold_revdot, suffix::WithSuffix, transcript::Transcript},
+    internal::{fold_revdot, transcript::Transcript},
 };
 
 /// Public output of the first hash circuit.

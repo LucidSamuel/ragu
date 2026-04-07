@@ -7,11 +7,11 @@ use ragu_core::{
     gadgets::{Bound, Gadget, GadgetKind, Kind},
 };
 use ragu_primitives::{
-    Element, GadgetExt,
+    Element, GadgetExt, WithSuffix,
     io::{Buffer, Write},
 };
 
-use crate::{Header, internal::suffix::WithSuffix};
+use crate::Header;
 
 /// A header gadget padded to a fixed size with a suffix element appended.
 ///
@@ -134,7 +134,7 @@ mod tests {
     };
 
     use super::Padded;
-    use crate::internal::suffix::WithSuffix;
+    use ragu_primitives::WithSuffix;
 
     #[derive(Gadget, Write)]
     struct MySillyGadget<'dr, D: Driver<'dr>> {

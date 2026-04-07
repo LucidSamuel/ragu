@@ -25,9 +25,9 @@ use ragu_core::{
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Point, consistent::Consistent, io::Write};
+use ragu_primitives::{Element, Point, WithSuffix, consistent::Consistent, io::Write};
 
-use crate::{internal::suffix::WithSuffix, proof::Proof};
+use crate::proof::Proof;
 
 /// The gadget kind for internal circuit outputs.
 ///

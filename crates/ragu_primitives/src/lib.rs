@@ -28,6 +28,7 @@ pub mod poseidon;
 pub mod promotion;
 mod sendable;
 mod simulator;
+pub mod suffix;
 mod util;
 pub mod vec;
 
@@ -40,6 +41,7 @@ use promotion::Demoted;
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 pub use sendable::Sendable;
 pub use simulator::Simulator;
+pub use suffix::WithSuffix;
 
 /// Extension trait that adds serialization ([`write`](GadgetExt::write)) and
 /// witness-stripping ([`demote`](GadgetExt::demote)) to all gadgets.

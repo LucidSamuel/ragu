@@ -55,7 +55,7 @@
 //! [`bridge_eval_commitment`]: unified::Output::bridge_eval_commitment
 //! [$\beta$]: unified::Output::pre_beta
 //! [`outer_error`]: super::super::stages::outer_error
-//! [`WithSuffix`]: crate::internal::suffix::WithSuffix
+//! [`WithSuffix`]: ragu_primitives::suffix::WithSuffix
 //! [`Transcript::resume_from_state`]: crate::internal::transcript::Transcript::resume_from_state
 
 use core::marker::PhantomData;

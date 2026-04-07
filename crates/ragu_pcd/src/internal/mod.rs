@@ -18,8 +18,6 @@
 //!   curve scalar multiplication
 //! - [`transcript`] — Fiat–Shamir transcript wrapper over a Poseidon
 //!   sponge, with domain separation
-//! - [`suffix`] — compositional gadget that appends an extra element
-//!   during serialization
 //! - [`const_fns`] — compile-time helper functions for array construction
 
 pub mod claims;
@@ -28,7 +26,6 @@ pub mod endoscalar;
 pub mod fold_revdot;
 pub mod native;
 pub mod nested;
-pub mod suffix;
 pub mod transcript;
 
 /// Identifies which of the two child proofs a component came from.
