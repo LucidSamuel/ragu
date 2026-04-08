@@ -426,8 +426,8 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
             coeffs[j] = circuit.sxy(x, y, &self.floor_plans[i]);
         }
 
-        // Bonding polynomials return only -notch; add the shared global
-        // term to each bonding slot to reconstruct the full mask value.
+        // The sxy evaluation of bonding polynomials returns only -notch;
+        // add the shared global term to each bonding slot.
         if !self.bonding_range.is_empty() {
             let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
             for i in self.bonding_range.clone() {
@@ -588,6 +588,14 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
+        // The sy projection of bonding polynomials returns only -notch(X, y).
+        // Add the shared global once, scaled by the sum of Lagrange coefficients.
+        if !self.registry.bonding_range.is_empty() {
+            let mut global = crate::staging::mask::global_project::<F, R>(y);
+            global.scale(self.registry.bonding_coeff_sum(&self.cache));
+            poly.add_assign(&global);
+        }
+
         // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
         // at Y, this is k * y^{4n-1} at X^{4n-1} (c-wire of the SYSTEM gate in
         // the wiring layout).
@@ -612,6 +620,14 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
                 poly.add_assign(&tmp);
             },
         );
+
+        // The sx projection of bonding polynomials returns only -notch(x, Y).
+        // Add the shared global once, scaled by the sum of Lagrange coefficients.
+        if !self.registry.bonding_range.is_empty() {
+            let mut global = crate::staging::mask::global_project::<F, R>(x);
+            global.scale(self.registry.bonding_coeff_sum(&self.cache));
+            poly.add_assign(&global);
+        }
 
         // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
         // at X, this is k * x^{4n-1} at Y^{4n-1}.
@@ -638,8 +654,8 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // Bonding polynomials return only -notch(x, y). Apply the shared
-        // global stage mask scalar once.
+        // The sxy evaluation of bonding polynomials returns only -notch(x, y).
+        // Apply the shared global stage mask scalar once.
         if !self.registry.bonding_range.is_empty() {
             result += self.registry.bonding_coeff_sum(&self.cache)
                 * crate::staging::mask::global_mask::<F, R>(x, y);
