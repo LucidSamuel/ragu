@@ -2,10 +2,10 @@
 //!
 //! Collects child proof commitments for cross-curve accumulation.
 
+use core::marker::PhantomData;
+
 use ragu_arithmetic::{CurveAffine, Cycle};
 use ragu_circuits::polynomials::Rank;
-
-use crate::Proof;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -14,7 +14,7 @@ use ragu_core::{
 };
 use ragu_primitives::{Point, io::Write};
 
-use core::marker::PhantomData;
+use crate::Proof;
 
 /// Number of curve points in this stage.
 pub const NUM_POINTS: usize = 13;
@@ -42,12 +42,12 @@ impl<C: CurveAffine> ChildWitness<C> {
     pub fn from_proof<CC: Cycle<HostCurve = C>, R: Rank>(proof: &Proof<CC, R>) -> Self {
         use crate::internal::native::RxIndex;
         Self {
-            application: proof[RxIndex::Application].commitment,
-            hashes_1: proof[RxIndex::Hashes1].commitment,
-            hashes_2: proof[RxIndex::Hashes2].commitment,
-            inner_collapse: proof[RxIndex::InnerCollapse].commitment,
-            outer_collapse: proof[RxIndex::OuterCollapse].commitment,
-            compute_v: proof[RxIndex::ComputeV].commitment,
+            application: proof.native_rx_commitment(RxIndex::Application),
+            hashes_1: proof.native_rx_commitment(RxIndex::Hashes1),
+            hashes_2: proof.native_rx_commitment(RxIndex::Hashes2),
+            inner_collapse: proof.native_rx_commitment(RxIndex::InnerCollapse),
+            outer_collapse: proof.native_rx_commitment(RxIndex::OuterCollapse),
+            compute_v: proof.native_rx_commitment(RxIndex::ComputeV),
         }
     }
 }
@@ -146,9 +146,10 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
 #[cfg(test)]
 mod tests {
+    use ragu_pasta::EqAffine;
+
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};
-    use ragu_pasta::EqAffine;
 
     #[test]
     fn stage_values_matches_wire_count() {

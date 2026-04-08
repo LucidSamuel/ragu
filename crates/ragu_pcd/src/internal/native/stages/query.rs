@@ -14,6 +14,8 @@
 //! Additionally witnesses the $a$/$b$ polynomial evaluations and registry
 //! transition evaluations needed for mesh consistency checks.
 
+use core::marker::PhantomData;
+
 use ff::PrimeField;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -28,12 +30,11 @@ use ragu_core::{
 };
 use ragu_primitives::Element;
 
-use core::marker::PhantomData;
-
-use crate::Proof;
-
-use crate::internal::native::{
-    InternalCircuitIndex, InternalCircuitValues, NUM_INTERNAL_CIRCUITS, RxIndex, RxValues,
+use crate::{
+    Proof,
+    internal::native::{
+        InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex, RxValues,
+    },
 };
 
 /// Witness for a child proof's polynomial evaluations.
@@ -68,13 +69,12 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
         registry_wy: &sparse::Polynomial<F, R>,
     ) -> Self {
         ChildEvaluationsWitness {
-            rx: RxValues::from_fn(|id| proof.native_rx_poly(id).eval(xz)),
-            a_poly_at_xz: proof.ab.native.a_poly.eval(xz),
-            b_poly_at_x: proof.ab.native.b_poly.eval(x),
-            child_registry_xy_at_current_w: proof.query.native.registry_xy_poly.eval(w),
-            current_registry_xy_at_child_circuit_id: registry_xy
-                .eval(proof.application.circuit_id.omega_j()),
-            current_registry_wy_at_child_x: registry_wy.eval(proof.challenges.x),
+            rx: RxValues::from_fn(|id| proof[id].eval(xz)),
+            a_poly_at_xz: proof[RxComponent::AbA].eval(xz),
+            b_poly_at_x: proof[RxComponent::AbB].eval(x),
+            child_registry_xy_at_current_w: proof.native_registry_xy_poly().eval(w),
+            current_registry_xy_at_child_circuit_id: registry_xy.eval(proof.circuit_id().omega_j()),
+            current_registry_wy_at_child_x: registry_wy.eval(proof.x()),
         }
     }
 }
@@ -283,8 +283,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
     type OutputKind = Kind![C::CircuitField; Output<'_, _>];
 
     fn values() -> usize {
-        // InternalCircuitValues (13) + registry_wxy (1) + 2 * ChildEvaluations (16 each)
-        NUM_INTERNAL_CIRCUITS + 1 + 2 * 16
+        // InternalCircuitIndex::NUM + registry_wxy (1) + 2 * ChildEvaluations (16 each)
+        InternalCircuitIndex::NUM + 1 + 2 * 16
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -310,9 +310,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::internal::native::stages::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
+
+    use super::*;
+    use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};
 
     #[test]
     fn stage_values_matches_wire_count() {

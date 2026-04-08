@@ -55,8 +55,10 @@
 //! [`bridge_eval_commitment`]: unified::Output::bridge_eval_commitment
 //! [$\beta$]: unified::Output::pre_beta
 //! [`outer_error`]: super::super::stages::outer_error
-//! [`WithSuffix`]: crate::internal::suffix::WithSuffix
+//! [`WithSuffix`]: ragu_primitives::suffix::WithSuffix
 //! [`Transcript::resume_from_state`]: crate::internal::transcript::Transcript::resume_from_state
+
+use core::marker::PhantomData;
 
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -72,14 +74,11 @@ use ragu_core::{
 };
 use ragu_primitives::GadgetExt;
 
-use core::marker::PhantomData;
-
 use super::super::{
     stages::{outer_error as native_outer_error, preamble as native_preamble},
     unified::{self, OutputBuilder},
 };
-use crate::internal::fold_revdot;
-use crate::internal::transcript::Transcript;
+use crate::internal::{fold_revdot, transcript::Transcript};
 
 /// Second hash circuit for Fiat-Shamir challenge derivation.
 ///

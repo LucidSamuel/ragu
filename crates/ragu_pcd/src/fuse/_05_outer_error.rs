@@ -1,7 +1,7 @@
 //! Commit to the error (off-diagonal) terms of the second revdot folding
 //! reduction.
 //!
-//! This creates the [`proof::OuterError`] component of the proof, which commits to
+//! This sets the outer-error fields on the [`ProofBuilder`], which commits to
 //! the `outer_error` stage. The stage contains the error terms and is used to store
 //! the $k(Y)$ evaluations for the child proofs, as well as the temporary sponge
 //! state used to split the hashing operations across two circuits.
@@ -20,17 +20,15 @@ use ragu_core::{
 use ragu_primitives::{Element, vec::FixedVec};
 use rand::CryptoRng;
 
+use super::claims::{FoldKey, FuseBuilder, TrackedPoly};
 use crate::{
     Application,
     internal::{
         fold_revdot, native,
         native::stages::outer_error::{ChildKyValues, KyValues},
-        nested,
     },
-    proof,
+    proof::ProofBuilder,
 };
-
-use super::claims::{FoldKey, FuseBuilder, TrackedPoly};
 
 type NativeNumGroups = <native::RevdotParameters as fold_revdot::Parameters>::NumGroups;
 
@@ -48,8 +46,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             C::CircuitField,
             ragu_primitives::poseidon::PoseidonStateLen<C::CircuitField, C::CircuitPoseidon>,
         >,
+        builder: &mut ProofBuilder<'_, C, R>,
     ) -> Result<(
-        proof::OuterError<C, R>,
         native::stages::outer_error::Witness<C, native::RevdotParameters>,
         FixedVec<TrackedPoly<'rx, FoldKey, C::CircuitField, R>, NativeNumGroups>,
         FixedVec<sparse::Polynomial<C::CircuitField, R>, NativeNumGroups>,
@@ -149,38 +147,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 ky,
                 sponge_state_elements,
             };
-        let native = self.compute_native_outer_error(rng, &outer_error_witness)?;
+        let rx = self.compute_native_outer_error(rng, &outer_error_witness)?;
 
-        let bridge = proof::Bridge::commit(
-            self.params,
-            nested::stages::outer_error::Stage::<C::HostCurve, R>::rx(
-                C::ScalarField::random(&mut *rng),
-                &nested::stages::outer_error::Witness {
-                    native_outer_error: native.commitment,
-                },
-            )?,
-        );
+        builder.set_native_outer_error_rx(rx);
 
-        Ok((
-            proof::OuterError { native, bridge },
-            outer_error_witness,
-            a,
-            b,
-        ))
+        Ok((outer_error_witness, a, b))
     }
 
     fn compute_native_outer_error<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
         outer_error_witness: &native::stages::outer_error::Witness<C, native::RevdotParameters>,
-    ) -> Result<proof::RxTriple<C, R>> {
+    ) -> Result<sparse::Polynomial<C::CircuitField, R>> {
         let rx =
             native::stages::outer_error::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
                 C::CircuitField::random(&mut *rng),
                 outer_error_witness,
             )?;
-        let commitment = rx.commit_to_affine(C::host_generators(self.params));
 
-        Ok(proof::RxTriple { rx, commitment })
+        Ok(rx)
     }
 }

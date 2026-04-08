@@ -1,4 +1,22 @@
-//! Eval stage for fuse operations.
+//! Native evaluation stage for fuse operations.
+//!
+//! The prover claims that $f(X)$ is a (low degree) non-rational polynomial in
+//! $X$ in order to demonstrate that their claimed queries in the `query` stage
+//! were correct. This is achieved by committing to $f(X)$ and then opening it
+//! at a random point $u$ (a challenge determined after the commitment to
+//! $f(X)$) to its expected evaluation; by the definition of $f(X)$, this is
+//! fully determined by quotients involving the claimed evaluations, the
+//! evaluations of the various queried polynomials at $u$ and by the various
+//! points they were queried at.
+//!
+//! In order to obtain the real evaluations of the various queried polynomials,
+//! the prover will commit to _claims_ about them and these claims are then
+//! accumulated together with the claim about $f(u)$.
+//!
+//! This stage contains the committed claims of all evaluations (other than
+//! $f(X)$) at $u$ for all the queried polynomials.
+
+use core::marker::PhantomData;
 
 use ff::PrimeField;
 use ragu_arithmetic::Cycle;
@@ -11,18 +29,33 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, io::Write};
 
-use core::marker::PhantomData;
+use crate::{
+    Proof,
+    internal::native::{RxComponent, RxValues},
+};
 
-use crate::Proof;
-use crate::internal::native::RxValues;
-
-/// Pre-computed polynomial evaluations at $u$ (from the parent fuse operation)
-/// for a child proof.
+/// Polynomial evaluations at $u$ (from the parent fuse operation) for a child
+/// proof. Supplied by the prover to construct the `eval` stage witness.
 pub struct ChildEvaluationsWitness<F> {
+    /// All of the child proof's Rx components are evaluated at $u$.
     pub rx: RxValues<F>,
+
+    /// The child proof's A polynomial is evaluated at $u$.
     pub a_poly: F,
+
+    /// The child proof's B polynomial is evaluated at $u$.
     pub b_poly: F,
+
+    /// The child proof's `registry_xy_poly` is evaluated at $u$.
+    ///
+    /// This polynomial is queried only to relate the committed polynomial with
+    /// another commitment at a different restriction.
     pub registry_xy_poly: F,
+
+    /// The child proof's P polynomial is evaluated at $u$.
+    ///
+    /// This polynomial is queried only to insert the claim about $p(X)$ from
+    /// the child proof into the accumulator for the fuse step.
     pub p_poly: F,
 }
 
@@ -30,29 +63,59 @@ impl<F: PrimeField> ChildEvaluationsWitness<F> {
     /// Create child evaluations witness from a proof evaluated at point u.
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank>(proof: &Proof<C, R>, u: F) -> Self {
         ChildEvaluationsWitness {
-            rx: RxValues::from_fn(|id| proof.native_rx_poly(id).eval(u)),
-            a_poly: proof.ab.native.a_poly.eval(u),
-            b_poly: proof.ab.native.b_poly.eval(u),
-            registry_xy_poly: proof.query.native.registry_xy_poly.eval(u),
-            p_poly: proof.p.native.poly.eval(u),
+            rx: RxValues::from_fn(|id| proof[id].eval(u)),
+            a_poly: proof[RxComponent::AbA].eval(u),
+            b_poly: proof[RxComponent::AbB].eval(u),
+            registry_xy_poly: proof.native_registry_xy_poly().eval(u),
+            p_poly: proof.native_p_poly().eval(u),
         }
     }
 }
 
-/// Pre-computed polynomial evaluations at u for the current step.
+/// Pre-computed polynomial evaluations at $u$ for the current step.
 pub struct CurrentStepWitness<F> {
+    /// Evaluation of the committed $m(w, x_0, Y)$ at $u$, where $x\_{0}$ is
+    /// from the left child proof. This polynomial is committed in the
+    /// `_03_s_prime` step of the fuse operation, within the _nested_ `s_prime`
+    /// stage.
     pub registry_wx0: F,
+
+    /// Evaluation of the committed $m(w, x_1, Y)$ at $u$, where $x\_{1}$ is
+    /// from the right child proof. This polynomial is committed in the
+    /// `_03_s_prime` step of the fuse operation, within the _nested_ `s_prime`
+    /// stage.
     pub registry_wx1: F,
+
+    /// Evaluation of the committed $m(w, X, y)$ at $u$. This polynomial is
+    /// committed in the `_04_inner_error` step of the fuse operation, within
+    /// the _nested_ `inner_error` stage.
     pub registry_wy: F,
+
+    /// Evaluation of the committed $a(X)$ at $u$. This polynomial is committed
+    /// in the `_06_ab` step of the fuse operation, within the _nested_ `ab`
+    /// stage.
     pub a_poly: F,
+
+    /// Evaluation of the committed $b(X)$ at $u$. This polynomial is committed
+    /// in the `_06_ab` step of the fuse operation, within the _nested_ `ab`
+    /// stage.
     pub b_poly: F,
+
+    /// Evaluation of the committed $m(W, x, y)$ at $u$. This polynomial is
+    /// committed in the `_07_query` step of the fuse operation, within the
+    /// _nested_ `query` stage.
     pub registry_xy: F,
 }
 
 /// Witness for the eval stage.
 pub struct Witness<F> {
+    /// Left proof's evaluations at $u$.
     pub left: ChildEvaluationsWitness<F>,
+
+    /// Right proof's evaluations at $u$.
     pub right: ChildEvaluationsWitness<F>,
+
+    /// Current fuse step's evaluations at $u$.
     pub current: CurrentStepWitness<F>,
 }
 
@@ -168,9 +231,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::internal::native::stages::tests::{HEADER_SIZE, R, assert_stage_values};
     use ragu_pasta::Pasta;
+
+    use super::*;
+    use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};
 
     #[test]
     fn stage_values_matches_wire_count() {

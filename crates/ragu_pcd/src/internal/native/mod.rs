@@ -9,8 +9,7 @@ use ragu_circuits::{
 use ragu_core::Result;
 use ragu_primitives::vec::ConstLen;
 
-use crate::internal::fold_revdot::Parameters;
-use crate::step;
+use crate::{internal::fold_revdot::Parameters, step};
 
 /// Default parameters for native revdot folding
 #[derive(Clone, Copy, Default)]
@@ -21,9 +20,22 @@ impl Parameters for RevdotParameters {
     type GroupSize = ConstLen<7>;
 }
 
-pub mod stages;
+pub mod stages {
+    pub mod eval;
+    pub mod inner_error;
+    pub mod outer_error;
+    pub mod preamble;
+    pub mod query;
+}
 
-pub mod circuits;
+pub mod circuits {
+    pub mod compute_v;
+    pub mod hashes_1;
+    pub mod hashes_2;
+    pub mod inner_collapse;
+    pub mod outer_collapse;
+}
+
 pub mod claims;
 pub mod unified;
 
@@ -47,44 +59,47 @@ pub enum InternalCircuitIndex {
     EvalFinalStaged,
 }
 
-/// The number of internal circuits registered by [`register_all`],
-/// equal to the number of variants in [`InternalCircuitIndex`].
-pub const NUM_INTERNAL_CIRCUITS: usize = 13;
-
 /// Compute the total circuit count and log2 domain size from the number of
 /// application-defined steps.
 pub const fn total_circuit_counts(num_application_steps: usize) -> (usize, u32) {
-    let total_circuits = num_application_steps + step::NUM_INTERNAL_STEPS + NUM_INTERNAL_CIRCUITS;
+    let total_circuits =
+        num_application_steps + step::NUM_INTERNAL_STEPS + InternalCircuitIndex::NUM;
     let log2_circuits = total_circuits.next_power_of_two().trailing_zeros();
     (total_circuits, log2_circuits)
 }
 
 impl InternalCircuitIndex {
+    /// The number of internal circuits registered by [`register_all`],
+    /// equal to the number of variants in [`InternalCircuitIndex`].
+    pub const NUM: usize = 13;
+
     /// All variants in canonical iteration order.
     ///
     /// This order must match the registry finalization concatenation order
     /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
     /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
     /// derives indices from position in this array.
-    pub const ALL: [Self; NUM_INTERNAL_CIRCUITS] = super::unwrap_all(Self::all_slots());
+    pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
-    const fn all_slots() -> [Option<Self>; NUM_INTERNAL_CIRCUITS] {
-        let mut slots = [None; NUM_INTERNAL_CIRCUITS];
+    const fn all_slots() -> [Option<Self>; Self::NUM] {
+        use super::const_fns::push;
+
+        let mut slots = [None; Self::NUM];
         let mut c = 0;
-        super::push(&mut slots, &mut c, Self::Hashes1Circuit);
-        super::push(&mut slots, &mut c, Self::Hashes2Circuit);
-        super::push(&mut slots, &mut c, Self::InnerCollapseCircuit);
-        super::push(&mut slots, &mut c, Self::OuterCollapseCircuit);
-        super::push(&mut slots, &mut c, Self::ComputeVCircuit);
-        super::push(&mut slots, &mut c, Self::PreambleStage);
-        super::push(&mut slots, &mut c, Self::InnerErrorStage);
-        super::push(&mut slots, &mut c, Self::OuterErrorStage);
-        super::push(&mut slots, &mut c, Self::QueryStage);
-        super::push(&mut slots, &mut c, Self::EvalStage);
-        super::push(&mut slots, &mut c, Self::InnerErrorFinalStaged);
-        super::push(&mut slots, &mut c, Self::OuterErrorFinalStaged);
-        super::push(&mut slots, &mut c, Self::EvalFinalStaged);
-        assert!(c == NUM_INTERNAL_CIRCUITS);
+        push(&mut slots, &mut c, Self::Hashes1Circuit);
+        push(&mut slots, &mut c, Self::Hashes2Circuit);
+        push(&mut slots, &mut c, Self::InnerCollapseCircuit);
+        push(&mut slots, &mut c, Self::OuterCollapseCircuit);
+        push(&mut slots, &mut c, Self::ComputeVCircuit);
+        push(&mut slots, &mut c, Self::PreambleStage);
+        push(&mut slots, &mut c, Self::InnerErrorStage);
+        push(&mut slots, &mut c, Self::OuterErrorStage);
+        push(&mut slots, &mut c, Self::QueryStage);
+        push(&mut slots, &mut c, Self::EvalStage);
+        push(&mut slots, &mut c, Self::InnerErrorFinalStaged);
+        push(&mut slots, &mut c, Self::OuterErrorFinalStaged);
+        push(&mut slots, &mut c, Self::EvalFinalStaged);
+        assert!(c == Self::NUM);
         slots
     }
 
@@ -193,31 +208,33 @@ pub enum RxIndex {
     Eval,
 }
 
-/// The number of rx polynomial components.
-const NUM_RX_COMPONENTS: usize = 11;
-
 impl RxIndex {
+    /// The number of rx polynomial components.
+    pub const NUM: usize = 11;
+
     /// All variants in canonical order.
     ///
     /// This order matches the evaluation order in `poly_queries` (compute_v.rs)
     /// and `_08_f.rs`, and drives the `Write` impl for `RxValues`.
-    pub const ALL: [Self; NUM_RX_COMPONENTS] = super::unwrap_all(Self::all_slots());
+    pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
-    const fn all_slots() -> [Option<Self>; NUM_RX_COMPONENTS] {
-        let mut slots = [None; NUM_RX_COMPONENTS];
+    const fn all_slots() -> [Option<Self>; Self::NUM] {
+        use super::const_fns::push;
+
+        let mut slots = [None; Self::NUM];
         let mut c = 0;
-        super::push(&mut slots, &mut c, Self::Application);
-        super::push(&mut slots, &mut c, Self::Hashes1);
-        super::push(&mut slots, &mut c, Self::Hashes2);
-        super::push(&mut slots, &mut c, Self::InnerCollapse);
-        super::push(&mut slots, &mut c, Self::OuterCollapse);
-        super::push(&mut slots, &mut c, Self::ComputeV);
-        super::push(&mut slots, &mut c, Self::Preamble);
-        super::push(&mut slots, &mut c, Self::InnerError);
-        super::push(&mut slots, &mut c, Self::OuterError);
-        super::push(&mut slots, &mut c, Self::Query);
-        super::push(&mut slots, &mut c, Self::Eval);
-        assert!(c == NUM_RX_COMPONENTS);
+        push(&mut slots, &mut c, Self::Application);
+        push(&mut slots, &mut c, Self::Hashes1);
+        push(&mut slots, &mut c, Self::Hashes2);
+        push(&mut slots, &mut c, Self::InnerCollapse);
+        push(&mut slots, &mut c, Self::OuterCollapse);
+        push(&mut slots, &mut c, Self::ComputeV);
+        push(&mut slots, &mut c, Self::Preamble);
+        push(&mut slots, &mut c, Self::InnerError);
+        push(&mut slots, &mut c, Self::OuterError);
+        push(&mut slots, &mut c, Self::Query);
+        push(&mut slots, &mut c, Self::Eval);
+        assert!(c == Self::NUM);
         slots
     }
 }
@@ -397,7 +414,7 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
 
     assert_eq!(
         registry.num_internal_circuits(),
-        initial_internal_circuits + NUM_INTERNAL_CIRCUITS,
+        initial_internal_circuits + InternalCircuitIndex::NUM,
         "internal circuit count mismatch"
     );
 

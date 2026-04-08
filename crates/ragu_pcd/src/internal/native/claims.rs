@@ -18,8 +18,7 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::Result;
-use ragu_core::drivers::Driver;
+use ragu_core::{Result, drivers::Driver};
 use ragu_primitives::Element;
 
 use super::{InternalCircuitIndex, RxComponent, RxIndex};
@@ -69,10 +68,26 @@ pub trait Processor<Rx, AppCircuitId> {
     /// The processor looks up registry via [`InternalCircuitIndex`] from its stored context.
     fn internal_circuit(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
 
-    /// Process a bonding claim (fold of rxs, $k(y) = 0$).
+    /// Process a bonding claim where each fold element is a sum of rx groups,
+    /// $k(y) = 0$.
     ///
-    /// Returns `Result<()>` because evaluation context requires fallible fold operations.
-    fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
+    /// Each inner iterator is summed into a single trace, then the sums are
+    /// Horner-folded with $z$. Returns `Result<()>` because evaluation context
+    /// requires fallible fold operations.
+    ///
+    /// When each rx is its own group (no summing), use [`masking`](Self::masking).
+    fn bonding(
+        &mut self,
+        id: InternalCircuitIndex,
+        groups: impl Iterator<Item = impl Iterator<Item = Rx>>,
+    ) -> Result<()>;
+
+    /// Process a masking claim (fold of rxs, $k(y) = 0$).
+    ///
+    /// Default wraps each rx as a single-element group.
+    fn masking(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()> {
+        self.bonding(id, rxs.map(core::iter::once))
+    }
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, CircuitIndex>
@@ -100,10 +115,10 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>, C
     fn bonding(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
+        groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
     ) -> Result<()> {
         let circuit_id = id.circuit_index();
-        let folded = self.fold_bonding_polys(rxs);
+        let folded = self.fold_bonding_groups(groups);
         self.bonding_impl(circuit_id, folded);
         Ok(())
     }
@@ -195,27 +210,27 @@ where
 
             // Native stages (aggregated across all proofs)
             PreambleStage => {
-                processor.bonding(id, source.rx(Rx(Preamble)))?;
+                processor.masking(id, source.rx(Rx(Preamble)))?;
             }
             InnerErrorStage => {
-                processor.bonding(id, source.rx(Rx(InnerError)))?;
+                processor.masking(id, source.rx(Rx(InnerError)))?;
             }
             OuterErrorStage => {
-                processor.bonding(id, source.rx(Rx(OuterError)))?;
+                processor.masking(id, source.rx(Rx(OuterError)))?;
             }
             QueryStage => {
-                processor.bonding(id, source.rx(Rx(Query)))?;
+                processor.masking(id, source.rx(Rx(Query)))?;
             }
             EvalStage => {
-                processor.bonding(id, source.rx(Rx(Eval)))?;
+                processor.masking(id, source.rx(Rx(Eval)))?;
             }
 
             // Final stage masks
             InnerErrorFinalStaged => {
-                processor.bonding(id, source.rx(Rx(InnerCollapse)))?;
+                processor.masking(id, source.rx(Rx(InnerCollapse)))?;
             }
             OuterErrorFinalStaged => {
-                processor.bonding(
+                processor.masking(
                     id,
                     source
                         .rx(Rx(Hashes1))
@@ -224,7 +239,7 @@ where
                 )?;
             }
             EvalFinalStaged => {
-                processor.bonding(id, source.rx(Rx(ComputeV)))?;
+                processor.masking(id, source.rx(Rx(ComputeV)))?;
             }
         }
     }

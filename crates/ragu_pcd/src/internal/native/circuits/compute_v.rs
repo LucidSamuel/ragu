@@ -43,10 +43,14 @@
 //! [$\mu'$]: unified::Output::mu_prime
 //! [$\nu'$]: unified::Output::nu_prime
 
+use alloc::{vec, vec::Vec};
+use core::marker::PhantomData;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
+    horner::Horner,
     polynomials::{Rank, txz::Evaluate},
     staging::{MultiStage, MultiStageCircuit, StageBuilder},
 };
@@ -58,25 +62,20 @@ use ragu_core::{
 };
 use ragu_primitives::{Element, Endoscalar, GadgetExt};
 
-use alloc::{vec, vec::Vec};
-use core::marker::PhantomData;
-
-use super::super::claims::{self, Processor};
-use super::super::{RxComponent, RxIndex};
-use crate::internal::claims::Source;
-use crate::internal::fold_revdot::{Parameters, fold_two_layer};
-use crate::internal::native::RevdotParameters;
-
-use super::super::InternalCircuitIndex;
-use super::super::InternalCircuitValues;
 use super::super::{
+    InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
+    claims::{self, Processor},
     stages::{
         eval as native_eval, preamble as native_preamble,
         query::{self as native_query, ChildEvaluations},
     },
     unified::{self, OutputBuilder},
 };
-use ragu_circuits::horner::Horner;
+use crate::internal::{
+    claims::Source,
+    fold_revdot::{Parameters, fold_two_layer},
+    native::RevdotParameters,
+};
 
 /// Circuit that computes and verifies the claimed evaluation value [$v$].
 ///
@@ -456,12 +455,13 @@ impl<'a, 'dr, D: Driver<'dr>> Processor<&'a Element<'dr, D>, &'a Element<'dr, D>
     fn bonding(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'a Element<'dr, D>>,
+        groups: impl Iterator<Item = impl Iterator<Item = &'a Element<'dr, D>>>,
     ) -> Result<()> {
         let sy = self.fixed_registry.get(id);
 
-        // a(xz) = fold of all rx(xz) with z (Horner's rule)
-        self.ax.push(Element::fold(self.dr, rxs, self.z)?);
+        // Sum each group, then Horner-fold the sums with z.
+        let sums: Vec<_> = groups.map(|group| Element::sum(self.dr, group)).collect();
+        self.ax.push(Element::fold(self.dr, &sums, self.z)?);
 
         // b(x) = s_y evaluated at circuit's omega^j
         self.bx.push(sy.clone());

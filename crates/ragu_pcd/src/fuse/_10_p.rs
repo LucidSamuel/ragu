@@ -1,7 +1,7 @@
 //! Accumulate $p(X)$.
 //!
-//! This creates the [`proof::P`] component of the proof, which contains the
-//! accumulated polynomial $p(X)$ and its claimed evaluation $p(u) = v$.
+//! This sets the $p(X)$ polynomial field on the [`ProofBuilder`], containing
+//! the accumulated polynomial and its claimed evaluation $p(u) = v$.
 //!
 //! The commitment is derived as a linear combination of all constituent
 //! polynomial commitments using additive homomorphism:
@@ -11,6 +11,7 @@
 
 use alloc::vec::Vec;
 use core::ops::AddAssign;
+
 use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::{
@@ -21,13 +22,19 @@ use ragu_circuits::{
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar, vec::Len};
 
-use crate::internal::endoscalar::{
-    EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
-    PointsWitness,
+use super::{NativeF, NativeSPrime, RegistryWy};
+use crate::{
+    Application, Proof,
+    internal::{
+        endoscalar::{
+            EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage,
+            PointsWitness,
+        },
+        native::{RxComponent, RxIndex},
+        nested::NUM_ENDOSCALING_POINTS,
+    },
+    proof::ProofBuilder,
 };
-use crate::internal::native::RxIndex;
-use crate::internal::nested::NUM_ENDOSCALING_POINTS;
-use crate::{Application, Proof, proof};
 
 /// Accumulates polynomials with their commitments.
 struct Accumulator<'a, C: Cycle, R: Rank> {
@@ -52,19 +59,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         &self,
         rng: &mut RNG,
         pre_beta: &Element<'dr, D>,
-        u: &Element<'dr, D>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-        s_prime: &proof::SPrime<C, R>,
-        inner_error: &proof::InnerError<C, R>,
-        ab: &proof::AB<C, R>,
-        query: &proof::Query<C, R>,
-        f: &proof::F<C, R>,
-    ) -> Result<proof::P<C, R>>
+        s_prime: &NativeSPrime<C, R>,
+        registry_wy: &RegistryWy<C, R>,
+        f: &NativeF<C, R>,
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let mut poly = f.native.poly.clone();
+        let mut poly = f.poly.clone();
 
         // Collect commitments for PointsWitness construction.
         let mut commitments: Vec<C::HostCurve> = Vec::new();
@@ -89,35 +94,31 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             for proof in [left, right] {
                 for &id in &RxIndex::ALL {
-                    let t = &proof[id];
-                    acc.acc(&t.rx, t.commitment);
+                    acc.acc(&proof[id], proof.native_rx_commitment(id));
                 }
-                acc.acc(&proof.ab.native.a_poly, proof.ab.native.a_commitment);
-                acc.acc(&proof.ab.native.b_poly, proof.ab.native.b_commitment);
                 acc.acc(
-                    &proof.query.native.registry_xy_poly,
-                    proof.query.native.registry_xy_commitment,
+                    &proof[RxComponent::AbA],
+                    proof.native_commitment(RxComponent::AbA),
                 );
-                acc.acc(&proof.p.native.poly, proof.p.native.commitment);
+                acc.acc(
+                    &proof[RxComponent::AbB],
+                    proof.native_commitment(RxComponent::AbB),
+                );
+                acc.acc(
+                    proof.native_registry_xy_poly(),
+                    proof.native_registry_xy_commitment(),
+                );
+                acc.acc(proof.native_p_poly(), proof.native_p_commitment());
             }
 
+            acc.acc(&s_prime.registry_wx0_poly, s_prime.registry_wx0_commitment);
+            acc.acc(&s_prime.registry_wx1_poly, s_prime.registry_wx1_commitment);
+            acc.acc(&registry_wy.poly, registry_wy.commitment);
+            acc.acc(builder.native_a_poly(), builder.native_a_commitment());
+            acc.acc(builder.native_b_poly(), builder.native_b_commitment());
             acc.acc(
-                &s_prime.native.registry_wx0_poly,
-                s_prime.native.registry_wx0_commitment,
-            );
-            acc.acc(
-                &s_prime.native.registry_wx1_poly,
-                s_prime.native.registry_wx1_commitment,
-            );
-            acc.acc(
-                &inner_error.native.registry_wy_poly,
-                inner_error.native.registry_wy_commitment,
-            );
-            acc.acc(&ab.native.a_poly, ab.native.a_commitment);
-            acc.acc(&ab.native.b_poly, ab.native.b_commitment);
-            acc.acc(
-                &query.native.registry_xy_poly,
-                query.native.registry_xy_commitment,
+                builder.native_registry_xy_poly(),
+                builder.native_registry_xy_commitment(),
             );
         }
 
@@ -125,7 +126,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // Points order: [f.commitment, commitments...] computes β^n·f + β^{n-1}·C₀ + ...
         let (commitment, endoscalar_rx, points_rx, step_rxs) = {
             let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
-            points.push(f.native.commitment);
+            points.push(f.commitment);
             points.extend_from_slice(&commitments);
 
             let witness =
@@ -173,19 +174,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             )
         };
 
-        let v = poly.eval(*u.value().take());
+        builder.set_native_p_poly(poly, commitment);
+        builder.set_nested_endoscaling_step_rxs(step_rxs);
+        builder.set_nested_endoscalar_rx(endoscalar_rx);
+        builder.set_nested_points_rx(points_rx);
 
-        Ok(proof::P {
-            native: proof::NativeP {
-                poly,
-                commitment,
-                v,
-            },
-            nested: proof::NestedP {
-                step_rxs,
-                endoscalar_rx,
-                points_rx,
-            },
-        })
+        Ok(())
     }
 }

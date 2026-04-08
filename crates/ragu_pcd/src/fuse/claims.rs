@@ -25,7 +25,7 @@ use ragu_core::Result;
 use crate::{
     Proof,
     internal::{
-        claims::{Builder, Source, sum_polynomials},
+        claims::{Builder, Source},
         fold_revdot::{self, Foldable},
         native::{InternalCircuitIndex, RxComponent, claims::Processor},
     },
@@ -100,6 +100,31 @@ impl<'a, K: Copy, F: Field, R: Rank> TrackedPoly<'a, K, F, R> {
     pub(super) fn single(poly: Cow<'a, sparse::Polynomial<F, R>>, key: K) -> Self {
         Self::new(poly, CommitmentDecomposition::single(key))
     }
+
+    /// Returns a tracked polynomial equal to the sum of the given [`Atom`]s,
+    /// each with coefficient one.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `atoms` is empty.
+    pub(super) fn sum(mut atoms: impl Iterator<Item = Atom<'a, K, F, R>>) -> Self {
+        let first = atoms.next().expect("must provide at least one atom");
+        let decomp = CommitmentDecomposition::single(first.key);
+        match atoms.next() {
+            None => Self::new(Cow::Borrowed(first.poly), decomp),
+            Some(second) => {
+                let mut poly = first.poly.clone();
+                let mut decomp = decomp;
+                poly.add_assign(second.poly);
+                decomp.terms.push((second.key, F::ONE));
+                for a in atoms {
+                    poly.add_assign(a.poly);
+                    decomp.terms.push((a.key, F::ONE));
+                }
+                Self::new(Cow::Owned(poly), decomp)
+            }
+        }
+    }
 }
 
 impl<K: Copy, F: Field, R: Rank> Foldable<F> for TrackedPoly<'_, K, F, R> {
@@ -140,12 +165,7 @@ impl<K: Copy, F: Field, R: Rank> Clone for Atom<'_, K, F, R> {
 }
 impl<K: Copy, F: Field, R: Rank> Copy for Atom<'_, K, F, R> {}
 
-/// Identifies which of the two child proofs a polynomial came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Side {
-    Left,
-    Right,
-}
+use crate::internal::Side;
 
 /// Key identifying a polynomial and its corresponding commitment within the
 /// fuse pipeline: which child proof, and which component of that proof.
@@ -167,11 +187,7 @@ impl<'rx, C: Cycle, R: Rank> FuseProofSource<'rx, C, R> {
             Side::Left => self.left,
             Side::Right => self.right,
         };
-        match component {
-            RxComponent::AbA => proof.ab.native.a_commitment,
-            RxComponent::AbB => proof.ab.native.b_commitment,
-            RxComponent::Rx(idx) => proof[idx].commitment,
-        }
+        proof.native_commitment(component)
     }
 }
 
@@ -184,22 +200,18 @@ impl<'rx, C: Cycle, R: Rank> Source for FuseProofSource<'rx, C, R> {
         [
             Atom {
                 key: (Side::Left, component),
-                poly: self.left.native_rx(component),
+                poly: &self.left[component],
             },
             Atom {
                 key: (Side::Right, component),
-                poly: self.right.native_rx(component),
+                poly: &self.right[component],
             },
         ]
         .into_iter()
     }
 
     fn app_circuits(&self) -> impl Iterator<Item = Self::AppCircuitId> {
-        [
-            self.left.application.circuit_id,
-            self.right.application.circuit_id,
-        ]
-        .into_iter()
+        [self.left.circuit_id(), self.right.circuit_id()].into_iter()
     }
 }
 
@@ -235,25 +247,15 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<Atom<'rx, FoldKey, F, R>, Circui
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = Atom<'rx, FoldKey, F, R>>,
     ) {
-        let atoms: Vec<_> = rxs.collect();
-        // Plain sum: poly = sum_i rx_i, so each constituent has coefficient 1.
-        let decomp = CommitmentDecomposition {
-            terms: atoms.iter().map(|a| (a.key, F::ONE)).collect(),
-        };
-        let circuit_id = id.circuit_index();
-        let poly = sum_polynomials(atoms.iter().map(|a| a.poly));
-        self.circuit_impl(circuit_id, TrackedPoly::new(poly, decomp));
+        self.circuit_impl(id.circuit_index(), TrackedPoly::sum(rxs));
     }
 
     fn bonding(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = Atom<'rx, FoldKey, F, R>>,
+        groups: impl Iterator<Item = impl Iterator<Item = Atom<'rx, FoldKey, F, R>>>,
     ) -> Result<()> {
-        let tracked: Vec<_> = rxs
-            .map(|a| TrackedPoly::single(Cow::Borrowed(a.poly), a.key))
-            .collect();
-        let folded = fold_revdot::fold(&tracked, self.z);
+        let folded = fold_revdot::fold(groups.map(TrackedPoly::sum), self.z);
         self.bonding_impl(id.circuit_index(), folded);
         Ok(())
     }

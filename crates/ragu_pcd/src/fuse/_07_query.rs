@@ -1,9 +1,9 @@
-//! Commit to the polynomial query claims at various points (typically $x$,
-//! $xz$, $w$).
+//! Commit to the polynomial query claims at various points ($x$, $xz$, $w$, and
+//! $\omega^i$ for various internal circuits).
 //!
-//! This creates the [`proof::Query`] component of the proof, which contains
-//! claimed evaluations (corresponding to each polynomial query) usually at
-//! points like $x$, $xz$, and $w$.
+//! This sets the native `query` stage containing the claimed evaluations at
+//! various points that are then relied on in the revdot claims infrastructure.
+//! (See the `compute_v` circuit.)
 //!
 //! This phase of the fuse operation is also used to commit to the $m(W, x, y)$
 //! restriction.
@@ -15,11 +15,8 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
 use rand::CryptoRng;
 
-use crate::{
-    Application, Proof,
-    internal::{native, nested},
-    proof,
-};
+use super::RegistryWy;
+use crate::{Application, Proof, internal::native, proof::ProofBuilder};
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_query<'dr, D, RNG: CryptoRng>(
@@ -29,47 +26,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         x: &Element<'dr, D>,
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
-        inner_error: &proof::InnerError<C, R>,
+        registry_wy: &RegistryWy<C, R>,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
-    ) -> Result<(proof::Query<C, R>, native::stages::query::Witness<C>)>
-    where
-        D: Driver<'dr, F = C::CircuitField>,
-    {
-        let (native_query, query_witness) =
-            self.compute_native_query(rng, w, x, y, z, inner_error, left, right)?;
-
-        let bridge = proof::Bridge::commit(
-            self.params,
-            nested::stages::query::Stage::<C::HostCurve, R>::rx(
-                C::ScalarField::random(&mut *rng),
-                &nested::stages::query::Witness {
-                    native_query: native_query.rx_triple.commitment,
-                    registry_xy: native_query.registry_xy_commitment,
-                },
-            )?,
-        );
-
-        Ok((
-            proof::Query {
-                native: native_query,
-                bridge,
-            },
-            query_witness,
-        ))
-    }
-
-    fn compute_native_query<'dr, D, RNG: CryptoRng>(
-        &self,
-        rng: &mut RNG,
-        w: &Element<'dr, D>,
-        x: &Element<'dr, D>,
-        y: &Element<'dr, D>,
-        z: &Element<'dr, D>,
-        inner_error: &proof::InnerError<C, R>,
-        left: &Proof<C, R>,
-        right: &Proof<C, R>,
-    ) -> Result<(proof::NativeQuery<C, R>, native::stages::query::Witness<C>)>
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<native::stages::query::Witness<C>>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
@@ -93,7 +54,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &inner_error.native.registry_wy_poly,
+                &registry_wy.poly,
             ),
             right: native::stages::query::ChildEvaluationsWitness::from_proof(
                 right,
@@ -101,7 +62,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
                 x,
                 xz,
                 &registry_xy_poly,
-                &inner_error.native.registry_wy_poly,
+                &registry_wy.poly,
             ),
         };
 
@@ -109,19 +70,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             C::CircuitField::random(&mut *rng),
             &query_witness,
         )?;
-        let host_gen = C::host_generators(self.params);
-        let [registry_xy_commitment, commitment] = ragu_arithmetic::batch_to_affine([
-            registry_xy_poly.commit(host_gen),
-            rx.commit(host_gen),
-        ]);
 
-        Ok((
-            proof::NativeQuery {
-                registry_xy_poly,
-                registry_xy_commitment,
-                rx_triple: proof::RxTriple { rx, commitment },
-            },
-            query_witness,
-        ))
+        builder.set_native_query_rx(rx);
+        builder.set_native_registry_xy_poly(registry_xy_poly);
+
+        Ok(query_witness)
     }
 }

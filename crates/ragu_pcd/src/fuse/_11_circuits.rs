@@ -6,51 +6,42 @@ use rand::CryptoRng;
 use crate::{
     Application,
     internal::{native, native::total_circuit_counts},
-    proof,
+    proof::ProofBuilder,
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_internal_circuits<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        preamble: &proof::Preamble<C, R>,
-        s_prime: &proof::SPrime<C, R>,
-        outer_error: &proof::OuterError<C, R>,
-        inner_error: &proof::InnerError<C, R>,
-        ab: &proof::AB<C, R>,
-        query: &proof::Query<C, R>,
-        f: &proof::F<C, R>,
-        eval: &proof::Eval<C, R>,
-        p: &proof::P<C, R>,
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         outer_error_witness: &native::stages::outer_error::Witness<C, native::RevdotParameters>,
         inner_error_witness: &native::stages::inner_error::Witness<C, native::RevdotParameters>,
         query_witness: &native::stages::query::Witness<C>,
         eval_witness: &native::stages::eval::Witness<C::CircuitField>,
-        challenges: &proof::Challenges<C>,
-    ) -> Result<proof::InternalCircuits<C, R>> {
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()> {
         let unified = native::unified::Instance {
-            bridge_preamble_commitment: preamble.bridge.commitment,
-            w: challenges.w,
-            bridge_s_prime_commitment: s_prime.bridge.commitment,
-            y: challenges.y,
-            z: challenges.z,
-            bridge_inner_error_commitment: inner_error.bridge.commitment,
-            mu: challenges.mu,
-            nu: challenges.nu,
-            bridge_outer_error_commitment: outer_error.bridge.commitment,
-            mu_prime: challenges.mu_prime,
-            nu_prime: challenges.nu_prime,
-            c: ab.native.c,
-            bridge_ab_commitment: ab.bridge.commitment,
-            x: challenges.x,
-            bridge_query_commitment: query.bridge.commitment,
-            alpha: challenges.alpha,
-            bridge_f_commitment: f.bridge.commitment,
-            u: challenges.u,
-            bridge_eval_commitment: eval.bridge.commitment,
-            pre_beta: challenges.pre_beta,
-            v: p.native.v,
+            bridge_preamble_commitment: builder.bridge_preamble_commitment(),
+            w: builder.w(),
+            bridge_s_prime_commitment: builder.bridge_s_prime_commitment(),
+            y: builder.y(),
+            z: builder.z(),
+            bridge_inner_error_commitment: builder.bridge_inner_error_commitment(),
+            mu: builder.mu(),
+            nu: builder.nu(),
+            bridge_outer_error_commitment: builder.bridge_outer_error_commitment()?,
+            mu_prime: builder.mu_prime(),
+            nu_prime: builder.nu_prime(),
+            c: builder.c(),
+            bridge_ab_commitment: builder.bridge_ab_commitment()?,
+            x: builder.x(),
+            bridge_query_commitment: builder.bridge_query_commitment()?,
+            alpha: builder.alpha(),
+            bridge_f_commitment: builder.bridge_f_commitment(),
+            u: builder.u(),
+            bridge_eval_commitment: builder.bridge_eval_commitment()?,
+            pre_beta: builder.pre_beta(),
+            v: builder.v(),
             coverage: Default::default(),
         };
 
@@ -150,42 +141,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // missing slots are caught here.
         unified.assert_complete();
 
-        let host_gen = C::host_generators(self.params);
-        let [
-            hashes_1_commitment,
-            hashes_2_commitment,
-            inner_collapse_commitment,
-            outer_collapse_commitment,
-            compute_v_commitment,
-        ] = ragu_arithmetic::batch_to_affine([
-            hashes_1_rx.commit(host_gen),
-            hashes_2_rx.commit(host_gen),
-            inner_collapse_rx.commit(host_gen),
-            outer_collapse_rx.commit(host_gen),
-            compute_v_rx.commit(host_gen),
-        ]);
+        builder.set_native_hashes_1_rx(hashes_1_rx);
+        builder.set_native_hashes_2_rx(hashes_2_rx);
+        builder.set_native_inner_collapse_rx(inner_collapse_rx);
+        builder.set_native_outer_collapse_rx(outer_collapse_rx);
+        builder.set_native_compute_v_rx(compute_v_rx);
 
-        Ok(proof::InternalCircuits {
-            hashes_1: proof::RxTriple {
-                rx: hashes_1_rx,
-                commitment: hashes_1_commitment,
-            },
-            hashes_2: proof::RxTriple {
-                rx: hashes_2_rx,
-                commitment: hashes_2_commitment,
-            },
-            inner_collapse: proof::RxTriple {
-                rx: inner_collapse_rx,
-                commitment: inner_collapse_commitment,
-            },
-            outer_collapse: proof::RxTriple {
-                rx: outer_collapse_rx,
-                commitment: outer_collapse_commitment,
-            },
-            compute_v: proof::RxTriple {
-                rx: compute_v_rx,
-                commitment: compute_v_commitment,
-            },
-        })
+        Ok(())
     }
 }

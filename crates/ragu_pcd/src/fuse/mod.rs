@@ -16,17 +16,37 @@ mod _10_p;
 mod _11_circuits;
 pub(crate) mod claims;
 
+use claims::FuseProofSource;
+use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::Rank;
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt, Point, vec::CollectFixed};
 use rand::CryptoRng;
 
 use crate::{
-    Application, Pcd, Proof, RAGU_TAG, internal::transcript::Transcript, proof, step::Step,
+    Application, Pcd, RAGU_TAG, internal::transcript::Transcript, proof::ProofBuilder, step::Step,
 };
 
-use claims::FuseProofSource;
+/// Ephemeral native-field data for $f(X)$, used only during the fuse step.
+struct NativeF<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
+
+/// Ephemeral $m(w, X, y)$ registry restriction, used only during the fuse step.
+struct RegistryWy<C: Cycle, R: Rank> {
+    poly: sparse::Polynomial<C::CircuitField, R>,
+    commitment: C::HostCurve,
+}
+
+/// Ephemeral native-field data for $s'(X)$, used only during the fuse step.
+struct NativeSPrime<C: Cycle, R: Rank> {
+    registry_wx0_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx0_commitment: C::HostCurve,
+    registry_wx1_poly: sparse::Polynomial<C::CircuitField, R>,
+    registry_wx1_commitment: C::HostCurve,
+}
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
@@ -56,21 +76,23 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         left: Pcd<C, R, S::Left>,
         right: Pcd<C, R, S::Right>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
-        let (left, right, application, application_data, application_aux) =
-            self.compute_application_proof(rng, step, witness, left, right)?;
+        let mut builder = ProofBuilder::new(self.params, C::ScalarField::random(&mut *rng));
+
+        let (left, right, application_data, application_aux) =
+            self.compute_application_proof(rng, step, witness, left, right, &mut builder)?;
 
         let mut dr = Emulator::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), RAGU_TAG)?;
 
-        let (preamble, preamble_witness) =
-            self.compute_preamble(rng, &left, &right, &application)?;
-        let preamble_commitment = Point::constant(&mut dr, preamble.bridge.commitment)?;
+        let preamble_witness = self.compute_preamble(rng, &left, &right, &mut builder)?;
+        let preamble_commitment = Point::constant(&mut dr, builder.bridge_preamble_commitment())?;
         preamble_commitment.write(&mut dr, &mut transcript)?;
         let w = transcript.challenge(&mut dr)?;
         let native_registry = self.native_registry.at(*w.value().take());
 
-        let s_prime = self.compute_s_prime(rng, &native_registry, &left, &right)?;
-        let s_prime_commitment = Point::constant(&mut dr, s_prime.bridge.commitment)?;
+        let native_s_prime =
+            self.compute_s_prime(rng, &native_registry, &left, &right, &mut builder)?;
+        let s_prime_commitment = Point::constant(&mut dr, builder.bridge_s_prime_commitment())?;
         s_prime_commitment.write(&mut dr, &mut transcript)?;
         let y = transcript.challenge(&mut dr)?;
         let z = transcript.challenge(&mut dr)?;
@@ -80,9 +102,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             right: &right,
         };
 
-        let (inner_error, inner_error_witness, claims) =
-            self.inner_error_terms(rng, &native_registry, &y, &z, &source)?;
-        let inner_error_commitment = Point::constant(&mut dr, inner_error.bridge.commitment)?;
+        let (inner_error_witness, claims, registry_wy) =
+            self.inner_error_terms(rng, &native_registry, &y, &z, &source, &mut builder)?;
+        let inner_error_commitment =
+            Point::constant(&mut dr, builder.bridge_inner_error_commitment())?;
         inner_error_commitment.write(&mut dr, &mut transcript)?;
 
         // Clone-then-save: `save_state` consumes the transcript, but we need
@@ -99,7 +122,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mu = transcript.challenge(&mut dr)?;
         let nu = transcript.challenge(&mut dr)?;
 
-        let (outer_error, outer_error_witness, a, b) = self.outer_error_terms(
+        let (outer_error_witness, a, b) = self.outer_error_terms(
             rng,
             &preamble_witness,
             &inner_error_witness,
@@ -108,97 +131,99 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             &mu,
             &nu,
             saved_transcript_state,
+            &mut builder,
         )?;
-        let outer_error_commitment = Point::constant(&mut dr, outer_error.bridge.commitment)?;
+        let outer_error_commitment =
+            Point::constant(&mut dr, builder.bridge_outer_error_commitment()?)?;
         outer_error_commitment.write(&mut dr, &mut transcript)?;
         let mu_prime = transcript.challenge(&mut dr)?;
         let nu_prime = transcript.challenge(&mut dr)?;
 
-        let ab = self.compute_ab(rng, a, b, &source, &mu_prime, &nu_prime)?;
-        let ab_commitment = Point::constant(&mut dr, ab.bridge.commitment)?;
+        self.compute_ab(a, b, &source, &mu_prime, &nu_prime, &mut builder)?;
+        let ab_commitment = Point::constant(&mut dr, builder.bridge_ab_commitment()?)?;
         ab_commitment.write(&mut dr, &mut transcript)?;
         let x = transcript.challenge(&mut dr)?;
 
-        let (query, query_witness) =
-            self.compute_query(rng, &w, &x, &y, &z, &inner_error, &left, &right)?;
-        let query_commitment = Point::constant(&mut dr, query.bridge.commitment)?;
+        let query_witness = self.compute_query(
+            rng,
+            &w,
+            &x,
+            &y,
+            &z,
+            &registry_wy,
+            &left,
+            &right,
+            &mut builder,
+        )?;
+        let query_commitment = Point::constant(&mut dr, builder.bridge_query_commitment()?)?;
         query_commitment.write(&mut dr, &mut transcript)?;
         let alpha = transcript.challenge(&mut dr)?;
 
-        let f = self.compute_f(
+        let native_f = self.compute_f(
             rng,
             &w,
             &y,
             &z,
             &x,
             &alpha,
-            &s_prime,
-            &inner_error,
-            &ab,
-            &query,
+            &native_s_prime,
+            &registry_wy,
+            &mut builder,
             &left,
             &right,
         )?;
-        let f_commitment = Point::constant(&mut dr, f.bridge.commitment)?;
+        let f_commitment = Point::constant(&mut dr, builder.bridge_f_commitment())?;
         f_commitment.write(&mut dr, &mut transcript)?;
         let u = transcript.challenge(&mut dr)?;
 
-        let (eval, eval_witness) =
-            self.compute_eval(rng, &u, &left, &right, &s_prime, &inner_error, &ab, &query)?;
-        let eval_commitment = Point::constant(&mut dr, eval.bridge.commitment)?;
-        eval_commitment.write(&mut dr, &mut transcript)?;
-        let pre_beta = transcript.challenge(&mut dr)?;
-
-        let p = self.compute_p(
+        let eval_witness = self.compute_eval(
             rng,
-            &pre_beta,
             &u,
             &left,
             &right,
-            &s_prime,
-            &inner_error,
-            &ab,
-            &query,
-            &f,
+            &native_s_prime,
+            &registry_wy,
+            &mut builder,
+        )?;
+        let eval_commitment = Point::constant(&mut dr, builder.bridge_eval_commitment()?)?;
+        eval_commitment.write(&mut dr, &mut transcript)?;
+        let pre_beta = transcript.challenge(&mut dr)?;
+
+        self.compute_p(
+            rng,
+            &pre_beta,
+            &left,
+            &right,
+            &native_s_prime,
+            &registry_wy,
+            &native_f,
+            &mut builder,
         )?;
 
-        let challenges = proof::Challenges::new(
-            &w, &y, &z, &mu, &nu, &mu_prime, &nu_prime, &x, &alpha, &u, &pre_beta,
-        );
+        // Set challenges on builder.
+        builder.set_w(*w.value().take());
+        builder.set_y(*y.value().take());
+        builder.set_z(*z.value().take());
+        builder.set_mu(*mu.value().take());
+        builder.set_nu(*nu.value().take());
+        builder.set_mu_prime(*mu_prime.value().take());
+        builder.set_nu_prime(*nu_prime.value().take());
+        builder.set_x(*x.value().take());
+        builder.set_alpha(*alpha.value().take());
+        builder.set_u(*u.value().take());
+        builder.set_pre_beta(*pre_beta.value().take());
 
-        let circuits = self.compute_internal_circuits(
+        self.compute_internal_circuits(
             rng,
-            &preamble,
-            &s_prime,
-            &outer_error,
-            &inner_error,
-            &ab,
-            &query,
-            &f,
-            &eval,
-            &p,
             &preamble_witness,
             &outer_error_witness,
             &inner_error_witness,
             &query_witness,
             &eval_witness,
-            &challenges,
+            &mut builder,
         )?;
 
-        let proof = Proof {
-            application,
-            preamble,
-            s_prime,
-            inner_error,
-            outer_error,
-            ab,
-            query,
-            f,
-            eval,
-            p,
-            challenges,
-            circuits,
-        };
+        let proof = builder.build()?;
 
         Ok((proof.carry(application_data), application_aux))
     }

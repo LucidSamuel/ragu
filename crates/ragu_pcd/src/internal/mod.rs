@@ -1,45 +1,38 @@
-//! Internal implementation of the recursive verifier — circuits, proof
-//! components, and claim-building machinery.
+//! Internal proving and verification engine for the recursive PCD protocol.
+//!
+//! This module defines the circuits, claim-building abstractions, and
+//! supporting gadgets that implement recursion across both curves of the
+//! cycle.
 //!
 //! # Submodules
 //!
-//! - [`native`] — circuits and types for the native (host) curve
-//! - [`nested`] — circuits and types for the nested curve
-//! - [`claims`] — shared claim-building abstraction used by both curves
-//! - [`fold_revdot`], [`endoscalar`], [`suffix`], [`transcript`] —
-//!   supporting gadgets and helpers
+//! - [`native`] — circuits, indexed value containers, and claim
+//!   orchestration for the native (host) field
+//! - [`nested`] — circuits and claim orchestration for the nested
+//!   (scalar) field, including endoscaling verification
+//! - [`claims`] — generic [`claims::Builder`] for assembling revdot
+//!   claims, shared by both fields
+//! - [`fold_revdot`] — two-layer Horner-style folding that batch-reduces
+//!   revdot claims
+//! - [`endoscalar`] — endoscaling circuit and witness types for iterative
+//!   curve scalar multiplication
+//! - [`transcript`] — Fiat–Shamir transcript wrapper over a Poseidon
+//!   sponge, with domain separation
+//! - [`const_fns`] — compile-time helper functions for array construction
 
 pub mod claims;
+pub mod const_fns;
 pub mod endoscalar;
 pub mod fold_revdot;
 pub mod native;
 pub mod nested;
-pub mod suffix;
 pub mod transcript;
 
-/// Assigns `val` into the next slot and advances the counter.
-pub(crate) const fn push<T: Copy, const N: usize>(
-    slots: &mut [Option<T>; N],
-    c: &mut usize,
-    val: T,
-) {
-    slots[*c] = Some(val);
-    *c += 1;
-}
-
-/// Unwraps every element of an `Option` array at compile time.
-///
-/// Panics (at compile time) if any slot is `None`.
-pub(crate) const fn unwrap_all<T: Copy, const N: usize>(slots: [Option<T>; N]) -> [T; N] {
-    // The filler is immediately overwritten for every index; it exists only
-    // because `[T; N]` requires an initializer in const context.
-    let mut arr = [slots[0].unwrap(); N];
-    let mut i = 1;
-    while i < N {
-        arr[i] = slots[i].unwrap();
-        i += 1;
-    }
-    arr
+/// Identifies which of the two child proofs a component came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Side {
+    Left,
+    Right,
 }
 
 #[cfg(test)]

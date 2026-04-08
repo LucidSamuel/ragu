@@ -1,18 +1,21 @@
 //! Commit to the preamble.
 //!
-//! This creates the [`proof::Preamble`] component of the proof, which commits
-//! to the instance and trace polynomials used in the fuse step.
+//! This sets the preamble fields on the [`ProofBuilder`], which commits to the
+//! instance and trace polynomials used in the fuse step.
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{polynomials::Rank, staging::StageExt};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    staging::StageExt,
+};
 use ragu_core::Result;
 use rand::CryptoRng;
 
 use crate::{
     Application, Proof,
     internal::{native, nested},
-    proof,
+    proof::ProofBuilder,
 };
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
@@ -21,27 +24,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        application: &proof::Application<C, R>,
-    ) -> Result<(
-        proof::Preamble<C, R>,
-        native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>,
-    )> {
-        let (native, preamble_witness) =
-            self.compute_native_preamble(rng, left, right, application)?;
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>> {
+        let (rx, preamble_witness) = self.compute_native_preamble(rng, left, right, builder)?;
 
-        let bridge = proof::Bridge::commit(
-            self.params,
-            nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
-                C::ScalarField::random(&mut *rng),
-                &nested::stages::preamble::Witness {
-                    native_preamble: native.commitment,
-                    left: nested::stages::preamble::ChildWitness::from_proof(left),
-                    right: nested::stages::preamble::ChildWitness::from_proof(right),
-                },
-            )?,
-        );
+        builder.set_native_preamble_rx(rx);
 
-        Ok((proof::Preamble { native, bridge }, preamble_witness))
+        let bridge_rx = nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
+            C::ScalarField::random(&mut *rng),
+            &nested::stages::preamble::Witness {
+                native_preamble: builder.native_preamble_commitment(),
+                left: nested::stages::preamble::ChildWitness::from_proof(left),
+                right: nested::stages::preamble::ChildWitness::from_proof(right),
+            },
+        )?;
+        let bridge_commitment = bridge_rx.commit_to_affine(C::nested_generators(self.params));
+        builder.set_bridge_preamble_rx(bridge_rx, bridge_commitment);
+
+        Ok(preamble_witness)
     }
 
     fn compute_native_preamble<'a, RNG: CryptoRng>(
@@ -49,24 +49,23 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         rng: &mut RNG,
         left: &'a Proof<C, R>,
         right: &'a Proof<C, R>,
-        application: &proof::Application<C, R>,
+        builder: &ProofBuilder<'_, C, R>,
     ) -> Result<(
-        proof::RxTriple<C, R>,
+        sparse::Polynomial<C::CircuitField, R>,
         native::stages::preamble::Witness<'a, C, R, HEADER_SIZE>,
     )> {
         let preamble_witness = native::stages::preamble::Witness::new(
             left,
             right,
-            &application.left_header,
-            &application.right_header,
+            builder.left_header(),
+            builder.right_header(),
         )?;
 
         let rx = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::rx(
             C::CircuitField::random(&mut *rng),
             &preamble_witness,
         )?;
-        let commitment = rx.commit_to_affine(C::host_generators(self.params));
 
-        Ok((proof::RxTriple { rx, commitment }, preamble_witness))
+        Ok((rx, preamble_witness))
     }
 }

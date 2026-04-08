@@ -5,7 +5,7 @@
 //!
 //! The nested claim structure is simpler than native:
 //! - Circuit checks ([`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)): $k(y) = 1$
-//! - Bonding checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
+//! - Masking checks ([`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 //!   [`PointsStage`](InternalCircuitIndex::PointsStage),
 //!   `PointsFinalStaged`, and all `Bridge*` variants): $k(y) = 0$
 
@@ -25,8 +25,25 @@ pub trait Processor<Rx> {
     /// Process an internal circuit claim (EndoscalingStep) - sums rxs then processes.
     fn internal_circuit(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
 
-    /// Process a bonding claim - aggregates rxs from all proofs.
-    fn bonding(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()>;
+    /// Process a bonding claim where each fold element is a sum of rx groups,
+    /// $k(y) = 0$.
+    ///
+    /// Each inner iterator is summed into a single trace, then the sums are
+    /// Horner-folded with $z$.
+    ///
+    /// When each rx is its own group (no summing), use [`masking`](Self::masking).
+    fn bonding(
+        &mut self,
+        id: InternalCircuitIndex,
+        groups: impl Iterator<Item = impl Iterator<Item = Rx>>,
+    ) -> Result<()>;
+
+    /// Process a masking claim (fold of rxs, $k(y) = 0$).
+    ///
+    /// Default wraps each rx as a single-element group.
+    fn masking(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>) -> Result<()> {
+        self.bonding(id, rxs.map(core::iter::once))
+    }
 }
 
 impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
@@ -45,10 +62,10 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
     fn bonding(
         &mut self,
         id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
+        groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
     ) -> Result<()> {
         let circuit_id = id.circuit_index();
-        let folded = self.fold_bonding_polys(rxs);
+        let folded = self.fold_bonding_groups(groups);
         self.bonding_impl(circuit_id, folded);
         Ok(())
     }
@@ -59,7 +76,7 @@ impl<'m, 'rx, F: PrimeField, R: Rank> Processor<&'rx sparse::Polynomial<F, R>>
 /// The ordering is:
 /// 1. Circuit checks ($k(y) = 1$): [`EndoscalingStep`](InternalCircuitIndex::EndoscalingStep)
 ///    for each step, interleaved across proofs
-/// 2. Bonding checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
+/// 2. Masking checks ($k(y) = 0$): [`EndoscalarStage`](InternalCircuitIndex::EndoscalarStage),
 ///    [`PointsStage`](InternalCircuitIndex::PointsStage), `PointsFinalStaged`,
 ///    and all `Bridge*` variants
 ///
@@ -82,40 +99,40 @@ where
                 }
             }
             EndoscalarStage => {
-                processor.bonding(id, source.rx(RxIndex::EndoscalarStage))?;
+                processor.masking(id, source.rx(RxIndex::EndoscalarStage))?;
             }
             PointsStage => {
-                processor.bonding(id, source.rx(RxIndex::PointsStage))?;
+                processor.masking(id, source.rx(RxIndex::PointsStage))?;
             }
             PointsFinalStaged => {
                 let num_steps = super::NUM_ENDOSCALING_STEPS;
                 let final_rxs = (0..num_steps)
                     .flat_map(|step| source.rx(RxIndex::EndoscalingStep(step as u32)));
-                processor.bonding(id, final_rxs)?;
+                processor.masking(id, final_rxs)?;
             }
             BridgePreamble => {
-                processor.bonding(id, source.rx(RxIndex::BridgePreamble))?;
+                processor.masking(id, source.rx(RxIndex::BridgePreamble))?;
             }
             BridgeSPrime => {
-                processor.bonding(id, source.rx(RxIndex::BridgeSPrime))?;
+                processor.masking(id, source.rx(RxIndex::BridgeSPrime))?;
             }
             BridgeInnerError => {
-                processor.bonding(id, source.rx(RxIndex::BridgeInnerError))?;
+                processor.masking(id, source.rx(RxIndex::BridgeInnerError))?;
             }
             BridgeOuterError => {
-                processor.bonding(id, source.rx(RxIndex::BridgeOuterError))?;
+                processor.masking(id, source.rx(RxIndex::BridgeOuterError))?;
             }
             BridgeAB => {
-                processor.bonding(id, source.rx(RxIndex::BridgeAB))?;
+                processor.masking(id, source.rx(RxIndex::BridgeAB))?;
             }
             BridgeQuery => {
-                processor.bonding(id, source.rx(RxIndex::BridgeQuery))?;
+                processor.masking(id, source.rx(RxIndex::BridgeQuery))?;
             }
             BridgeF => {
-                processor.bonding(id, source.rx(RxIndex::BridgeF))?;
+                processor.masking(id, source.rx(RxIndex::BridgeF))?;
             }
             BridgeEval => {
-                processor.bonding(id, source.rx(RxIndex::BridgeEval))?;
+                processor.masking(id, source.rx(RxIndex::BridgeEval))?;
             }
         }
     }
@@ -145,6 +162,6 @@ pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
 
     // Circuit checks: k(y) = 1 (for single-proof, num_circuit_claims = num_steps)
     core::iter::repeat_n(source.one(), num_steps)
-        // Bonding checks: k(y) = 0 (infinite, matches how native does it)
+        // Masking checks: k(y) = 0 (infinite, matches how native does it)
         .chain(core::iter::repeat(source.zero()))
 }

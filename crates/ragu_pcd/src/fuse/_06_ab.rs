@@ -1,7 +1,7 @@
 //! Commits to the collapsed revdot claim polynomials $A$ and $B$.
 //!
-//! This creates the [`proof::AB`] component of the proof, which contains the
-//! claimed (folded) revdot polynomials $A$ and $B$.
+//! This sets the $A$ and $B$ polynomial fields on the [`ProofBuilder`],
+//! which contain the claimed (folded) revdot polynomials.
 //!
 //! ### Relationship to constituent polynomials
 //!
@@ -27,55 +27,39 @@
 //! evaluations that $B(x)$ already needs, eliminating separate
 //! $r\_i(x)$ queries.
 
-use ff::Field;
-use ragu_arithmetic::Cycle;
-use ragu_circuits::{
-    polynomials::{Rank, sparse},
-    staging::StageExt,
-};
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
-use ragu_primitives::{Element, vec::FixedVec};
-use rand::CryptoRng;
-
 use alloc::vec::Vec;
 
-use crate::{
-    Application,
-    internal::{fold_revdot, native, nested},
-    proof,
-};
+use ff::Field;
+use ragu_arithmetic::Cycle;
+use ragu_circuits::polynomials::{Rank, sparse};
+use ragu_core::{Result, drivers::Driver, maybe::Maybe};
+use ragu_primitives::{Element, vec::FixedVec};
 
 use super::claims::{FoldKey, FuseProofSource, TrackedPoly};
+use crate::{
+    Application,
+    internal::{fold_revdot, native},
+    proof::ProofBuilder,
+};
 
 type NativeNumGroups = <native::RevdotParameters as fold_revdot::Parameters>::NumGroups;
 
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_SIZE> {
     pub(super) fn compute_ab<'dr, D>(
         &self,
-        rng: &mut impl CryptoRng,
         a: FixedVec<TrackedPoly<'_, FoldKey, C::CircuitField, R>, NativeNumGroups>,
         b: FixedVec<sparse::Polynomial<C::CircuitField, R>, NativeNumGroups>,
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
-    ) -> Result<proof::AB<C, R>>
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
-        let native = self.compute_native_ab(a, b, source, mu_prime, nu_prime)?;
+        self.compute_native_ab(a, b, source, mu_prime, nu_prime, builder)?;
 
-        let bridge = proof::Bridge::commit(
-            self.params,
-            nested::stages::ab::Stage::<C::HostCurve, R>::rx(
-                C::ScalarField::random(&mut *rng),
-                &nested::stages::ab::Witness {
-                    a: native.a_commitment,
-                    b: native.b_commitment,
-                },
-            )?,
-        );
-
-        Ok(proof::AB { native, bridge })
+        Ok(())
     }
 
     fn compute_native_ab<'dr, D>(
@@ -85,7 +69,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         source: &FuseProofSource<'_, C, R>,
         mu_prime: &Element<'dr, D>,
         nu_prime: &Element<'dr, D>,
-    ) -> Result<proof::NativeAB<C, R>>
+        builder: &mut ProofBuilder<'_, C, R>,
+    ) -> Result<()>
     where
         D: Driver<'dr, F = C::CircuitField>,
     {
@@ -132,14 +117,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let [a_commitment, b_commitment] =
             ragu_arithmetic::batch_to_affine([a_commitment_proj, b_poly.commit(host_gen)]);
 
-        let c = a_poly.revdot(&b_poly);
+        builder.set_native_a_poly(a_poly, a_commitment);
+        builder.set_native_b_poly(b_poly, b_commitment);
 
-        Ok(proof::NativeAB {
-            a_poly,
-            a_commitment,
-            b_poly,
-            b_commitment,
-            c,
-        })
+        Ok(())
     }
 }

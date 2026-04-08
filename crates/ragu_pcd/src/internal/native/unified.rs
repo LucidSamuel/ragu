@@ -25,9 +25,9 @@ use ragu_core::{
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Point, consistent::Consistent, io::Write};
+use ragu_primitives::{Element, Point, WithSuffix, consistent::Consistent, io::Write};
 
-use crate::{internal::suffix::WithSuffix, proof::Proof};
+use crate::proof::Proof;
 
 /// The gadget kind for internal circuit outputs.
 ///
@@ -419,33 +419,38 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
         proof: DriverValue<D, &Proof<C, R>>,
     ) -> Result<Self> {
         let bridge_preamble_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.preamble.bridge.commitment))?;
-        let w = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.w))?;
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_preamble_commitment()))?;
+        let w = Element::alloc(dr, proof.as_ref().map(|p| p.w()))?;
         let bridge_s_prime_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.s_prime.bridge.commitment))?;
-        let y = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.y))?;
-        let z = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.z))?;
-        let bridge_inner_error_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.inner_error.bridge.commitment))?;
-        let mu = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.mu))?;
-        let nu = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.nu))?;
-        let bridge_outer_error_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.outer_error.bridge.commitment))?;
-        let mu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.mu_prime))?;
-        let nu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.nu_prime))?;
-        let c = Element::alloc(dr, proof.as_ref().map(|p| p.ab.native.c))?;
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_s_prime_commitment()))?;
+        let y = Element::alloc(dr, proof.as_ref().map(|p| p.y()))?;
+        let z = Element::alloc(dr, proof.as_ref().map(|p| p.z()))?;
+        let bridge_inner_error_commitment = Point::alloc(
+            dr,
+            proof.as_ref().map(|p| p.bridge_inner_error_commitment()),
+        )?;
+        let mu = Element::alloc(dr, proof.as_ref().map(|p| p.mu()))?;
+        let nu = Element::alloc(dr, proof.as_ref().map(|p| p.nu()))?;
+        let bridge_outer_error_commitment = Point::alloc(
+            dr,
+            proof.as_ref().map(|p| p.bridge_outer_error_commitment()),
+        )?;
+        let mu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.mu_prime()))?;
+        let nu_prime = Element::alloc(dr, proof.as_ref().map(|p| p.nu_prime()))?;
+        let c = Element::alloc(dr, proof.as_ref().map(|p| p.c()))?;
         let bridge_ab_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.ab.bridge.commitment))?;
-        let x = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.x))?;
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_ab_commitment()))?;
+        let x = Element::alloc(dr, proof.as_ref().map(|p| p.x()))?;
         let bridge_query_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.query.bridge.commitment))?;
-        let alpha = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.alpha))?;
-        let bridge_f_commitment = Point::alloc(dr, proof.as_ref().map(|p| p.f.bridge.commitment))?;
-        let u = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.u))?;
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_query_commitment()))?;
+        let alpha = Element::alloc(dr, proof.as_ref().map(|p| p.alpha()))?;
+        let bridge_f_commitment =
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_f_commitment()))?;
+        let u = Element::alloc(dr, proof.as_ref().map(|p| p.u()))?;
         let bridge_eval_commitment =
-            Point::alloc(dr, proof.as_ref().map(|p| p.eval.bridge.commitment))?;
-        let pre_beta = Element::alloc(dr, proof.as_ref().map(|p| p.challenges.pre_beta))?;
-        let v = Element::alloc(dr, proof.as_ref().map(|p| p.p.native.v))?;
+            Point::alloc(dr, proof.as_ref().map(|p| p.bridge_eval_commitment()))?;
+        let pre_beta = Element::alloc(dr, proof.as_ref().map(|p| p.pre_beta()))?;
+        let v = Element::alloc(dr, proof.as_ref().map(|p| p.v()))?;
 
         Ok(Output {
             bridge_preamble_commitment,
@@ -497,10 +502,11 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> OutputBuilder<'dr, D, C
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ragu_circuits::polynomials::ProductionRank;
     use ragu_core::{drivers::emulator::Emulator, maybe::Empty};
     use ragu_pasta::Pasta;
+
+    use super::*;
 
     #[test]
     fn num_wires_constant_is_correct() {

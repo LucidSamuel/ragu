@@ -1,13 +1,13 @@
 //! Common abstraction for orchestrating revdot claims.
 
+use alloc::{borrow::Cow, vec::Vec};
+use core::borrow::Borrow;
+
 use ff::{Field, PrimeField};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::{CircuitIndex, Registry},
 };
-
-use alloc::{borrow::Cow, vec::Vec};
-use core::borrow::Borrow;
 
 /// Sum an iterator of polynomials, borrowing if only one element.
 ///
@@ -111,28 +111,22 @@ where
         self.b.push(Cow::Owned(sy));
     }
 
-    /// Horner-fold polynomial references. Returns `Cow::Borrowed` for a single
-    /// element, `Cow::Owned` for multiple.
+    /// Horner-fold groups of polynomials. Each group is first summed, then
+    /// the sums are Horner-folded with $z$.
     ///
-    /// The fold gives item `i` coefficient `z^(n-1-i)`. Callers that track
+    /// The fold gives group `i` coefficient $z^{n-1-i}$. Callers that track
     /// commitment decompositions must assign the same coefficients to the
     /// corresponding source keys.
     ///
     /// Folding is sound because the revdot identity for bonding polynomials is
     /// linear in the trace.
-    pub fn fold_bonding_polys(
+    pub fn fold_bonding_groups(
         &self,
-        mut rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
+        groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
     ) -> Cow<'rx, sparse::Polynomial<F, R>> {
-        let first = rxs.next().expect("must provide at least one rx polynomial");
-        match rxs.next() {
-            None => Cow::Borrowed(first),
-            Some(second) => Cow::Owned(sparse::Polynomial::fold(
-                core::iter::once(first)
-                    .chain(core::iter::once(second))
-                    .chain(rxs),
-                self.z,
-            )),
-        }
+        Cow::Owned(sparse::Polynomial::fold(
+            groups.map(|g| sum_polynomials(g)),
+            self.z,
+        ))
     }
 }
