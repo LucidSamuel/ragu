@@ -35,33 +35,24 @@ macro_rules! setter {
     };
 }
 
-/// Produces `pub(crate) fn $getter(&self) -> C::HostCurve` that lazily
-/// computes and caches a native commitment from a polynomial via
-/// `commit_to_affine`.
-macro_rules! native_commitment_getter {
-    ($getter:ident, $cache:ident, $poly:ident) => {
-        pub(crate) fn $getter(&self) -> C::HostCurve {
-            *self.$cache.get_or_init(|| {
-                self.$poly
-                    .as_ref()
-                    .expect(concat!(stringify!($poly), " not set"))
-                    .commit_to_affine(C::host_generators(self.params))
-            })
-        }
+/// Produces `pub(crate) fn $getter(&self) -> C::{Host,Nested}Curve` that
+/// lazily computes and caches a commitment from a polynomial via
+/// `commit_to_affine`. The `native` / `nested` prefix selects the curve type
+/// and the corresponding generators source.
+macro_rules! lazy_commitment {
+    (native, $getter:ident, $cache:ident, $poly:ident) => {
+        lazy_commitment!(@impl $getter, $cache, $poly, C::HostCurve, C::host_generators);
     };
-}
-
-/// Produces `pub(crate) fn $getter(&self) -> C::NestedCurve` that lazily
-/// computes and caches a nested commitment from a polynomial via
-/// `commit_to_affine`.
-macro_rules! nested_commitment_getter {
-    ($getter:ident, $cache:ident, $poly:ident) => {
-        pub(crate) fn $getter(&self) -> C::NestedCurve {
+    (nested, $getter:ident, $cache:ident, $poly:ident) => {
+        lazy_commitment!(@impl $getter, $cache, $poly, C::NestedCurve, C::nested_generators);
+    };
+    (@impl $getter:ident, $cache:ident, $poly:ident, $curve:ty, $gen:path) => {
+        pub(crate) fn $getter(&self) -> $curve {
             *self.$cache.get_or_init(|| {
                 self.$poly
                     .as_ref()
                     .expect(concat!(stringify!($poly), " not set"))
-                    .commit_to_affine(C::nested_generators(self.params))
+                    .commit_to_affine($gen(self.params))
             })
         }
     };
@@ -407,62 +398,74 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     ref_getter!(native_registry_xy_poly, native_registry_xy_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_p_poly, native_p_poly, sparse::Polynomial<C::CircuitField, R>);
 
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_application_commitment,
         native_application_commitment,
         native_application_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_preamble_commitment,
         native_preamble_commitment,
         native_preamble_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_inner_error_commitment,
         native_inner_error_commitment,
         native_inner_error_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_outer_error_commitment,
         native_outer_error_commitment,
         native_outer_error_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_query_commitment,
         native_query_commitment,
         native_query_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_registry_xy_commitment,
         native_registry_xy_commitment,
         native_registry_xy_poly
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_eval_commitment,
         native_eval_commitment,
         native_eval_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_hashes_1_commitment,
         native_hashes_1_commitment,
         native_hashes_1_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_hashes_2_commitment,
         native_hashes_2_commitment,
         native_hashes_2_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_inner_collapse_commitment,
         native_inner_collapse_commitment,
         native_inner_collapse_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_outer_collapse_commitment,
         native_outer_collapse_commitment,
         native_outer_collapse_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_compute_v_commitment,
         native_compute_v_commitment,
         native_compute_v_rx
@@ -568,12 +571,14 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         })
     }
 
-    nested_commitment_getter!(
+    lazy_commitment!(
+        nested,
         nested_endoscalar_commitment,
         nested_endoscalar_commitment,
         nested_endoscalar_rx
     );
-    nested_commitment_getter!(
+    lazy_commitment!(
+        nested,
         nested_points_commitment,
         nested_points_commitment,
         nested_points_rx
