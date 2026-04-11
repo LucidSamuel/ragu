@@ -207,6 +207,15 @@ pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
     /// These records serve as input to [`floor_planner::floor_plan`] for
     /// computing absolute constraint offsets.
     fn segment_records(&self) -> &[SegmentRecord];
+
+    /// Returns `true` if this circuit is a masking polynomial whose
+    /// `sxy`/`sx`/`sy` return only the $-\text{notch}$ term, expecting
+    /// the [`Registry`] to add the shared $S_{\text{global}}$ once.
+    ///
+    /// [`Registry`]: registry::Registry
+    fn is_mask(&self) -> bool {
+        false
+    }
 }
 
 /// Wraps a circuit into a boxed [`CircuitObject`] that can evaluate the

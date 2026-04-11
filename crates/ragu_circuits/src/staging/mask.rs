@@ -21,7 +21,7 @@ use crate::{
 ///
 /// This term is invariant across all [`StageMask`] instances for a given
 /// `(R, F)` — it depends only on `R::n()`. The [`Registry`] computes it once
-/// and scales by the sum of Lagrange coefficients for all bonding polynomials,
+/// and scales by the sum of Lagrange coefficients for all masking polynomials,
 /// rather than letting each mask evaluate it redundantly.
 ///
 /// Returns [`Field::ZERO`] when `x == 0` or `y == 0` (bonding polynomials
@@ -225,6 +225,10 @@ impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
 
     fn segment_records(&self) -> &[crate::SegmentRecord] {
         &[]
+    }
+
+    fn is_mask(&self) -> bool {
+        true
     }
 }
 

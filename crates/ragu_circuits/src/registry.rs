@@ -16,7 +16,6 @@
 //! be efficiently evaluated at different restrictions.
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap, vec::Vec};
-use core::ops::Range;
 
 use blake2b_simd::Params;
 use ff::{Field, FromUniformBytes, PrimeField};
@@ -178,9 +177,6 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         let log2_circuits = self.log2_circuits();
         let domain = Domain::<F>::new(log2_circuits);
 
-        let bonding_start = self.internal_circuits.len();
-        let bonding_end = bonding_start + self.bonding.len();
-
         let circuits: Vec<_> = self
             .internal_circuits
             .into_iter()
@@ -218,7 +214,6 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             circuits,
             floor_plans,
             omega_lookup,
-            bonding_range: bonding_start..bonding_end,
             key: Key::default(),
         };
         registry.key = Key::new(registry.compute_registry_digest());
@@ -312,9 +307,6 @@ pub struct Registry<'params, F: PrimeField, R: Rank> {
     /// of the circuits vector.
     omega_lookup: BTreeMap<OmegaKey, usize>,
 
-    /// Index range of bonding polynomials (stage masks) in `circuits`.
-    bonding_range: Range<usize>,
-
     /// Registry key used to bind circuits to this registry.
     key: Key<F>,
 }
@@ -337,7 +329,7 @@ enum LagrangeCache<F> {
 pub struct RegistryAt<'a, F: PrimeField, R: Rank> {
     registry: &'a Registry<'a, F, R>,
     cache: LagrangeCache<F>,
-    bonding_coeff_sum: F,
+    mask_coeff_sum: F,
 }
 
 /// Represents a key for identifying a unique $\omega^j$ value where $\omega$ is
@@ -422,19 +414,16 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let key_scalar = self.key_sxy(x, y);
         let mut coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
 
+        // Masking polynomials return only -notch from sxy(); add the shared
+        // global term to each mask slot inline.
+        let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
         for (i, circuit) in self.circuits.iter().enumerate() {
             let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
-            coeffs[j] = circuit.sxy(x, y, &self.floor_plans[i]);
-        }
-
-        // The sxy evaluation of bonding polynomials returns only -notch;
-        // add the shared global term to each bonding slot.
-        if !self.bonding_range.is_empty() {
-            let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
-            for i in self.bonding_range.clone() {
-                let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
-                coeffs[j] += global_xy;
+            let mut v = circuit.sxy(x, y, &self.floor_plans[i]);
+            if circuit.is_mask() {
+                v += global_xy;
             }
+            coeffs[j] = v;
         }
 
         // Convert from the Lagrange basis.
@@ -526,25 +515,25 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         result
     }
 
-    /// Sums Lagrange coefficients for bonding polynomials at the given $W$ point.
-    fn bonding_coeff_sum(&self, cache: &LagrangeCache<F>) -> F {
-        if self.bonding_range.is_empty() {
-            return F::ZERO;
-        }
-
+    /// Sums Lagrange coefficients for masking polynomials at the given $W$ point.
+    ///
+    /// Only circuits where [`CircuitObject::is_mask`] returns `true` contribute.
+    fn mask_coeff_sum(&self, cache: &LagrangeCache<F>) -> F {
         match cache {
             LagrangeCache::Interpolate(coeffs) => {
                 let mut sum = F::ZERO;
-                for i in self.bonding_range.clone() {
-                    let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
-                    sum += coeffs[j];
+                for (i, circuit) in self.circuits.iter().enumerate() {
+                    if circuit.is_mask() {
+                        let j = bitreverse(i as u32, self.domain.log2_n()) as usize;
+                        sum += coeffs[j];
+                    }
                 }
                 sum
             }
             LagrangeCache::Direct(i) => {
                 // W is exactly omega^bitreverse(i), so the Lagrange
                 // coefficient for circuit i is ONE and all others are ZERO.
-                if self.bonding_range.contains(i) {
+                if self.circuits[*i].is_mask() {
                     F::ONE
                 } else {
                     F::ZERO
@@ -569,11 +558,11 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
             // w is in the domain but no circuit registered at that index.
             LagrangeCache::Empty
         };
-        let bonding_coeff_sum = self.bonding_coeff_sum(&cache);
+        let mask_coeff_sum = self.mask_coeff_sum(&cache);
         RegistryAt {
             registry: self,
             cache,
-            bonding_coeff_sum,
+            mask_coeff_sum,
         }
     }
 }
@@ -591,13 +580,12 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // The sy projection of bonding polynomials returns only -notch(X, y).
-        // Add the shared global once, scaled by the sum of Lagrange coefficients.
-        if !self.registry.bonding_range.is_empty() {
-            let mut global = crate::staging::mask::global_project::<F, R>(y);
-            global.scale(self.bonding_coeff_sum);
-            poly.add_assign(&global);
-        }
+        // Masking polynomials return only -notch; add the shared global once,
+        // scaled by the sum of their Lagrange coefficients (non-zero w.h.p.
+        // since the sum is over random-point evaluations of Lagrange bases).
+        let mut global = crate::staging::mask::global_project::<F, R>(y);
+        global.scale(self.mask_coeff_sum);
+        poly.add_assign(&global);
 
         // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
         // at Y, this is k * y^{4n-1} at X^{4n-1} (c-wire of the SYSTEM gate in
@@ -624,13 +612,12 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // The sx projection of bonding polynomials returns only -notch(x, Y).
-        // Add the shared global once, scaled by the sum of Lagrange coefficients.
-        if !self.registry.bonding_range.is_empty() {
-            let mut global = crate::staging::mask::global_project::<F, R>(x);
-            global.scale(self.bonding_coeff_sum);
-            poly.add_assign(&global);
-        }
+        // Masking polynomials return only -notch; add the shared global once,
+        // scaled by the sum of their Lagrange coefficients (non-zero w.h.p.
+        // since the sum is over random-point evaluations of Lagrange bases).
+        let mut global = crate::staging::mask::global_project::<F, R>(x);
+        global.scale(self.mask_coeff_sum);
+        poly.add_assign(&global);
 
         // Add the registry key contribution k * (XY)^{4n-1}.  Restricted
         // at X, this is k * x^{4n-1} at Y^{4n-1}.
@@ -657,12 +644,9 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
             },
         );
 
-        // The sxy evaluation of bonding polynomials returns only -notch(x, y).
-        // Apply the shared global stage mask scalar once.
-        if !self.registry.bonding_range.is_empty() {
-            result += self.registry.bonding_coeff_sum(&self.cache)
-                * crate::staging::mask::global_mask::<F, R>(x, y);
-        }
+        // Masking polynomials return only -notch; apply the shared global
+        // scalar once.
+        result += self.mask_coeff_sum * crate::staging::mask::global_mask::<F, R>(x, y);
 
         // Add the registry key contribution.
         result + self.registry.key_sxy(x, y)
