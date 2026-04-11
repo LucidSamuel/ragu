@@ -26,11 +26,7 @@ pub trait Processor<Rx> {
     /// rxs ($k(y) = 1$ for [`EndoscalingStep`]).
     ///
     /// [`EndoscalingStep`]: InternalCircuitIndex::EndoscalingStep
-    fn internal_circuit_claim(
-        &mut self,
-        id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = Rx>,
-    );
+    fn internal_circuit_claim(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
 
     /// Process a claim whose trace is the Horner fold (with $z$) of the given
     /// rxs, with one rx per fold slot ($k(y) = 0$).
@@ -104,8 +100,7 @@ where
                     .zip(source.rx(RxIndex::EndoscalarStage))
                     .zip(source.rx(RxIndex::PointsStage))
                 {
-                    processor
-                        .internal_circuit_claim(id, [step_rx, endo_rx, pts_rx].into_iter());
+                    processor.internal_circuit_claim(id, [step_rx, endo_rx, pts_rx].into_iter());
                 }
             }
             EndoscalarStage => {

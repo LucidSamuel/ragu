@@ -70,11 +70,7 @@ pub trait Processor<Rx, AppCircuitId> {
     ///
     /// The processor looks up registry via [`InternalCircuitIndex`] from its
     /// stored context.
-    fn internal_circuit_claim(
-        &mut self,
-        id: InternalCircuitIndex,
-        rxs: impl Iterator<Item = Rx>,
-    );
+    fn internal_circuit_claim(&mut self, id: InternalCircuitIndex, rxs: impl Iterator<Item = Rx>);
 
     /// Process a claim whose trace is the Horner fold (with $z$) of the given
     /// rxs, with one rx per fold slot ($k(y) = 0$, equivalently
