@@ -78,14 +78,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         let mut builder = claims::Builder::new(&self.native_registry, y, z);
         native_claims::build(&source, &mut builder)?;
 
-        // Check all native revdot claims.
+        // Check all native revdot claims. The first claim is `raw_c`, which is
+        // tautological in the verifier because $c$ is computed as
+        // $\text{revdot}(a, b)$ here; we skip it.(It remains meaningful inside
+        // the recursive circuit, where $c$ is an independently allocated
+        // witness.
         let native_revdot_claims = {
             let ky_source = native::SingleProofKySource {
-                // NOTE: `raw_c` is now computed as `revdot(a, b)` rather
-                // than stored in the proof, so this claim is tautological
-                // in the verifier. It remains meaningful inside the circuit
-                // where `c` is an independently allocated witness element.
-                raw_c: pcd.proof().c(),
                 application_ky,
                 unified_bridge_ky,
                 unified_ky,
@@ -93,6 +92,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
 
             native::ky_values(&ky_source)
                 .zip(builder.a.iter().zip(builder.b.iter()))
+                .skip(1)
                 .all(|(ky, (a, b))| a.revdot(b) == ky)
         };
 
@@ -156,8 +156,12 @@ mod native {
     }
 
     /// Source for k(y) values for single-proof verification.
+    ///
+    /// There is no `raw_c` field: the corresponding claim is dropped by the
+    /// caller (see [`Application::verify`]) because it is tautological here.
+    /// [`KySource::raw_c`] returns a placeholder zero to keep the iterator
+    /// aligned with [`claims::build`](crate::internal::native::claims::build).
     pub struct SingleProofKySource<F> {
-        pub raw_c: F,
         pub application_ky: F,
         pub unified_bridge_ky: F,
         pub unified_ky: F,
@@ -167,7 +171,7 @@ mod native {
         type Ky = F;
 
         fn raw_c(&self) -> impl Iterator<Item = F> {
-            once(self.raw_c)
+            once(F::ZERO)
         }
 
         fn application_ky(&self) -> impl Iterator<Item = F> {
