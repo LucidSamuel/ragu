@@ -125,9 +125,9 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
         Element { value, wire }
     }
 
-    /// Constructs a new element from a wire and a witness value. **The
-    /// provided witness value must be consistent with the provided wire's
-    /// value.**
+    /// Constructs a new element from a wire and a witness value. **It is the
+    /// caller's responsibility to ensure that the provided witness value is
+    /// consistent with the provided wire's value.**
     pub fn promote(wire: D::Wire, value: DriverValue<D, D::F>) -> Self {
         Element { wire, value }
     }
