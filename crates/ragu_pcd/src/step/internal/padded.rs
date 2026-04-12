@@ -128,13 +128,12 @@ mod tests {
     };
     use ragu_pasta::Fp as F;
     use ragu_primitives::{
-        Element, GadgetExt,
+        Element, GadgetExt, WithSuffix,
         io::Write,
         vec::{CollectFixed, ConstLen, FixedVec},
     };
 
     use super::Padded;
-    use ragu_primitives::WithSuffix;
 
     #[derive(Gadget, Write)]
     struct MySillyGadget<'dr, D: Driver<'dr>> {
