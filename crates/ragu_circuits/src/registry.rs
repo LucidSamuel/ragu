@@ -581,8 +581,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         );
 
         // Masking polynomials return only -notch; add the shared global once,
-        // scaled by the sum of their Lagrange coefficients (non-zero w.h.p.
-        // since the sum is over random-point evaluations of Lagrange bases).
+        // weighted by the sum of Lagrange coefficients for all mask circuits at W.
         let mut global = crate::staging::mask::global_project::<F, R>(y);
         global.scale(self.mask_coeff_sum);
         poly.add_assign(&global);
@@ -613,8 +612,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         );
 
         // Masking polynomials return only -notch; add the shared global once,
-        // scaled by the sum of their Lagrange coefficients (non-zero w.h.p.
-        // since the sum is over random-point evaluations of Lagrange bases).
+        // weighted by the sum of Lagrange coefficients for all mask circuits at W.
         let mut global = crate::staging::mask::global_project::<F, R>(x);
         global.scale(self.mask_coeff_sum);
         poly.add_assign(&global);

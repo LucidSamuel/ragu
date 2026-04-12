@@ -7,13 +7,13 @@ use crate::{
     polynomials::{Rank, sparse},
 };
 
-/// Evaluates the global stage mask polynomial $S_{\text{global}}(X, Y)$ at
+/// Evaluates the global stage mask polynomial $S\_{\text{global}}(X, Y)$ at
 /// the point $(x, y)$.
 ///
 /// The global mask enforces all $4n$ wire slots to zero except the four wires
 /// of the SYSTEM gate (gate 0):
 ///
-/// $$S_{\text{global}}(xy) = \sum_{i=0}^{4n-1} (xy)^i
+/// $$S_{\text{global}}(x, y) = \sum_{i=0}^{4n-1} (xy)^i
 ///     - \bigl((xy)^{2n} + 1\bigr)\bigl((xy)^{2n-1} + 1\bigr)$$
 ///
 /// The polynomial depends only on the product $XY$, so both variables
@@ -40,12 +40,13 @@ pub(crate) fn global_mask<F: Field, R: Rank>(x: F, y: F) -> F {
     geosum(xy, R::n() << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
 }
 
-/// Restricts the global stage mask to a univariate sparse polynomial by
-/// substituting `p` for one variable. Populates `4(n - 1)` wire
-/// positions — all except the four wires of the SYSTEM gate (gate 0).
+/// Computes the polynomial restriction $S\_{\text{global}}(p, Y)$ (equivalently
+/// $S\_{\text{global}}(X, p)$ by symmetry) as a sparse univariate polynomial.
+/// Populates `4(n - 1)` wire positions — all except the four wires of the
+/// SYSTEM gate (gate 0).
 ///
 /// Used by [`Registry`](crate::registry::Registry) to add the shared global
-/// contribution once, scaled by the sum of bonding Lagrange coefficients.
+/// contribution once, scaled by the sum of masking circuit Lagrange coefficients.
 pub(crate) fn global_project<F: Field, R: Rank>(p: F) -> sparse::Polynomial<F, R> {
     if p == F::ZERO {
         return sparse::Polynomial::default();
@@ -132,11 +133,11 @@ impl<R: Rank> StageMask<R> {
         })
     }
 
-    /// Projects only the negated notch entries: the active-stage gate
-    /// wires at positions `skip_gates..skip_gates + num_gates`, negated.
+    /// Returns a sparse polynomial containing the negated notch entries for
+    /// the active-stage gate wires at positions `skip_gates..skip_gates + num_gates`.
     /// The SYSTEM gate is excluded (it is already zero in the global mask).
     ///
-    /// Returns a sparse polynomial with `4 × num_gates` non-zero entries
+    /// The result has `4 × num_gates` non-zero entries
     /// (vs `4(n - 1)` for the full mask projection).
     fn notch_project<F: Field>(&self, p: F) -> sparse::Polynomial<F, R> {
         if self.num_gates == 0 || p == F::ZERO {
@@ -152,16 +153,16 @@ impl<R: Rank> StageMask<R> {
         view.c.resize(g + m, F::ZERO);
 
         let p_inv = p.invert().expect("p is not zero");
-        let mut d = p.pow_vartime([g as u64]);
-        let mut a = p.pow_vartime([(2 * n - 1 - g) as u64]);
-        let mut b = p.pow_vartime([(2 * n + g) as u64]);
-        let mut c = p.pow_vartime([(4 * n - 1 - g) as u64]);
+        let mut d = -p.pow_vartime([g as u64]);
+        let mut a = -p.pow_vartime([(2 * n - 1 - g) as u64]);
+        let mut b = -p.pow_vartime([(2 * n + g) as u64]);
+        let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
 
         for j in g..g + m {
-            view.d[j] = -d;
-            view.a[j] = -a;
-            view.b[j] = -b;
-            view.c[j] = -c;
+            view.d[j] = d;
+            view.a[j] = a;
+            view.b[j] = b;
+            view.c[j] = c;
             d *= p;
             a *= p_inv;
             b *= p;
@@ -175,12 +176,12 @@ impl<R: Rank> StageMask<R> {
 impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
     /// Evaluates the per-instance notch term $-\text{notch}(x, y)$.
     ///
-    /// The full stage mask is $S_{\text{global}} - \text{notch}$, but
-    /// the invariant $S_{\text{global}}$ term is factored out and applied
+    /// The full stage mask is $S\_{\text{global}} - \text{notch}$, but
+    /// the invariant $S\_{\text{global}}$ term is factored out and applied
     /// once by the [`Registry`](crate::registry::Registry). This method
     /// returns only $-\text{notch}$, where
     ///
-    /// $$\text{notch}(xy) = (1 + (xy)^{2n})\bigl((xy)^g + (xy)^{2n-g-m}\bigr)
+    /// $$\text{notch}(x, y) = (1 + (xy)^{2n})\bigl((xy)^g + (xy)^{2n-g-m}\bigr)
     ///     \cdot \sum_{i=0}^{m-1} (xy)^i$$
     ///
     /// with $g = \text{skip\_gates}$ and $m = \text{num\_gates}$.
