@@ -35,33 +35,24 @@ macro_rules! setter {
     };
 }
 
-/// Produces `pub(crate) fn $getter(&self) -> C::HostCurve` that lazily
-/// computes and caches a native commitment from a polynomial via
-/// `commit_to_affine`.
-macro_rules! native_commitment_getter {
-    ($getter:ident, $cache:ident, $poly:ident) => {
-        pub(crate) fn $getter(&self) -> C::HostCurve {
-            *self.$cache.get_or_init(|| {
-                self.$poly
-                    .as_ref()
-                    .expect(concat!(stringify!($poly), " not set"))
-                    .commit_to_affine(C::host_generators(self.params))
-            })
-        }
+/// Produces `pub(crate) fn $getter(&self) -> C::{Host,Nested}Curve` that
+/// lazily computes and caches a commitment from a polynomial via
+/// `commit_to_affine`. The `native` / `nested` prefix selects the curve type
+/// and the corresponding generators source.
+macro_rules! lazy_commitment {
+    (native, $getter:ident, $cache:ident, $poly:ident) => {
+        lazy_commitment!(@impl $getter, $cache, $poly, C::HostCurve, C::host_generators);
     };
-}
-
-/// Produces `pub(crate) fn $getter(&self) -> C::NestedCurve` that lazily
-/// computes and caches a nested commitment from a polynomial via
-/// `commit_to_affine`.
-macro_rules! nested_commitment_getter {
-    ($getter:ident, $cache:ident, $poly:ident) => {
-        pub(crate) fn $getter(&self) -> C::NestedCurve {
+    (nested, $getter:ident, $cache:ident, $poly:ident) => {
+        lazy_commitment!(@impl $getter, $cache, $poly, C::NestedCurve, C::nested_generators);
+    };
+    (@impl $getter:ident, $cache:ident, $poly:ident, $curve:ty, $gen:path) => {
+        pub(crate) fn $getter(&self) -> $curve {
             *self.$cache.get_or_init(|| {
                 self.$poly
                     .as_ref()
                     .expect(concat!(stringify!($poly), " not set"))
-                    .commit_to_affine(C::nested_generators(self.params))
+                    .commit_to_affine($gen(self.params))
             })
         }
     };
@@ -173,32 +164,40 @@ macro_rules! explicit_commitment_getter {
     };
 }
 
-/// Produces `pub(crate) fn $method(&mut self) -> Result<C::NestedCurve>` that
-/// lazily computes a cached bridge commitment. On first call it builds a
+/// Produces `pub(crate) fn $rx(&self) -> Result<&sparse::Polynomial<...>>`
+/// and `pub(crate) fn $commitment(&self) -> Result<C::NestedCurve>` that
+/// lazily derive a cached bridge. On first call, `$rx` builds a
 /// `nested::stages::$stage::Witness` from the given getter methods, derives
-/// the bridge rx polynomial via `Stage::rx`, commits it, and caches both the
-/// polynomial and commitment. Subsequent calls return the cached value.
+/// the bridge rx polynomial via `Stage::rx`, and caches it; `$commitment`
+/// then commits the rx and caches the result. Subsequent calls return the
+/// cached values.
 ///
 /// Witness fields are specified as `field: getter()` pairs — the macro
 /// prepends `self.` to each getter call so that the generated function's own
 /// `self` is used (avoiding macro hygiene issues with `self` in token trees).
 macro_rules! cached_bridge {
-    ($method:ident, $rx_field:ident, $commitment_field:ident,
-     $idx:expr, $stage:ident, { $($field:ident : $getter:ident()),* }) => {
-        pub(crate) fn $method(&mut self) -> Result<C::NestedCurve> {
-            if let Some(c) = self.$commitment_field {
-                return Ok(c);
+    ($rx:ident, $commitment:ident,
+     $idx:expr, $stage:ident, { $($wit_field:ident : $getter:ident()),* }) => {
+        pub(crate) fn $rx(&self) -> Result<&sparse::Polynomial<C::ScalarField, R>> {
+            if let Some(rx) = self.$rx.get() {
+                return Ok(rx);
             }
             let rx = nested::stages::$stage::Stage::<C::HostCurve, R>::rx(
                 self.bridge_alpha_power($idx),
                 &nested::stages::$stage::Witness {
-                    $($field: self.$getter()),*
+                    $($wit_field: self.$getter()),*
                 },
             )?;
-            let c = rx.commit_to_affine(C::nested_generators(self.params));
-            self.$rx_field = Some(rx);
-            self.$commitment_field = Some(c);
-            Ok(c)
+            // The early return above guarantees the cell is empty, so
+            // `get_or_init` will always run the closure and store `rx`.
+            Ok(self.$rx.get_or_init(|| rx))
+        }
+
+        pub(crate) fn $commitment(&self) -> Result<C::NestedCurve> {
+            let rx = self.$rx()?;
+            Ok(*self.$commitment.get_or_init(|| {
+                rx.commit_to_affine(C::nested_generators(self.params))
+            }))
         }
     };
 }
@@ -206,8 +205,8 @@ macro_rules! cached_bridge {
 /// Builder for incremental [`Proof`] construction.
 ///
 /// Native commitment caches are computed lazily from polynomials on first
-/// access. Special commitments (`a`, `p`) must be provided explicitly because
-/// they are computed via non-standard techniques.
+/// access. Special commitments (`a`, `b`, `p`) must be provided explicitly
+/// because they are computed via non-standard techniques.
 pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     params: &'params C::Params,
 
@@ -246,15 +245,14 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     bridge_f_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
     bridge_f_commitment: Option<C::NestedCurve>,
 
-    // Cached bridge rx + commitments (lazily computed from bridge_alpha + native commitments)
-    bridge_outer_error_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_outer_error_commitment: Option<C::NestedCurve>,
-    bridge_ab_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_ab_commitment: Option<C::NestedCurve>,
-    bridge_query_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_query_commitment: Option<C::NestedCurve>,
-    bridge_eval_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_eval_commitment: Option<C::NestedCurve>,
+    // Cached bridge rx polynomials (lazily derived from `bridge_alpha` +
+    // native commitments). Parallels the native rx/commitment split: the rx
+    // slot is populated on first access, and the commitment slot is derived
+    // lazily from it.
+    bridge_outer_error_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_ab_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_query_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_eval_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
 
     // Nested endoscaling data
     nested_endoscaling_step_rxs: Option<Vec<sparse::Polynomial<C::ScalarField, R>>>,
@@ -295,6 +293,12 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     native_inner_collapse_commitment: OnceCell<C::HostCurve>,
     native_outer_collapse_commitment: OnceCell<C::HostCurve>,
     native_compute_v_commitment: OnceCell<C::HostCurve>,
+
+    // Cached bridge commitment caches (lazily computed from their cached rxs)
+    bridge_outer_error_commitment: OnceCell<C::NestedCurve>,
+    bridge_ab_commitment: OnceCell<C::NestedCurve>,
+    bridge_query_commitment: OnceCell<C::NestedCurve>,
+    bridge_eval_commitment: OnceCell<C::NestedCurve>,
 }
 
 impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
@@ -330,14 +334,10 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             bridge_inner_error_commitment: None,
             bridge_f_rx: None,
             bridge_f_commitment: None,
-            bridge_outer_error_rx: None,
-            bridge_outer_error_commitment: None,
-            bridge_ab_rx: None,
-            bridge_ab_commitment: None,
-            bridge_query_rx: None,
-            bridge_query_commitment: None,
-            bridge_eval_rx: None,
-            bridge_eval_commitment: None,
+            bridge_outer_error_rx: OnceCell::new(),
+            bridge_ab_rx: OnceCell::new(),
+            bridge_query_rx: OnceCell::new(),
+            bridge_eval_rx: OnceCell::new(),
             nested_endoscaling_step_rxs: None,
             nested_endoscalar_rx: None,
             nested_points_rx: None,
@@ -370,6 +370,10 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             native_inner_collapse_commitment: OnceCell::new(),
             native_outer_collapse_commitment: OnceCell::new(),
             native_compute_v_commitment: OnceCell::new(),
+            bridge_outer_error_commitment: OnceCell::new(),
+            bridge_ab_commitment: OnceCell::new(),
+            bridge_query_commitment: OnceCell::new(),
+            bridge_eval_commitment: OnceCell::new(),
         }
     }
 
@@ -407,62 +411,74 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     ref_getter!(native_registry_xy_poly, native_registry_xy_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_p_poly, native_p_poly, sparse::Polynomial<C::CircuitField, R>);
 
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_application_commitment,
         native_application_commitment,
         native_application_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_preamble_commitment,
         native_preamble_commitment,
         native_preamble_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_inner_error_commitment,
         native_inner_error_commitment,
         native_inner_error_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_outer_error_commitment,
         native_outer_error_commitment,
         native_outer_error_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_query_commitment,
         native_query_commitment,
         native_query_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_registry_xy_commitment,
         native_registry_xy_commitment,
         native_registry_xy_poly
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_eval_commitment,
         native_eval_commitment,
         native_eval_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_hashes_1_commitment,
         native_hashes_1_commitment,
         native_hashes_1_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_hashes_2_commitment,
         native_hashes_2_commitment,
         native_hashes_2_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_inner_collapse_commitment,
         native_inner_collapse_commitment,
         native_inner_collapse_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_outer_collapse_commitment,
         native_outer_collapse_commitment,
         native_outer_collapse_rx
     );
-    native_commitment_getter!(
+    lazy_commitment!(
+        native,
         native_compute_v_commitment,
         native_compute_v_commitment,
         native_compute_v_rx
@@ -511,7 +527,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     }
 
     cached_bridge!(
-        bridge_outer_error_commitment,
         bridge_outer_error_rx,
         bridge_outer_error_commitment,
         nested::RxIndex::BridgeOuterError,
@@ -520,7 +535,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     );
 
     cached_bridge!(
-        bridge_ab_commitment,
         bridge_ab_rx,
         bridge_ab_commitment,
         nested::RxIndex::BridgeAB,
@@ -529,7 +543,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     );
 
     cached_bridge!(
-        bridge_query_commitment,
         bridge_query_rx,
         bridge_query_commitment,
         nested::RxIndex::BridgeQuery,
@@ -538,7 +551,6 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     );
 
     cached_bridge!(
-        bridge_eval_commitment,
         bridge_eval_rx,
         bridge_eval_commitment,
         nested::RxIndex::BridgeEval,
@@ -568,12 +580,14 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         })
     }
 
-    nested_commitment_getter!(
+    lazy_commitment!(
+        nested,
         nested_endoscalar_commitment,
         nested_endoscalar_commitment,
         nested_endoscalar_rx
     );
-    nested_commitment_getter!(
+    lazy_commitment!(
+        nested,
         nested_points_commitment,
         nested_points_commitment,
         nested_points_rx
@@ -616,52 +630,21 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     /// Build the proof. All polynomial fields must have been set. Commitment
     /// caches that haven't been accessed yet are computed now.
     pub(crate) fn build(mut self) -> Result<Proof<C, R>> {
-        let host_gen = C::host_generators(self.params);
-
-        // Ensure all native commitment caches are populated.
-        macro_rules! resolve {
-            ($cache:ident, $poly:ident) => {
-                self.$cache.get_or_init(|| {
-                    self.$poly
-                        .as_ref()
-                        .expect(concat!(stringify!($poly), " not set"))
-                        .commit_to_affine(host_gen)
-                });
-            };
-        }
-        resolve!(native_application_commitment, native_application_rx);
-        resolve!(native_preamble_commitment, native_preamble_rx);
-        resolve!(native_inner_error_commitment, native_inner_error_rx);
-        resolve!(native_outer_error_commitment, native_outer_error_rx);
-        resolve!(native_query_commitment, native_query_rx);
-        resolve!(native_registry_xy_commitment, native_registry_xy_poly);
-        resolve!(native_eval_commitment, native_eval_rx);
-        resolve!(native_hashes_1_commitment, native_hashes_1_rx);
-        resolve!(native_hashes_2_commitment, native_hashes_2_rx);
-        resolve!(native_inner_collapse_commitment, native_inner_collapse_rx);
-        resolve!(native_outer_collapse_commitment, native_outer_collapse_rx);
-        resolve!(native_compute_v_commitment, native_compute_v_rx);
-
-        // Verify externally-provided native commitment caches.
-        macro_rules! verify {
-            ($cache:ident, $poly:ident) => {
-                assert!(
-                    *self
-                        .$cache
-                        .get()
-                        .expect(concat!(stringify!($cache), " not set"))
-                        == self
-                            .$poly
-                            .as_ref()
-                            .expect(concat!(stringify!($poly), " not set"))
-                            .commit_to_affine(host_gen),
-                    concat!(stringify!($cache), " does not match ", stringify!($poly))
-                );
-            };
-        }
-        verify!(native_a_commitment, native_a_poly);
-        verify!(native_b_commitment, native_b_poly);
-        verify!(native_p_commitment, native_p_poly);
+        // Force lazy evaluation of every native commitment cache by invoking
+        // its getter. The a/b/p caches are set externally via their explicit
+        // setters, so they are not touched here.
+        self.native_application_commitment();
+        self.native_preamble_commitment();
+        self.native_inner_error_commitment();
+        self.native_outer_error_commitment();
+        self.native_query_commitment();
+        self.native_registry_xy_commitment();
+        self.native_eval_commitment();
+        self.native_hashes_1_commitment();
+        self.native_hashes_2_commitment();
+        self.native_inner_collapse_commitment();
+        self.native_outer_collapse_commitment();
+        self.native_compute_v_commitment();
 
         // Force lazy evaluation of cached bridge commitments.
         self.bridge_outer_error_commitment()?;
@@ -683,17 +666,10 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         macro_rules! cached {
             ($field:ident) => {
                 Cached(
-                    *self
-                        .$field
-                        .get()
+                    self.$field
+                        .take()
                         .expect(concat!(stringify!($field), " not set")),
                 )
-            };
-        }
-
-        macro_rules! cached_take {
-            ($field:ident) => {
-                Cached(self.$field.expect(concat!(stringify!($field), " not set")))
             };
         }
 
@@ -729,14 +705,14 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
             bridge_f_rx: take!(bridge_f_rx),
             bridge_f_commitment: take!(bridge_f_commitment),
 
-            bridge_outer_error_rx: cached_take!(bridge_outer_error_rx),
-            bridge_outer_error_commitment: cached_take!(bridge_outer_error_commitment),
-            bridge_ab_rx: cached_take!(bridge_ab_rx),
-            bridge_ab_commitment: cached_take!(bridge_ab_commitment),
-            bridge_query_rx: cached_take!(bridge_query_rx),
-            bridge_query_commitment: cached_take!(bridge_query_commitment),
-            bridge_eval_rx: cached_take!(bridge_eval_rx),
-            bridge_eval_commitment: cached_take!(bridge_eval_commitment),
+            bridge_outer_error_rx: cached!(bridge_outer_error_rx),
+            bridge_outer_error_commitment: cached!(bridge_outer_error_commitment),
+            bridge_ab_rx: cached!(bridge_ab_rx),
+            bridge_ab_commitment: cached!(bridge_ab_commitment),
+            bridge_query_rx: cached!(bridge_query_rx),
+            bridge_query_commitment: cached!(bridge_query_commitment),
+            bridge_eval_rx: cached!(bridge_eval_rx),
+            bridge_eval_commitment: cached!(bridge_eval_commitment),
 
             nested_endoscaling_step_rxs: take!(nested_endoscaling_step_rxs),
             nested_endoscalar_rx: take!(nested_endoscalar_rx),
@@ -749,18 +725,8 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
                 .into_iter()
                 .map(Cached)
                 .collect(),
-            nested_endoscalar_commitment: Cached(
-                *self
-                    .nested_endoscalar_commitment
-                    .get()
-                    .expect("nested_endoscalar_commitment not set"),
-            ),
-            nested_points_commitment: Cached(
-                *self
-                    .nested_points_commitment
-                    .get()
-                    .expect("nested_points_commitment not set"),
-            ),
+            nested_endoscalar_commitment: cached!(nested_endoscalar_commitment),
+            nested_points_commitment: cached!(nested_points_commitment),
 
             w: take!(w),
             y: take!(y),

@@ -51,7 +51,6 @@ mod linexp;
 mod phantom;
 
 use ff::Field;
-pub use linexp::{DirectSum, LinearExpression};
 use ragu_arithmetic::Coeff;
 
 use crate::{
@@ -60,6 +59,8 @@ use crate::{
     maybe::{Maybe, MaybeKind, Perhaps},
     routines::Routine,
 };
+
+pub use linexp::{DirectSum, LinearExpression};
 
 /// Alias for the concrete [`Maybe<T>`] type for a driver `D`, used to represent input data
 /// that may or may not be available. This provides a uniform interface for both public
