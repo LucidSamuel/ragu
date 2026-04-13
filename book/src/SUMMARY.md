@@ -12,6 +12,7 @@
     - [Witness Data](guide/drivers/witness.md)
     - [Linear Expressions](guide/drivers/linear.md)
     - [Concrete Drivers](guide/drivers/concrete.md)
+    - [Simulator](guide/drivers/simulator.md)
   - [Gadgets](guide/gadgets/index.md)
     - [Simple Gadgets](guide/gadgets/simple.md)
     - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
