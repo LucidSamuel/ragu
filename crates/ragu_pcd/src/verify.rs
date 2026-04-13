@@ -571,78 +571,12 @@ mod tests {
         proof.native_b_poly = ragu_circuits::polynomials::sparse::Polynomial::new()
     });
 
-    // NB-3: Bridge rx polynomials (direct polynomial corruption)
-    // These document verification gaps: the verifier does not yet independently
-    // validate bridge rx polynomials. Un-ignore once verify() gains bridge
-    // polynomial checks.
-    #[test]
-    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
-    fn rejects_corrupt_bridge_preamble_rx() {
-        let (app, mut proof) = create_seeded_proof(55);
-        proof.bridge_preamble_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
-        let mut rng = StdRng::seed_from_u64(99999);
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verifier must reject corrupt bridge_preamble_rx");
-    }
-
-    #[test]
-    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
-    fn rejects_corrupt_bridge_s_prime_rx() {
-        let (app, mut proof) = create_seeded_proof(56);
-        proof.bridge_s_prime_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
-        let mut rng = StdRng::seed_from_u64(99999);
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verifier must reject corrupt bridge_s_prime_rx");
-    }
-
-    #[test]
-    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
-    fn rejects_corrupt_bridge_inner_error_rx() {
-        let (app, mut proof) = create_seeded_proof(57);
-        proof.bridge_inner_error_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
-        let mut rng = StdRng::seed_from_u64(99999);
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(
-            !result,
-            "verifier must reject corrupt bridge_inner_error_rx"
-        );
-    }
-
-    #[test]
-    #[ignore = "verification gap: bridge rx polynomials not independently checked"]
-    fn rejects_corrupt_bridge_f_rx() {
-        let (app, mut proof) = create_seeded_proof(58);
-        proof.bridge_f_rx = ragu_circuits::polynomials::sparse::Polynomial::new();
-        let mut rng = StdRng::seed_from_u64(99999);
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verifier must reject corrupt bridge_f_rx");
-    }
-
     // NB-4: nested_endoscaling_step_rxs vector
     seeded_rejects!(rejects_corrupt_nested_endoscaling_step_rxs, 59, |proof| {
         proof.nested_endoscaling_step_rxs[0] = ragu_circuits::polynomials::sparse::Polynomial::new()
     });
 
-    // NB-5: bridge_alpha scalar
-    // Verification gap: bridge_alpha feeds cached bridge polynomials but the
-    // verifier does not independently validate it. Un-ignore once verify()
-    // gains a bridge_alpha check.
-    #[test]
-    #[ignore = "verification gap: bridge_alpha not independently checked"]
-    fn rejects_corrupt_bridge_alpha() {
-        let (app, mut proof) = create_seeded_proof(60);
-        proof.bridge_alpha = <Pasta as Cycle>::ScalarField::random(&mut StdRng::seed_from_u64(800));
-        let mut rng = StdRng::seed_from_u64(99999);
-        let pcd = proof.carry::<()>(());
-        let result = app.verify(&pcd, &mut rng).expect("verify should not error");
-        assert!(!result, "verifier must reject corrupt bridge_alpha");
-    }
-
-    // NB-6: Corrupt commitment → challenge mismatch transcript replay
+    // NB-5: Corrupt commitment → challenge mismatch transcript replay
     #[test]
     fn verify_transcript_corrupt_commitment_shifts_challenges() {
         let pasta = Pasta::baked();
