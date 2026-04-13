@@ -25,9 +25,9 @@
 //!
 //! The scalar is the routine's $s(X,Y)$ contribution (see
 //! [`sxy::eval`](super::s::sxy::eval)) evaluated at deterministic
-//! pseudorandom points derived from a domain-separated BLAKE2b hash: three
-//! independent geometric sequences are assigned to the $a$, $b$, $c$ wires and
-//! constraint values are accumulated via Horner's rule. If two routines produce
+//! pseudorandom points derived from a domain-separated BLAKE2b hash: four
+//! independent geometric sequences are assigned to the $a$, $b$, $c$, $d$
+//! wires and constraint values are accumulated via Horner's rule. If two routines produce
 //! the same fingerprint, they are structurally equivalent with overwhelming
 //! probability.
 //!
@@ -475,9 +475,10 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         self.scope = saved;
 
         // Remap child output wires as fresh tokens in the parent context.
-        // Uses the same remap sequence; the child's WireEval values are
-        // unique within its own scope but could collide with parent
-        // allocations after restore.
+        // The child's geometric sequences share bases with the parent (both
+        // start at x0..x3), so child-allocated values overlap systematically
+        // with parent-allocated values; the remap re-tokenizes them onto
+        // the parent's `x_remap` sequence to keep them distinct.
         let parent_output = Ro::Output::map_gadget(&output, self)?;
 
         Ok(parent_output)

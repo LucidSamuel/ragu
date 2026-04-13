@@ -184,10 +184,10 @@ impl Routine<Fp> for Duplicate {
 /// Passthrough — returns input unchanged. No constraints.
 ///
 /// With [`DropFirst`], forms a pair whose `(scalar, mul_count,
-/// linear_count)` triples are identical: paired allocation packs 1 and
-/// 2 input wires into the same gate count during the uncounted input
-/// remap, so the geometric sequences reach the same state. Only the
-/// `TypeId` of `Input` distinguishes them.
+/// linear_count)` triples are identical: neither routine calls
+/// `enforce_zero`, so both leave the Horner accumulator at the initial
+/// seed `h`, and neither emits any gate. Only the `TypeId` of `Input`
+/// distinguishes them.
 #[derive(Clone)]
 struct Passthrough;
 
@@ -822,7 +822,9 @@ impl Routine<Fp> for DelegateAllocEnforceFirst {
 }
 
 /// Three input wires, returns first. Paired with [`PassthroughQuad`]:
-/// 3 and 4 wires produce identical post-remap state due to paired allocation.
+/// neither routine calls `enforce_zero`, so both leave the Horner
+/// accumulator at the initial seed `h`. Only the `TypeId` of `Input`
+/// distinguishes them.
 #[derive(Clone)]
 struct PassthroughTriple;
 
@@ -1713,8 +1715,10 @@ fn test_vanishing_leading_trivial_via_eval() {
 
 /// DelegatePadEnforceOutput enforces the remapped child output wire;
 /// DelegateAllocEnforceFirst enforces a subsequent local alloc.  The
-/// output remap advances the parent's geometric sequences, giving
-/// these wires distinct values and thus distinct Horner scalars.
+/// output wire carries a value from the parent's `x_remap` sequence,
+/// while the local alloc carries a value from the `x1` (b-wire)
+/// sequence — these are independent BLAKE2b bases, so the Horner
+/// scalars differ.
 #[test]
 fn test_wire_collision_via_eval() {
     assert_ne!(
@@ -1739,10 +1743,8 @@ fn test_wire_collision_via_eval_metrics_identical() {
 }
 
 /// `Passthrough` (Input = Element) and `DropFirst` (Input = (Element,
-/// Element)) have zero body constraints and identical Horner scalars —
-/// paired allocation packs 1 and 2 input wires into the same gate
-/// count during the uncounted input remap, leaving the geometric
-/// sequences in the same state.  Without `input_kind` in the
+/// Element)) have zero body constraints, so both leave the Horner
+/// accumulator at the initial seed `h`. Without `input_kind` in the
 /// fingerprint, these would collide.
 #[test]
 fn test_typeid_necessary_for_input_discrimination() {
@@ -1771,7 +1773,8 @@ fn test_typeid_necessary_for_output_discrimination() {
     assert_ne!(a, b);
 }
 
-/// 3 vs 4 input wires produce identical post-remap Counter state.
+/// 3 vs 4 input wires both leave the Horner accumulator at the initial
+/// seed `h` (no `enforce_zero` calls); only `input_kind` distinguishes them.
 #[test]
 fn test_typeid_triple_vs_quad_input_wires() {
     let a = fingerprint_triple(&PassthroughTriple);
