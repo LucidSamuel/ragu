@@ -67,6 +67,7 @@ pub struct StageBuilder<
     Target: Stage<D::F, R>,
 > {
     driver: &'a mut D,
+    on_finish: fn(&mut D),
     _marker: PhantomData<(&'dr (), R, Current, Target)>,
 }
 
@@ -77,6 +78,21 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Target: Stage<D::F, R>>
     pub fn new(driver: &'a mut D) -> Self {
         StageBuilder {
             driver,
+            on_finish: |_| {},
+            _marker: PhantomData,
+        }
+    }
+
+    /// Creates a new [`StageBuilder`] that calls `on_finish` on the driver
+    /// when [`finish`](Self::finish) is invoked.
+    ///
+    /// This is used by [`super::MultiStage::into_bonding_object`] to freeze
+    /// the validation driver after all stages have been reserved, so that
+    /// any post-finalization allocation is rejected.
+    pub(crate) fn new_with_on_finish(driver: &'a mut D, on_finish: fn(&mut D)) -> Self {
+        StageBuilder {
+            driver,
+            on_finish,
             _marker: PhantomData,
         }
     }
@@ -216,6 +232,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Current: Stage<D::F, R>, Target: Stage<D:
             },
             StageBuilder {
                 driver: self.driver,
+                on_finish: self.on_finish,
                 _marker: PhantomData,
             },
         ))
@@ -252,7 +269,11 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Finished: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, Finished, Finished>
 {
     /// Obtains the underlying driver after finishing the last stage.
+    ///
+    /// If the builder was constructed with an `on_finish` hook, the hook
+    /// is called on the driver before it is returned.
     pub fn finish(self) -> &'a mut D {
+        (self.on_finish)(self.driver);
         self.driver
     }
 }
