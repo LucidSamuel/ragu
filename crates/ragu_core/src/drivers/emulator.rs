@@ -446,21 +446,6 @@ mod tests {
         type Kind = TwoWiresKind;
     }
 
-    // Alloc returns wires holding the assigned field values.
-    #[test]
-    fn wired_alloc_assigns_values() -> Result<()> {
-        let mut dr = Emulator::<Wired<F>>::extractor();
-
-        let w_one = dr.alloc(|| Ok(Coeff::One))?;
-        let w_zero = dr.alloc(|| Ok(Coeff::Zero))?;
-        let w_arb = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(42))))?;
-
-        assert_eq!(w_one, F::ONE);
-        assert_eq!(w_zero, F::ZERO);
-        assert_eq!(w_arb, F::from(42));
-        Ok(())
-    }
-
     // Constant wires hold the expected field element for each Coeff variant.
     #[test]
     fn wired_constant_returns_correct_wire() -> Result<()> {
@@ -506,8 +491,10 @@ mod tests {
     fn wired_add_computes_linear_combination() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        let w1 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(10))))?;
-        let w2 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(20))))?;
+        let (_, w1, _) =
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(10)), Coeff::Zero)))?;
+        let (_, w2, _) =
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(20)), Coeff::Zero)))?;
 
         // 1*w1 + 3*w2 = 10 + 60 = 70
         let sum = dr.add(|lc| lc.add(&w1).add_term(&w2, Coeff::Arbitrary(F::from(3))));
@@ -521,7 +508,7 @@ mod tests {
     fn wired_enforce_zero_is_noop() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        let w = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(42))))?;
+        let (_, w, _) = dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(42)), Coeff::Zero)))?;
 
         let result = dr.enforce_zero(|lc| lc.add(&w));
         assert!(result.is_ok());
@@ -533,8 +520,9 @@ mod tests {
     fn wired_enforce_equal_is_noop() -> Result<()> {
         let mut dr = Emulator::<Wired<F>>::extractor();
 
-        let w1 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(1))))?;
-        let w2 = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(999))))?;
+        let (_, w1, _) = dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(1)), Coeff::Zero)))?;
+        let (_, w2, _) =
+            dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(999)), Coeff::Zero)))?;
 
         let result = dr.enforce_equal(&w1, &w2);
         assert!(result.is_ok());
@@ -545,8 +533,10 @@ mod tests {
     #[test]
     fn wired_emulate_wired_extracts_wires() -> Result<()> {
         let wires = Emulator::<Wired<F>>::emulate_wired((), |dr, _witness| {
-            let a = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(5))))?;
-            let b = dr.alloc(|| Ok(Coeff::Arbitrary(F::from(10))))?;
+            let (_, a, _) =
+                dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(5)), Coeff::Zero)))?;
+            let (_, b, _) =
+                dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(F::from(10)), Coeff::Zero)))?;
             let sum = dr.add(|lc| lc.add(&a).add(&b));
 
             let gadget = TwoWires {
@@ -571,11 +561,6 @@ mod tests {
 
         let mut dr = Emulator::<Wireless<Always<()>, F>>::execute();
         let called = Cell::new(0);
-
-        let () = dr.alloc(|| {
-            called.set(called.get() + 1);
-            Ok(Coeff::Arbitrary(F::from(42)))
-        })?;
 
         let () = dr.constant(Coeff::One);
 
@@ -606,8 +591,6 @@ mod tests {
     #[test]
     fn wireless_counter_static_analysis() -> Result<()> {
         let mut dr = Emulator::<Wireless<crate::maybe::Empty, F>>::counter();
-
-        let () = dr.alloc(|| Ok(Coeff::One))?;
 
         let ((), (), ()) = dr.mul(|| Ok((Coeff::One, Coeff::One, Coeff::One)))?;
 
@@ -1002,17 +985,10 @@ mod tests {
     }
 
     #[test]
-    fn wired_alloc_propagates_closure_error() {
-        let mut dr = Emulator::<Wired<F>>::extractor();
-        let result = dr.alloc(|| Err(crate::Error::InvalidWitness("alloc error".into())));
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn wired_emulate_wired_witness_flows_through() -> Result<()> {
         let result = Emulator::<Wired<F>>::emulate_wired(F::from(77), |dr, witness| {
             let val = witness.take();
-            let w = dr.alloc(|| Ok(Coeff::Arbitrary(val)))?;
+            let (_, w, _) = dr.mul(|| Ok((Coeff::Zero, Coeff::Arbitrary(val), Coeff::Zero)))?;
             assert_eq!(w, F::from(77));
             Ok(w)
         })?;

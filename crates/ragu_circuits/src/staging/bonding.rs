@@ -181,10 +181,6 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
     type Wire = BondingWire;
     const ONE: Self::Wire = BondingWire::One;
 
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<BondingWire> {
-        Ok(BondingWire::Normal)
-    }
-
     fn constant(&mut self, _: Coeff<F>) -> BondingWire {
         self.record("bonding circuits must not create constants");
         BondingWire::Normal

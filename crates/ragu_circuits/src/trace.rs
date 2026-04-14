@@ -149,9 +149,6 @@ impl<F: Field> Trace<F> {
 
 /// Per-routine state that is saved and restored by [`DriverScope`].
 struct TraceScope {
-    /// Gate index within the current segment, from paired allocation.
-    available_d: Option<usize>,
-
     /// Index of the segment that receives new gates.
     current_segment: usize,
 
@@ -190,7 +187,6 @@ impl<'scope, 'env, F: Field> Evaluator<'scope, 'env, F> {
             scope,
             tx,
             state: TraceScope {
-                available_d: None,
                 current_segment: 0,
                 routine_counter: 0,
                 dfs_prefix: prefix,
@@ -205,7 +201,6 @@ impl<'scope, 'env, F: Field> Evaluator<'scope, 'env, F> {
             scope,
             deferred: Vec::new(),
             state: TraceScope {
-                available_d: None,
                 current_segment: 0,
                 routine_counter: 0,
                 dfs_prefix: prefix,
@@ -258,18 +253,6 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
     type F = F;
     type Wire = ();
     const ONE: Self::Wire = ();
-
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        // Packs two allocations into one gate with layout (0, b, 0, d),
-        // which costs less in multiexp than two separate gates.
-        if let Some(extra) = self.state.available_d.take() {
-            self.assign_extra(extra, value)
-        } else {
-            let (_, _, _, extra) = self.gate(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
-            self.state.available_d = Some(extra);
-            Ok(())
-        }
-    }
 
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {}
 
@@ -345,7 +328,6 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
                 let seg_idx = self.segments.len() - 1;
                 self.with_scope(
                     TraceScope {
-                        available_d: None,
                         current_segment: seg_idx,
                         routine_counter: 0,
                         dfs_prefix: child_prefix,

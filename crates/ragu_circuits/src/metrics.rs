@@ -215,10 +215,6 @@ pub struct CircuitMetrics {
 /// Contains both the constraint counting record index and the identity
 /// evaluation state (geometric sequence runners and Horner accumulator).
 struct CounterScope<F> {
-    /// Stashed $d$-wire value from paired allocation, consumed by
-    /// [`assign_extra`](DriverTypes::assign_extra) on the next `alloc` call.
-    available_d: Option<WireEval<F>>,
-
     /// Index into [`Counter::segments`] for the current routine.
     current_segment: usize,
 
@@ -336,7 +332,6 @@ impl<F: FromUniformBytes<64>> Counter<F> {
 
         Self {
             scope: CounterScope {
-                available_d: None,
                 current_segment: 0,
                 current_a: x0,
                 current_b: x1,
@@ -414,17 +409,6 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     type Wire = WireEval<F>;
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(extra) = self.scope.available_d.take() {
-            self.assign_extra(extra, || unreachable!())
-        } else {
-            let (_, b, _, extra) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(extra);
-            Ok(b)
-        }
-    }
-
     /// Computes a linear combination of wire evaluations.
     fn add(&mut self, lc: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
         WireEval::Value(lc(WireEvalSum::new(self.one)).value)
@@ -457,7 +441,6 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
         let saved = core::mem::replace(
             &mut self.scope,
             CounterScope {
-                available_d: None,
                 current_segment: segment_idx,
                 current_a: self.x0,
                 current_b: self.x1,
@@ -566,6 +549,7 @@ pub(crate) mod tests {
         routines::{Prediction, Routine},
     };
     use ragu_pasta::Fp;
+    use ragu_primitives::allocator::Allocator;
 
     use super::*;
     use crate::WithAux;
@@ -637,13 +621,13 @@ pub(crate) mod tests {
         )))
     }
 
-    // A routine that allocates exactly one wire, leaving the "d" slot dangling
-    // in a pair-allocated driver like `Counter`.
-    // This must not panic when processed.
+    // A routine that performs a single allocation via `().alloc`. Verifies
+    // that metrics evaluation succeeds when a routine makes an odd number
+    // of allocator calls.
     #[derive(Clone)]
-    struct DanglingAllocRoutine;
+    struct SingleAllocRoutine;
 
-    impl Routine<Fp> for DanglingAllocRoutine {
+    impl Routine<Fp> for SingleAllocRoutine {
         type Input = ();
         type Output = ();
         type Aux<'dr> = ();
@@ -654,7 +638,7 @@ pub(crate) mod tests {
             _input: Bound<'dr, D, Self::Input>,
             _aux: DriverValue<D, Self::Aux<'dr>>,
         ) -> Result<Bound<'dr, D, Self::Output>> {
-            dr.alloc(|| Ok(Coeff::One))?;
+            ().alloc(dr, || Ok(Coeff::One))?;
             Ok(())
         }
 
@@ -668,9 +652,9 @@ pub(crate) mod tests {
         }
     }
 
-    struct DanglingAllocCircuit;
+    struct SingleAllocCircuit;
 
-    impl Circuit<Fp> for DanglingAllocCircuit {
+    impl Circuit<Fp> for SingleAllocCircuit {
         type Instance<'source> = ();
         type Witness<'source> = ();
         type Output = ();
@@ -690,13 +674,13 @@ pub(crate) mod tests {
             _witness: DriverValue<D, Self::Witness<'source>>,
         ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
         {
-            dr.routine(DanglingAllocRoutine, ())?;
+            dr.routine(SingleAllocRoutine, ())?;
             Ok(WithAux::new((), D::unit()))
         }
     }
 
     #[test]
-    fn dangling_alloc_in_routine() {
-        super::eval::<Fp, _>(&DanglingAllocCircuit).expect("metrics eval should succeed");
+    fn single_alloc_in_routine() {
+        super::eval::<Fp, _>(&SingleAllocCircuit).expect("metrics eval should succeed");
     }
 }

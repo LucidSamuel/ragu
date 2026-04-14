@@ -63,9 +63,6 @@ use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, ra
 
 /// Per-routine state saved and restored across routine boundaries.
 struct SxyScope<F> {
-    /// Stashed $b$-wire monomial from paired allocation, used to compute the
-    /// $d$-wire monomial on demand via [`assign_extra`](DriverTypes::assign_extra).
-    available_d: Option<F>,
     /// Running monomial for $a$ wires: $x^{2n - 1 - i}$ at gate $i$.
     current_a_x: F,
     /// Running monomial for $b$ wires: $x^{2n + i}$ at gate $i$.
@@ -236,17 +233,6 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
     const ONE: Self::Wire = WireEval::One;
 
-    /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(extra) = self.scope.available_d.take() {
-            self.assign_extra(extra, || unreachable!())
-        } else {
-            let (_, b, _, extra) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(extra);
-            Ok(b)
-        }
-    }
-
     /// Computes a linear combination of wire evaluations.
     ///
     /// Evaluates the linear combination immediately using [`WireEvalSum`] and
@@ -294,7 +280,6 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
         let init_scope = SxyScope {
-            available_d: None,
             current_a_x: self.base_a_x * self.x_inv.pow_vartime([gate_start as u64]),
             current_b_x: self.base_b_x * self.x.pow_vartime([gate_start as u64]),
             current_c_x: self.base_c_x * self.x_inv.pow_vartime([gate_start as u64]),
@@ -375,7 +360,6 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
 
     let mut evaluator = Evaluator::<F, R> {
         scope: SxyScope {
-            available_d: None,
             current_a_x: base_a_x,
             current_b_x: base_b_x,
             current_c_x: base_c_x,

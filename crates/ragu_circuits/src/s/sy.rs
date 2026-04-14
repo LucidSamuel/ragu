@@ -344,9 +344,6 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
 
 /// Per-routine state saved and restored across routine boundaries.
 struct SyScope<F: Field> {
-    /// Stashed gate index from paired allocation, used to construct the $d$
-    /// wire on demand via [`assign_extra`](DriverTypes::assign_extra).
-    available_d: Option<usize>,
     /// Current $y$ power being applied to constraints in this routine.
     current_y: F,
     /// Absolute index of the next gate to be written.
@@ -550,21 +547,6 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         table: None,
     };
 
-    /// Allocates a wire using paired allocation.
-    ///
-    /// Returns either a stashed gate index from a previous gate (converting it
-    /// to a $d$ wire via [`assign_extra`](DriverTypes::assign_extra)), or
-    /// allocates a new gate and stashes its index for the next call.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(extra) = self.scope.available_d.take() {
-            self.assign_extra(extra, || unreachable!())
-        } else {
-            let (_, b, _, extra) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(extra);
-            Ok(b)
-        }
-    }
-
     /// Creates a virtual wire representing a linear combination.
     ///
     /// Allocates a new virtual wire from [`VirtualTable`], collects terms via
@@ -622,7 +604,6 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
         let init_scope = SyScope {
-            available_d: None,
             // When num_constraints == 0 the routine emits no
             // enforce_zero calls, so current_y is never read; use
             // F::ZERO as an inert sentinel.
@@ -718,7 +699,6 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
         {
             let mut evaluator = Evaluator::<'_, '_, '_, F, R> {
                 scope: SyScope {
-                    available_d: None,
                     // Assertion above prevents this from underflowing.
                     current_y: y.pow_vartime([(root_constraints - 1) as u64]),
                     gates: 0,

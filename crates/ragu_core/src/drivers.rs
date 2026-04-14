@@ -188,9 +188,9 @@ pub trait DriverTypes {
 ///
 /// ## Usage
 ///
-/// * Wires can be created with the [`alloc`](Driver::alloc) and
-///   [`mul`](Driver::mul) methods. The [`add`](Driver::add) method can also
-///   create a virtual wire that is defined as a linear combination of some
+/// * Wires can be created with the [`mul`](Driver::mul) method. The
+///   [`add`](Driver::add) method can create a virtual wire that is defined
+///   as a linear combination of some
 ///   existing wires. The [`constant`](Driver::constant) method is a helper for
 ///   creating a wire with a constant value.
 /// * Wires are assigned values upon their creation; the driver may or may not
@@ -242,29 +242,6 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
 
     /// Drivers guarantee that a fixed wire is assigned the value $1$.
     const ONE: Self::Wire;
-
-    /// Asks the driver to allocate a new wire.
-    ///
-    /// The provided closure may be called by the driver if an assignment is
-    /// needed. If it is called, any errors are propagated from it, and the
-    /// closure can rely on [`Witness<Self, T>::take`](Maybe::take) succeeding
-    /// unconditionally.
-    ///
-    /// The default implementation calls [`mul`](Driver::mul), returns the $b$
-    /// wire, and sets $a$ and $c$ to zero to satisfy the gate
-    /// equation—wasting those two wires. Drivers may override this to avoid
-    /// the overhead, e.g. by pairing consecutive allocations into a single
-    /// gate.
-    ///
-    /// # Purity
-    ///
-    /// The `Fn` bound reflects the same purity intent as [`mul`](Driver::mul);
-    /// the default implementation wraps this closure in a call to `mul`, but
-    /// overriding implementations may not invoke it at all.
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        let (_, b, _) = self.mul(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
-        Ok(b)
-    }
 
     /// Returns a virtual wire that has a fixed constant value.
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {

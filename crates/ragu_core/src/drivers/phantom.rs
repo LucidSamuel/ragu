@@ -97,11 +97,6 @@ mod tests {
             lc
         })?;
 
-        dr.alloc(|| {
-            called.set(called.get() + 1);
-            Ok(Coeff::One)
-        })?;
-
         dr.constant(Coeff::One);
 
         assert_eq!(called.get(), 0);
@@ -125,13 +120,6 @@ mod tests {
     fn phantom_enforce_zero_succeeds() -> Result<()> {
         let mut dr = PhantomData::<F>;
         dr.enforce_zero(|_lc| panic!("must not be called"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn phantom_alloc_returns_unit() -> Result<()> {
-        let mut dr = PhantomData::<F>;
-        let _: () = dr.alloc(|| panic!("must not be called"))?;
         Ok(())
     }
 

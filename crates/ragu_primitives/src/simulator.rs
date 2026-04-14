@@ -122,11 +122,6 @@ impl<'dr, F: Field> Driver<'dr> for Simulator<F> {
     type Wire = F;
     const ONE: Self::Wire = F::ONE;
 
-    fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<F> {
-        let value = value()?;
-        Ok(value.value())
-    }
-
     fn constant(&mut self, value: Coeff<Self::F>) -> Self::Wire {
         value.value()
     }

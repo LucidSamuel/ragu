@@ -1334,8 +1334,7 @@ fn fingerprint_pair(
 }
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
-/// through `Counter::routine` (the production path that correctly clears
-/// `available_d` after input remapping).
+/// through `Counter::routine` (the production path for input remapping).
 fn fingerprint_via_eval<Ro>(routine: &Ro) -> RoutineFingerprint
 where
     Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>

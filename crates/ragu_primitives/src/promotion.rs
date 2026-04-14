@@ -71,10 +71,6 @@ impl<'dr, D: Driver<'dr>> Driver<'dr> for DemotedDriver<D> {
     type F = D::F;
     type Wire = D::Wire;
 
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        unreachable!("DemotedDriver cannot be constructed")
-    }
-
     fn add(&mut self, _: impl Fn(Self::LCadd) -> Self::LCadd) -> Self::Wire {
         unreachable!("DemotedDriver cannot be constructed")
     }
