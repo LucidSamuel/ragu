@@ -23,7 +23,7 @@ use ragu_arithmetic::{Domain, bitreverse};
 use ragu_core::{Error, Result};
 
 use crate::{
-    BondingObject, Circuit, CircuitObject,
+    BondingObject, Circuit, WiringObject,
     floor_planner::ConstraintSegment,
     polynomials::{Rank, sparse},
 };
@@ -79,10 +79,10 @@ impl From<CircuitIndex> for usize {
 /// ensuring internal circuits get lower indices while maintaining
 /// proper PCD indexing.
 pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
-    internal_circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
-    bonding: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
-    internal_steps: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
-    application_steps: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    internal_circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    bonding: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    internal_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    application_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
 }
 
 impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
@@ -123,7 +123,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         C: Circuit<F> + 'params,
     {
         self.application_steps
-            .push(crate::into_circuit_object(circuit)?);
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
@@ -133,7 +133,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         C: Circuit<F> + 'params,
     {
         self.internal_circuits
-            .push(crate::into_circuit_object(circuit)?);
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
@@ -143,7 +143,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         C: Circuit<F> + 'params,
     {
         self.internal_steps
-            .push(crate::into_circuit_object(circuit)?);
+            .push(crate::into_wiring_object(circuit)?);
         Ok(self)
     }
 
@@ -298,7 +298,7 @@ impl<F: Field> Key<F> {
 /// they can be queried efficiently.
 pub struct Registry<'params, F: PrimeField, R: Rank> {
     domain: Domain<F>,
-    circuits: Vec<Box<dyn CircuitObject<F, R> + 'params>>,
+    circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
 
     /// Per-circuit floor plans computed during finalization.
     floor_plans: Vec<Vec<ConstraintSegment>>,
@@ -484,7 +484,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         &self,
         cache: &LagrangeCache<F>,
         init: impl FnOnce() -> T,
-        add_poly: impl Fn(&dyn CircuitObject<F, R>, &[ConstraintSegment], F, &mut T),
+        add_poly: impl Fn(&dyn WiringObject<F, R>, &[ConstraintSegment], F, &mut T),
     ) -> T {
         let mut result = init();
 
@@ -517,7 +517,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
 
     /// Sums Lagrange coefficients for masking polynomials at the given $W$ point.
     ///
-    /// Only circuits where [`CircuitObject::is_mask`] returns `true` contribute.
+    /// Only circuits where [`WiringObject::is_mask`] returns `true` contribute.
     fn mask_coeff_sum(&self, cache: &LagrangeCache<F>) -> F {
         match cache {
             LagrangeCache::Interpolate(coeffs) => {

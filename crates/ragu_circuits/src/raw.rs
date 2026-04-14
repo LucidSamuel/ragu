@@ -94,8 +94,8 @@ pub(crate) trait RawCircuit<F: Field>: Sized + Send + Sync {
 /// Adapts a [`Circuit`](crate::Circuit) into a [`RawCircuit`] by discarding
 /// the SYSTEM gate wires.
 ///
-/// Owns the circuit. Used by [`into_circuit_object`](crate::into_circuit_object)
-/// to store the circuit inside a [`CircuitObject`](crate::CircuitObject).
+/// Owns the circuit. Used by [`into_wiring_object`](crate::into_wiring_object)
+/// to store the circuit inside a [`WiringObject`](crate::WiringObject).
 pub(crate) struct CircuitAdapter<C>(pub C);
 
 impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapter<C> {

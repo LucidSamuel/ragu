@@ -185,7 +185,7 @@ impl<F: Field, C: Circuit<F>> CircuitExt<F> for C {}
 /// injected at the [`Registry`] level at the fixed $Y^{4n-1}$ position.
 ///
 /// [`Registry`]: registry::Registry
-pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
+pub(crate) trait WiringObject<F: Field, R: Rank>: Send + Sync {
     /// Evaluates the polynomial $s(x, y)$ for some $x, y \in \mathbb{F}$.
     fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F;
 
@@ -218,11 +218,11 @@ pub(crate) trait CircuitObject<F: Field, R: Rank>: Send + Sync {
     }
 }
 
-/// Wraps a circuit into a boxed [`CircuitObject`] that can evaluate the
+/// Wraps a circuit into a boxed [`WiringObject`] that can evaluate the
 /// $s(X, Y)$ polynomial.
-pub(crate) fn into_circuit_object<'a, F, C, R>(
+pub(crate) fn into_wiring_object<'a, F, C, R>(
     circuit: C,
-) -> Result<Box<dyn CircuitObject<F, R> + 'a>>
+) -> Result<Box<dyn WiringObject<F, R> + 'a>>
 where
     F: FromUniformBytes<64>,
     C: Circuit<F> + 'a,
@@ -242,15 +242,15 @@ where
         return Err(Error::GateBoundExceeded { limit: R::n() });
     }
 
-    into_raw_circuit_object(raw::CircuitAdapter(circuit), metrics)
+    into_raw_wiring_object(raw::CircuitAdapter(circuit), metrics)
 }
 
-/// Like [`into_circuit_object`] but accepts a [`RawCircuit`](raw::RawCircuit)
+/// Like [`into_wiring_object`] but accepts a [`RawCircuit`](raw::RawCircuit)
 /// directly. Metrics must have been pre-computed and validated by the caller.
-pub(crate) fn into_raw_circuit_object<'a, F, RC, R>(
+pub(crate) fn into_raw_wiring_object<'a, F, RC, R>(
     circuit: RC,
     metrics: metrics::CircuitMetrics,
-) -> Result<Box<dyn CircuitObject<F, R> + 'a>>
+) -> Result<Box<dyn WiringObject<F, R> + 'a>>
 where
     F: Field,
     RC: raw::RawCircuit<F> + 'a,
@@ -261,7 +261,7 @@ where
         metrics: metrics::CircuitMetrics,
     }
 
-    impl<F: Field, RC: raw::RawCircuit<F>, R: Rank> CircuitObject<F, R> for Processed<RC> {
+    impl<F: Field, RC: raw::RawCircuit<F>, R: Rank> WiringObject<F, R> for Processed<RC> {
         fn sxy(&self, x: F, y: F, floor_plan: &[floor_planner::ConstraintSegment]) -> F {
             s::sxy::eval::<_, _, R>(&self.circuit, x, y, floor_plan)
                 .expect("should succeed if metrics succeeded")
@@ -320,15 +320,15 @@ where
 /// [`StageExt::mask`]: crate::staging::StageExt::mask
 /// [`StageExt::final_mask`]: crate::staging::StageExt::final_mask
 pub struct BondingObject<'a, F: Field, R: Rank> {
-    inner: Box<dyn CircuitObject<F, R> + 'a>,
+    inner: Box<dyn WiringObject<F, R> + 'a>,
 }
 
 impl<'a, F: Field, R: Rank> BondingObject<'a, F, R> {
-    pub(crate) fn new(inner: Box<dyn CircuitObject<F, R> + 'a>) -> Self {
+    pub(crate) fn new(inner: Box<dyn WiringObject<F, R> + 'a>) -> Self {
         Self { inner }
     }
 
-    pub(crate) fn into_inner(self) -> Box<dyn CircuitObject<F, R> + 'a> {
+    pub(crate) fn into_inner(self) -> Box<dyn WiringObject<F, R> + 'a> {
         self.inner
     }
 }

@@ -15,7 +15,7 @@ use ragu_pasta::Fp;
 use ragu_primitives::{Element, Simulator, allocator::SimpleAllocator};
 
 use crate::{
-    Circuit, CircuitExt, CircuitObject, WithAux, floor_planner, into_circuit_object,
+    Circuit, CircuitExt, WiringObject, WithAux, floor_planner, into_wiring_object,
     polynomials::{Rank, TestRank},
 };
 
@@ -55,7 +55,7 @@ impl Circuit<Fp> for SquareCircuit {
     }
 }
 
-fn consistency_checks<R: Rank>(obj: &dyn CircuitObject<Fp, R>) {
+fn consistency_checks<R: Rank>(obj: &dyn WiringObject<Fp, R>) {
     let x = Fp::random(&mut rand::rng());
     let y = Fp::random(&mut rand::rng());
     let plan = floor_planner::floor_plan(obj.segment_records());
@@ -148,7 +148,7 @@ fn test_simple_circuit() {
         .into_output();
     type MyRank = TestRank;
 
-    let obj = into_circuit_object::<_, _, MyRank>(MySimpleCircuit).unwrap();
+    let obj = into_wiring_object::<_, _, MyRank>(MySimpleCircuit).unwrap();
     let plan = floor_planner::floor_plan(obj.segment_records());
 
     let assignment = trace.assemble(&plan, Fp::ZERO).unwrap();

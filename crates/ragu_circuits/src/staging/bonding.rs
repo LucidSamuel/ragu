@@ -31,9 +31,9 @@ use ragu_core::{
 
 use super::{MultiStage, MultiStageCircuit, StageBuilder};
 use crate::{
-    BondingObject, CircuitObject, SegmentRecord,
+    BondingObject, WiringObject, SegmentRecord,
     floor_planner::ConstraintSegment,
-    into_circuit_object,
+    into_wiring_object,
     polynomials::{Rank, sparse},
 };
 
@@ -75,8 +75,8 @@ where
             return Err(ragu_core::Error::InvalidWitness(msg.into()));
         }
 
-        // Build the CircuitObject via the standard pipeline.
-        let inner = into_circuit_object::<_, _, R>(self)?;
+        // Build the WiringObject via the standard pipeline.
+        let inner = into_wiring_object::<_, _, R>(self)?;
 
         Ok(BondingObject::new(Box::new(Stripped::<F, R>::new(inner))))
     }
@@ -200,17 +200,17 @@ impl<'dr, F: Field> Driver<'dr> for BondingValidator<F> {
     }
 }
 
-/// Wraps a [`CircuitObject`] and strips the `enforce_one` contribution,
+/// Wraps a [`WiringObject`] and strips the `enforce_one` contribution,
 /// giving a zero constant term in $Y$.
-pub(crate) struct Stripped<'a, F: Field, R: Rank>(Box<dyn CircuitObject<F, R> + 'a>);
+pub(crate) struct Stripped<'a, F: Field, R: Rank>(Box<dyn WiringObject<F, R> + 'a>);
 
 impl<'a, F: Field, R: Rank> Stripped<'a, F, R> {
-    pub(crate) fn new(inner: Box<dyn CircuitObject<F, R> + 'a>) -> Self {
+    pub(crate) fn new(inner: Box<dyn WiringObject<F, R> + 'a>) -> Self {
         Self(inner)
     }
 }
 
-impl<F: Field, R: Rank> CircuitObject<F, R> for Stripped<'_, F, R> {
+impl<F: Field, R: Rank> WiringObject<F, R> for Stripped<'_, F, R> {
     fn sxy(&self, x: F, y: F, floor_plan: &[ConstraintSegment]) -> F {
         // Remove the ONE wire contribution: x^(2n) at y^0.
         self.0.sxy(x, y, floor_plan) - x.pow_vartime([(2 * R::n()) as u64])
@@ -487,7 +487,7 @@ mod tests {
         }
     }
 
-    fn bonding_obj() -> Box<dyn CircuitObject<Fp, R>> {
+    fn bonding_obj() -> Box<dyn WiringObject<Fp, R>> {
         MultiStage::<Fp, R, _>::new(EqualWires)
             .into_bonding_object()
             .unwrap()

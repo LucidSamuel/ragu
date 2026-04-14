@@ -3,7 +3,7 @@ use ragu_arithmetic::geosum;
 use ragu_core::Result;
 
 use crate::{
-    CircuitObject,
+    WiringObject,
     polynomials::{Rank, sparse},
 };
 
@@ -173,7 +173,7 @@ impl<R: Rank> StageMask<R> {
     }
 }
 
-impl<F: Field, R: Rank> CircuitObject<F, R> for StageMask<R> {
+impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
     /// Evaluates the per-instance notch term $-\text{notch}(x, y)$.
     ///
     /// The full stage mask is $S\_{\text{global}} - \text{notch}$, but
@@ -257,7 +257,7 @@ mod tests {
         StageMask,
     };
     use crate::{
-        CircuitObject, WithAux, floor_planner, into_circuit_object, into_raw_circuit_object,
+        WiringObject, WithAux, floor_planner, into_wiring_object, into_raw_wiring_object,
         metrics,
         polynomials::{Rank, sparse},
         raw::GateWires,
@@ -341,13 +341,13 @@ mod tests {
         }
     }
 
-    /// Creates a [`CircuitObject`] from a [`StageMask`] via its [`RawCircuit`]
+    /// Creates a [`WiringObject`] from a [`StageMask`] via its [`RawCircuit`]
     /// impl.
-    fn mask_circuit_object(
+    fn mask_wiring_object(
         mask: StageMask<R>,
-    ) -> alloc::boxed::Box<dyn CircuitObject<Fp, R> + 'static> {
+    ) -> alloc::boxed::Box<dyn WiringObject<Fp, R> + 'static> {
         let metrics = metrics::eval_raw::<Fp, _>(&mask).unwrap();
-        into_raw_circuit_object::<Fp, _, R>(mask, metrics).unwrap()
+        into_raw_wiring_object::<Fp, _, R>(mask, metrics).unwrap()
     }
 
     impl<R: Rank> StageMask<R> {
@@ -450,7 +450,7 @@ mod tests {
         let y = Fp::random(&mut rand::rng());
 
         // sy() now returns -notch; add global_project to recover the full mask.
-        let full_sy = |circ: &dyn CircuitObject<Fp, R>, y| {
+        let full_sy = |circ: &dyn WiringObject<Fp, R>, y| {
             let mut poly = super::global_project::<Fp, R>(y);
             poly += &circ.sy(y, &[]);
             poly
@@ -508,7 +508,7 @@ mod tests {
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
 
-        let generic = mask_circuit_object(stage.clone());
+        let generic = mask_wiring_object(stage.clone());
         let plan = floor_planner::floor_plan(generic.segment_records());
         let stripped = crate::staging::bonding::Stripped::new(generic);
         let corrected_sxy = stripped.sxy(x, y, &plan);
@@ -526,7 +526,7 @@ mod tests {
         // metrics::eval(), so its num_constraints must be at least 1.
         // This invariant prevents the `- 1` underflow in sy::eval's initial
         // y-power computation.
-        let circuit = into_circuit_object::<_, _, R>(SquareCircuit { times: 0 }).unwrap();
+        let circuit = into_wiring_object::<_, _, R>(SquareCircuit { times: 0 }).unwrap();
         let floor_plan = floor_planner::floor_plan(circuit.segment_records());
         assert!(
             floor_plan[0].num_constraints >= 1,
@@ -586,7 +586,7 @@ mod tests {
 
             let stage_mask = StageMask::<R>::new(skip, num).unwrap();
 
-            let generic = mask_circuit_object(
+            let generic = mask_wiring_object(
                 StageMask::<R>::new(skip, num).unwrap()
             );
             let plan = floor_planner::floor_plan(generic.segment_records());
@@ -734,7 +734,7 @@ mod tests {
             for num in 0..(R::n() - skip) {
                 let stage_mask = StageMask::<R>::new(skip, num).unwrap();
                 let (mul_from_method, linear_from_method) =
-                    <StageMask<R> as CircuitObject<Fp, R>>::constraint_counts(&stage_mask);
+                    <StageMask<R> as WiringObject<Fp, R>>::constraint_counts(&stage_mask);
 
                 let metrics = metrics::eval_raw::<Fp, _>(&stage_mask).unwrap();
 
@@ -812,7 +812,7 @@ mod tests {
             }
         }
 
-        let circuit = into_circuit_object::<_, _, R>(TestCircuit).unwrap();
+        let circuit = into_wiring_object::<_, _, R>(TestCircuit).unwrap();
         let floor_plan = floor_planner::floor_plan(circuit.segment_records());
 
         // The child routine (index 1) should have zero constraints.
