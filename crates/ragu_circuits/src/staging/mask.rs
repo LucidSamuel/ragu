@@ -698,7 +698,7 @@ mod tests {
     fn test_enforce_stage_works() {
         let result =
             Emulator::emulate_wireless((Fp::from(42u64), Fp::from(42u64)), |dr, witness| {
-                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr);
+                let builder = StageBuilder::<_, R, (), ConstrainedStage>::new(dr, |_| {});
                 let (guard, builder) = builder.add_stage::<ConstrainedStage>()?;
                 let _gagdet = guard.enforced(builder.finish(), witness)?;
                 Ok(())

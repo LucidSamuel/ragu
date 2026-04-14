@@ -68,7 +68,7 @@ where
         // and — after the stage builder finalizes — mul/gate.
         let mut validator = BondingValidator::<F>::new();
         self.circuit.witness(
-            StageBuilder::new_with_on_finish(&mut validator, BondingValidator::freeze),
+            StageBuilder::new(&mut validator, BondingValidator::freeze),
             Empty,
         )?;
         if let Some(msg) = validator.error {

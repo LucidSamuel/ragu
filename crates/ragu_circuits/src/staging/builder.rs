@@ -78,21 +78,7 @@ impl<'a, 'dr, D: Driver<'dr>, R: Rank, Target: Stage<D::F, R>>
     StageBuilder<'a, 'dr, D, R, (), Target>
 {
     /// Creates a new [`StageBuilder`] with the given [`Driver`].
-    pub fn new(driver: &'a mut D) -> Self {
-        StageBuilder {
-            driver,
-            on_finish: |_| {},
-            _marker: PhantomData,
-        }
-    }
-
-    /// Creates a new [`StageBuilder`] that calls `on_finish` on the driver
-    /// when [`finish`](Self::finish) is invoked.
-    ///
-    /// This is used by [`super::MultiStage::into_bonding_object`] to freeze
-    /// the validation driver after all stages have been reserved, so that
-    /// any post-finalization allocation is rejected.
-    pub(crate) fn new_with_on_finish(driver: &'a mut D, on_finish: fn(&mut D)) -> Self {
+    pub(crate) fn new(driver: &'a mut D, on_finish: fn(&mut D)) -> Self {
         StageBuilder {
             driver,
             on_finish,
