@@ -34,11 +34,17 @@ impl<F: Field> DriverTypes for core::marker::PhantomData<F> {
     type LCadd = ();
     type LCenforce = ();
 
+    type Extra = ();
+
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<((), (), (), ())> {
         Ok(((), (), (), ()))
+    }
+
+    fn assign_extra(&mut self, _: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<()> {
+        Ok(())
     }
 }
 

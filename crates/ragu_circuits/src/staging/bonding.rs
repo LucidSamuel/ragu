@@ -150,10 +150,11 @@ impl<F: Field> DriverTypes for BondingValidator<F> {
     type MaybeKind = Empty;
     type LCadd = RejectOne;
     type LCenforce = RejectOne;
+    type Extra = BondingWire;
 
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(BondingWire, BondingWire, BondingWire, BondingWire)> {
         self.record("bonding circuits must not call mul/gate");
         Ok((
@@ -162,6 +163,14 @@ impl<F: Field> DriverTypes for BondingValidator<F> {
             BondingWire::Normal,
             BondingWire::Normal,
         ))
+    }
+
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<BondingWire> {
+        Ok(extra)
     }
 }
 

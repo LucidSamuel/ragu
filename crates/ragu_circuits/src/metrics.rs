@@ -215,7 +215,8 @@ pub struct CircuitMetrics {
 /// Contains both the constraint counting record index and the identity
 /// evaluation state (geometric sequence runners and Horner accumulator).
 struct CounterScope<F> {
-    /// Stashed $d$ wire from paired allocation (see [`Driver::alloc`]).
+    /// Stashed $d$-wire value from paired allocation, consumed by
+    /// [`assign_extra`](DriverTypes::assign_extra) on the next `alloc` call.
     available_d: Option<WireEval<F>>,
 
     /// Index into [`Counter::segments`] for the current routine.
@@ -369,13 +370,14 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     type ImplWire = WireEval<F>;
     type LCadd = WireEvalSum<F>;
     type LCenforce = WireEvalSum<F>;
+    type Extra = WireEval<F>;
 
-    /// Consumes a gate: increments gate counts and returns
-    /// wire values from four independent geometric sequences, advancing each
-    /// by its base.
+    /// Consumes a gate: increments gate counts and returns wire values from
+    /// four independent geometric sequences, advancing each by its base.
+    /// The $d$-wire monomial is returned as `Extra`.
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(WireEval<F>, WireEval<F>, WireEval<F>, WireEval<F>)> {
         self.num_gates += 1;
         self.segments[self.scope.current_segment].num_gates += 1;
@@ -397,6 +399,14 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
             WireEval::Value(d),
         ))
     }
+
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<WireEval<F>> {
+        Ok(extra)
+    }
 }
 
 impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
@@ -406,11 +416,11 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 
     /// Allocates a wire using paired allocation with layout $(0, b, 0, d)$.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_d.take() {
-            Ok(wire)
+        if let Some(extra) = self.scope.available_d.take() {
+            self.assign_extra(extra, || unreachable!())
         } else {
-            let (_, b, _, d) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(d);
+            let (_, b, _, extra) = self.gate(|| unreachable!())?;
+            self.scope.available_d = Some(extra);
             Ok(b)
         }
     }

@@ -98,16 +98,21 @@ pub trait Mode: sealed::Sealed {
     /// Equal to the resulting [`Emulator`]'s [`DriverTypes::LCenforce`].
     type LCenforce: LinearExpression<Self::Wire, Self::F>;
 
+    /// Equal to the resulting [`Emulator`]'s [`DriverTypes::Extra`].
+    type Extra;
+
     /// Mode-specific gate allocation. Delegated to by
     /// [`DriverTypes::gate`] for [`Emulator<M>`].
     fn gate(
-        values: impl Fn() -> Result<(
-            Coeff<Self::F>,
-            Coeff<Self::F>,
-            Coeff<Self::F>,
-            Coeff<Self::F>,
-        )>,
-    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Wire)>;
+        values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
+    ) -> Result<(Self::Wire, Self::Wire, Self::Wire, Self::Extra)>;
+
+    /// Mode-specific $D$-wire assignment. Delegated to by
+    /// [`DriverTypes::assign_extra`] for [`Emulator<M>`].
+    fn assign_extra(
+        extra: Self::Extra,
+        value: impl Fn() -> Result<Coeff<Self::F>>,
+    ) -> Result<Self::Wire>;
 }
 
 /// Mode for an [`Emulator`] that tracks wire assignments.
@@ -123,16 +128,19 @@ impl<F: Field> Mode for Wired<F> {
     type Wire = F;
     type LCadd = DirectSum<F>;
     type LCenforce = DirectSum<F>;
+    type Extra = ();
 
-    fn gate(
-        values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(F, F, F, F)> {
-        let (a, b, c, d) = values()?;
+    fn gate(values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>) -> Result<(F, F, F, ())> {
+        let (a, b, c) = values()?;
 
         // Despite wires existing, the emulator does not enforce gate
         // equations.
 
-        Ok((a.value(), b.value(), c.value(), d.value()))
+        Ok((a.value(), b.value(), c.value(), ()))
+    }
+
+    fn assign_extra(_: Self::Extra, value: impl Fn() -> Result<Coeff<F>>) -> Result<F> {
+        Ok(value()?.value())
     }
 }
 
@@ -147,11 +155,14 @@ impl<M: MaybeKind, F: Field> Mode for Wireless<M, F> {
     type Wire = ();
     type LCadd = ();
     type LCenforce = ();
+    type Extra = ();
 
-    fn gate(
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<((), (), (), ())> {
+    fn gate(_: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>) -> Result<((), (), (), ())> {
         Ok(((), (), (), ()))
+    }
+
+    fn assign_extra(_: Self::Extra, _: impl Fn() -> Result<Coeff<F>>) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -281,12 +292,21 @@ impl<M: Mode> DriverTypes for Emulator<M> {
     type MaybeKind = M::MaybeKind;
     type LCadd = M::LCadd;
     type LCenforce = M::LCenforce;
+    type Extra = M::Extra;
 
     fn gate(
         &mut self,
-        values: impl Fn() -> Result<(Coeff<M::F>, Coeff<M::F>, Coeff<M::F>, Coeff<M::F>)>,
-    ) -> Result<(M::Wire, M::Wire, M::Wire, M::Wire)> {
+        values: impl Fn() -> Result<(Coeff<M::F>, Coeff<M::F>, Coeff<M::F>)>,
+    ) -> Result<(M::Wire, M::Wire, M::Wire, M::Extra)> {
         M::gate(values)
+    }
+
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        value: impl Fn() -> Result<Coeff<M::F>>,
+    ) -> Result<M::Wire> {
+        M::assign_extra(extra, value)
     }
 }
 

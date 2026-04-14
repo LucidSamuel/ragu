@@ -44,6 +44,7 @@ impl<D: DriverTypes> DriverTypes for DemotedDriver<D> {
     type LCenforce = ();
     type ImplField = D::ImplField;
     type ImplWire = D::ImplWire;
+    type Extra = D::Extra;
 
     fn gate(
         &mut self,
@@ -51,14 +52,16 @@ impl<D: DriverTypes> DriverTypes for DemotedDriver<D> {
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
-            Coeff<Self::ImplField>,
         )>,
-    ) -> Result<(
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-    )> {
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)> {
+        unreachable!("DemotedDriver cannot be constructed")
+    }
+
+    fn assign_extra(
+        &mut self,
+        _: Self::Extra,
+        _: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire> {
         unreachable!("DemotedDriver cannot be constructed")
     }
 }

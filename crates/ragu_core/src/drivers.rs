@@ -116,14 +116,29 @@ pub trait DriverTypes {
     /// `enforce_zero` accepts a closure parameterized over it.
     type LCenforce: LinearExpression<Self::ImplWire, Self::ImplField>;
 
-    /// Allocates the wires $(A, B, C, D)$ with the constraints $A \cdot B = C$
-    /// and $C \cdot D = 0$. The second constraint makes $D$ useless in the
-    /// typical case: whenever $C$ is nonzero, $D$ is forced to zero. But when
-    /// $C$ is guaranteed to be zero, $D$ becomes unconstrained and available
-    /// for use.
+    /// An opaque token representing the $D$ wire of a gate before its value
+    /// has been assigned. Returned by [`gate`](Self::gate) and consumed by
+    /// [`assign_extra`](Self::assign_extra).
+    ///
+    /// Dropping an `Extra` without calling `assign_extra` is a promise from
+    /// the caller that $D = 0$ for that gate, which is always safe: $C \cdot
+    /// D = 0$ is satisfied for any $C$ when $D = 0$. Drivers may rely on this
+    /// promise without checking it.
+    type Extra;
+
+    /// Allocates the wires $(A, B, C)$ with the constraint $A \cdot B = C$
+    /// and returns an [`Extra`](Self::Extra) token for the auxiliary $D$ wire.
+    /// The gate also imposes the constraint $C \cdot D = 0$, which makes $D$
+    /// useless in the typical case: whenever $C$ is nonzero, $D$ is forced to
+    /// zero. But when $C$ is guaranteed to be zero, $D$ becomes unconstrained
+    /// and available for use.
+    ///
+    /// To obtain the $D$ wire, pass the returned `Extra` to
+    /// [`assign_extra`](Self::assign_extra). Dropping the `Extra` leaves $D$
+    /// assigned to zero.
     ///
     /// Circuit code should prefer [`Driver::mul`], which delegates to this
-    /// method by default and discards $D$. Only code that needs an
+    /// method by default and discards the `Extra`. Only code that needs an
     /// unconstrained $D$ wire should call `gate` directly.
     ///
     /// The provided closure may be called by the driver if assignments are
@@ -146,14 +161,20 @@ pub trait DriverTypes {
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
-            Coeff<Self::ImplField>,
         )>,
-    ) -> Result<(
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-    )>;
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)>;
+
+    /// Assigns the $D$ wire of a gate, consuming the [`Extra`](Self::Extra)
+    /// token returned by [`gate`](Self::gate) and returning the $D$ wire.
+    ///
+    /// The provided closure follows the same purity contract as `gate`: it
+    /// may be called zero or more times, should be side-effect-free, and
+    /// errors propagate to the caller.
+    fn assign_extra(
+        &mut self,
+        extra: Self::Extra,
+        value: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire>;
 }
 
 /// A context for executing cryptographic algorithms and synthesizing their
@@ -274,10 +295,7 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
     ) -> Result<(Self::Wire, Self::Wire, Self::Wire)> {
-        let (a, b, c, _) = self.gate(|| {
-            let (a, b, c) = values()?;
-            Ok((a, b, c, Coeff::Zero))
-        })?;
+        let (a, b, c, _) = self.gate(values)?;
         Ok((a, b, c))
     }
 

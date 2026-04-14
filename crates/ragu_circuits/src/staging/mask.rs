@@ -286,7 +286,9 @@ mod tests {
             let mut gates = alloc::vec::Vec::with_capacity(R::n());
             gates.push(system_gate);
             for _ in 1..R::n() {
-                gates.push(GateWires::from(dr.gate(|| unimplemented!())?));
+                let (a, b, c, extra) = dr.gate(|| unimplemented!())?;
+                let d = dr.assign_extra(extra, || unimplemented!())?;
+                gates.push(GateWires { a, b, c, d });
             }
 
             let is_active =

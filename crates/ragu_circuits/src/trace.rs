@@ -226,19 +226,31 @@ impl<F: Field> DriverTypes for Evaluator<'_, '_, F> {
     type MaybeKind = Always<()>;
     type LCadd = ();
     type LCenforce = ();
+    type Extra = usize;
 
     fn gate(
         &mut self,
-        values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<((), (), (), ())> {
-        let (a, b, c, d) = values()?;
+        values: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<((), (), (), usize)> {
+        let (a, b, c) = values()?;
         let seg = &mut self.segments[self.state.current_segment].segment;
+        let index = seg.a.len();
         seg.a.push(a.value());
         seg.b.push(b.value());
         seg.c.push(c.value());
-        seg.d.push(d.value());
+        seg.d.push(F::ZERO);
 
-        Ok(((), (), (), ()))
+        Ok(((), (), (), index))
+    }
+
+    fn assign_extra(
+        &mut self,
+        index: Self::Extra,
+        value: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<()> {
+        let seg = &mut self.segments[self.state.current_segment].segment;
+        seg.d[index] = value()?.value();
+        Ok(())
     }
 }
 
@@ -250,18 +262,11 @@ impl<'scope, 'env, F: Field> Driver<'env> for Evaluator<'scope, 'env, F> {
     fn alloc(&mut self, value: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
         // Packs two allocations into one gate with layout (0, b, 0, d),
         // which costs less in multiexp than two separate gates.
-        if let Some(index) = self.state.available_d.take() {
-            let seg = &mut self.segments[self.state.current_segment].segment;
-            seg.d[index] = value()?.value();
-            Ok(())
+        if let Some(extra) = self.state.available_d.take() {
+            self.assign_extra(extra, value)
         } else {
-            let seg = &mut self.segments[self.state.current_segment].segment;
-            let index = seg.a.len();
-            seg.a.push(F::ZERO);
-            seg.b.push(value()?.value());
-            seg.c.push(F::ZERO);
-            seg.d.push(F::ZERO);
-            self.state.available_d = Some(index);
+            let (_, _, _, extra) = self.gate(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
+            self.state.available_d = Some(extra);
             Ok(())
         }
     }

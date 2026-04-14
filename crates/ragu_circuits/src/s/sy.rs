@@ -343,9 +343,10 @@ impl<F: Field, R: Rank> VirtualTable<'_, F, R> {
 }
 
 /// Per-routine state saved and restored across routine boundaries.
-struct SyScope<'table, 'sy, F: Field, R: Rank> {
-    /// Stashed $d$ wire from paired allocation.
-    available_d: Option<Wire<'table, 'sy, F, R>>,
+struct SyScope<F: Field> {
+    /// Stashed gate index from paired allocation, used to construct the $d$
+    /// wire on demand via [`assign_extra`](DriverTypes::assign_extra).
+    available_d: Option<usize>,
     /// Current $y$ power being applied to constraints in this routine.
     current_y: F,
     /// Absolute index of the next gate to be written.
@@ -368,7 +369,7 @@ struct SyScope<'table, 'sy, F: Field, R: Rank> {
 /// [`sxy`]: super::sxy
 struct Evaluator<'table, 'sy, 'fp, F: Field, R: Rank> {
     /// Per-routine scoped state.
-    scope: SyScope<'table, 'sy, F, R>,
+    scope: SyScope<F>,
 
     /// The evaluation point $y$.
     y: F,
@@ -474,10 +475,8 @@ impl<'table, 'sy, F: Field, R: Rank> LinearExpression<Wire<'table, 'sy, F, R>, F
     }
 }
 
-impl<'table, 'sy, F: Field, R: Rank> DriverScope<SyScope<'table, 'sy, F, R>>
-    for Evaluator<'table, 'sy, '_, F, R>
-{
-    fn scope(&mut self) -> &mut SyScope<'table, 'sy, F, R> {
+impl<'table, 'sy, F: Field, R: Rank> DriverScope<SyScope<F>> for Evaluator<'table, 'sy, '_, F, R> {
+    fn scope(&mut self) -> &mut SyScope<F> {
         &mut self.scope
     }
 }
@@ -497,8 +496,10 @@ impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, '_, 
     type LCenforce = TermEnforcer<'table, 'sy, F, R>;
     type ImplField = F;
     type ImplWire = Wire<'table, 'sy, F, R>;
+    type Extra = usize;
 
-    /// Consumes a gate, returning wire handles for $(a, b, c, d)$.
+    /// Consumes a gate, returning wire handles for $(a, b, c)$ and the gate
+    /// index as [`Extra`](DriverTypes::Extra).
     ///
     /// The gate index comes from the absolute floor-plan position tracked in
     /// `scope.gates`. Wiring view slots are
@@ -510,12 +511,12 @@ impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, '_, 
     /// [`Rank::n()`].
     fn gate(
         &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>, Coeff<F>)>,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
     ) -> Result<(
         Wire<'table, 'sy, F, R>,
         Wire<'table, 'sy, F, R>,
         Wire<'table, 'sy, F, R>,
-        Wire<'table, 'sy, F, R>,
+        usize,
     )> {
         let index = self.scope.gates;
         if index == R::n() {
@@ -526,9 +527,17 @@ impl<'table, 'sy, F: Field, R: Rank> DriverTypes for Evaluator<'table, 'sy, '_, 
         let a = Wire::new(WireIndex::A(index), self.virtual_table);
         let b = Wire::new(WireIndex::B(index), self.virtual_table);
         let c = Wire::new(WireIndex::C(index), self.virtual_table);
-        let d = Wire::new(WireIndex::D(index), self.virtual_table);
 
-        Ok((a, b, c, d))
+        Ok((a, b, c, index))
+    }
+
+    /// Constructs the $d$-wire handle for the gate at the given index.
+    fn assign_extra(
+        &mut self,
+        index: Self::Extra,
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<Wire<'table, 'sy, F, R>> {
+        Ok(Wire::new(WireIndex::D(index), self.virtual_table))
     }
 }
 
@@ -543,14 +552,15 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
 
     /// Allocates a wire using paired allocation.
     ///
-    /// Returns either a stashed $d$ wire from a previous gate, or allocates a
-    /// new gate and stashes its $d$ wire for the next call.
+    /// Returns either a stashed gate index from a previous gate (converting it
+    /// to a $d$ wire via [`assign_extra`](DriverTypes::assign_extra)), or
+    /// allocates a new gate and stashes its index for the next call.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<Self::F>>) -> Result<Self::Wire> {
-        if let Some(wire) = self.scope.available_d.take() {
-            Ok(wire)
+        if let Some(extra) = self.scope.available_d.take() {
+            self.assign_extra(extra, || unreachable!())
         } else {
-            let (_, b, _, d) = self.gate(|| unreachable!())?;
-            self.scope.available_d = Some(d);
+            let (_, b, _, extra) = self.gate(|| unreachable!())?;
+            self.scope.available_d = Some(extra);
             Ok(b)
         }
     }

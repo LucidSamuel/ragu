@@ -53,9 +53,9 @@ impl<F: Field> Simulator<F> {
         self.num_allocations
     }
 
-    /// Returns the number of gates (i.e., [`Driver::mul`] calls made).
+    /// Returns the number of gates (i.e., [`DriverTypes::gate`] calls made).
     ///
-    /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
+    /// [`DriverTypes::gate`]: ragu_core::drivers::DriverTypes::gate
     pub fn num_gates(&self) -> usize {
         self.num_gates
     }
@@ -86,6 +86,7 @@ impl<F: Field> DriverTypes for Simulator<F> {
     type MaybeKind = Always<()>;
     type LCadd = DirectSum<F>;
     type LCenforce = DirectSum<F>;
+    type Extra = bool;
 
     fn gate(
         &mut self,
@@ -93,31 +94,34 @@ impl<F: Field> DriverTypes for Simulator<F> {
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
             Coeff<Self::ImplField>,
-            Coeff<Self::ImplField>,
         )>,
-    ) -> Result<(
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-        Self::ImplWire,
-    )> {
-        let (a, b, c, d) = values()?;
+    ) -> Result<(Self::ImplWire, Self::ImplWire, Self::ImplWire, Self::Extra)> {
+        let (a, b, c) = values()?;
 
         let a = a.value();
         let b = b.value();
         let c = c.value();
-        let d = d.value();
 
         if a * b != c {
             return Err(Error::InvalidWitness("gate check failed".into()));
         }
 
-        if c * d != F::ZERO {
+        self.num_gates += 1;
+        Ok((a, b, c, c.is_zero().into()))
+    }
+
+    fn assign_extra(
+        &mut self,
+        c_is_zero: Self::Extra,
+        value: impl Fn() -> Result<Coeff<Self::ImplField>>,
+    ) -> Result<Self::ImplWire> {
+        let d = value()?.value();
+
+        if !c_is_zero && !bool::from(d.is_zero()) {
             return Err(Error::InvalidWitness("auxiliary constraint failed".into()));
         }
 
-        self.num_gates += 1;
-        Ok((a, b, c, d))
+        Ok(d)
     }
 }
 
