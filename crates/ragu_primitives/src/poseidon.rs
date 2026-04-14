@@ -451,11 +451,13 @@ mod tests {
             let mut allocator = SimpleAllocator::new();
             let value = Element::alloc(dr, &mut allocator, value)?;
             sponge.absorb(dr, &value)?;
+
+            dr.reset();
             sponge.squeeze(dr)?;
 
             Ok(())
         })?;
-        assert_eq!(sim.num_gates(), 289);
+        assert_eq!(sim.num_gates(), 288);
 
         Ok(())
     }
