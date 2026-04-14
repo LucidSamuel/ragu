@@ -14,10 +14,10 @@ pub struct Pipe<'a, 'dr, D: Driver<'dr>, A: Allocator<'dr, D>, B: Buffer<'dr, D>
 }
 
 impl<'a, 'dr, D: Driver<'dr>, A: Allocator<'dr, D>, B: Buffer<'dr, D>> Pipe<'a, 'dr, D, A, B> {
-    /// Creates a new pipe, given a destination driver, an allocator for
+    /// Creates a new pipe, given a destination driver, an [`Allocator`] for
     /// that driver, and a buffer. [`Element`]s written to this pipe will be
-    /// allocated on the destination driver (using `allocator`) with the
-    /// values taken from the source driver [`Element`]s.
+    /// allocated on the destination driver with the values taken from the
+    /// source driver [`Element`]s.
     pub fn new(dr: &'a mut D, allocator: &'a mut A, buf: B) -> Self {
         Pipe {
             dr,

@@ -94,11 +94,9 @@ pub trait Header<F: Field>: Send + Sync + Any {
 
     /// Encode some data into a gadget representing this header.
     ///
-    /// The `allocator` is supplied by the framework invoking the header
-    /// encoder. It determines how any wires needed to represent `witness`
-    /// are allocated; `Header` impls should thread it into calls like
-    /// [`Element::alloc`](ragu_primitives::Element::alloc) rather than
-    /// picking an allocator themselves.
+    /// Implementations should pass `allocator` to
+    /// [`Element::alloc`](ragu_primitives::Element::alloc) calls rather than
+    /// substituting a different allocator.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

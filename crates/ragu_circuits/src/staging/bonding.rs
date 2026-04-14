@@ -110,11 +110,8 @@ impl<F: Field> LinearExpression<BondingWire, F> for RejectOne {
 /// [`add`](Driver::add), and [`enforce_zero`](Driver::enforce_zero) with
 /// normal wires are permitted. After [`freeze`](Self::freeze) is called
 /// (via the builder's `on_finish` hook), [`gate`](DriverTypes::gate) is
-/// rejected (catching both allocations via [`SimpleAllocator`] and
-/// direct [`mul`](Driver::mul) calls). [`constant`](Driver::constant)
-/// and [`ONE`](Driver::ONE)-wire references are always rejected.
-///
-/// [`SimpleAllocator`]: ragu_primitives::allocator::SimpleAllocator
+/// rejected. [`constant`](Driver::constant) and
+/// [`ONE`](Driver::ONE)-wire references are always rejected.
 ///
 /// All methods succeed; violations are accumulated in the `error` field and
 /// checked by the caller after the witness completes.

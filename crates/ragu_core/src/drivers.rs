@@ -120,8 +120,9 @@ pub trait DriverTypes {
     /// [`gate`](Self::gate) and consumed by
     /// [`assign_extra`](Self::assign_extra).
     ///
-    /// Drivers assign $D = 0$ at gate time. Passing the token to
-    /// `assign_extra` overrides that default; dropping it keeps $D = 0$.
+    /// Drivers assign $D = 0$ at [`gate`](Self::gate) time. Passing the
+    /// token to [`assign_extra`](Self::assign_extra) overrides that default;
+    /// dropping it keeps $D = 0$.
     type Extra;
 
     /// Allocates the wires $(A, B, C)$ with the constraint $A \cdot B = C$
@@ -165,8 +166,8 @@ pub trait DriverTypes {
     /// [`Extra`](Self::Extra) token returned by [`gate`](Self::gate) and
     /// returning the $D$ wire.
     ///
-    /// The provided closure follows the same purity contract as `gate`: it
-    /// may be called zero or more times, should be side-effect-free, and
+    /// The provided closure follows the same purity contract as [`gate`](Self::gate):
+    /// it may be called zero or more times, should be side-effect-free, and
     /// errors propagate to the caller.
     fn assign_extra(
         &mut self,

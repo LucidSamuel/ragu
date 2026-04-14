@@ -64,11 +64,6 @@ macro_rules! unified_instance_type {
 }
 
 /// Creates a `Slot` initializer for a field (works for both Point and Element).
-///
-/// The closure receives the allocator handed down by the framework. `Point`
-/// allocations ignore the allocator because [`Point::alloc`] does not take
-/// an [`Allocator`] argument; `Element` allocations thread it directly into
-/// [`Element::alloc`].
 macro_rules! unified_slot_new {
     (Point, $field:ident, $instance:expr) => {
         Slot::new($instance.as_ref().map(|i| i.$field), |dr, _allocator, w| {
@@ -428,13 +423,7 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
     /// proof's components and challenges. Useful for testing or when the full
     /// proof structure is available.
     ///
-    /// The caller supplies the allocator used for all `Element` allocations,
-    /// making the choice explicit at the call site. Current call sites run
-    /// this against an [`Emulator`](ragu_core::drivers::emulator::Emulator),
-    /// where `()` and [`SimpleAllocator`](ragu_primitives::allocator::SimpleAllocator)
-    /// produce identical wire output.
-    ///
-    /// Note: Field order follows `define_unified_instance!` for consistency.
+    /// Field order follows `define_unified_instance!` for consistency.
     pub fn alloc_from_proof<R: Rank, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

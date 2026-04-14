@@ -126,7 +126,6 @@ impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usi
     ///
     /// The tradeoff: less efficient (requires emulation + serialization) but achieves
     /// circuit uniformity across different header types.
-    ///
     pub(crate) fn new_uniform<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
