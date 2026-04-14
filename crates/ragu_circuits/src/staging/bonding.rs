@@ -47,12 +47,14 @@ where
     ///
     /// After the [`StageBuilder`] is finalized, only [`Driver::add`] and
     /// [`Driver::enforce_zero`] are permitted (without referencing the
-    /// [`Driver::ONE`] wire). [`Driver::mul`] and [`Driver::constant`]
-    /// are rejected after finalization.
+    /// [`Driver::ONE`] wire). [`Driver::gate`] (and by extension
+    /// [`Driver::mul`]) and [`Driver::constant`] are rejected after
+    /// finalization.
     ///
     /// The `ONE`-wire contribution is stripped so that the constant term in $Y$
     /// is zero, as required of a bonding polynomial.
     ///
+    /// [`Driver::gate`]: ragu_core::drivers::Driver::gate
     /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
     /// [`Driver::add`]: ragu_core::drivers::Driver::add
     /// [`Driver::constant`]: ragu_core::drivers::Driver::constant
