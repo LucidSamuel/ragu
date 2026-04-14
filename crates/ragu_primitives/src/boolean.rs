@@ -285,24 +285,21 @@ fn test_boolean_alloc() -> Result<()> {
     Ok(())
 }
 
+/// PoolAllocator reuses the Boolean gate's spare D wire for the Element.
 #[test]
 fn test_boolean_alloc_reclaim() -> Result<()> {
     type F = ragu_pasta::Fp;
     type Simulator = crate::Simulator<F>;
 
-    // Without reclaim: 1 Boolean gate + 1 Element gate = 2 gates.
     let sim_without = Simulator::simulate(true, |dr, bit| {
-        let allocator = &mut PoolAllocator::new();
         let _b = Boolean::alloc(dr, &mut (), bit)?;
-        let _e = Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
+        Element::alloc(dr, &mut (), Simulator::just(|| F::from(42u64)))?;
         Ok(())
     })?;
-
-    // With reclaim: 1 Boolean gate, Element reuses the spare D wire = 1 gate.
     let sim_with = Simulator::simulate(true, |dr, bit| {
         let allocator = &mut PoolAllocator::new();
         let _b = Boolean::alloc(dr, allocator, bit)?;
-        let _e = Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
+        Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
         Ok(())
     })?;
 
