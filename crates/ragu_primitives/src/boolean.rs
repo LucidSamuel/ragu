@@ -15,7 +15,7 @@ use ragu_core::{
 };
 
 #[cfg(test)]
-use crate::allocator::SimpleAllocator;
+use crate::allocator::{PoolAllocator, SimpleAllocator};
 use crate::{
     Element, GadgetExt,
     consistent::Consistent,
@@ -41,10 +41,14 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Allocates a boolean with the provided witness value.
     ///
     /// This costs one gate and two constraints.
-    pub fn alloc(dr: &mut D, value: DriverValue<D, bool>) -> Result<Self> {
+    pub fn alloc<A: crate::allocator::Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        value: DriverValue<D, bool>,
+    ) -> Result<Self> {
         let complement = value.not();
-        let (a, b, c) =
-            dr.mul(|| Ok((value.coeff().take(), complement.coeff().take(), Coeff::Zero)))?;
+        let (a, b, c, extra) =
+            dr.gate(|| Ok((value.coeff().take(), complement.coeff().take(), Coeff::Zero)))?;
 
         // Enforce c = 0, so the gate constraint becomes a * b = 0.
         dr.enforce_zero(|lc| lc.add(&c))?;
@@ -52,6 +56,9 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         // Enforce a + b = 1. Together with a * b = 0,
         // this gives a(1 - a) = 0, so a is zero or one.
         dr.enforce_zero(|lc| lc.add(&D::ONE).sub(&a).sub(&b))?;
+
+        // The gate's spare $D$ wire is donated to `allocator`.
+        allocator.donate(extra);
 
         Ok(Boolean { value, wire: a })
     }
@@ -249,7 +256,7 @@ pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
 
 impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Boolean<'dr, D> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
-        Self::alloc(dr, self.value())?.enforce_equal(dr, self)
+        Self::alloc(dr, &mut (), self.value())?.enforce_equal(dr, self)
     }
 }
 
@@ -260,7 +267,7 @@ fn test_boolean_alloc() -> Result<()> {
 
     let alloc = |bit: bool| {
         let sim = Simulator::simulate(bit, |dr, bit| {
-            let allocated_bit = Boolean::alloc(dr, bit.clone())?;
+            let allocated_bit = Boolean::alloc(dr, &mut (), bit.clone())?;
 
             assert_eq!(allocated_bit.value().take(), bit.clone().take());
             assert_eq!(*allocated_bit.wire(), bit.fe().take());
@@ -278,6 +285,56 @@ fn test_boolean_alloc() -> Result<()> {
     Ok(())
 }
 
+/// PoolAllocator reuses the Boolean gate's spare D wire for the Element.
+#[test]
+fn test_boolean_alloc_reclaim() -> Result<()> {
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let sim_without = Simulator::simulate(true, |dr, bit| {
+        let _b = Boolean::alloc(dr, &mut (), bit)?;
+        Element::alloc(dr, &mut (), Simulator::just(|| F::from(42u64)))?;
+        Ok(())
+    })?;
+    let sim_with = Simulator::simulate(true, |dr, bit| {
+        let allocator = &mut PoolAllocator::new();
+        let _b = Boolean::alloc(dr, allocator, bit)?;
+        Element::alloc(dr, allocator, Simulator::just(|| F::from(42u64)))?;
+        Ok(())
+    })?;
+
+    assert_eq!(sim_without.num_gates(), 2);
+    assert_eq!(sim_with.num_gates(), 1);
+
+    Ok(())
+}
+
+/// Multiple Boolean donations pool up and serve later allocations.
+#[test]
+fn test_pool_allocator_multiple_donations() -> Result<()> {
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    let sim = Simulator::simulate((true, false, true), |dr, witness| {
+        let (b0, b1, b2) = witness.cast();
+        let allocator = &mut PoolAllocator::new();
+
+        let _b0 = Boolean::alloc(dr, allocator, b0)?;
+        let _b1 = Boolean::alloc(dr, allocator, b1)?;
+        let _b2 = Boolean::alloc(dr, allocator, b2)?;
+
+        let _e0 = Element::alloc(dr, allocator, Simulator::just(|| F::from(1u64)))?;
+        let _e1 = Element::alloc(dr, allocator, Simulator::just(|| F::from(2u64)))?;
+        let _e2 = Element::alloc(dr, allocator, Simulator::just(|| F::from(3u64)))?;
+
+        Ok(())
+    })?;
+
+    assert_eq!(sim.num_gates(), 3);
+
+    Ok(())
+}
+
 #[test]
 fn test_conditional_select() -> Result<()> {
     type F = ragu_pasta::Fp;
@@ -287,7 +344,7 @@ fn test_conditional_select() -> Result<()> {
     Simulator::simulate((true, F::from(1u64), F::from(2u64)), |dr, witness| {
         let (cond, a, b) = witness.cast();
         let allocator = &mut SimpleAllocator::new();
-        let cond = Boolean::alloc(dr, cond)?;
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
         let a = Element::alloc(dr, allocator, a)?;
         let b = Element::alloc(dr, allocator, b)?;
 
@@ -301,7 +358,7 @@ fn test_conditional_select() -> Result<()> {
     Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
         let (cond, a, b) = witness.cast();
         let allocator = &mut SimpleAllocator::new();
-        let cond = Boolean::alloc(dr, cond)?;
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
         let a = Element::alloc(dr, allocator, a)?;
         let b = Element::alloc(dr, allocator, b)?;
 
@@ -323,7 +380,7 @@ fn test_conditional_enforce_equal() -> Result<()> {
     let sim = Simulator::simulate((true, F::from(42u64), F::from(42u64)), |dr, witness| {
         let (cond, a, b) = witness.cast();
         let allocator = &mut SimpleAllocator::new();
-        let cond = Boolean::alloc(dr, cond)?;
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
         let a = Element::alloc(dr, allocator, a)?;
         let b = Element::alloc(dr, allocator, b)?;
 
@@ -339,7 +396,7 @@ fn test_conditional_enforce_equal() -> Result<()> {
     Simulator::simulate((false, F::from(1u64), F::from(2u64)), |dr, witness| {
         let (cond, a, b) = witness.cast();
         let allocator = &mut SimpleAllocator::new();
-        let cond = Boolean::alloc(dr, cond)?;
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
         let a = Element::alloc(dr, allocator, a)?;
         let b = Element::alloc(dr, allocator, b)?;
 
@@ -361,7 +418,7 @@ fn test_multipack() -> Result<()> {
 
     Simulator::simulate(bits, |dr, bits| {
         let bits = (0..1000)
-            .map(|i| Boolean::alloc(dr, bits.as_ref().map(|b| b[i])))
+            .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
             .collect::<Result<Vec<_>>>()?;
 
         let vals = multipack(dr, &bits)?;
@@ -448,7 +505,7 @@ mod proptests {
         fn boolean_and_idempotent(a_val in proptest::bool::ANY) {
             let mut actual = None;
             Simulator::simulate(a_val, |dr, witness| {
-                let a = Boolean::alloc(dr, witness)?;
+                let a = Boolean::alloc(dr, &mut (), witness)?;
                 let result = a.and(dr, &a)?;
                 actual = Some(result.value().take());
                 Ok(())
@@ -460,7 +517,7 @@ mod proptests {
         fn boolean_and_complement(a_val in proptest::bool::ANY) {
             let mut actual = None;
             Simulator::simulate(a_val, |dr, witness| {
-                let a = Boolean::alloc(dr, witness)?;
+                let a = Boolean::alloc(dr, &mut (), witness)?;
                 let not_a = a.not(dr);
                 let result = a.and(dr, &not_a)?;
                 actual = Some(result.value().take());
@@ -480,7 +537,7 @@ mod proptests {
             Simulator::simulate((cond, a_fe, b_fe), |dr, witness| {
                 let (c, a, b) = witness.cast();
                 let allocator = &mut SimpleAllocator::new();
-                let c = Boolean::alloc(dr, c)?;
+                let c = Boolean::alloc(dr, &mut (), c)?;
                 let a = Element::alloc(dr, allocator, a)?;
                 let b = Element::alloc(dr, allocator, b)?;
                 let result = c.conditional_select(dr, &a, &b)?;
@@ -502,7 +559,7 @@ fn test_multipack_vector() -> Result<()> {
     let bits = vec![false, true, true, false, true]; // 0b10110 = 22
     Simulator::simulate(bits, |dr, bits| {
         let bits = (0..5)
-            .map(|i| Boolean::alloc(dr, bits.as_ref().map(|b| b[i])))
+            .map(|i| Boolean::alloc(dr, &mut (), bits.as_ref().map(|b| b[i])))
             .collect::<Result<Vec<_>>>()?;
 
         let vals = multipack(dr, &bits)?;

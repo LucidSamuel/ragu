@@ -60,7 +60,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::SimpleAllocator};
+use ragu_primitives::{Element, Endoscalar, GadgetExt, allocator::PoolAllocator};
 
 use super::super::{
     InternalCircuitIndex, InternalCircuitValues, RxComponent, RxIndex,
@@ -159,10 +159,17 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
         let query = query.unenforced(dr, witness.as_ref().map(|w| w.query_witness))?;
         let eval = eval.unenforced(dr, witness.as_ref().map(|w| w.eval_witness))?;
 
-        let allocator = &mut SimpleAllocator::new();
+        let allocator = &mut PoolAllocator::new();
         let mut unified_output = OutputBuilder::new(witness.map(|w| w.unified));
 
+        // Extract endoscalar early: each of the 128 Boolean gates has a
+        // spare D wire. Donating them to the pool lets subsequent reads
+        // reuse those wires instead of allocating fresh gates.
+        let pre_beta = unified_output.pre_beta.read(dr, allocator)?;
+        let beta_endo = Endoscalar::extract(dr, allocator, pre_beta)?;
+
         // Retrieve Fiat-Shamir challenges from the unified instance.
+        // These reads draw from the pool donated above.
         let w = unified_output.w.read(dr, allocator)?;
         let y = unified_output.y.read(dr, allocator)?;
         let z = unified_output.z.read(dr, allocator)?;
@@ -222,10 +229,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> MultiStageCircuit<C::CircuitFi
 
             // Step 3: Compute v = f(u) + beta * eval via Horner accumulation.
             // This combines f(u) with the evaluation component polynomials.
-            // First extract endoscalar from pre_beta and compute effective beta.
             let computed_v = {
-                let pre_beta = unified_output.pre_beta.read(dr, allocator)?;
-                let beta_endo = Endoscalar::extract(dr, pre_beta)?;
                 let effective_beta = beta_endo.lift(dr)?;
                 let mut horner = Horner::new(&effective_beta);
                 fu.write(dr, &mut horner)?;

@@ -152,7 +152,7 @@ fn endoscalar_group_scale(
 #[library_benchmark(setup = setup_emu)]
 #[bench::endoscalar_extract((alloc_elem,))]
 fn endoscalar_extract((mut emu, (elem,)): (BenchEmu, (Element<'static, BenchEmu>,))) {
-    black_box(Endoscalar::extract(&mut emu, elem)).unwrap();
+    black_box(Endoscalar::extract(&mut emu, &mut (), elem)).unwrap();
 }
 
 #[library_benchmark(setup = setup_emu)]

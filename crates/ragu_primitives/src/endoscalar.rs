@@ -51,6 +51,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             .map(|i| {
                 let bit = Boolean::alloc(
                     dr,
+                    &mut (),
                     value
                         .as_ref()
                         .map(|v| (*v >> i) & Uendo::from(1u64) == Uendo::from(1u64)),
@@ -75,7 +76,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Extracts an endoscalar from a random element in the field.
-    pub fn extract(dr: &mut D, elem: Element<'dr, D>) -> Result<Self>
+    pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
+        dr: &mut D,
+        allocator: &mut A,
+        elem: Element<'dr, D>,
+    ) -> Result<Self>
     where
         D::F: WithSmallOrderMulGroup<3>,
     {
@@ -110,7 +115,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
                 }
             });
 
-            let bit = Boolean::alloc(dr, bit)?;
+            let bit = Boolean::alloc(dr, allocator, bit)?;
             let (_, square) = Element::alloc_square(dr, sqrt)?;
             let vb = elem.mul(dr, &bit.element())?;
 
@@ -238,7 +243,7 @@ pub fn lift_endoscalar<F: WithSmallOrderMulGroup<3>>(endo: Uendo) -> F {
 pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -> Uendo {
     Emulator::emulate_wireless(value, |dr, witness| {
         let elem = Element::alloc(dr, &mut (), witness)?;
-        let endo = Endoscalar::extract(dr, elem)?;
+        let endo = Endoscalar::extract(dr, &mut (), elem)?;
         Ok(*endo.value.snag())
     })
     .expect("wireless emulation should not fail")
@@ -318,7 +323,7 @@ mod tests {
             let p = Point::alloc(dr, p)?;
             let allocator = &mut SimpleAllocator::new();
             let r = Element::alloc(dr, allocator, r)?;
-            let my_extracted = Endoscalar::extract(dr, r)?;
+            let my_extracted = Endoscalar::extract(dr, &mut (), r)?;
             let allocated = Endoscalar::alloc(dr, extracted)?;
 
             assert_eq!(my_extracted.value.snag(), allocated.value.snag());

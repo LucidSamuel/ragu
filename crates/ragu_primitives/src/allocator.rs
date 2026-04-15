@@ -20,6 +20,15 @@
 //! - [`SimpleAllocator`] — pairs consecutive allocations into one gate,
 //!   stashing the spare wire from the first call for the second. Halves
 //!   gate cost for sequences of allocations.
+//!
+//! - [`PoolAllocator`] — pools spare `Extra` tokens
+//!   [`donate`](Allocator::donate)d by external gadgets (e.g.
+//!   [`Boolean::alloc`](crate::Boolean::alloc)) whose $D$ wire is
+//!   unconstrained. Subsequent allocations redeem pooled tokens before
+//!   falling back to new gates, and self-produced spares enter the pool
+//!   too.
+
+use alloc::vec::Vec;
 
 use ragu_arithmetic::Coeff;
 use ragu_core::{Result, drivers::Driver};
@@ -39,6 +48,14 @@ pub trait Allocator<'dr, D: Driver<'dr>> {
     /// it may be called zero or more times, it must be side-effect-free,
     /// and errors returned from it propagate to the caller.
     fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire>;
+
+    /// Accepts a spare [`Extra`](ragu_core::drivers::DriverTypes::Extra)
+    /// token from an external gate whose $D$ wire is unconstrained.
+    ///
+    /// Allocators that can pool tokens (like [`PoolAllocator`]) store them
+    /// for future [`alloc`](Self::alloc) calls. The default implementation
+    /// drops the token, keeping the driver's default $D = 0$.
+    fn donate(&mut self, _extra: D::Extra) {}
 }
 
 /// Stateless allocator that uses one gate per allocation.
@@ -95,5 +112,55 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for SimpleAllocator<D::Extra> {
             self.stash = Some(extra);
             Ok(b)
         }
+    }
+}
+
+/// Allocator that pools spare
+/// [`Extra`](ragu_core::drivers::DriverTypes::Extra) tokens donated by
+/// other gadgets.
+///
+/// Some gadgets allocate a gate whose $D$ wire is unconstrained (because
+/// $C = 0$). Rather than waste that wire, they can
+/// [`donate`](Self::donate) the `Extra` token to this allocator.
+/// Subsequent [`alloc`](Allocator::alloc) calls redeem pooled tokens via
+/// [`assign_extra`](ragu_core::drivers::DriverTypes::assign_extra) before
+/// falling back to new gate allocation.
+///
+/// Like [`SimpleAllocator`], this also pairs its own gate allocations:
+/// when the pool is empty and a fresh gate is needed, the spare `Extra`
+/// from that gate enters the pool for the next call.
+///
+/// Dropping a `PoolAllocator` with tokens still in the pool is safe:
+/// the driver already assigned $D = 0$ for those gates.
+pub struct PoolAllocator<E> {
+    pool: Vec<E>,
+}
+
+impl<E> Default for PoolAllocator<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<E> PoolAllocator<E> {
+    /// Creates a new `PoolAllocator` with an empty pool.
+    pub const fn new() -> Self {
+        Self { pool: Vec::new() }
+    }
+}
+
+impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for PoolAllocator<D::Extra> {
+    fn alloc(&mut self, dr: &mut D, value: impl Fn() -> Result<Coeff<D::F>>) -> Result<D::Wire> {
+        if let Some(extra) = self.pool.pop() {
+            dr.assign_extra(extra, value)
+        } else {
+            let (_, b, _, extra) = dr.gate(|| Ok((Coeff::Zero, value()?, Coeff::Zero)))?;
+            self.pool.push(extra);
+            Ok(b)
+        }
+    }
+
+    fn donate(&mut self, extra: D::Extra) {
+        self.pool.push(extra);
     }
 }

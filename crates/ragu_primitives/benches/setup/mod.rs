@@ -97,7 +97,7 @@ pub fn alloc_bools<const N: usize>(
     (0..N)
         .map(|_| {
             let v: bool = rng.random();
-            Boolean::alloc(emu, BenchEmu::just(|| v)).unwrap()
+            Boolean::alloc(emu, &mut (), BenchEmu::just(|| v)).unwrap()
         })
         .collect()
 }
