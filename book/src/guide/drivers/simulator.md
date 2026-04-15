@@ -32,9 +32,10 @@ into `GateBoundExceeded` or `ConstraintBoundExceeded`.
 | `R<7>` | 32 | $2^7 = 128$ | Unit tests |
 | `R<13>` | 2,048 | $2^{13} = 8{,}192$ | Production |
 
-Gates correspond to [`mul()`] calls. Constraints correspond to explicit
-[`enforce_zero()`] calls. The simulator reports both so you can compare
-different circuit designs before committing to a rank.
+Gates correspond to [`mul()`] and [`gate()`] calls. Constraints
+correspond to explicit [`enforce_zero()`] calls. The simulator
+reports both so you can compare different circuit designs before
+committing to a rank.
 
 ## API
 
@@ -62,23 +63,23 @@ accumulated metrics. This is the standard entry point for measurement.
 
 ### Metrics
 
-After synthesis completes, three counters are available:
+After synthesis completes, two counters are available:
 
 | Method | Counts | Driver operation |
 |--------|--------|-----------------|
-| [`num_gates()`] | Multiplication gates | [`mul()`] |
-| [`num_allocations()`] | Single-wire allocations | [`alloc()`] |
+| [`num_gates()`] | Multiplication gates | [`mul()`] / [`gate()`] |
 | [`num_constraints()`] | Linear constraints enforced | [`enforce_zero()`] |
 
 ```rust,ignore
-let sim = Simulator::simulate(my_value, |dr, witness| {
-    let x = Element::alloc(dr, witness)?;
-    let y = x.mul(dr, &x)?;   // 1 gate
+let sim = Simulator::simulate((a, b), |dr, witness| {
+    let (a, b) = witness.cast();
+    let allocator = &mut SimpleAllocator::new();
+    let x = Element::alloc(dr, allocator, a)?;  // 1 gate
+    let y = Element::alloc(dr, allocator, b)?;  // reuses stash
     Ok(())
 })?;
 
-assert_eq!(sim.num_allocations(), 1);
-assert_eq!(sim.num_gates(), 1);
+assert_eq!(sim.num_gates(), 1);  // two allocations share one gate
 ```
 
 ### Resetting
@@ -89,14 +90,14 @@ isolates the cost of a specific operation from setup overhead:
 ```rust,ignore
 let sim = Simulator::simulate((x, z), |dr, witness| {
     let (x, z) = witness.cast();
-    let x = Element::alloc(dr, x)?;
-    let z = Element::alloc(dr, z)?;
+    let allocator = &mut SimpleAllocator::new();
+    let x = Element::alloc(dr, allocator, x)?;
+    let z = Element::alloc(dr, allocator, z)?;
 
     dr.reset();  // ignore allocation cost above
 
     dr.routine(evaluator.clone(), (x, z))?;
 
-    assert_eq!(dr.num_allocations(), 0);
     assert_eq!(dr.num_gates(), 76);
     assert_eq!(dr.num_constraints(), 152);
 
@@ -133,13 +134,14 @@ Suppose you are writing a step that hashes two field elements with
 Poseidon, and you want to know whether it fits in `R<7>` (32 gates):
 
 ```rust,ignore
-use ragu_primitives::Simulator;
+use ragu_primitives::{Simulator, allocator::SimpleAllocator};
 use pasta_curves::Fp;
 
 let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
     let (a, b) = witness.cast();
-    let a = Element::alloc(dr, a)?;
-    let b = Element::alloc(dr, b)?;
+    let allocator = &mut SimpleAllocator::new();
+    let a = Element::alloc(dr, allocator, a)?;
+    let b = Element::alloc(dr, allocator, b)?;
 
     dr.reset();
 
@@ -175,11 +177,10 @@ around exact metric assertions so regressions are caught immediately.
 [`Simulator`]: ragu_primitives::Simulator
 [`Simulator::simulate`]: ragu_primitives::Simulator::simulate
 [`num_gates()`]: ragu_primitives::Simulator::num_gates
-[`num_allocations()`]: ragu_primitives::Simulator::num_allocations
 [`num_constraints()`]: ragu_primitives::Simulator::num_constraints
 [`reset()`]: ragu_primitives::Simulator::reset
 [`Rank`]: ragu_circuits::polynomials::Rank
 [`mul()`]: ragu_core::drivers::Driver::mul
-[`alloc()`]: ragu_core::drivers::Driver::alloc
+[`gate()`]: ragu_core::drivers::DriverTypes::gate
 [`enforce_zero()`]: ragu_core::drivers::Driver::enforce_zero
 [`Emulator`]: ragu_core::drivers::emulator::Emulator
