@@ -21,6 +21,7 @@
   - [The Primitives Standard Library](guide/standard_library.md) <!-- todo -->
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
+  - [Troubleshooting](guide/troubleshooting.md)
 - [Part II: Protocol Design]()
   - [Overview](protocol/index.md) <!-- todo -->
   - [Preliminaries]()
