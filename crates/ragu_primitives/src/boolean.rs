@@ -114,6 +114,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     pub fn conditional_enforce_equal(
         &self,
         dr: &mut D,
+        allocator: &mut impl crate::allocator::Allocator<'dr, D>,
         a: &Element<'dr, D>,
         b: &Element<'dr, D>,
     ) -> Result<()> {
@@ -122,8 +123,23 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         // - When condition = 1: a - b = 0
         // - When condition = 0: 0 = 0 (trivially satisfied)
         let diff = a.sub(dr, b);
-        let product = self.element().mul(dr, &diff)?;
-        product.enforce_zero(dr)
+
+        let (cond_wire, diff_wire, zero_wire, extra) = dr.gate(|| {
+            Ok((
+                self.value().coeff().take(),
+                diff.value().arbitrary().take(),
+                Coeff::Zero,
+            ))
+        })?;
+
+        dr.enforce_equal(&cond_wire, self.wire())?;
+        dr.enforce_equal(&diff_wire, diff.wire())?;
+        dr.enforce_zero(|lc| lc.add(&zero_wire))?;
+
+        // $C = 0$ makes the $D$ wire unconstrained; donate it.
+        allocator.donate(extra);
+
+        Ok(())
     }
 
     /// Returns the witness value of this boolean.
@@ -389,7 +405,7 @@ fn test_conditional_enforce_equal() -> Result<()> {
         let b = Element::alloc(dr, allocator, b)?;
 
         dr.reset();
-        cond.conditional_enforce_equal(dr, &a, &b)?;
+        cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
         Ok(())
     })?;
 
@@ -404,7 +420,7 @@ fn test_conditional_enforce_equal() -> Result<()> {
         let a = Element::alloc(dr, allocator, a)?;
         let b = Element::alloc(dr, allocator, b)?;
 
-        cond.conditional_enforce_equal(dr, &a, &b)?;
+        cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
         Ok(())
     })?;
 
