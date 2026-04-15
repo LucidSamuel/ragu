@@ -244,6 +244,141 @@ let (a, b, c) = dr.mul(|| {
 let x_ref = x.value().as_ref();
 ```
 
+## Circuit Patterns: Common Mistakes {#circuit-patterns}
+
+### Branching Without `Boolean` {#branching}
+
+Arithmetic circuits have no `if/else`. A common mistake is trying
+to conditionally execute different circuit paths:
+
+```rust,ignore
+// WRONG — both branches always execute and allocate gates
+if *condition.value().snag() {
+    a.mul(dr, &b)?;
+} else {
+    a.add(dr, &c);
+}
+```
+
+Both branches are synthesized regardless of the runtime value. The
+constraint system sees every gate from both paths.
+
+**Fix**: Use [`Boolean::conditional_select`] to choose between two
+already-computed values:
+
+```rust,ignore
+let result_a = a.mul(dr, &b)?;
+let result_b = a.add(dr, &c);
+let result = condition.conditional_select(dr, &result_b, &result_a)?;
+```
+
+This costs one extra gate (the select) but produces a single
+well-defined output wire. For conditional equality enforcement,
+use [`Boolean::conditional_enforce_equal`].
+
+### Forgetting That `add()` Is Free {#add-is-free}
+
+Linear operations (`add`, `sub`, `scale`, `negate`) create virtual
+wires with **zero gate cost**. Only `mul()`, `gate()`, and
+allocation consume gates. A common over-optimization is trying to
+batch additions into multiplications.
+
+```rust,ignore
+// Unnecessary: this uses a gate
+let sum = a.mul(dr, &Element::one())?;
+
+// Free: no gate cost
+let sum = a.add(dr, &b);
+```
+
+### Division by Potentially-Zero Elements {#div-zero}
+
+`Element::div_nonzero` and `Element::invert` both return
+`InvalidWitness("division by zero")` when the denominator is zero.
+The constraint is: the prover witnesses a quotient such that
+`quotient * denominator = numerator`. When the denominator is zero,
+the quotient is unconstrained — the prover can put anything there.
+
+**Fix**: If the denominator might be zero, check with
+`Element::is_zero` first and handle the zero case explicitly.
+
+## Poseidon Sponge Errors {#poseidon}
+
+### Squeezing an Empty Sponge {#empty-sponge}
+
+```text
+initialization failed: cannot squeeze from empty sponge:
+    no values absorbed
+```
+
+**Cause**: `sponge.squeeze()` was called before any
+`sponge.absorb()`. The sponge has no data to permute.
+
+**Fix**: Always absorb at least one value before squeezing:
+
+```rust,ignore
+let mut sponge = Sponge::new(dr, &poseidon_params);
+sponge.absorb(dr, &value)?;  // required before squeeze
+let hash = sponge.squeeze(dr)?;
+```
+
+### `SaveError::AlreadyInSqueezeMode` {#save-squeeze}
+
+```text
+sponge is already in squeeze mode
+```
+
+**Cause**: `sponge.save_state()` was called after the sponge had
+already transitioned to squeeze mode. The save/resume mechanism
+captures the post-permutation state, which only makes sense during
+the absorb phase.
+
+**Fix**: Call `save_state()` after absorbing but before squeezing:
+
+```rust,ignore
+sponge.absorb(dr, &value)?;
+let state = sponge.save_state(dr)?;  // OK — still absorbing
+// Later:
+let mut sponge = Sponge::resume(state, &poseidon_params);
+let hash = sponge.squeeze(dr)?;
+```
+
+### `SaveError::NothingAbsorbed` {#save-empty}
+
+```text
+no values have been absorbed
+```
+
+**Cause**: `save_state()` was called on a fresh sponge with nothing
+absorbed. There is no meaningful state to save.
+
+**Fix**: Absorb at least one value before saving.
+
+### Absorbing After Resume Without Squeezing {#resume-absorb}
+
+This is not an error — it silently produces a wrong hash.
+
+When you resume a sponge, it enters squeeze mode. If you absorb
+before squeezing, the sponge switches back to absorb mode,
+discarding the squeeze-mode state. The resulting hash differs from
+what you would get by absorbing continuously.
+
+```rust,ignore
+// WRONG — absorbing before squeezing after resume
+let state = sponge.save_state(dr)?;
+let mut sponge = Sponge::resume(state, &params);
+sponge.absorb(dr, &extra_value)?;  // switches back to absorb
+let hash = sponge.squeeze(dr)?;    // different from expected
+
+// CORRECT — squeeze first, then start a new absorb cycle
+let mut sponge = Sponge::resume(state, &params);
+let challenge = sponge.squeeze(dr)?;
+// Now you can absorb again for a new round
+sponge.absorb(dr, &extra_value)?;
+```
+
 [`Error`]: ragu_core::Error
 [`Rank`]: ragu_circuits::polynomials::Rank
 [`SimpleAllocator`]: ragu_primitives::allocator::SimpleAllocator
+[`Boolean::conditional_select`]: ragu_primitives::Boolean::conditional_select
+[`Boolean::conditional_enforce_equal`]: ragu_primitives::Boolean::conditional_enforce_equal
