@@ -75,7 +75,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
   reimplementation :=
-    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams 0
+    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
+      (Circuits.Core.AllocMul.readRow · 0)
 
   same_constraints := by
     intro input
