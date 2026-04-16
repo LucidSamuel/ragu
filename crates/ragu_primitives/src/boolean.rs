@@ -18,6 +18,7 @@ use ragu_core::{
 use crate::allocator::Standard;
 use crate::{
     Element, GadgetExt,
+    allocator::Allocator,
     consistent::Consistent,
     io::{Buffer, Write},
     promotion::{Demoted, Promotion},
@@ -114,7 +115,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     pub fn conditional_enforce_equal(
         &self,
         dr: &mut D,
-        allocator: &mut impl crate::allocator::Allocator<'dr, D>,
+        allocator: &mut impl Allocator<'dr, D>,
         a: &Element<'dr, D>,
         b: &Element<'dr, D>,
     ) -> Result<()> {
@@ -122,21 +123,21 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         // Equivalent to: condition * (a - b) == 0
         // - When condition = 1: a - b = 0
         // - When condition = 0: 0 = 0 (trivially satisfied)
-        let diff = a.sub(dr, b);
-
         let (cond_wire, diff_wire, zero_wire, extra) = dr.gate(|| {
             Ok((
                 self.value().coeff().take(),
-                diff.value().arbitrary().take(),
+                D::just(|| **a.value().snag() - **b.value().snag())
+                    .arbitrary()
+                    .take(),
                 Coeff::Zero,
             ))
         })?;
 
         dr.enforce_equal(&cond_wire, self.wire())?;
-        dr.enforce_equal(&diff_wire, diff.wire())?;
+        dr.enforce_zero(|lc| lc.add(&diff_wire).sub(a.wire()).add(b.wire()))?;
         dr.enforce_zero(|lc| lc.add(&zero_wire))?;
 
-        // $C = 0$ makes the $D$ wire unconstrained; donate it.
+        // C = 0 makes the D wire unconstrained; donate it.
         allocator.donate(extra);
 
         Ok(())
@@ -163,7 +164,7 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
 /// Uses the standard inverse trick for zero checking in arithmetic circuits.
 pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     dr: &mut D,
-    allocator: &mut impl crate::allocator::Allocator<'dr, D>,
+    allocator: &mut impl Allocator<'dr, D>,
     x: &Element<'dr, D>,
 ) -> Result<Boolean<'dr, D>> {
     // We enforce the constraints:
@@ -191,7 +192,7 @@ pub(crate) fn is_zero<'dr, D: Driver<'dr>>(
     dr.enforce_equal(&x_wire, x.wire())?;
     dr.enforce_zero(|lc| lc.add(&zero_product))?;
 
-    // $C = 0$ makes the $D$ wire unconstrained; donate it.
+    // C = 0 makes the D wire unconstrained; donate it.
     allocator.donate(extra);
 
     // Constraint 2: x * inv = 1 - is_zero.
