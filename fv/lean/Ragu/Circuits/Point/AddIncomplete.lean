@@ -100,7 +100,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   constructor
   · intro h
     have h_neq : ¬input_P2_x = input_P1_x := Ne.symm h
-    specialize c2 h_neq
+    specialize c2 (by simp [h_neq])
     rw [c2, c3, c2] at c4
     rw [c2] at c3
     rw [c4, c3]
