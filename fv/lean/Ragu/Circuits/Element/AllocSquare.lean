@@ -9,12 +9,6 @@ structure Square (F : Type) where
   a_sq : F
 deriving ProvableStruct
 
-/-- Read one field element from ProverData; used as the `a` value in the squaring witness.
-    Kept as a convenience hint constructor for callers that still identify the witness by
-    a numeric offset. -/
-def readInput (data : ProverData (F p)) (idx : ℕ) : F p :=
-  ((data "alloc_square_w" 1).getD idx default)[0]
-
 def main (hint : ProverData (F p) → F p) (_input : Unit) : Circuit (F p) (Var Square (F p)) := do
   let ⟨x, y, z⟩ ← (witness fun env =>
     let a := hint env.data

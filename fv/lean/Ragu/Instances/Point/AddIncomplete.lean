@@ -1,4 +1,5 @@
 import Ragu.Circuits.Point.AddIncomplete
+import Ragu.Circuits.Core.Hints
 import Ragu.Core
 
 namespace Ragu.Instances.Point.AddIncomplete

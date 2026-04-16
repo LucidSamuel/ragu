@@ -9,13 +9,6 @@ structure Row (F : Type) where
   z : F
 deriving ProvableStruct
 
-/-- Read the witness row from ProverData at the given index. Only x and y are read;
-    z = x * y is computed. Kept as a convenience hint constructor for callers that
-    still identify the witness by a numeric offset. -/
-def readRow (data : ProverData (F p)) (idx : ℕ) : Row (F p) :=
-  let v := (data "alloc_mul_w" 2).getD idx default
-  ⟨v[0], v[1], v[0] * v[1]⟩
-
 def main (hint : ProverData (F p) → Row (F p)) (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
   let ⟨x, y, z⟩ ← (witness fun env =>
     let r := hint env.data
