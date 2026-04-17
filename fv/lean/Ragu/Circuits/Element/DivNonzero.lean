@@ -33,11 +33,8 @@ instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
 theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
   circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
   ]
-  obtain ⟨h_mul, h_x, h_y⟩ := h_holds
-  rw [add_neg_eq_zero] at h_x h_y
-  intro h_y_ne
   grind
 
 theorem generalCompleteness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
