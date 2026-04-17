@@ -123,7 +123,7 @@ type Output = InternalNode;  // Produces InternalNode
 
 The key operations in a fuse step:
 1. **Encode inputs** - Convert input proof headers to circuit gadgets via
-   `Encoded::new(dr, left)?`
+   `Encoded::new(dr, &mut (), left)?`
 2. **Extract data** - Get header values with `.as_gadget()`
 3. **Combine** - Hash or process the data together
 4. **Encode output** - Package combined result as a new proof
@@ -135,12 +135,14 @@ These proofs are created using `app.fuse()`.
 When working with input proofs in a fuse step:
 
 ```rust
-let left = Encoded::new(dr, left)?;
-let right = Encoded::new(dr, right)?;
+let left = Encoded::new(dr, &mut (), left)?;
+let right = Encoded::new(dr, &mut (), right)?;
 ```
 
 The `Encoded::new()` call:
-- Converts the header data into circuit gadgets (allocates field elements)
+- Takes an allocator (`&mut ()` uses the default) that controls wire
+  allocation — see [Allocation](primitives/allocation.md)
+- Converts the header data into circuit gadgets
 - Makes the proof's header data available for use in circuit logic
 - Returns an `Encoded` proof that can be passed to the next step
 
@@ -175,7 +177,9 @@ impl<F: Field> Header<F> for LeafNode {
 **SUFFIX**: Unique identifier for this header type (used for type safety)
 **Data**: The native Rust type for this header's data
 **Output**: The gadget representation (circuit elements)
-**encode**: How to convert `Data` into `Output`
+**encode**: How to convert `Data` into `Output`. The `allocator` parameter
+controls how field elements are allocated; see
+[Allocation](primitives/allocation.md) for details on choosing an allocator.
 
 ## Common Patterns
 
