@@ -17,7 +17,7 @@ structure FormalCircuit (F : Type) [Field F] (Input Output : TypeMap)
 This structure is parameterized by a field `F`, and input/output shapes, which must be provable type maps.
 Let's go through all the fields of this structure:
 - `main` is the circuit body: it takes as input `Var Input F` and returns `(Var Output F)` wrapped in a `Circuit` monad.
-- `Assumptions` is the property that must be satisfied by the circuit's inputs. Soundness is provided as long as the caller can satisfy those assumptions.
+- `Assumptions` is the property that must be satisfied by the circuit's inputs. Soundness is provided as long as the verifier can be sure of those assumptions without relying on the circuit. Completeness is provided as long as the honest prover can be sure of those assumptions because of the way it has been operating.
 - `Spec` is a high-level property that the circuit ensures, and is typically some high-level relation between inputs and outputs.
 - `soundness` and `completeness` are proofs for the soundness and completeness properties, which we describe below.
 
