@@ -81,18 +81,12 @@ The division circuit enforces that the input `x` is equal to the third component
 
 Intuitively, to compute `x / y`, the prover witnesses the result `z`, and then checks that `z * y = x`.
 Notice that if the caller provides `y = 0`, the circuit makes no guarantees.
-To specify this behaviour, we can fill in the `Assumptions`, specifying that the caller must provide a non-zero `y` value.
+
+The property that is provided by the circuit is that, assuming either `x` or `y` is non-zero, the output is the result of the division of `x` and `y`.
 
 ```lean
-def Assumptions (input : Inputs (F p)) :=
-  input.y ≠ 0
-```
-
-The property that is provided by the circuit is that the output is the result of the division of `x` and `y`.
-
-```lean
-def Spec (input : Inputs (F p)) (out : field (F p)) :=
-  out = input.x / input.y
+def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
+  input.y ≠ 0 ∨ input.x ≠ 0 → out = input.x / input.y
 ```
 
 ## Soundness proof
@@ -100,7 +94,8 @@ def Spec (input : Inputs (F p)) (out : field (F p)) :=
 Let's start working on the soundness proof.
 
 ```lean
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
+theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
+    : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
   sorry
 ```
 
@@ -109,7 +104,8 @@ Lean will show a not particularly useful goal that we have to prove:
 ```lean
 p : ℕ
 inst✝ : Fact (Nat.Prime p)
-⊢ Soundness (F p) elaborated Assumptions Spec
+hint : ProverData (F p) → Core.AllocMul.Row (F p)
+⊢ GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec
 ```
 
 The first thing to do is invoking the `circuit_proof_start` tactic, that will set up the proof, and get rid of most of the machinery going on behind the scenes.
@@ -124,20 +120,20 @@ The proof state now becomes more interesting:
 ```lean
 p : ℕ
 inst✝ : Fact (Nat.Prime p)
+hint : ProverData (F p) → Core.AllocMul.Row (F p)
 i₀ : ℕ
 env : Environment (F p)
 input_x input_y : F p
-h_assumptions : input_y ≠ 0
 input_var_x input_var_y : Expression (F p)
 h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y
-h_holds : (Core.AllocMul.circuit.Assumptions (eval env ()) →
-    Core.AllocMul.circuit.Spec (eval env ())
-      { x := Expression.eval env (ElaboratedCircuit.output () i₀).x,
-        y := Expression.eval env (ElaboratedCircuit.output () i₀).y,
-        z := Expression.eval env (ElaboratedCircuit.output () i₀).z }) ∧
+h_holds : (Core.AllocMul.circuit hint).Spec (eval env ())
+    { x := Expression.eval env (ElaboratedCircuit.output () i₀).x,
+      y := Expression.eval env (ElaboratedCircuit.output () i₀).y,
+      z := Expression.eval env (ElaboratedCircuit.output () i₀).z }
+    env.data ∧
   input_x + -Expression.eval env (ElaboratedCircuit.output () i₀).z = 0 ∧
     input_y + -Expression.eval env (ElaboratedCircuit.output () i₀).y = 0
-⊢ Expression.eval env (ElaboratedCircuit.output () i₀).x = input_x / input_y
+⊢ GeneralSpec { x := input_x, y := input_y } (Expression.eval env (ElaboratedCircuit.output () i₀).x) env.data
 ```
 
 Let's describe every important hypothesis and the goal:
@@ -146,67 +142,43 @@ Let's describe every important hypothesis and the goal:
 - `h_holds` is the hypothesis that the constraints hold. Remember, we are trying to prove soundness: we need to prove that for every input, under the hypotheses that they satisfy the assumptions and constraints hold, the specification holds as well. 
 - The goal is the specification.
 
-First let's rename the elaborated output that is arising from the subcircuit call, and unpack the constraint hypothesis.
+Here, some mathematical contents are still hidden behind the symbols. `circuit_proof_start` can replace symbols with their definitions. Instead of just `circuit_proof_start`, the same tactic with arguments will show more interesting things.
 
 ```lean
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  set quotient := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).x
-  set denominator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).y
-  set numerator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).z
-  obtain ⟨c1, c2, c3⟩ := h_holds
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
+  ]
 ```
 
-Now the hypotheses are cleaner:
+Now the proof goal is more explicit:
 
 ```lean
-h_assumptions : input_y ≠ 0
-c1 : Core.AllocMul.circuit.Assumptions (eval env ()) →
-  Core.AllocMul.circuit.Spec (eval env ()) { x := quotient, y := denominator, z := numerator }
-c2 : input_x + -numerator = 0
-c3 : input_y + -denominator = 0
-⊢ quotient = input_x / input_y
+p : ℕ
+inst✝ : Fact (Nat.Prime p)
+hint : ProverData (F p) → Core.AllocMul.Row (F p)
+i₀ : ℕ
+env : Environment (F p)
+input_x input_y : F p
+input_var_x input_var_y : Expression (F p)
+h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y
+h_holds : Expression.eval env (Core.AllocMul.main hint () i₀).1.x * Expression.eval env (Core.AllocMul.main hint () i₀).1.y =
+    Expression.eval env (Core.AllocMul.main hint () i₀).1.z ∧
+  input_x + -Expression.eval env (Core.AllocMul.main hint () i₀).1.z = 0 ∧
+    input_y + -Expression.eval env (Core.AllocMul.main hint () i₀).1.y = 0
+⊢ input_y ≠ 0 ∨ input_x ≠ 0 → Expression.eval env (Core.AllocMul.main hint () i₀).1.x = input_x / input_y
 ```
 
-Let's discuss each circuit hypothesis:
-- `c1` is a constraint hypothesis derived by a subcircuit call. We will discuss compositionality later, but it is an implication: the `Spec` of the subcircuit is true, conditioned on the fact that the caller is able to discharge the `Assumptions` hypothesis. In this case, `Core.AllocMul.circuit` has no assumptions, so this can be discharged automatically.
-- `c2` and `c3` are direct translations of constraints derived by the two `assertZero` calls.
+We can see a big term `Expression.eval env (Core.AllocMul.main hint () i₀)` appears repeatedly, but all the ingredients are there. `h_input` is the assumption about the input. `h_holds` is what a verifier knows from constraints and the subcircuits.
 
-Let's simplify definitions and statements at constraints and at the goal:
+A single `grind` tactic finishes the proof.
 
 ```lean
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  set quotient := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).x
-  set denominator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).y
-  set numerator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).z
-  obtain ⟨c1, c2, c3⟩ := h_holds
-  simp [circuit_norm, Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec] at c1 c2 c3 ⊢
-```
-
-Now the proof state is simpler:
-
-```lean
-h_assumptions : input_y ≠ 0
-c2 : input_x + -numerator = 0
-c3 : input_y + -denominator = 0
-c1 : quotient * denominator = numerator
-⊢ quotient = input_x / input_y
-```
-
-At this point, it is just a matter of some standard algebraic manipulation, as all Clean-specific objects have been simplified away. The goal is closed by the following proof:
-
-```lean
-theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start
-  set quotient := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).x
-  set denominator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).y
-  set numerator := Expression.eval env (ElaboratedCircuit.output (self:=Core.AllocMul.elaborated) (F:=F p) () i₀).z
-  obtain ⟨c1, c2, c3⟩ := h_holds
-  simp [circuit_norm, Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec] at c1 c2 c3 ⊢
-  rw [add_neg_eq_zero] at c2 c3
-  rw [←c2, ←c3] at c1
-  apply eq_div_of_mul_eq <;> assumption
+theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
+    : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
+  ]
+  grind
 ```
 
 ## Completeness proof
