@@ -75,7 +75,7 @@ end Ragu.Circuits.Element.DivNonzero
 ```
 
 In this template we define the input shape, which is a structure with two inputs: `x` and `y`.
-The goal of the template is to return the division over the field `x / y`, as long as `y` is different than zero.
+The goal of the template is to return the division over the field `x / y`, as long as `x` or `y` is different from zero.
 The circuit invokes as a subcircuit `Core.AllocMul.circuit`, which allocates a triple `(a, b, c)` and enforces that `a * b = c`, returning the allocated triple to the caller.
 The division circuit enforces that the input `x` is equal to the third component of the triple, and that the input `y` is equal to the second component of the triple, returning the first component.
 
