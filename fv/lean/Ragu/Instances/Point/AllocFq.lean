@@ -1,44 +1,14 @@
 import Ragu.Circuits.Point.Alloc
+import Ragu.Instances.Autogen.Point.AllocFq
 import Ragu.Core
 
 namespace Ragu.Instances.Point.AllocFq
-open Core.Primes
-
-@[reducible]
-def p := Core.Primes.q
-
-@[reducible]
-def inputLen := 0
-
-@[reducible]
-def outputLen := 2
-
-set_option linter.unusedVariables false in
-def exportedOperations (input_var : Var (ProvableVector field inputLen) (F p)) : Operations (F p) := [
-  Operation.witness 3 (fun _env => default),
-  Operation.assert ((((var 0) * (var 1)) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 2)))),
-  Operation.assert (((var 0) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 1)))),
-  Operation.witness 3 (fun _env => default),
-  Operation.assert ((((var 3) * (var 4)) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 5)))),
-  Operation.assert (((var 3) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 0)))),
-  Operation.assert (((var 4) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 2)))),
-  Operation.witness 3 (fun _env => default),
-  Operation.assert ((((var 6) * (var 7)) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 8)))),
-  Operation.assert (((var 6) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 7)))),
-  Operation.assert ((((var 5) + ((0x0000000000000000000000000000000000000000000000000000000000000005 : Expression (F p)) * 1)) + ((0x40000000000000000000000000000000224698fc0994a8dd8c46eb2100000000 : Expression (F p)) * (var 8)))),
-]
-
-set_option linter.unusedVariables false in
-@[reducible]
-def exportedOutput (input_var : Var (ProvableVector field inputLen) (F p)) : Vector (Expression (F p)) outputLen := #v[
-  (var 0),
-  (var 6)
-]
+open Ragu.Instances.Autogen.Point.AllocFq
 
 set_option linter.unusedVariables false in
 def deserializeInput (input : Var (ProvableVector field inputLen) (F p)) : Var unit (F p) := ()
 
-def serializeOutput (output: Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) outputLen :=
+def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) outputLen :=
   #v[
     output.x,
     output.y

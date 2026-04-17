@@ -6,9 +6,9 @@ use crate::driver::ExtractionDriver;
 use crate::expr::Expr;
 use crate::instance::{CircuitInstance, WireCollector, WireDeserializer};
 
-pub struct PointAddInstance;
+pub struct PointAddIncompleteInstance;
 
-impl CircuitInstance for PointAddInstance {
+impl CircuitInstance for PointAddIncompleteInstance {
     type Field = Fp;
 
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {

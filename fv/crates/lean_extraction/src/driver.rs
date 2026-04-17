@@ -31,7 +31,7 @@ use crate::linexp::ExprLc;
 /// Wire index 0 is reserved for the constant-1 wire ([`Driver::ONE`]).
 /// Fresh allocations begin from index 1.
 ///
-/// After synthesis, the collected [`Op`]s are available via [`ops`].
+/// After synthesis, the collected [`Op`]s are available via [`Self::ops`].
 pub struct ExtractionDriver<F: Field> {
     /// Next wire index to assign on allocation.
     next_wire: usize,
@@ -69,6 +69,10 @@ impl<F: Field> ExtractionDriver<F> {
         self.next_input_wire += n;
         (start..start + n).map(Expr::InputVar).collect()
     }
+
+    pub fn input_wire_count(&self) -> usize {
+        self.next_input_wire
+    }
 }
 
 impl<F: Field> Default for ExtractionDriver<F> {
@@ -94,8 +98,8 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
 
     /// Allocates a single wire index and records a [`Op::Witness`] for it.
     ///
-    /// Overrides the default implementation (which would call [`mul`] and
-    /// waste two extra wire slots) to keep allocations compact.
+    /// Overrides the default implementation (which would call [`Driver::mul`]
+    /// and waste two extra wire slots) to keep allocations compact.
     fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<Expr<F>> {
         let idx = self.alloc_wire();
         self.ops.push(Op::Witness { count: 1 });
@@ -104,7 +108,7 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
 
     /// Returns a constant expression without allocating a wire.
     ///
-    /// Overrides the default to avoid the indirection through [`add`].
+    /// Overrides the default to avoid the indirection through [`Driver::add`].
     fn constant(&mut self, coeff: Coeff<F>) -> Expr<F> {
         Expr::Const(coeff)
     }
@@ -139,7 +143,7 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
     /// Builds a virtual wire as a symbolic expression.
     ///
     /// No wire index is allocated and no constraint is recorded. The returned
-    /// [`Expr`] can be used freely in subsequent [`mul`] and [`enforce_zero`]
+    /// [`Expr`] can be used freely in subsequent [`Driver::mul`] and [`Driver::enforce_zero`]
     /// calls.
     fn add(&mut self, lc: impl Fn(ExprLc<F>) -> ExprLc<F>) -> Expr<F> {
         lc(ExprLc::default()).into_expr()

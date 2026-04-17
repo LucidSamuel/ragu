@@ -6,9 +6,9 @@ use crate::driver::ExtractionDriver;
 use crate::expr::Expr;
 use crate::instance::{CircuitInstance, WireCollector, WireDeserializer};
 
-pub struct PointNegInstance;
+pub struct PointNegateInstance;
 
-impl CircuitInstance for PointNegInstance {
+impl CircuitInstance for PointNegateInstance {
     type Field = Fp;
 
     fn circuit(dr: &mut ExtractionDriver<Fp>) -> ragu_core::Result<Vec<Expr<Fp>>> {
@@ -19,8 +19,8 @@ impl CircuitInstance for PointNegInstance {
         let template = Point::constant(dr, EpAffine::generator())?;
         let input_point = WireDeserializer::new(input_wires).into_gadget(&template)?;
 
-        let point_neg = input_point.negate(dr);
+        let negated = input_point.negate(dr);
 
-        WireCollector::collect_from(&point_neg)
+        WireCollector::collect_from(&negated)
     }
 }

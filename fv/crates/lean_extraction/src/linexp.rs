@@ -10,12 +10,12 @@ use crate::expr::Expr;
 /// is folded into each new term as it is added, exactly matching the semantics
 /// of [`LinearExpression::gain`].
 ///
-/// Used as both `LCadd` (for virtual wires from [`Driver::add`]) and
-/// `LCenforce` (for constraints from [`Driver::enforce_zero`]).
+/// Used as both `LCadd` (for virtual wires from [`ragu_core::drivers::Driver::add`]) and
+/// `LCenforce` (for constraints from [`ragu_core::drivers::Driver::enforce_zero`]).
 pub struct ExprLc<F: Field> {
     /// Accumulated expression; `None` represents the additive identity (zero).
     expr: Option<Expr<F>>,
-    /// Current gain factor applied to every subsequent [`add_term`] call.
+    /// Current gain factor applied to every subsequent [`LinearExpression::add_term`] call.
     gain: Coeff<F>,
 }
 
