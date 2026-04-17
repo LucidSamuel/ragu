@@ -149,6 +149,13 @@ fn check_all(autogen_root: &Path) -> std::io::Result<bool> {
     let (path, expected) = generated_ragu_root(autogen_root);
     check_file("Ragu", path, expected, &mut mismatches)?;
 
+    if mismatches > 0 {
+        eprintln!(
+            "\n{mismatches} generated Lean file(s) out of date.\n\
+             hint: run `cargo run -p lean_extraction -- export` and commit the result."
+        );
+    }
+
     Ok(mismatches == 0)
 }
 
