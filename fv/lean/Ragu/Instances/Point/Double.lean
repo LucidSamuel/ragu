@@ -1,6 +1,5 @@
 import Ragu.Circuits.Point.Double
 import Ragu.Instances.Autogen.Point.Double
-import Ragu.Instances.Point.Hints
 import Ragu.Core
 
 namespace Ragu.Instances.Point.Double
