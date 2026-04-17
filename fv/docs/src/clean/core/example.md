@@ -31,7 +31,7 @@ def GeneralAssumptions (hint : ProverData (F p) → Core.AllocMul.Row (F p))
   r.y = input.y ∧ r.x * r.y = input.x ∧ (input.y ≠ 0 ∨ input.x = 0)
 
 def GeneralSpec (input : Inputs (F p)) (out : field (F p)) (_data : ProverData (F p)) :=
-  input.y ≠ 0 → out = input.x / input.y
+  input.y ≠ 0 ∨ input.x ≠ 0 → out = input.x / input.y
 
 instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
     : ElaboratedCircuit (F p) Inputs field where
@@ -41,13 +41,9 @@ instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
 theorem generalSoundness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Soundness (F p) (elaborated hint) GeneralSpec := by
   circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions, Core.AllocMul.Spec, GeneralSpec
   ]
-  obtain ⟨h_mul, h_x, h_y⟩ := h_holds
-  rw [add_neg_eq_zero] at h_x h_y
-  intro h_y_ne
-  rw [←h_x, ←h_y] at h_mul
-  exact eq_div_of_mul_eq h_y_ne h_mul
+  grind
 
 theorem generalCompleteness (hint : ProverData (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Completeness (F p) (elaborated hint) (GeneralAssumptions hint) := by
@@ -80,7 +76,7 @@ The circuit invokes as a subcircuit `Core.AllocMul.circuit`, which allocates a t
 The division circuit enforces that the input `x` is equal to the third component of the triple, and that the input `y` is equal to the second component of the triple, returning the first component.
 
 Intuitively, to compute `x / y`, the prover witnesses the result `z`, and then checks that `z * y = x`.
-Notice that if the caller provides `y = 0`, the circuit makes no guarantees.
+Notice that if the caller provides both `x = 0` and `y = 0`, the circuit makes no guarantees.
 
 The property that is provided by the circuit is that, assuming either `x` or `y` is non-zero, the output is the result of the division of `x` and `y`.
 
