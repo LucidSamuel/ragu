@@ -14,11 +14,10 @@ deriving ProvableStruct
 def main (input : Var Element (F p)) : Circuit (F p) (Var Element (F p)) := do
   let ⟨x⟩ := input
   return {
-    wire := ←subcircuit Mul.circuit ⟨x, x⟩
+    wire := ←Mul.circuit ⟨x, x⟩
   }
 
 def Assumptions (_input : Element (F p)) := True
-
 
 def Spec (input : Element (F p)) (out : Element (F p)) :=
   out.wire = input.wire^2
@@ -34,7 +33,7 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   ring
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
-  sorry
+  circuit_proof_start [Mul.circuit, Mul.Assumptions]
 
 def circuit : FormalCircuit (F p) Element Element :=
   { elaborated with Assumptions, Spec, soundness, completeness }

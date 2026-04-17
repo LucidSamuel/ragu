@@ -29,7 +29,7 @@ theorem soundness (curveParams : Spec.CurveParams p) : Soundness (F p) elaborate
 
 
 theorem completeness (curveParams : Spec.CurveParams p) : Completeness (F p) elaborated (Assumptions curveParams) := by
-  sorry
+  circuit_proof_start
 
 def circuit (curveParams : Spec.CurveParams p) : FormalCircuit (F p) Spec.Point Spec.Point :=
   {

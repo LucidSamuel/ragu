@@ -1,12 +1,14 @@
 use core::marker::PhantomData;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use ff::Field;
-use ragu_arithmetic::Coeff;
 use ragu_core::convert::WireMap;
 use ragu_core::gadgets::Gadget;
 
+use crate::codegen::{FieldExporter, render_autogen_module};
 use crate::driver::ExtractionDriver;
-use crate::expr::{Expr, Op};
+use crate::expr::Expr;
 
 /// A [`WireMap`] that collects all physical wires from a gadget by cloning
 /// them into a flat [`Vec`].
@@ -74,10 +76,9 @@ impl<F: Field> WireDeserializer<F> {
     /// Consume this deserializer and produce `template` with its wires replaced
     /// by the wires held in this deserializer.
     ///
-    /// # Panics
-    ///
-    /// Panics if the number of wires remaining in this deserializer does not
-    /// equal `template.num_wires()`.
+    /// Returns [`ragu_core::Error::VectorLengthMismatch`] if the number of
+    /// wires remaining in this deserializer does not equal
+    /// `template.num_wires()`.
     pub fn into_gadget<'dr, G>(mut self, template: &G) -> ragu_core::Result<G>
     where
         G: Gadget<'dr, ExtractionDriver<F>>,
@@ -85,11 +86,9 @@ impl<F: Field> WireDeserializer<F> {
     {
         let actual = self.wires.len();
         let expected = template.num_wires()?;
-        assert_eq!(
-            actual, expected,
-            "WireDeserializer: wire count mismatch \
-             (source FixedVec has {actual} wires, target gadget expects {expected})"
-        );
+        if actual != expected {
+            return Err(ragu_core::Error::VectorLengthMismatch { expected, actual });
+        }
         template.map(&mut self)
     }
 }
@@ -107,77 +106,46 @@ impl<F: Field> WireMap<F> for WireDeserializer<F> {
     }
 }
 
-fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
-    match c {
-        Coeff::Zero => "0".to_owned(),
-        Coeff::One => "1".to_owned(),
-        Coeff::Two => "2".to_owned(),
-        Coeff::NegativeOne => format!("({:?} : Expression CircuitField)", F::ONE.neg()),
-        Coeff::Arbitrary(f) => format!("({f:?} : Expression CircuitField)"),
-        Coeff::NegativeArbitrary(f) => format!("({:?} : Expression CircuitField)", f.neg()),
-    }
-}
-
-fn display_expr<F: Field + std::fmt::Debug>(expr: &Expr<F>) -> String {
-    match expr {
-        Expr::Var(i) => {
-            if *i == 0 {
-                "1".to_owned()
-            } else {
-                format!("(var {})", i - 1)
-            }
-        }
-        Expr::InputVar(i) => format!("(input_var.get {i})"),
-        Expr::Const(c) => display_coeff(c),
-        Expr::Add(l, r) => format!("({} + {})", display_expr(l), display_expr(r)),
-        Expr::Mul(l, r) => format!("({} * {})", display_expr(l), display_expr(r)),
-    }
-}
-
 /// A trait for circuit instances that can be extracted by the driver.
 pub trait CircuitInstance {
-    type Field: Field + std::fmt::Debug;
+    type Field: Field + std::fmt::Debug + FieldExporter;
 
     /// Run the circuit on `dr` and return its output.
     /// The output is a vector of expressions corresponding to the
     /// output wires in order. This must include all "interesting" wires for which we
     /// want to prove some properties about.
-    /// They have to be physical wires (i.e. `Expr::Var`) since virtual wires cannot be
-    /// referenced from outside the circuit.
     fn circuit(dr: &mut ExtractionDriver<Self::Field>)
     -> ragu_core::Result<Vec<Expr<Self::Field>>>;
 
-    /// Run the circuit and print the Lean definitions for operations and output.
-    fn export() {
+    fn render_generated(module_name: &str) -> String {
         let mut dr = ExtractionDriver::<Self::Field>::new();
         let wires = Self::circuit(&mut dr).expect("circuit failed");
+        render_autogen_module::<Self::Field>(module_name, dr.input_wire_count(), &dr.ops, &wires)
+    }
 
-        println!("set_option linter.unusedVariables false in");
-        println!(
-            "def exported_operations (input_var : Var Inputs CircuitField) : Operations CircuitField := ["
-        );
-        for op in &dr.ops {
-            match op {
-                Op::Witness { count } => {
-                    println!("  Operation.witness {count} (fun _env => default),");
-                }
-                Op::Assert(expr) => {
-                    println!("  Operation.assert ({}),", display_expr(expr));
-                }
-            }
+    fn autogen_file_path(module_name: &str, autogen_root: impl AsRef<Path>) -> PathBuf {
+        let mut path = autogen_root.as_ref().to_path_buf();
+        for segment in module_name.split('.') {
+            path.push(segment);
         }
-        println!("]");
-        println!();
+        path.set_extension("lean");
+        path
+    }
 
-        println!("set_option linter.unusedVariables false in");
-        println!("@[reducible]");
-        println!(
-            "def exported_output (input_var : Var Inputs CircuitField) : Vector (Expression CircuitField) {} := #v[",
-            wires.len()
-        );
-        for expr in wires.iter() {
-            println!("  {},", display_expr(expr));
+    fn generated_file(module_name: &str, autogen_root: impl AsRef<Path>) -> (PathBuf, String) {
+        (
+            Self::autogen_file_path(module_name, autogen_root),
+            Self::render_generated(module_name),
+        )
+    }
+
+    /// Run the circuit and write the generated Lean module to the autogen tree.
+    fn export(module_name: &str, autogen_root: impl AsRef<Path>) -> std::io::Result<PathBuf> {
+        let (path, contents) = Self::generated_file(module_name, autogen_root);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
         }
-        println!("]");
+        fs::write(&path, contents)?;
+        Ok(path)
     }
 }
