@@ -138,9 +138,8 @@ h_holds : (Core.AllocMul.circuit hint).Spec (eval env ())
 
 Let's describe every important hypothesis and the goal:
 - `input_x` and `input_y` are the input field elements.
-- `h_assumptions` is the hypothesis that `Assumptions` hold on the input. In this case it is `input_y ≠ 0`.
 - `h_holds` is the hypothesis that the constraints hold. Remember, we are trying to prove soundness: we need to prove that for every input, under the hypotheses that they satisfy the assumptions and constraints hold, the specification holds as well. 
-- The goal is the specification.
+- The goal is the specification (which contains the assumption x or y is nonzero)
 
 Here, some mathematical contents are still hidden behind the symbols. `circuit_proof_start` can replace symbols with their definitions. Instead of just `circuit_proof_start`, the same tactic with arguments will show more interesting things.
 
