@@ -18,6 +18,48 @@ use crate::instances::{
     point_negate::PointNegateInstance,
 };
 
+struct ExportTarget {
+    name: &'static str,
+    export: fn(&str, &Path) -> std::io::Result<PathBuf>,
+    generated_file: fn(&str, &Path) -> (PathBuf, String),
+}
+
+/// Single source of truth for every exported instance: both `export` and `check`
+static EXPORT_TARGETS: &[ExportTarget] = &[
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Point.AllocFp",
+        export: export_instance::<PointAllocInstanceFp>,
+        generated_file: generated_file_instance::<PointAllocInstanceFp>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Point.AllocFq",
+        export: export_instance::<PointAllocInstanceFq>,
+        generated_file: generated_file_instance::<PointAllocInstanceFq>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Point.Double",
+        export: export_instance::<PointDoubleInstance>,
+        generated_file: generated_file_instance::<PointDoubleInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Point.AddIncomplete",
+        export: export_instance::<PointAddInstance>,
+        generated_file: generated_file_instance::<PointAddInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Point.Negate",
+        export: export_instance::<PointNegateInstance>,
+        generated_file: generated_file_instance::<PointNegateInstance>,
+    },
+];
+
+impl ExportTarget {
+    fn root_import_name(&self) -> String {
+        // Drop only the first namespace marker
+        self.name.replacen(".Autogen", "", 1)
+    }
+}
+
 fn default_autogen_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../lean")
 }
@@ -58,19 +100,6 @@ fn generated_file_instance<I: CircuitInstance>(
     I::generated_file(module_name, autogen_root)
 }
 
-struct ExportTarget {
-    name: &'static str,
-    export: fn(&str, &Path) -> std::io::Result<PathBuf>,
-    generated_file: fn(&str, &Path) -> (PathBuf, String),
-}
-
-impl ExportTarget {
-    fn root_import_name(&self) -> String {
-        // Drop only the first namespace marker
-        self.name.replacen(".Autogen", "", 1)
-    }
-}
-
 fn generated_ragu_root(autogen_root: &Path) -> (PathBuf, String) {
     let path = autogen_root.join("Ragu.lean");
     let mut contents = EXPORT_TARGETS
@@ -81,35 +110,6 @@ fn generated_ragu_root(autogen_root: &Path) -> (PathBuf, String) {
     contents.push('\n');
     (path, contents)
 }
-
-/// Single source of truth for every exported instance: both `export` and `check`
-static EXPORT_TARGETS: &[ExportTarget] = &[
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AllocFp",
-        export: export_instance::<PointAllocInstanceFp>,
-        generated_file: generated_file_instance::<PointAllocInstanceFp>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AllocFq",
-        export: export_instance::<PointAllocInstanceFq>,
-        generated_file: generated_file_instance::<PointAllocInstanceFq>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.Double",
-        export: export_instance::<PointDoubleInstance>,
-        generated_file: generated_file_instance::<PointDoubleInstance>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.AddIncomplete",
-        export: export_instance::<PointAddInstance>,
-        generated_file: generated_file_instance::<PointAddInstance>,
-    },
-    ExportTarget {
-        name: "Ragu.Instances.Autogen.Point.Negate",
-        export: export_instance::<PointNegateInstance>,
-        generated_file: generated_file_instance::<PointNegateInstance>,
-    },
-];
 
 fn export_all(autogen_root: &Path) -> std::io::Result<()> {
     for target in EXPORT_TARGETS {
