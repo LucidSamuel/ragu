@@ -69,14 +69,14 @@ pub fn render_output_len(output_len: usize) -> String {
 pub fn render_exported_operations<F: Field + std::fmt::Debug>(ops: &[Op<F>]) -> String {
     let mut output = String::from(
         "set_option linter.unusedVariables false in\n\
-def exportedOperations (input_var : Var (ProvableVector field inputLen) (F p)) : Operations (F p) := [\n",
+def exportedOperations (input_var : Var (ProvableVector field inputLen) (F p)) : Operations (F p) ProverHint := [\n",
     );
 
     for op in ops {
         match op {
             Op::Witness { count } => {
                 output.push_str(&format!(
-                    "  Operation.witness {count} (fun _env => default),\n"
+                    "  Operation.witness {count} (fun _env _hint => default),\n"
                 ));
             }
             Op::Assert(expr) => {
@@ -113,7 +113,7 @@ pub fn render_autogen_module<F: FieldExporter + std::fmt::Debug>(
     wires: &[Expr<F>],
 ) -> String {
     format!(
-        "import Ragu.Core\n\nnamespace {module_name}\nopen Core.Primes\n\n{}\n{}\n{}\n{}\n{}\n\nend {module_name}\n",
+        "import Ragu.Core\n\nnamespace {module_name}\nopen Core.Primes\n\nvariable {{ProverHint : Type}}\n\n{}\n{}\n{}\n{}\n{}\n\nend {module_name}\n",
         render_field_definition::<F>(),
         render_input_len(input_len),
         render_output_len(wires.len()),
