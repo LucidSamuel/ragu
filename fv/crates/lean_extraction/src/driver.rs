@@ -87,6 +87,68 @@ impl<F: Field> DriverTypes for ExtractionDriver<F> {
     type MaybeKind = Empty;
     type LCadd = ExprLc<F>;
     type LCenforce = ExprLc<F>;
+
+    /// Phantom token: the extractor does not model the $D$ wire of a gate.
+    ///
+    /// Production drivers allocate a fourth wire $D$ per gate with the
+    /// constraint $C \cdot D = 0$, available for reuse via
+    /// [`DriverTypes::assign_extra`] when $C$ is known to be zero. The
+    /// extractor intentionally under-models this: every
+    /// [`DriverTypes::gate`] call emits the old three-wire `mul` shape, and
+    /// [`DriverTypes::assign_extra`] allocates a single fresh wire with no
+    /// accompanying constraint (matching the old `Driver::alloc`). This keeps
+    /// the emitted Lean trace identical to what it was before the D-wire
+    /// redesign on main, at the cost of not modeling `C · D = 0` on the
+    /// extracted side.
+    type Extra = ();
+
+    /// Allocates three consecutive wire indices for a gate `(a, b, c)` and
+    /// records:
+    /// 1. [`Op::Witness`] for the three wires.
+    /// 2. [`Op::Assert`] for the multiplicative constraint `a · b − c = 0`.
+    ///
+    /// Under the [`DriverTypes::Extra`] shim, no fourth $D$ wire is allocated
+    /// and no `C · D = 0` constraint is emitted; the returned
+    /// [`DriverTypes::Extra`] token is `()`.
+    fn gate(
+        &mut self,
+        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
+    ) -> Result<(Expr<F>, Expr<F>, Expr<F>, ())> {
+        let a = self.alloc_wire();
+        let b = self.alloc_wire();
+        let c = self.alloc_wire();
+
+        self.ops.push(Op::Witness { count: 3 });
+
+        // a * b - c = 0
+        let constraint = Expr::Add(
+            Box::new(Expr::Mul(Box::new(Expr::Var(a)), Box::new(Expr::Var(b)))),
+            Box::new(Expr::Mul(
+                Box::new(Expr::Const(Coeff::NegativeOne)),
+                Box::new(Expr::Var(c)),
+            )),
+        );
+        self.ops.push(Op::Assert(constraint));
+
+        Ok((Expr::Var(a), Expr::Var(b), Expr::Var(c), ()))
+    }
+
+    /// Allocates a single fresh wire and records an [`Op::Witness`] for it.
+    ///
+    /// This preserves the old `Driver::alloc` semantics (one wire, no
+    /// constraint). The incoming [`DriverTypes::Extra`] token is `()` and
+    /// carries no information; production would interpret it as an override
+    /// of the $D$ wire's default zero assignment, but the extractor never
+    /// allocated a $D$ in the first place.
+    fn assign_extra(
+        &mut self,
+        _: (),
+        _: impl Fn() -> Result<Coeff<F>>,
+    ) -> Result<Expr<F>> {
+        let idx = self.alloc_wire();
+        self.ops.push(Op::Witness { count: 1 });
+        Ok(Expr::Var(idx))
+    }
 }
 
 impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
@@ -95,16 +157,6 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
 
     /// Wire 0 is always the constant-1 wire.
     const ONE: Expr<F> = Expr::Var(0);
-
-    /// Allocates a single wire index and records a [`Op::Witness`] for it.
-    ///
-    /// Overrides the default implementation (which would call [`Driver::mul`]
-    /// and waste two extra wire slots) to keep allocations compact.
-    fn alloc(&mut self, _: impl Fn() -> Result<Coeff<F>>) -> Result<Expr<F>> {
-        let idx = self.alloc_wire();
-        self.ops.push(Op::Witness { count: 1 });
-        Ok(Expr::Var(idx))
-    }
 
     /// Returns a constant expression without allocating a wire.
     ///
