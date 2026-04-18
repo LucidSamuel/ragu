@@ -100,6 +100,8 @@ If any constraint is violated, the two sides differ as polynomials in $y$ of
 degree at most $4n-1$, so by Schwartz–Zippel a random $y$ detects the
 violation with overwhelming probability.[^sz-constraint]
 
+## Combined Check {#verifiercheck}
+
 Ragu combines these checks into a single equation that establishes both with
 high probability for random $y, z \in \F$:
 
