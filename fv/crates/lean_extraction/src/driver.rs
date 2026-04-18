@@ -8,8 +8,10 @@ use ragu_core::{
     maybe::Empty,
 };
 
-use crate::expr::{Expr, Op};
-use crate::linexp::ExprLc;
+use crate::{
+    expr::{Expr, Op},
+    linexp::ExprLc,
+};
 
 /// A Ragu [`Driver`] that symbolically records all generated constraints.
 ///
@@ -17,10 +19,14 @@ use crate::linexp::ExprLc;
 /// values (`MaybeKind = Empty`). Instead it builds a symbolic representation
 /// of every constraint:
 ///
-/// - [`Driver::mul`] — allocates three fresh wire indices and records an
-///   [`Op::Assert`] for the multiplicative constraint `a · b − c = 0`.
-/// - [`Driver::alloc`] — allocates a single fresh wire index and records an
-///   [`Op::Witness`].
+/// - [`Driver::mul`] / [`DriverTypes::gate`] — allocate three fresh wire
+///   indices and record an [`Op::Assert`] for the multiplicative constraint
+///   `a * b − c = 0`. The gate does not allocate the auxiliary `D` wire or
+///   emit its `C * D = 0` constraint; see [`DriverTypes::Extra`] for the
+///   rationale.
+/// - [`DriverTypes::assign_extra`] — allocates a single fresh wire and
+///   records an [`Op::Witness`], preserving the pre-`gate` `alloc`
+///   semantics under the shim.
 /// - [`Driver::add`] — builds a virtual wire as a symbolic [`Expr`] tree
 ///   without allocating a new index or emitting any constraint.
 /// - [`Driver::enforce_zero`] — builds a symbolic [`Expr`] and records an
@@ -140,11 +146,7 @@ impl<F: Field> DriverTypes for ExtractionDriver<F> {
     /// carries no information; production would interpret it as an override
     /// of the $D$ wire's default zero assignment, but the extractor never
     /// allocated a $D$ in the first place.
-    fn assign_extra(
-        &mut self,
-        _: (),
-        _: impl Fn() -> Result<Coeff<F>>,
-    ) -> Result<Expr<F>> {
+    fn assign_extra(&mut self, _: (), _: impl Fn() -> Result<Coeff<F>>) -> Result<Expr<F>> {
         let idx = self.alloc_wire();
         self.ops.push(Op::Witness { count: 1 });
         Ok(Expr::Var(idx))

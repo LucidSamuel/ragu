@@ -3,9 +3,11 @@ use ragu_core::drivers::Driver;
 use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
 use ragu_primitives::Point;
 
-use crate::driver::ExtractionDriver;
-use crate::expr::Expr;
-use crate::instance::{CircuitInstance, WireCollector};
+use crate::{
+    driver::ExtractionDriver,
+    expr::Expr,
+    instance::{CircuitInstance, WireCollector},
+};
 
 pub struct PointAllocInstanceFp;
 

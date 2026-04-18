@@ -1,14 +1,17 @@
 use core::marker::PhantomData;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use ff::Field;
-use ragu_core::convert::WireMap;
-use ragu_core::gadgets::Gadget;
+use ragu_core::{convert::WireMap, gadgets::Gadget};
 
-use crate::codegen::{FieldExporter, render_autogen_module};
-use crate::driver::ExtractionDriver;
-use crate::expr::Expr;
+use crate::{
+    codegen::{FieldExporter, render_autogen_module},
+    driver::ExtractionDriver,
+    expr::Expr,
+};
 
 /// A [`WireMap`] that collects all physical wires from a gadget by cloning
 /// them into a flat [`Vec`].

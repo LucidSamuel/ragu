@@ -5,16 +5,19 @@ mod instance;
 mod instances;
 mod linexp;
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::ExitCode,
+};
 
 use clap::{Parser, Subcommand};
 use instance::CircuitInstance;
 
 use crate::instances::{
-    point_add_incomplete::PointAddIncompleteInstance, point_alloc::PointAllocInstanceFp,
-    point_alloc::PointAllocInstanceFq, point_double::PointDoubleInstance,
+    point_add_incomplete::PointAddIncompleteInstance,
+    point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
+    point_double::PointDoubleInstance,
     point_negate::PointNegateInstance,
 };
 

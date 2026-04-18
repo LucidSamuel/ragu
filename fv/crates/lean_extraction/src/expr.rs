@@ -12,8 +12,8 @@ use ragu_arithmetic::Coeff;
 ///   | mul   : Expression F → Expression F → Expression F
 /// ```
 ///
-/// Physical wires (allocated by [`ragu_core::drivers::Driver::mul`] and
-/// [`ragu_core::drivers::Driver::alloc`] on
+/// Physical wires (allocated by [`ragu_core::drivers::DriverTypes::gate`]
+/// and [`ragu_core::drivers::DriverTypes::assign_extra`] on
 /// [`super::driver::ExtractionDriver`]) are represented as [`Expr::Var`].
 /// Virtual wires (returned by [`ragu_core::drivers::Driver::add`]) are
 /// expression trees built by composing [`Expr::Add`] and [`Expr::Mul`] nodes.
