@@ -5,3 +5,4 @@ import Ragu.Instances.Point.AddIncomplete
 import Ragu.Instances.Point.Negate
 import Ragu.Instances.Element.Mul
 import Ragu.Instances.Element.Square
+import Ragu.Instances.Element.AllocSquare

@@ -1,3 +1,4 @@
+pub mod element_alloc_square;
 pub mod element_mul;
 pub mod element_square;
 pub mod point_add_incomplete;
