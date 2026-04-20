@@ -1,9 +1,10 @@
 # Simulator
 
-The [Concrete Drivers](concrete.md) page introduced the [`Simulator`] as a
-driver that executes circuit code natively while enforcing constraints and
-tracking metrics. This page covers its public API and shows how to use it
-to measure constraint costs before committing to a [`Rank`].
+The [Concrete Drivers](../drivers/concrete.md) page introduced the
+[`Simulator`] as a driver that executes circuit code natively while
+enforcing constraints and tracking metrics. This page covers its
+public API and shows how to use it to measure constraint costs
+before committing to a [`Rank`].
 
 ## Why Measure
 
@@ -17,9 +18,9 @@ Error::GateBoundExceeded { limit: 32 }
 
 The [`Simulator`] helps you catch this early. It runs circuit code exactly
 as the real synthesis drivers do, calling witness closures, enforcing gate
-constraints, and checking linear constraints but reports metrics instead of
-building a proof. You can then compare those counts against the rank limits
-before running the prover.
+constraints, and checking linear constraints, but reports metrics
+instead of building a proof. You can then compare those counts
+against the rank limits before running the prover.
 
 The simulator itself does **not** raise rank-bound errors. It gives you the
 numbers that let you detect the problem before later synthesis code turns it
@@ -39,12 +40,9 @@ committing to a rank.
 
 ## API
 
-[`Simulator`] is provided by `ragu_primitives` and re-exported at crate
-root.
-
 ### Construction
 
-```rust,ignore
+```rust
 use ragu_primitives::Simulator;
 
 // Standalone
@@ -70,10 +68,10 @@ After synthesis completes, two counters are available:
 | [`num_gates()`] | Multiplication gates | [`mul()`] / [`gate()`] |
 | [`num_constraints()`] | Linear constraints enforced | [`enforce_zero()`] |
 
-```rust,ignore
+```rust
 let sim = Simulator::simulate((a, b), |dr, witness| {
     let (a, b) = witness.cast();
-    let allocator = &mut SimpleAllocator::new();
+    let allocator = &mut Standard::new();
     let x = Element::alloc(dr, allocator, a)?;  // 1 gate
     let y = Element::alloc(dr, allocator, b)?;  // reuses stash
     Ok(())
@@ -87,10 +85,10 @@ assert_eq!(sim.num_gates(), 1);  // two allocations share one gate
 [`reset()`] zeroes all counters without discarding the driver state. This
 isolates the cost of a specific operation from setup overhead:
 
-```rust,ignore
+```rust
 let sim = Simulator::simulate((x, z), |dr, witness| {
     let (x, z) = witness.cast();
-    let allocator = &mut SimpleAllocator::new();
+    let allocator = &mut Standard::new();
     let x = Element::alloc(dr, allocator, x)?;
     let z = Element::alloc(dr, allocator, z)?;
 
@@ -110,7 +108,7 @@ run the operation under test, then assert on the counts.
 
 ## Constraint Checking
 
-The [`Simulator`] does not merely count, it verifies. Every gate checks
+The [`Simulator`] does not merely count; it verifies. Every gate checks
 $a \cdot b = c$, and every [`enforce_zero()`] checks that the linear
 combination evaluates to zero. A constraint violation returns
 `Error::InvalidWitness` immediately, pinpointing the failing operation.
@@ -133,13 +131,13 @@ its constraints are enforced.
 Suppose you are writing a step that hashes two field elements with
 Poseidon, and you want to know whether it fits in `R<7>` (32 gates):
 
-```rust,ignore
-use ragu_primitives::{Simulator, allocator::SimpleAllocator};
+```rust
+use ragu_primitives::{Simulator, allocator::Standard};
 use pasta_curves::Fp;
 
 let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
     let (a, b) = witness.cast();
-    let allocator = &mut SimpleAllocator::new();
+    let allocator = &mut Standard::new();
     let a = Element::alloc(dr, allocator, a)?;
     let b = Element::alloc(dr, allocator, b)?;
 

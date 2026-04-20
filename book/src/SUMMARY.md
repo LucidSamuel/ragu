@@ -12,7 +12,6 @@
     - [Witness Data](guide/drivers/witness.md)
     - [Linear Expressions](guide/drivers/linear.md)
     - [Concrete Drivers](guide/drivers/concrete.md)
-    - [Simulator](guide/drivers/simulator.md)
   - [Gadgets](guide/gadgets/index.md)
     - [Simple Gadgets](guide/gadgets/simple.md)
     - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
@@ -21,6 +20,7 @@
   - [Routines](guide/routines.md)
   - [Primitives](guide/primitives/index.md) <!-- todo -->
     - [Allocation](guide/primitives/allocation.md) <!-- todo -->
+    - [Simulator](guide/primitives/simulator.md)
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
 - [Part II: Protocol Design]()
