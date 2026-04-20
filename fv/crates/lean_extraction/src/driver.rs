@@ -167,33 +167,6 @@ impl<'dr, F: Field> Driver<'dr> for ExtractionDriver<F> {
         Expr::Const(coeff)
     }
 
-    /// Allocates three consecutive wire indices for the gate `(a, b, c)` and
-    /// records:
-    /// 1. [`Op::Witness`] for the three wires.
-    /// 2. [`Op::Assert`] for the multiplicative constraint `a · b − c = 0`.
-    fn mul(
-        &mut self,
-        _: impl Fn() -> Result<(Coeff<F>, Coeff<F>, Coeff<F>)>,
-    ) -> Result<(Expr<F>, Expr<F>, Expr<F>)> {
-        let a = self.alloc_wire();
-        let b = self.alloc_wire();
-        let c = self.alloc_wire();
-
-        self.ops.push(Op::Witness { count: 3 });
-
-        // a * b - c = 0
-        let constraint = Expr::Add(
-            Box::new(Expr::Mul(Box::new(Expr::Var(a)), Box::new(Expr::Var(b)))),
-            Box::new(Expr::Mul(
-                Box::new(Expr::Const(Coeff::NegativeOne)),
-                Box::new(Expr::Var(c)),
-            )),
-        );
-        self.ops.push(Op::Assert(constraint));
-
-        Ok((Expr::Var(a), Expr::Var(b), Expr::Var(c)))
-    }
-
     /// Builds a virtual wire as a symbolic expression.
     ///
     /// No wire index is allocated and no constraint is recorded. The returned
