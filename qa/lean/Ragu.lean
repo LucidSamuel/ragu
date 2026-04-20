@@ -3,3 +3,4 @@ import Ragu.Instances.Point.AllocFq
 import Ragu.Instances.Point.Double
 import Ragu.Instances.Point.AddIncomplete
 import Ragu.Instances.Point.Negate
+import Ragu.Instances.Element.Mul
