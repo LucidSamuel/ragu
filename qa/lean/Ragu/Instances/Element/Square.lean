@@ -24,7 +24,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  Spec input output := output = input^2
+  Spec (input : F p) (output : F p) := output = input * input
 
   reimplementation :=
     FormalCircuit.isGeneralFormalCircuit (F p) field field
@@ -32,11 +32,15 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, exportedOperations,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm,
       FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit, FormalCircuit.toSubcircuit,
+      deserializeInput, exportedOperations,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
+    repeat (constructor; rfl)
+    constructor
   same_output := by
     intro input
     simp [circuit_norm,
@@ -50,6 +54,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     dsimp only [FormalCircuit.isGeneralFormalCircuit,
       Circuits.Element.Square.circuit, Circuits.Element.Square.Assumptions,
       Circuits.Element.Square.Spec]
-    rfl
+    simp [sq]
 
 end Ragu.Instances.Element.Square

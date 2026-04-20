@@ -30,11 +30,14 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, exportedOperations,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm,
       GeneralFormalCircuit.toSubcircuit,
+      deserializeInput, exportedOperations,
       Circuits.Core.AllocMul.circuit,
       Circuits.Core.AllocMul.elaborated,
       Circuits.Core.AllocMul.main]
+    rfl
   same_output := by
     intro input
     simp [circuit_norm,
@@ -47,6 +50,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input output
     dsimp only [Circuits.Core.AllocMul.circuit,
       Circuits.Core.AllocMul.Spec]
-    rfl
+    aesop
 
 end Ragu.Instances.Core.AllocMul
