@@ -26,7 +26,7 @@ fn display_coeff<F: Field + std::fmt::Debug>(c: &Coeff<F>) -> String {
         Coeff::One => "1".to_owned(),
         Coeff::Two => "2".to_owned(),
         // TODO: make this work without the extra coercion to `F p` by making circuit_norm normalize negated expressions consistently
-        Coeff::NegativeOne => format!("((-1 : F p) : Expression (F p))"),
+        Coeff::NegativeOne => "((-1 : F p) : Expression (F p))".to_owned(),
         Coeff::Arbitrary(f) => format!("({f:?} : Expression (F p))"),
         Coeff::NegativeArbitrary(f) => format!("((-{f:?} : F p) : Expression (F p))"),
     }
