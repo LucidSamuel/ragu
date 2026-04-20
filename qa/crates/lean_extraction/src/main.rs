@@ -16,6 +16,7 @@ use instance::CircuitInstance;
 
 use crate::instances::{
     element_mul::ElementMulInstance,
+    element_square::ElementSquareInstance,
     point_add_incomplete::PointAddIncompleteInstance,
     point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
     point_double::PointDoubleInstance,
@@ -59,6 +60,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.Mul",
         export: export_instance::<ElementMulInstance>,
         generated_file: generated_file_instance::<ElementMulInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.Square",
+        export: export_instance::<ElementSquareInstance>,
+        generated_file: generated_file_instance::<ElementSquareInstance>,
     },
 ];
 
