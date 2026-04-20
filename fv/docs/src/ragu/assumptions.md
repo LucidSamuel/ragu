@@ -33,6 +33,8 @@ Anything other than the verified circuit is out of scope. Everything in the Rust
 
 All assumptions in the Lean need to be satisfied by the reality. For this, every argument and every hypothesis of the Lean theorem needs to correspond to a single value that exists or a proposition that holds. Otherwise, the Lean theorem is not applicable. If the theorem is applicable to the reality, the conclusion of the theorem holds for the arguments that satisfy the arguments and the hypotheses of the Lean theorem.
 
+Logically speaking, events in the past do not imply similar events happen in the future, so there is a possibility that the laws of physics do not hold. Assuming the laws of physics for the sake of explanation, electrical computers consume electricity and produce heat so that internal events of electrical computers can be highly predictable out of vastly many possibilities. It is just because of this special environment that very complicated logical formulas seem to describe events in the electrical computers. It is out of scope of any logical system to determine whether a statement is satisfied or not given a set of events. If that kind of interpretation is in place, only when the assumptions made in the logical system are satisfied, proofs in the logical system are meaningful.
+
 The completeness theorem in the Ragu Formal Verification does not guarantee that the honest prover implementation does produce a proof that passes the verification.
 
 If values in the circuit are copied or used somewhere else, the Ragu Formal Verification results are not applicable to the copied and used value in the new context (it's likely that the new context needs to constrain the copied value).
