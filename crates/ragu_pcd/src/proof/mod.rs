@@ -71,6 +71,36 @@ impl<C: Cycle, R: Rank, H: Header<C::CircuitField>> Clone for Pcd<C, R, H> {
     }
 }
 
+/// Stage rx polynomials from a child proof, stored so the verifier can
+/// check copying circuit claims.
+#[derive(Clone)]
+pub(crate) struct ChildStageRx<F: ff::PrimeField, R: Rank> {
+    pub points_stage: sparse::Polynomial<F, R>,
+    pub bridge_s_prime: sparse::Polynomial<F, R>,
+    pub bridge_inner_error: sparse::Polynomial<F, R>,
+    pub bridge_outer_error: sparse::Polynomial<F, R>,
+    pub bridge_ab: sparse::Polynomial<F, R>,
+    pub bridge_query: sparse::Polynomial<F, R>,
+    pub bridge_eval: sparse::Polynomial<F, R>,
+}
+
+impl<C: Cycle, R: Rank> Proof<C, R> {
+    /// Extract stage rx polynomials from this proof for storage as child
+    /// data in a parent proof.
+    pub(crate) fn as_child_stage_rx(&self) -> ChildStageRx<C::ScalarField, R> {
+        ChildStageRx {
+            points_stage: self.nested_points_rx.clone(),
+            bridge_s_prime: self.bridge_s_prime_rx.clone(),
+            bridge_inner_error: self.bridge_inner_error_rx.clone(),
+            // .0 = polynomial (these are (poly, commitment) tuples from cached_bridge!)
+            bridge_outer_error: self.bridge_outer_error_rx.0.clone(),
+            bridge_ab: self.bridge_ab_rx.0.clone(),
+            bridge_query: self.bridge_query_rx.0.clone(),
+            bridge_eval: self.bridge_eval_rx.0.clone(),
+        }
+    }
+}
+
 /// Represents a recursive proof for the correctness of some computation.
 ///
 /// All fields are flat (no nested component structs). Polynomial fields are
@@ -167,6 +197,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     bridge_ab_commitment: Cached<C::NestedCurve>,
     bridge_query_commitment: Cached<C::NestedCurve>,
     bridge_eval_commitment: Cached<C::NestedCurve>,
+
+    // Children's stage rx polynomials (for copying circuit claims)
+    pub(crate) child_left_stage_rx: ChildStageRx<C::ScalarField, R>,
+    pub(crate) child_right_stage_rx: ChildStageRx<C::ScalarField, R>,
 }
 
 impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {
@@ -216,11 +250,25 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
             BridgeQuery => &self.bridge_query_rx.0,
             BridgeF => &self.bridge_f_rx,
             BridgeEval => &self.bridge_eval_rx.0,
+            ChildPointsStage(side) => &self.child_stage_rx(side).points_stage,
+            ChildBridgeSPrime(side) => &self.child_stage_rx(side).bridge_s_prime,
+            ChildBridgeInnerError(side) => &self.child_stage_rx(side).bridge_inner_error,
+            ChildBridgeOuterError(side) => &self.child_stage_rx(side).bridge_outer_error,
+            ChildBridgeAB(side) => &self.child_stage_rx(side).bridge_ab,
+            ChildBridgeQuery(side) => &self.child_stage_rx(side).bridge_query,
+            ChildBridgeEval(side) => &self.child_stage_rx(side).bridge_eval,
         }
     }
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
+    fn child_stage_rx(&self, side: crate::internal::Side) -> &ChildStageRx<C::ScalarField, R> {
+        match side {
+            crate::internal::Side::Left => &self.child_left_stage_rx,
+            crate::internal::Side::Right => &self.child_right_stage_rx,
+        }
+    }
+
     /// Augment a recursive proof with some data, described by a [`Header`].
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data) -> Pcd<C, R, H> {
         Pcd { proof: self, data }
@@ -448,6 +496,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         ]);
         builder.set_nested_endoscalar_rx(ones_nested.clone());
         builder.set_nested_points_rx(ones_nested);
+
+        // Children's stage rx: a trivial proof is its own "child", so
+        // child rx must match the proof's own rx. Force lazy evaluation of
+        // cached bridges first so we can clone them.
+        let trivial_child = ChildStageRx {
+            points_stage: builder.nested_points_rx().clone(),
+            bridge_s_prime: builder.bridge_s_prime_rx().clone(),
+            bridge_inner_error: builder.bridge_inner_error_rx().clone(),
+            bridge_outer_error: builder
+                .bridge_outer_error_rx()
+                .expect("trivial bridge_outer_error_rx")
+                .clone(),
+            bridge_ab: builder
+                .bridge_ab_rx()
+                .expect("trivial bridge_ab_rx")
+                .clone(),
+            bridge_query: builder
+                .bridge_query_rx()
+                .expect("trivial bridge_query_rx")
+                .clone(),
+            bridge_eval: builder
+                .bridge_eval_rx()
+                .expect("trivial bridge_eval_rx")
+                .clone(),
+        };
+        builder.set_child_left_stage_rx(trivial_child.clone());
+        builder.set_child_right_stage_rx(trivial_child);
 
         // Challenges (all ones for trivial)
         builder.set_w(C::CircuitField::ONE);

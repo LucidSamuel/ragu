@@ -11,7 +11,7 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
-use crate::internal::endoscalar;
+use crate::internal::{Side, endoscalar};
 
 /// Number of curve points accumulated during `compute_p` for nested field
 /// endoscaling verification.
@@ -142,12 +142,26 @@ pub enum RxIndex {
     BridgeF,
     /// Bridge `eval` rx polynomial.
     BridgeEval,
+    /// Child proof's `PointsStage` rx polynomial (per-side, for copying).
+    ChildPointsStage(Side),
+    /// Child proof's `BridgeSPrime` rx polynomial (per-side, for copying).
+    ChildBridgeSPrime(Side),
+    /// Child proof's `BridgeInnerError` rx polynomial (per-side, for copying).
+    ChildBridgeInnerError(Side),
+    /// Child proof's `BridgeOuterError` rx polynomial (per-side, for copying).
+    ChildBridgeOuterError(Side),
+    /// Child proof's `BridgeAB` rx polynomial (per-side, for copying).
+    ChildBridgeAB(Side),
+    /// Child proof's `BridgeQuery` rx polynomial (per-side, for copying).
+    ChildBridgeQuery(Side),
+    /// Child proof's `BridgeEval` rx polynomial (per-side, for copying).
+    ChildBridgeEval(Side),
 }
 
 impl RxIndex {
     /// The number of rx components in the nested field,
     /// equal to the number of entries in [`RxIndex::ALL`].
-    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 10;
+    pub const NUM: usize = NUM_ENDOSCALING_STEPS + 24;
 
     /// All variants in canonical order (circuits, then stages).
     ///
@@ -177,6 +191,20 @@ impl RxIndex {
         push(&mut slots, &mut c, Self::BridgeQuery);
         push(&mut slots, &mut c, Self::BridgeF);
         push(&mut slots, &mut c, Self::BridgeEval);
+        push(&mut slots, &mut c, Self::ChildPointsStage(Side::Left));
+        push(&mut slots, &mut c, Self::ChildPointsStage(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeSPrime(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeSPrime(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeInnerError(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeInnerError(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeOuterError(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeOuterError(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeAB(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeAB(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeQuery(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeQuery(Side::Right));
+        push(&mut slots, &mut c, Self::ChildBridgeEval(Side::Left));
+        push(&mut slots, &mut c, Self::ChildBridgeEval(Side::Right));
         assert!(c == Self::NUM);
         slots
     }
