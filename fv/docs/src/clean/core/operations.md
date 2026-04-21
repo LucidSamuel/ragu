@@ -10,7 +10,7 @@ The flat representation is:
 
 ```lean
 inductive FlatOperation (F : Type) where
-  | witness : (m : ℕ) → (Environment F → Vector F m) → FlatOperation F
+  | witness : (m : ℕ) → (ProverEnvironment F → Vector F m) → FlatOperation F
   | assert : Expression F → FlatOperation F
   | lookup : Lookup F → FlatOperation F
 ```
@@ -35,7 +35,7 @@ For the non-flat operation, we add one `subcircuit` constructor:
 
 ```lean
 inductive Operation (F : Type) [Field F] where
-  | witness : (m : ℕ) → (compute : Environment F → Vector F m) → Operation F
+  | witness : (m : ℕ) → (compute : ProverEnvironment F → Vector F m) → Operation F
   | assert : Expression F → Operation F
   | lookup : Lookup F → Operation F
   | subcircuit : {n : ℕ} → Subcircuit F n → Operation F
@@ -50,9 +50,9 @@ A subcircuit call stores more than just a list of low-level operations:
 ```lean
 structure Subcircuit (F : Type) [Field F] (offset : ℕ) where
   ops : NestedOperations F
-  Soundness : VerifierEnvironment F → Prop
-  Completeness : Environment F → Prop
-  UsesLocalWitnesses : Environment F → Prop
+  Soundness : Environment F → Prop
+  Completeness : ProverEnvironment F → Prop
+  UsesLocalWitnesses : ProverEnvironment F → Prop
   localLength : ℕ
   ...
 ```

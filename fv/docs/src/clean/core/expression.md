@@ -1,6 +1,6 @@
 # Expressions and environment
 
-Circuits in Clean are written symbolically. The basic objects are `Variable`, `Expression`, and `Environment`.
+Circuits in Clean are written symbolically. The basic objects are `Variable`, `Expression`, and `ProverEnvironment`.
 
 ## Variables
 
@@ -40,11 +40,11 @@ instead of manually using constructors like `Expression.mul` and `Expression.add
 Clean uses two environment structures, depending on who is allowed to look inside:
 
 ```lean
-structure VerifierEnvironment (F : Type) where
+structure Environment (F : Type) where
   get : ℕ → F
   data : ProverData F
 
-structure Environment (F : Type) extends VerifierEnvironment F where
+structure ProverEnvironment (F : Type) extends Environment F where
   hint : ProverHint F
 ```
 
@@ -54,17 +54,17 @@ structure Environment (F : Type) extends VerifierEnvironment F where
 
 The split enforces that only the prover-facing side of the framework can see `hint`:
 
-- **Soundness-path** objects (expression evaluation, `ConstraintsHold.Soundness`, a subcircuit's `Soundness`, the `Spec` of a formal circuit) take a `VerifierEnvironment`. They have no way to depend on a hint.
-- **Completeness-path** objects (`ConstraintsHold.Completeness`, witness-generation callbacks, a subcircuit's `Completeness` and `UsesLocalWitnesses`) take the full `Environment`.
+- **Soundness-path** objects (expression evaluation, `ConstraintsHold.Soundness`, a subcircuit's `Soundness`, the `Spec` of a formal circuit) take a `Environment`. They have no way to depend on a hint.
+- **Completeness-path** objects (`ConstraintsHold.Completeness`, witness-generation callbacks, a subcircuit's `Completeness` and `UsesLocalWitnesses`) take the full `ProverEnvironment`.
 
-`Environment.toVerifierEnvironment` drops the hint and returns the verifier view. In Lean this is also registered as a coercion, so in many places the user can write `env : Environment F` where a `VerifierEnvironment F` is expected and Lean inserts the projection automatically; in the remaining cases the user writes `env.toVerifierEnvironment` explicitly.
+`ProverEnvironment.toEnvironment` drops the hint and returns the verifier view. In Lean this is also registered as a coercion, so in many places the user can write `env : ProverEnvironment F` where a `Environment F` is expected and Lean inserts the projection automatically; in the remaining cases the user writes `env.toEnvironment` explicitly.
 
 ## Evaluation
 
 Expressions are evaluated in a verifier environment:
 
 ```lean
-def eval (env : VerifierEnvironment F) : Expression F → F
+def eval (env : Environment F) : Expression F → F
   | var v => env.get v.index
   | const c => c
   | add x y => eval env x + eval env y

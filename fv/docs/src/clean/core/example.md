@@ -120,7 +120,7 @@ p : ℕ
 inst✝ : Fact (Nat.Prime p)
 idx : ℕ
 i₀ : ℕ
-env : VerifierEnvironment (F p)
+env : Environment (F p)
 input_x input_y : F p
 input_var_x input_var_y : Expression (F p)
 h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y
@@ -154,7 +154,7 @@ p : ℕ
 inst✝ : Fact (Nat.Prime p)
 idx : ℕ
 i₀ : ℕ
-env : VerifierEnvironment (F p)
+env : Environment (F p)
 input_x input_y : F p
 input_var_x input_var_y : Expression (F p)
 h_input : Expression.eval env input_var_x = input_x ∧ Expression.eval env input_var_y = input_y

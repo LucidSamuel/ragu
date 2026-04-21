@@ -81,7 +81,7 @@ The soundness statement is defined as:
 ```lean
 def Soundness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
     (Assumptions : Input F → Prop) (Spec : Input F → Output F → Prop) :=
-  ∀ offset : ℕ, ∀ env : VerifierEnvironment F,
+  ∀ offset : ℕ, ∀ env : Environment F,
   ∀ input_var : Var Input F, ∀ input : Input F, eval env input_var = input →
   Assumptions input →
   ConstraintsHold.Soundness env (circuit.main input_var |>.operations offset) →
@@ -92,9 +92,9 @@ def Soundness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
 Soundness is the main property provided in the **adversarial prover** case. It precisely defines what guarantees the constraints provide to the verifier, and aims at avoiding underconstrained circuits.
 Intuitively, we want to prove that for every possible assignment to variables, if the Assumptions on the inputs are true, and the constraints defined in the circuit hold, then also the Spec is true.
 
-More precisely, soundness states: take any offset and any possible `VerifierEnvironment` (i.e., any possible assignment from variables to field elements, plus the committed `ProverData`). Take any symbolic input, assume the input satisfies `Assumptions`, assume all circuit constraints hold, then that input/output pair satisfies `Spec`.
+More precisely, soundness states: take any offset and any possible `Environment` (i.e., any possible assignment from variables to field elements, plus the committed `ProverData`). Take any symbolic input, assume the input satisfies `Assumptions`, assume all circuit constraints hold, then that input/output pair satisfies `Spec`.
 
-Note that the environment here is a `VerifierEnvironment`, not the full `Environment`. The statement therefore quantifies only over what the verifier can see, so it cannot accidentally depend on the prover's `hint`.
+Note that the environment here is a `Environment`, not the full `ProverEnvironment`. The statement therefore quantifies only over what the verifier can see, so it cannot accidentally depend on the prover's `hint`.
 
 ## Completeness
 
@@ -103,7 +103,7 @@ The completeness statement is defined as:
 ```lean
 def Completeness (F : Type) [Field F] (circuit : ElaboratedCircuit F Input Output)
     (Assumptions : Input F → Prop) :=
-  ∀ offset : ℕ, ∀ env : Environment F, ∀ input_var : Var Input F,
+  ∀ offset : ℕ, ∀ env : ProverEnvironment F, ∀ input_var : Var Input F,
   env.UsesLocalWitnessesCompleteness offset (circuit.main input_var |>.operations offset) →
   ∀ input : Input F, eval env input_var = input →
   Assumptions input →

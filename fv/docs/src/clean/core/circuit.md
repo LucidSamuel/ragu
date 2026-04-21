@@ -41,7 +41,7 @@ The most important primitive operations for defining circuits are:
 
 ```lean
 def ProvableType.witness {α : TypeMap} [ProvableType α]
-    (compute : Environment F → α F) : Circuit F (α (Expression F)) :=
+    (compute : ProverEnvironment F → α F) : Circuit F (α (Expression F)) :=
   fun (offset : ℕ) =>
     let var := varFromOffset α offset
     (var, [.witness (size α) (fun env => compute env |> toElements)])
