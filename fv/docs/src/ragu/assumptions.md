@@ -28,17 +28,13 @@ Also, any gaps between the requirements (documented or undocumented, or even tho
 
 Lean and other proof assistants that are based on intuitionistic and classical logic suffer from a problem called [explosivity](https://plato.stanford.edu/archives/fall2017/entries/logic-paraconsistent/). From a contradiction about any topic, it is possible to prove all true and false statements. For this reason, when any one of arguments or hypotheses is false, a theorem in Lean does not carry any guarantees.
 
-Because of explosivity, approximations do not work well with Lean and other proof assistants. Just because a situation looks close to satisfy the hypotheses of a theorem, that doesn't mean that the situation is close to satisfy the conclusion of the theorem. The logic behind Lean and other proof assistants does not have the notion of degree of falsehood so any tiny gap between the reality and the formalization can be used to prove things that are utterly wrong.
+Because of explosivity, approximations do not work well with Lean and other proof assistants. Just because a situation looks close to satisfy the hypotheses of a theorem, that doesn't mean that the situation is close to satisfy the conclusion of the theorem. The logic behind Lean and other proof assistants does not have the notion of degree of falsehood so any tiny gap between the reality and the formalization can be used to prove things that are utterly wrong. If a situation doesn't satisfy any single hypothesis in a Lean theorem, the Lean theorem doesn't apply to the situation.
 
 It is difficult to list all potential gaps between the reality and the formalization. The same holds for potential gaps between the requirements and the formalization. The potential gaps listed are just some typical examples and not to be taken as exhaustive.
 
 Future changes might introduce new gaps.
 
 Anything other than the verified circuit is out of scope. Everything in the Rust source, the Rust compiler, the hardware, and the physical and social level is out of scope of formal verification. The mathematical theory behind the protocol is mostly out of scope. For example, the cryptographic reductions and the cryptographic assumptions are out of scope. The Rust implementation might behave in a nondeterministic way so that it might sometimes or always use different constraints from the constraints that it exports.
-
-All assumptions in the Lean need to be satisfied by the reality. For this, every argument and every hypothesis of the Lean theorem needs to correspond to a single value that exists or a proposition that holds. Otherwise, the Lean theorem is not applicable. If the theorem is applicable to the reality, the conclusion of the theorem holds for the arguments that satisfy the arguments and the hypotheses of the Lean theorem.
-
-Logically speaking, events in the past do not imply similar events happen in the future, so there is a possibility that the laws of physics do not hold. Assuming the laws of physics for the sake of explanation, electrical computers consume electricity and produce heat so that internal events of electrical computers can be highly predictable out of vastly many possibilities. It is just because of this special environment that very complicated logical formulas seem to describe events in the electrical computers. It is out of scope of any logical system to determine whether a statement is satisfied or not given a set of events. If that kind of interpretation is in place, only when the assumptions made in the logical system are satisfied, proofs in the logical system are meaningful.
 
 The completeness theorem in the Ragu Formal Verification does not guarantee that the honest prover implementation does produce a proof that passes the verification.
 
