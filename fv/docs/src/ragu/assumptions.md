@@ -25,6 +25,8 @@ The Ragu Formal Verification relies on some assumptions.
 Any gaps between the reality and the formalization can render the Ragu Formal Verification to be useless.
 Also, any gaps between the requirements and the formalizatioon can render the Ragu Formal Verification to be useless.
 
+Lean and other proof assistants that are based on intuitionistic and classical logic suffer from a problem called [explosivity](https://plato.stanford.edu/archives/fall2017/entries/logic-paraconsistent/). From a contradiction about any topic, it is possible to prove all true and false statements. For this reason, when any one of arguments or hypotheses is false, a theorem in Lean does not carry any guarantees.
+
 It is difficult to list all potential gaps between the reality and the formalization. The same holds for potential gaps between the requirements and the formalization. The potential gaps listed are just some typical examples and not to be taken as exhaustive.
 
 Future changes might introduce new gaps.
