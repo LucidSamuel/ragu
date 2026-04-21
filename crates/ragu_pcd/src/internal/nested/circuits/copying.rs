@@ -67,7 +67,7 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         _witness: DriverValue<D, ()>,
     ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
         let dr = dr.skip_stage::<EndoscalarStage>()?;
-        let (_points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
+        let (points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
         let (preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
         let (s_prime_guard, dr) = dr.add_stage::<stages::s_prime::Stage<C, R>>()?;
         let (inner_error_guard, dr) = dr.add_stage::<stages::inner_error::Stage<C, R>>()?;
@@ -83,6 +83,7 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
                 _witness.as_ref().map(|_| unreachable!())
             };
         }
+        let points = points_guard.unenforced(dr, w!())?;
         let preamble = preamble_guard.unenforced(dr, w!())?;
         let s_prime = s_prime_guard.unenforced(dr, w!())?;
         let inner_error = inner_error_guard.unenforced(dr, w!())?;
@@ -115,6 +116,14 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
             .stashed_registry_xy
             .enforce_equal(dr, &query.registry_xy)?;
         child.stashed_eval.enforce_equal(dr, &eval.native_eval)?;
+
+        // P: the child's accumulated p commitment is the last interstitial
+        // of the child's PointsStage.
+        let last_interstitial = points
+            .interstitials
+            .last()
+            .expect("NUM_ENDOSCALING_POINTS guarantees >= 1 interstitial");
+        child.stashed_p.enforce_equal(dr, last_interstitial)?;
 
         Ok(WithAux::new((), D::unit()))
     }
