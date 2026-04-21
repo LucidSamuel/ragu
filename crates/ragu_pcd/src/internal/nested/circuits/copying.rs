@@ -21,7 +21,8 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::Bound,
+    gadgets::{Bound, Gadget},
+    maybe::Maybe,
 };
 
 use crate::internal::{
@@ -65,19 +66,37 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         _witness: DriverValue<D, ()>,
     ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
-        // `side` is recorded for future enforce_equal dispatch.
-        let _ = self.side;
         let dr = dr.skip_stage::<EndoscalarStage>()?;
         let (_points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
-        let (_preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
-        let dr = dr.skip_stage::<stages::s_prime::Stage<C, R>>()?;
+        let (preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
+        let (s_prime_guard, dr) = dr.add_stage::<stages::s_prime::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::inner_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::outer_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::ab::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::query::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::f::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::eval::Stage<C, R>>()?;
-        let _dr = dr.finish();
+        let dr = dr.finish();
+
+        macro_rules! w {
+            () => {
+                _witness.as_ref().map(|_| unreachable!())
+            };
+        }
+        let preamble = preamble_guard.unenforced(dr, w!())?;
+        let s_prime = s_prime_guard.unenforced(dr, w!())?;
+
+        let child = match self.side {
+            Side::Left => &preamble.left,
+            Side::Right => &preamble.right,
+        };
+
+        // stashed_preamble: routes through this step's BridgeSPrime,
+        // which was enforced by loading to equal
+        // preamble.native_preamble at proof-generation time.
+        child
+            .stashed_preamble
+            .enforce_equal(dr, &s_prime.stashed_preamble)?;
 
         Ok(WithAux::new((), D::unit()))
     }
