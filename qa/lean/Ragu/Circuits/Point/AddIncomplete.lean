@@ -20,7 +20,7 @@ structure Outputs (F : Type) where
   nonzero : F
 deriving ProvableStruct
 
-def main (hint : ProverData (F p) → Core.AllocMul.Row (F p))
+def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Var Inputs (F p)) : Circuit (F p) (Var Outputs (F p)) := do
   let ⟨⟨x1, y1⟩, ⟨x2, y2⟩, nonzero⟩ := input
 
@@ -28,7 +28,7 @@ def main (hint : ProverData (F p) → Core.AllocMul.Row (F p))
   let tmp := x2 - x1
   let nonzero_out ← subcircuit Element.Mul.circuit ⟨nonzero, tmp⟩
 
-  let delta ← Element.DivNonzero.generalCircuit hint ⟨y2 - y1, tmp⟩
+  let delta ← Element.DivNonzero.generalCircuit hintReader ⟨y2 - y1, tmp⟩
 
   -- x3 = delta^2 - x1 - x2
   let delta2 ← subcircuit Element.Square.circuit delta
@@ -44,10 +44,10 @@ def main (hint : ProverData (F p) → Core.AllocMul.Row (F p))
   }
 
 def Assumptions (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    (input : Inputs (F p)) (data : ProverData (F p)) :=
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+    (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.P1.isOnCurve curveParams ∧ input.P2.isOnCurve curveParams ∧
-  Element.DivNonzero.GeneralAssumptions hint ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data
+  Element.DivNonzero.GeneralAssumptions hintReader ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Outputs (F p)) (_data : ProverData (F p)) :=
   input.P1.isOnCurve curveParams →
@@ -77,14 +77,14 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Out
     )
   )
 
-instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : ElaboratedCircuit (F p) Inputs Outputs where
-  main := main hint
+instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    ElaboratedCircuit (F p) Inputs Outputs where
+  main := main hintReader
   localLength _ := 12
 
 theorem soundness (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated hint) (Spec curveParams) := by
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
@@ -121,8 +121,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
     exact h1
 
 theorem completeness (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hint) (Assumptions curveParams hint) := by
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions curveParams hintReader) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
     Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralAssumptions,
@@ -132,13 +132,14 @@ theorem completeness (curveParams : Spec.CurveParams p)
   exact h_assumptions.2.2
 
 def circuit (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) : GeneralFormalCircuit (F p) Inputs Outputs :=
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit (F p) Inputs Outputs :=
   {
-    elaborated hint with
-    Assumptions := Assumptions curveParams hint,
+    elaborated hintReader with
+    Assumptions := Assumptions curveParams hintReader,
     Spec := Spec curveParams,
-    soundness := soundness curveParams hint,
-    completeness := completeness curveParams hint
+    soundness := soundness curveParams hintReader,
+    completeness := completeness curveParams hintReader
   }
 
 end Ragu.Circuits.Point.AddIncomplete

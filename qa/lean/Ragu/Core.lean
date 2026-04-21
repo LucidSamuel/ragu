@@ -36,7 +36,8 @@ namespace Ragu.Core.Statements
     replacing them with `default`. This allows comparing circuit
     structure (constraints) while ignoring witness generation,
     which is not faithfully reproduced in the circuit export. -/
-def FlatOperation.eraseCompute {F : Type} [Field F] : FlatOperation F → FlatOperation F
+def FlatOperation.eraseCompute {F : Type} [Field F] :
+    FlatOperation F → FlatOperation F
   | .witness m _ => .witness m (fun _ => default)
   | op => op
 

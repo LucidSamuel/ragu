@@ -1,5 +1,6 @@
 import Ragu.Circuits.Point.Alloc
 import Ragu.Instances.Autogen.Point.AllocFq
+import Ragu.Instances.Point.Hints
 import Ragu.Core
 
 namespace Ragu.Instances.Point.AllocFq
@@ -27,8 +28,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Spec input output := output.isOnCurve Circuits.Point.Spec.EqAffineParams
 
   reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams
-    (fun data => ((data "alloc_square_w" 1).getD 0 default)[0])
-    (fun data => ((data "alloc_square_w" 1).getD 2 default)[0])
+    (fun h => Hints.readSquareElem h 0 0)
+    (fun h => Hints.readSquareElem h 2 0)
 
   same_constraints := by
     intro input

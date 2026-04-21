@@ -9,15 +9,15 @@ import Ragu.Circuits.Point.Spec
 namespace Ragu.Circuits.Point.Double
 variable {p : ℕ} [Fact p.Prime] [NeZero (2 : F p)]
 
-def main (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    (input : Var Spec.Point (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
+def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (input : Var Spec.Point (F p))
+    : Circuit (F p) (Var Spec.Point (F p)) := do
   let ⟨x, y⟩ := input
 
   -- delta = 3x^2 / 2y
   let double_y := y + y
   let x2 ← subcircuit Element.Square.circuit x
   let x2_scaled := (3 : F p) * x2
-  let delta ← Element.DivNonzero.generalCircuit hint ⟨x2_scaled, double_y⟩
+  let delta ← Element.DivNonzero.generalCircuit hintReader ⟨x2_scaled, double_y⟩
 
   -- x3 = delta^2 - 2x
   let double_x := x + x
@@ -32,11 +32,11 @@ def main (hint : ProverData (F p) → Core.AllocMul.Row (F p))
   return ⟨x3, y3⟩
 
 def Assumptions (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    (input : Spec.Point (F p)) (data : ProverData (F p)) :=
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
+    (input : Spec.Point (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.isOnCurve curveParams ∧
   curveParams.noOrderTwoPoints ∧
-  Element.DivNonzero.GeneralAssumptions hint ⟨(3 : F p) * input.x^2, input.y + input.y⟩ data
+  Element.DivNonzero.GeneralAssumptions hintReader ⟨(3 : F p) * input.x^2, input.y + input.y⟩ data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
   input.isOnCurve curveParams →
@@ -47,14 +47,14 @@ def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output :
   ∧
   output.isOnCurve curveParams
 
-instance elaborated (hint : ProverData (F p) → Core.AllocMul.Row (F p))
-    : ElaboratedCircuit (F p) Spec.Point Spec.Point where
-  main := main hint
+instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    ElaboratedCircuit (F p) Spec.Point Spec.Point where
+  main := main hintReader
   localLength _ := 12
 
 theorem soundness (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated hint) (Spec curveParams) := by
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
@@ -89,8 +89,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
 
 omit [NeZero (2 : F p)] in
 theorem completeness (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hint) (Assumptions curveParams hint) := by
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions curveParams hintReader) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
     Element.DivNonzero.generalCircuit, Element.DivNonzero.GeneralAssumptions,
@@ -102,13 +102,14 @@ theorem completeness (curveParams : Spec.CurveParams p)
   exact h_assumptions.2.2
 
 def circuit (curveParams : Spec.CurveParams p)
-    (hint : ProverData (F p) → Core.AllocMul.Row (F p)) : GeneralFormalCircuit (F p) Spec.Point Spec.Point :=
+    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+    GeneralFormalCircuit (F p) Spec.Point Spec.Point :=
   {
-    elaborated hint with
-    Assumptions := Assumptions curveParams hint,
+    elaborated hintReader with
+    Assumptions := Assumptions curveParams hintReader,
     Spec := Spec curveParams,
-    soundness := soundness curveParams hint,
-    completeness := completeness curveParams hint
+    soundness := soundness curveParams hintReader,
+    completeness := completeness curveParams hintReader
   }
 
 end Ragu.Circuits.Point.Double
