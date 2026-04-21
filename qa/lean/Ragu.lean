@@ -13,6 +13,7 @@ import Ragu.Instances.Element.Negate
 import Ragu.Instances.Element.Add
 import Ragu.Instances.Element.Sub
 import Ragu.Instances.Element.Double
+import Ragu.Instances.Element.Sum
 import Ragu.Instances.Element.Scale
 import Ragu.Instances.Element.AddCoeff
 import Ragu.Instances.Element.EnforceZero

@@ -13,6 +13,7 @@ pub mod element_negate;
 pub mod element_scale;
 pub mod element_square;
 pub mod element_sub;
+pub mod element_sum;
 pub mod point_add_incomplete;
 pub mod point_alloc;
 pub mod point_double;
