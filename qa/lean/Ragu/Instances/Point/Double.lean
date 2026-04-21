@@ -20,9 +20,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
+  -- Read the DivNonzero witness row from index 0 of `"alloc_mul_w"`.
   reimplementation :=
     Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
-      (Circuits.Core.AllocMul.readRow · 0)
+      (fun h => Hints.readRow h 0)
 
   same_constraints := by
     intro input

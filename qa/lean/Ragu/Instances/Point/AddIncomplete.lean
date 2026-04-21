@@ -30,7 +30,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   reimplementation :=
     Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
-      (Circuits.Core.AllocMul.readRow · 0)
+      (fun h => Hints.readRow h 0)
 
   same_constraints := by
     intro input
