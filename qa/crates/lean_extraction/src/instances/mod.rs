@@ -1,4 +1,5 @@
 pub mod core_alloc_mul;
+pub mod element_add;
 pub mod element_alloc_square;
 pub mod element_div_nonzero;
 pub mod element_mul;

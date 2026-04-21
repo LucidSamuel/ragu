@@ -16,6 +16,7 @@ use instance::CircuitInstance;
 
 use crate::instances::{
     core_alloc_mul::CoreAllocMulInstance,
+    element_add::ElementAddInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
     element_mul::ElementMulInstance,
@@ -90,6 +91,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.Negate",
         export: export_instance::<ElementNegateInstance>,
         generated_file: generated_file_instance::<ElementNegateInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.Add",
+        export: export_instance::<ElementAddInstance>,
+        generated_file: generated_file_instance::<ElementAddInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Core.AllocMul",

@@ -9,4 +9,5 @@ import Ragu.Instances.Element.Square
 import Ragu.Instances.Element.AllocSquare
 import Ragu.Instances.Element.DivNonzero
 import Ragu.Instances.Element.Negate
+import Ragu.Instances.Element.Add
 import Ragu.Instances.Core.AllocMul
