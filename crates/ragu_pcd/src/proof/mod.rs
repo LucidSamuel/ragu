@@ -478,14 +478,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         builder.set_native_outer_collapse_rx(ones_host.clone());
         builder.set_native_compute_v_rx(ones_host.clone());
 
-        // Non-cached bridge polynomials: all computed via Stage::rx so
-        // that traces are valid for their witnesses (not just ones).
-        // Cached bridges (outer_error, ab, query, eval) are computed
-        // lazily by the builder via cached_bridge! using Stage::rx.
+        // Bridge polynomials: compute via Stage::rx() with trivial witnesses
+        // so that traces are valid for their witnesses (not just ones).
+        // Cached bridges (outer_error, ab, query, eval) are already computed
+        // lazily by the builder via cached_bridge! with proper witnesses.
         //
-        // Order: s_prime, inner_error, f first (independent of
-        // p_commitment), then endoscaling (computes p_commitment),
-        // then preamble (needs p_commitment for ChildWitness.p).
+        // Order: s_prime, inner_error, f first (independent of p_commitment),
+        // then endoscaling (computes p_commitment), then preamble (needs
+        // p_commitment for ChildWitness.p), then native_p_poly.
         let nested_gen = C::nested_generators(self.params);
         {
             let rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(
@@ -524,9 +524,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
             builder.set_bridge_f_rx(rx, commitment);
         }
 
-        // Nested endoscaling: compute from dummy commitments so that the
-        // PointsStage trace is valid (Loading enforces initial == f.native_f
-        // at the first PointsStage position). Mirrors `compute_p` (_10_p.rs).
+        // Nested endoscaling: compute properly from dummy commitments so
+        // that PointsStage traces are valid (required for copying circuit).
+        // Mirrors the accumulation order in `compute_p` (_10_p.rs).
         let beta_endo = extract_endoscalar(C::CircuitField::ONE);
         let p_commitment = {
             let mut points = alloc::vec::Vec::with_capacity(NUM_ENDOSCALING_POINTS);
@@ -610,8 +610,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         // Set native_p_poly with the real accumulated commitment.
         builder.set_native_p_poly(ones_host, p_commitment);
 
-        // Preamble bridge: computed last because ChildWitness.stashed_p
-        // needs the real p_commitment from endoscaling.
+        // Preamble bridge: computed last because ChildWitness.p needs
+        // the real p_commitment from endoscaling.
         {
             let registry_xy_commitment = builder.native_registry_xy_commitment();
             let trivial_child_witness = nested::stages::preamble::ChildWitness {

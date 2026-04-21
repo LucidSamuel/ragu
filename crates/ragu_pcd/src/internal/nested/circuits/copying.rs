@@ -1,14 +1,15 @@
 //! Copying circuit for the nested section.
 //!
-//! Final form relates the current step's preamble to a child proof's
-//! bridge stages, ensuring that child commitments stashed in
-//! [`ChildWitness`](crate::internal::nested::stages::preamble::ChildWitness)
-//! match the actual values committed in the child's bridge stages. One
-//! instance per child proof ([`Side::Left`] and [`Side::Right`]).
+//! Relates the current fuse step's preamble to the child proof's stages,
+//! ensuring that child commitments stashed in
+//! [`ChildWitness`](crate::internal::nested::stages::preamble::ChildWitness) match the
+//! actual values committed in the child's bridge stages. One instance per
+//! child proof ([`Side::Left`] and [`Side::Right`]).
 //!
-//! In this initial commit the circuit's stage skeleton is in place but
-//! no `enforce_equal` calls fire — the bonding polynomial folds to zero
-//! so the `grouped_bonding_claim` passes trivially.
+//! The copying circuit loads the child's bridge stages in its own trace
+//! (no wire-position collision with loading, which loads the current
+//! step's stages) and enforces equality between each `ChildWitness`
+//! stash field and the corresponding child bridge stage field.
 
 use core::marker::PhantomData;
 
@@ -78,6 +79,8 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         let (eval_guard, dr) = dr.add_stage::<stages::eval::Stage<C, R>>()?;
         let dr = dr.finish();
 
+        // Load stage gadgets. Witness values are never accessed — the circuit
+        // only runs during `into_bonding_object` where MaybeKind = Empty.
         macro_rules! w {
             () => {
                 _witness.as_ref().map(|_| unreachable!())
@@ -92,11 +95,15 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         let query = query_guard.unenforced(dr, w!())?;
         let eval = eval_guard.unenforced(dr, w!())?;
 
+        // Select the child corresponding to this circuit's side.
         let child = match self.side {
             Side::Left => &preamble.left,
             Side::Right => &preamble.right,
         };
 
+        // Enforce that each ChildWitness stash field matches the
+        // corresponding child bridge stage field.
+        //
         // stashed_preamble: routes through this step's BridgeSPrime,
         // which was enforced by loading to equal
         // preamble.native_preamble at proof-generation time.

@@ -31,10 +31,9 @@ use crate::internal::{Side, endoscalar};
 /// Number of curve points accumulated during `compute_p` for nested field
 /// endoscaling verification.
 ///
-/// This is the sum of:
-/// - 2 proofs × 15 commitment components = 30
-/// - 6 stage proof components (registry_wx0, registry_wx1, registry_wy, ab.a, ab.b, registry_xy)
-/// - 1 f.commitment (base polynomial)
+/// This is the sum of per-child commitment components (for both proofs),
+/// current-step stage proof components, and the `f.commitment` base
+/// polynomial. See `_10_p` for the canonical accumulation order.
 ///
 /// The endoscaling circuits process these points across
 /// [`NUM_ENDOSCALING_STEPS`] steps.

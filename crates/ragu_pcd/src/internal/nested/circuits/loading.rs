@@ -1,11 +1,19 @@
 //! Loading circuit for the nested section.
 //!
-//! Final form walks every input of [`PointsStage`] and enforces equality
-//! against the corresponding bridge stage values in the same order that
-//! `compute_p` accumulates them. In this initial commit the circuit's
-//! stage skeleton is in place but no `enforce_equal` calls fire — the
-//! bonding polynomial folds to zero so the `grouped_bonding_claim` is
-//! trivially satisfied.
+//! Loads [`PointsStage`] and bridge stages (`preamble`, `s_prime`,
+//! `inner_error`, `ab`, `query`, `f`) and enforces equality for all
+//! [`PointsStage`] positions: every input (matched against
+//! [`ChildWitness`](crate::internal::nested::stages::preamble::ChildWitness)
+//! stash fields and current-step bridge stage fields) plus `initial`
+//! (matched against `BridgeF.native_f`). The accumulation walk mirrors
+//! `compute_p` in `_10_p` so that correctness can be verified by visual
+//! comparison.
+//!
+//! Also enforces: `BridgeSPrime.stashed_preamble` ==
+//! `BridgePreamble.native_preamble`, stashing the current step's native
+//! preamble so that a parent's [`copying`](super::copying) circuit can
+//! read it from `BridgeSPrime` instead of `BridgePreamble` (avoiding a
+//! wire-position collision).
 
 use core::marker::PhantomData;
 
@@ -118,8 +126,8 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         let query = query_guard.unenforced(dr, w!())?;
         let f_stage = f_guard.unenforced(dr, w!())?;
 
-        // Walk through PointsStage inputs, mirroring the accumulation
-        // order in `compute_p` (_10_p.rs).
+        // Walk through PointsStage inputs, mirroring the accumulation order
+        // in `compute_p` (_10_p.rs).
         let mut walker = Walker::new(&points);
 
         for child in [&preamble.left, &preamble.right] {
