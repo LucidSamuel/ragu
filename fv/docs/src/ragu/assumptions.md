@@ -34,7 +34,7 @@ It is difficult to list all potential gaps between the reality and the formaliza
 
 Future changes might introduce new gaps.
 
-Anything other than the verified circuit is out of scope. Everything in the Rust source, the Rust compiler, the hardware, and the physical and social level is out of scope. The mathematical theory behind the protocol is mostly out of scope. For example, the cryptographic reductions and the cryptographic assumptions are out of scope. The Rust implementation might behave in a nondeterministic way so that it might sometimes or always use different constraints from the constraints that it exports.
+Anything other than the verified circuit is out of scope. Everything in the Rust source, the Rust compiler, the hardware, and the physical and social level is out of scope of formal verification. The mathematical theory behind the protocol is mostly out of scope. For example, the cryptographic reductions and the cryptographic assumptions are out of scope. The Rust implementation might behave in a nondeterministic way so that it might sometimes or always use different constraints from the constraints that it exports.
 
 All assumptions in the Lean need to be satisfied by the reality. For this, every argument and every hypothesis of the Lean theorem needs to correspond to a single value that exists or a proposition that holds. Otherwise, the Lean theorem is not applicable. If the theorem is applicable to the reality, the conclusion of the theorem holds for the arguments that satisfy the arguments and the hypotheses of the Lean theorem.
 
