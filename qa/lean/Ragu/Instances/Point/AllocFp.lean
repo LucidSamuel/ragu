@@ -26,8 +26,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec input output := output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
-  -- xIdx = 0 picks the first row in "alloc_square_w", yIdx = 2 picks the third.
-  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams 0 2
+  -- x reads row 0 from "alloc_square_w", y reads row 2.
+  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EpAffineParams
+    (fun h => Circuits.Element.AllocSquare.readElem h "alloc_square_w" 1 0 0)
+    (fun h => Circuits.Element.AllocSquare.readElem h "alloc_square_w" 1 2 0)
 
   same_constraints := by
     intro input

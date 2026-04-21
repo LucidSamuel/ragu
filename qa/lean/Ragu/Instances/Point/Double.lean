@@ -33,9 +33,10 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     ∧
     output.isOnCurve Circuits.Point.Spec.EpAffineParams
 
-  -- idx = 0 picks the first row from the "alloc_mul_w" witness table.
+  -- Read the DivNonzero witness row from index 0 of `"alloc_mul_w"`.
   reimplementation :=
-    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams 0
+    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
+      (fun h => Circuits.Core.AllocMul.readRow h 0)
 
   same_constraints := by
     intro input

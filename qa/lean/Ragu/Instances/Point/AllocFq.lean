@@ -26,7 +26,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec input output := output.isOnCurve Circuits.Point.Spec.EqAffineParams
 
-  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams 0 2
+  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams
+    (fun h => Circuits.Element.AllocSquare.readElem h "alloc_square_w" 1 0 0)
+    (fun h => Circuits.Element.AllocSquare.readElem h "alloc_square_w" 1 2 0)
 
   same_constraints := by
     intro input

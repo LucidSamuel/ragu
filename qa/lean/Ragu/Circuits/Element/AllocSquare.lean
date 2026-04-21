@@ -9,49 +9,50 @@ structure Square (F : Type) where
   a_sq : F
 deriving ProvableStruct
 
-/-- Read the allocated element `a` from the prover-supplied hint.
-    Takes `(table, idx, slot)` identifying which entry to read. -/
+/-- Read a field element from `hint table cols` at `(idx, slot)`.
+    One convenient way to build a `ProverHint → F p` reader; callers
+    are free to build others. -/
 def readElem (hint : ProverHint (F p)) (table : String) (cols : ℕ) (idx slot : ℕ) : F p :=
   let v := (hint table cols).getD idx default
   v[slot]!
 
-def main (table : String) (cols : ℕ) (idx slot : ℕ) (_input : Unit) :
+def main (hintReader : ProverHint (F p) → F p) (_input : Unit) :
     Circuit (F p) (Var Square (F p)) := do
   let ⟨x, y, z⟩ ← (witness fun env =>
-    let a := readElem env.hint table cols idx slot
+    let a := hintReader env.hint
     (⟨a, a, a * a⟩ : Core.AllocMul.Row (F p))
     : Circuit (F p) (Var Core.AllocMul.Row (F p)))
   assertZero (x * y - z)
   assertZero (x - y)
   return ⟨x, z⟩
 
-def Assumptions (_table : String) (_cols _idx _slot : ℕ)
+def Assumptions (_hintReader : ProverHint (F p) → F p)
     (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 def Spec (_input : Unit) (out : Square (F p)) (_data : ProverData (F p)) :=
   out.a_sq = out.a^2
 
-def CompletenessSpec (table : String) (cols : ℕ) (idx slot : ℕ)
+def CompletenessSpec (hintReader : ProverHint (F p) → F p)
     (_input : Unit) (out : Square (F p)) (hint : ProverHint (F p)) :=
-  let a := readElem hint table cols idx slot
+  let a := hintReader hint
   out.a = a ∧ out.a_sq = a^2
 
-instance elaborated (table : String) (cols : ℕ) (idx slot : ℕ) :
+instance elaborated (hintReader : ProverHint (F p) → F p) :
     ElaboratedCircuit (F p) unit Square where
-  main := main table cols idx slot
+  main := main hintReader
   localLength _ := 3
 
-theorem soundness (table : String) (cols : ℕ) (idx slot : ℕ) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated table cols idx slot) Spec := by
+theorem soundness (hintReader : ProverHint (F p) → F p) :
+    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
   circuit_proof_start
   obtain ⟨c1, c2⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2
   rw [←c1, c2]
   ring
 
-theorem completeness (table : String) (cols : ℕ) (idx slot : ℕ) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated table cols idx slot)
-      (Assumptions table cols idx slot) := by
+theorem completeness (hintReader : ProverHint (F p) → F p) :
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
+      (Assumptions hintReader) := by
   circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -63,9 +64,9 @@ theorem completeness (table : String) (cols : ℕ) (idx slot : ℕ) :
   rw [h0, h1, h2]
   refine ⟨?_, ?_⟩ <;> ring
 
-theorem completenessSpec (table : String) (cols : ℕ) (idx slot : ℕ) :
-    GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated table cols idx slot)
-      (Assumptions table cols idx slot) (CompletenessSpec table cols idx slot) := by
+theorem completenessSpec (hintReader : ProverHint (F p) → F p) :
+    GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated hintReader)
+      (Assumptions hintReader) (CompletenessSpec hintReader) := by
   circuit_proof_start [CompletenessSpec]
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -78,14 +79,14 @@ theorem completenessSpec (table : String) (cols : ℕ) (idx slot : ℕ) :
   refine ⟨h0, ?_⟩
   rw [h2]; ring
 
-def generalCircuit (table : String) (cols : ℕ) (idx slot : ℕ) :
+def generalCircuit (hintReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit (F p) unit Square :=
-  { elaborated table cols idx slot with
-    Assumptions := Assumptions table cols idx slot,
+  { elaborated hintReader with
+    Assumptions := Assumptions hintReader,
     Spec,
-    CompletenessSpec := CompletenessSpec table cols idx slot,
-    soundness := soundness table cols idx slot,
-    completeness := completeness table cols idx slot,
-    completenessSpec := completenessSpec table cols idx slot }
+    CompletenessSpec := CompletenessSpec hintReader,
+    soundness := soundness hintReader,
+    completeness := completeness hintReader,
+    completenessSpec := completenessSpec hintReader }
 
 end Ragu.Circuits.Element.AllocSquare

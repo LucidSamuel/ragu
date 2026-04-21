@@ -10,40 +10,45 @@ structure Row (F : Type) where
 deriving ProvableStruct
 
 /-- Read the `(x, y)` pair the honest prover has allocated at index `idx`
-    of the `"alloc_mul_w"` witness table. `z` is computed as `x * y`. -/
+    of the `"alloc_mul_w"` witness table. `z` is computed as `x * y`.
+    One convenient `hintReader` a caller can pass into `circuit`; callers
+    are free to build other `ProverHint → Row` readers. -/
 def readRow (hint : ProverHint (F p)) (idx : ℕ) : Row (F p) :=
   let v := (hint "alloc_mul_w" 2).getD idx default
   ⟨v[0], v[1], v[0] * v[1]⟩
 
-def main (idx : ℕ) (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
+def main (hintReader : ProverHint (F p) → Row (F p)) (_input : Unit) : Circuit (F p) (Var Row (F p)) := do
   let ⟨x, y, z⟩ ← (witness fun env =>
-    let r := readRow env.hint idx
+    let r := hintReader env.hint
     (⟨r.x, r.y, r.x * r.y⟩ : Row (F p))
     : Circuit (F p) (Var Row (F p)))
   assertZero (x * y - z)
   return ⟨x, y, z⟩
 
-def Assumptions (_idx : ℕ) (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
+def Assumptions (_hintReader : ProverHint (F p) → Row (F p))
+    (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 def Spec (_input : Unit) (out : Row (F p)) (_data : ProverData (F p)) :=
   out.x * out.y = out.z
 
-/-- The output row equals the `readRow` of the hint at `idx`. -/
-def CompletenessSpec (idx : ℕ) (_input : Unit) (out : Row (F p)) (hint : ProverHint (F p)) :=
-  let r := readRow hint idx
+/-- The output row equals `hintReader` applied to the runtime hint. -/
+def CompletenessSpec (hintReader : ProverHint (F p) → Row (F p))
+    (_input : Unit) (out : Row (F p)) (hint : ProverHint (F p)) :=
+  let r := hintReader hint
   out.x = r.x ∧ out.y = r.y ∧ out.z = r.x * r.y
 
-instance elaborated (idx : ℕ) : ElaboratedCircuit (F p) unit Row where
-  main := main idx
+instance elaborated (hintReader : ProverHint (F p) → Row (F p)) : ElaboratedCircuit (F p) unit Row where
+  main := main hintReader
   localLength _ := 3
 
-theorem soundness (idx : ℕ) : GeneralFormalCircuit.Soundness (F p) (elaborated idx) Spec := by
+theorem soundness (hintReader : ProverHint (F p) → Row (F p)) :
+    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
   circuit_proof_start
   rw [add_neg_eq_zero] at h_holds
   exact h_holds
 
-theorem completeness (idx : ℕ) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated idx) (Assumptions idx) := by
+theorem completeness (hintReader : ProverHint (F p) → Row (F p)) :
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions hintReader) := by
   circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -55,9 +60,9 @@ theorem completeness (idx : ℕ) :
   rw [h0, h1, h2]
   ring
 
-theorem completenessSpec (idx : ℕ) :
-    GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated idx)
-      (Assumptions idx) (CompletenessSpec idx) := by
+theorem completenessSpec (hintReader : ProverHint (F p) → Row (F p)) :
+    GeneralFormalCircuit.CompletenessSpecProof (F p) (elaborated hintReader)
+      (Assumptions hintReader) (CompletenessSpec hintReader) := by
   circuit_proof_start [CompletenessSpec]
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
@@ -68,13 +73,13 @@ theorem completenessSpec (idx : ℕ) :
   rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
   exact ⟨h0, h1, h2⟩
 
-def circuit (idx : ℕ) : GeneralFormalCircuit (F p) unit Row :=
-  { elaborated idx with
-    Assumptions := Assumptions idx,
+def circuit (hintReader : ProverHint (F p) → Row (F p)) : GeneralFormalCircuit (F p) unit Row :=
+  { elaborated hintReader with
+    Assumptions := Assumptions hintReader,
     Spec,
-    CompletenessSpec := CompletenessSpec idx,
-    soundness := soundness idx,
-    completeness := completeness idx,
-    completenessSpec := completenessSpec idx }
+    CompletenessSpec := CompletenessSpec hintReader,
+    soundness := soundness hintReader,
+    completeness := completeness hintReader,
+    completenessSpec := completenessSpec hintReader }
 
 end Ragu.Circuits.Core.AllocMul
