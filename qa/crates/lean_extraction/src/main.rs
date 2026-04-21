@@ -19,6 +19,7 @@ use crate::instances::{
     boolean_and::BooleanAndInstance,
     boolean_conditional_enforce_equal::BooleanConditionalEnforceEqualInstance,
     boolean_conditional_select::BooleanConditionalSelectInstance,
+    boolean_is_zero::BooleanIsZeroInstance,
     boolean_not::BooleanNotInstance,
     core_alloc_mul::CoreAllocMulInstance,
     element_alloc::ElementAllocInstance,
@@ -143,6 +144,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Boolean.ConditionalEnforceEqual",
         export: export_instance::<BooleanConditionalEnforceEqualInstance>,
         generated_file: generated_file_instance::<BooleanConditionalEnforceEqualInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Boolean.IsZero",
+        export: export_instance::<BooleanIsZeroInstance>,
+        generated_file: generated_file_instance::<BooleanIsZeroInstance>,
     },
 ];
 
