@@ -11,4 +11,5 @@ import Ragu.Instances.Element.DivNonzero
 import Ragu.Instances.Element.Negate
 import Ragu.Instances.Element.Add
 import Ragu.Instances.Element.Sub
+import Ragu.Instances.Element.Double
 import Ragu.Instances.Core.AllocMul
