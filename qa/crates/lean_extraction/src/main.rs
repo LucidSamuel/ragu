@@ -17,6 +17,7 @@ use instance::CircuitInstance;
 use crate::instances::{
     core_alloc_mul::CoreAllocMulInstance,
     element_add::ElementAddInstance,
+    element_add_coeff::ElementAddCoeffInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
     element_double::ElementDoubleInstance,
@@ -114,6 +115,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.Scale",
         export: export_instance::<ElementScaleInstance>,
         generated_file: generated_file_instance::<ElementScaleInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.AddCoeff",
+        export: export_instance::<ElementAddCoeffInstance>,
+        generated_file: generated_file_instance::<ElementAddCoeffInstance>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Core.AllocMul",
