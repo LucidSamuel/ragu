@@ -488,17 +488,27 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
         builder.set_native_outer_collapse_rx(ones_host.clone());
         builder.set_native_compute_v_rx(ones_host.clone());
 
-        // Non-cached bridge polynomials (trivial placeholders for stages
-        // that no circuit constrains yet). Cached bridges (outer_error, ab,
-        // query, eval) are computed lazily by the builder via cached_bridge!
-        // using their real Stage::rx call.
-        builder.set_bridge_preamble_rx(ones_nested.clone(), bridge_commitment);
-        builder.set_bridge_s_prime_rx(ones_nested.clone(), bridge_commitment);
+        // Non-cached bridge polynomials: real traces for stages that
+        // Loading enforces against (s_prime, f); placeholder for stages
+        // that no circuit constrains yet (inner_error). Cached bridges
+        // (outer_error, ab, query, eval) are computed lazily by the
+        // builder via cached_bridge! using their real Stage::rx call.
         builder.set_bridge_inner_error_rx(ones_nested.clone(), bridge_commitment);
 
-        // Bridge `f`: real trace because the Loading circuit enforces
-        // points.initial == f.native_f against this rx.
         let nested_gen = C::nested_generators(self.params);
+        {
+            let rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::s_prime::Witness {
+                    registry_wx0: host_commitment,
+                    registry_wx1: host_commitment,
+                    stashed_preamble: host_commitment,
+                },
+            )
+            .expect("trivial s_prime rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_s_prime_rx(rx, commitment);
+        }
         {
             let rx = nested::stages::f::Stage::<C::HostCurve, R>::rx(
                 C::ScalarField::ONE,
@@ -596,6 +606,40 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> crate::Application<'_, C, R, H
 
         // Set native_p_poly with the real accumulated commitment.
         builder.set_native_p_poly(ones_host, p_commitment);
+
+        // Preamble bridge: computed last because ChildWitness.stashed_p
+        // needs the real p_commitment from endoscaling.
+        {
+            let registry_xy_commitment = builder.native_registry_xy_commitment();
+            let trivial_child_witness = nested::stages::preamble::ChildWitness {
+                application: host_commitment,
+                hashes_1: host_commitment,
+                hashes_2: host_commitment,
+                inner_collapse: host_commitment,
+                outer_collapse: host_commitment,
+                compute_v: host_commitment,
+                stashed_preamble: host_commitment,
+                stashed_inner_error: host_commitment,
+                stashed_outer_error: host_commitment,
+                stashed_query: host_commitment,
+                stashed_eval: host_commitment,
+                stashed_ab_a: host_commitment,
+                stashed_ab_b: host_commitment,
+                stashed_registry_xy: registry_xy_commitment,
+                stashed_p: p_commitment,
+            };
+            let rx = nested::stages::preamble::Stage::<C::HostCurve, R>::rx(
+                C::ScalarField::ONE,
+                &nested::stages::preamble::Witness {
+                    native_preamble: host_commitment,
+                    left: trivial_child_witness.clone(),
+                    right: trivial_child_witness,
+                },
+            )
+            .expect("trivial preamble rx");
+            let commitment = rx.commit_to_affine(nested_gen);
+            builder.set_bridge_preamble_rx(rx, commitment);
+        }
 
         // Children's stage rx: a trivial proof is its own "child", so
         // child rx must match the proof's own rx. Force lazy evaluation of

@@ -62,8 +62,8 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
     ) -> Result<WithAux<Bound<'dr, D, ()>, DriverValue<D, ()>>> {
         let dr = dr.skip_stage::<EndoscalarStage>()?;
         let (points_guard, dr) = dr.add_stage::<PointsStage<C, NUM_ENDOSCALING_POINTS>>()?;
-        let (_preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
-        let dr = dr.skip_stage::<stages::s_prime::Stage<C, R>>()?;
+        let (preamble_guard, dr) = dr.add_stage::<stages::preamble::Stage<C, R>>()?;
+        let (s_prime_guard, dr) = dr.add_stage::<stages::s_prime::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::inner_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::outer_error::Stage<C, R>>()?;
         let dr = dr.skip_stage::<stages::ab::Stage<C, R>>()?;
@@ -80,7 +80,16 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
             };
         }
         let points = points_guard.unenforced(dr, w!())?;
+        let preamble = preamble_guard.unenforced(dr, w!())?;
+        let s_prime = s_prime_guard.unenforced(dr, w!())?;
         let f_stage = f_guard.unenforced(dr, w!())?;
+
+        // Relay: the current step's native_preamble is stashed in
+        // BridgeSPrime so that a future copying circuit can verify it
+        // from the child's BridgeSPrime without BridgePreamble collision.
+        s_prime
+            .stashed_preamble
+            .enforce_equal(dr, &preamble.native_preamble)?;
 
         // The initial point (f.commitment) must match BridgeF.native_f.
         points.initial.enforce_equal(dr, &f_stage.native_f)?;
