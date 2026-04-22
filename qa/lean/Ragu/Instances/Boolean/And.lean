@@ -23,7 +23,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec (input : Circuits.Boolean.And.Input (F p)) (output : F p) :=
     (input.a = 0 ∨ input.a = 1) ∧ (input.b = 0 ∨ input.b = 1)
-      → output = input.a * input.b
+      → output = input.a * input.b ∧ (output = 0 ∨ output = 1)
 
   deserializeInput
   serializeOutput

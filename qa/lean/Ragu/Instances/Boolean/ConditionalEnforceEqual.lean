@@ -21,25 +21,25 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Input := Circuits.Boolean.ConditionalEnforceEqual.Input
   Output := unit
 
+  -- Unconditional: the constraints alone force `cond · (a - b) = 0`
+  -- regardless of what the caller provides. The boolean-ness and
+  -- conditional equality preconditions are only needed for completeness
+  -- (honest prover satisfiability), not for soundness.
   Spec (input : Circuits.Boolean.ConditionalEnforceEqual.Input (F p)) (_output : Unit) :=
-    (input.cond = 0 ∨ (input.cond = 1 ∧ input.a = input.b)) →
-      input.cond * (input.a - input.b) = 0
+    input.cond * (input.a - input.b) = 0
 
   deserializeInput
   serializeOutput
 
-  reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit (F p) Circuits.Boolean.ConditionalEnforceEqual.Input unit
-      Circuits.Boolean.ConditionalEnforceEqual.circuit
+  reimplementation := Circuits.Boolean.ConditionalEnforceEqual.generalCircuit
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      FormalCircuit.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Boolean.ConditionalEnforceEqual.circuit,
+      Circuits.Boolean.ConditionalEnforceEqual.generalCircuit,
       Circuits.Boolean.ConditionalEnforceEqual.elaborated,
       Circuits.Boolean.ConditionalEnforceEqual.main]
     repeat (constructor; rfl)
@@ -49,10 +49,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     rfl
   same_spec := by
     intro input output
-    dsimp only [FormalCircuit.isGeneralFormalCircuit,
-      Circuits.Boolean.ConditionalEnforceEqual.circuit,
-      Circuits.Boolean.ConditionalEnforceEqual.Assumptions,
-      Circuits.Boolean.ConditionalEnforceEqual.Spec]
+    dsimp only [Circuits.Boolean.ConditionalEnforceEqual.generalCircuit,
+      Circuits.Boolean.ConditionalEnforceEqual.GeneralSpec]
     aesop
 
 end Ragu.Instances.Boolean.ConditionalEnforceEqual

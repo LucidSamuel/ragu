@@ -29,9 +29,10 @@ def Assumptions (input : Input (F p)) :=
   (input.a = 0 ∨ input.a = 1) ∧ (input.b = 0 ∨ input.b = 1)
 
 /-- The output is the product — and, under the boolean assumption,
-equivalently the logical AND. -/
+equivalently the logical AND. The output is itself boolean-valued, so
+downstream consumers can treat the returned wire as a `Boolean`. -/
 def Spec (input : Input (F p)) (out : F p) :=
-  out = input.a * input.b
+  out = input.a * input.b ∧ (out = 0 ∨ out = 1)
 
 instance elaborated : ElaboratedCircuit (F p) Input field where
   main
@@ -41,7 +42,19 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2 c3
-  rw [←c2, ←c3, c1]
+  obtain ⟨ha, hb⟩ := h_assumptions
+  refine ⟨?_, ?_⟩
+  · -- out = a * b
+    rw [←c2, ←c3, c1]
+  · -- out ∈ {0, 1}: case-split on the boolean inputs.
+    rcases ha with ha0 | ha1
+    · left
+      rw [← c1, c2, ha0, zero_mul]
+    · rcases hb with hb0 | hb1
+      · left
+        rw [← c1, c2, c3, ha1, hb0, mul_zero]
+      · right
+        rw [← c1, c2, c3, ha1, hb1, mul_one]
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
   circuit_proof_start
