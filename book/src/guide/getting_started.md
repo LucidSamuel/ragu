@@ -30,6 +30,17 @@ ff = "0.13"
 rand = "0.8"
 ```
 
+## Overview: Building a Merkle Tree with Proofs
+
+This application implements two core operations:
+
+1. **CreateLeaf**: Takes a value, hashes it, and produces a leaf proof
+2. **CombineNodes**: Takes two leaf proofs and combines them into an internal
+   node proof
+
+The result is a proof tree where each node proves it was correctly computed
+from its children.
+
 ## Configuration at a Glance
 
 This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
@@ -42,17 +53,6 @@ This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
 
 These defaults work for most applications. See
 [Configuration](configuration.md) for guidance on choosing different values.
-
-## Overview: Building a Merkle Tree with Proofs
-
-This application implements two core operations:
-
-1. **CreateLeaf**: Takes a value, hashes it, and produces a leaf proof
-2. **CombineNodes**: Takes two leaf proofs and combines them into an internal
-   node proof
-
-The result is a proof tree where each node proves it was correctly computed
-from its children.
 
 ## Step 1: Define Header Types
 

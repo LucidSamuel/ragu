@@ -154,30 +154,14 @@ let right_data = right.as_gadget();
 
 ## Working with Headers
 
-Headers define what data flows through the proof tree:
+Headers define what data flows through the proof tree. Each header
+implementation specifies a `SUFFIX` (unique identifier), a `Data` type
+(the native Rust value), an `Output` type (the circuit gadget
+representation), and an `encode` function that converts `Data` into
+`Output` by allocating circuit elements.
 
-```rust
-struct LeafNode;
-
-impl<F: Field> Header<F> for LeafNode {
-    const SUFFIX: Suffix = Suffix::new(0);  // Unique ID
-    type Data = F;                 // Data type
-    type Output = Kind![F; Element<'_, _>]; // Gadget output
-
-    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
-        dr: &mut D,
-        allocator: &mut A,
-        witness: DriverValue<D, Self::Data>,
-    ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, allocator, witness)
-    }
-}
-```
-
-**SUFFIX**: Unique identifier for this header type (used for type safety)
-**Data**: The native Rust type for this header's data
-**Output**: The gadget representation (circuit elements)
-**encode**: How to convert `Data` into `Output`. The `allocator` parameter
+For a complete example with multiple header types, see
+[Getting Started — Define Header Types](getting_started.md#step-1-define-header-types).. The `allocator` parameter
 controls how field elements are allocated; see
 [Allocation](primitives/allocation.md) for details on choosing an allocator.
 
