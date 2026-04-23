@@ -56,18 +56,24 @@ Each type controls a specific axis of behavior:
   [`Simulator`]) use `F` itself. The [`Emulator`] in wired mode also uses `F`,
   while wireless mode uses `()`.
 
-* **`MaybeKind`**: determines whether witness closures execute. `Empty`
-  means closures are never called and their bodies are dead-code-eliminated
-  after monomorphization. `Always<()>` means closures always execute.
+* **`MaybeKind`**: determines whether witness-producing closures (on
+  `gate()`/`mul()`) execute. `Empty` means those closures are never called
+  and their bodies are dead-code-eliminated after monomorphization.
+  `Always<()>` means they always execute. Expression-building closures
+  on `add()` and `enforce_zero()` are controlled independently by each
+  driver, not by `MaybeKind`.
 
 * **`LCadd`** and **`LCenforce`**: the [`LinearExpression`] types used by
   `add()` and `enforce_zero()`. The trivial `()` implementation ignores
   all terms. [`DirectSum`] accumulates terms and computes their sum.
 
 * **`Extra`**: the token type returned by `gate()` for the auxiliary $D$
-  wire. `()` means the $D$ wire cannot be overridden. `bool` (as the
-  [`Simulator`] uses) can track whether $C$ is zero, gating whether
-  `assign_extra` should accept a nonzero $D$.
+  wire. It carries metadata from `gate()` to `assign_extra()`, not
+  whether overriding $D$ is possible. `()` carries no metadata (the
+  wired [`Emulator`] uses `()` and still accepts arbitrary $D$ values).
+  `bool` (as the [`Simulator`] uses) tracks whether $C$ is zero,
+  letting `assign_extra` reject a nonzero $D$ when the constraint
+  $C \cdot D = 0$ would be violated.
 
 ### `gate()` and `assign_extra()`
 
@@ -210,9 +216,12 @@ its constraint counter.
 
 ### `MaybeKind`: `Empty` vs `Always`
 
-The choice of `MaybeKind` controls whether witness closures run:
+`MaybeKind` controls whether witness-producing closures (on
+`gate()`/`mul()`) run. It does not govern expression-building closures
+on `add()` and `enforce_zero()`, which each driver handles
+independently.
 
-| `MaybeKind` | Closures | `DriverValue<D, T>` | Use Case |
+| `MaybeKind` | Witness closures | `DriverValue<D, T>` | Use Case |
 |---|---|---|---|
 | `Empty` | Dead-code-eliminated | `Empty` (zero-size) | Type-level work, counting |
 | `Always<()>` | Always invoked | `Always<T>` (holds value) | Testing, simulation, proving |
@@ -221,8 +230,8 @@ A driver that only needs constraint structure (gate counts, wire
 topology, linear combination shape) should use `Empty`, because witness
 closures are dead-code-eliminated and `DriverValue` collapses to a
 zero-size type. A driver that evaluates circuits and checks constraint
-satisfaction should use `Always<()>`, which invokes every closure and
-carries real values through `DriverValue`.
+satisfaction should use `Always<()>`, which invokes witness closures
+and carries real values through `DriverValue`.
 
 ### `LinearExpression`: `()` vs `DirectSum`
 
@@ -241,7 +250,8 @@ The `Extra` type connects `gate()` to `assign_extra()`. It carries whatever
 information `assign_extra` needs to decide whether the $D$ wire override is
 valid:
 
-* **`()`**: no override possible (or no checking needed).
+* **`()`**: no metadata carried; `assign_extra` receives no
+  information about the gate's $C$ wire.
 * **`bool`**: carries the "is $C$ zero?" flag, as the [`Simulator`] does.
 * A richer type could carry additional metadata if needed.
 
@@ -265,8 +275,9 @@ fn routine<R: Routine<Self::F> + 'dr>(
 ```
 
 Most custom drivers can use this default. Override it only if your driver
-needs to intercept routine execution, for example, to skip `execute` and
-return the prediction directly (as the [`Emulator`] does in wireless mode).
+needs to intercept routine execution. The wireless [`Emulator`], for
+example, short-circuits when the routine returns `Prediction::Known`
+but still calls `execute()` on `Prediction::Unknown`.
 
 With `DriverTypes` and `Driver<'dr>` implemented, a custom driver can be
 passed to any circuit code bounded on `Driver`. The associated types
