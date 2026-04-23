@@ -598,7 +598,7 @@ mod tests {
         assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
     }
 
-    /// Build a trace with the SYSTEM gate zeroed and gates 1..n from (b, d)
+    /// Build a trace with the SYSTEM gate zeroed and gates 1..n from (a, d)
     /// pairs.
     fn build_trace(gate_values: &[(Fp, Fp)]) -> sparse::Polynomial<Fp, R> {
         let mut view = sparse::View::<_, R, _>::trace();
@@ -608,9 +608,9 @@ mod tests {
         view.c.push(Fp::ZERO);
         view.d.push(Fp::ZERO);
         // Mirrors `Standard::alloc`'s layout — update in lockstep.
-        for &(b, d) in gate_values {
-            view.a.push(Fp::ZERO);
-            view.b.push(b);
+        for &(a, d) in gate_values {
+            view.a.push(a);
+            view.b.push(Fp::ZERO);
             view.c.push(Fp::ZERO);
             view.d.push(d);
         }

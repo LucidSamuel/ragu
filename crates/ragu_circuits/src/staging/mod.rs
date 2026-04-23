@@ -417,9 +417,9 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// Returns the generator index for the i-th first-value coefficient of
     /// this stage's alloc gates.
     ///
-    /// With the `(0, b, 0, d)` gate layout, the first allocated value occupies
-    /// the B-wire position at degree `2n - 1 - skip_gates - i`.
-    fn generator_index_for_b(coefficient_index: usize) -> usize {
+    /// With the `(a, 0, 0, d)` gate layout, the first allocated value occupies
+    /// the A-wire position at degree `2n + skip_gates + i`.
+    fn generator_index_for_a(coefficient_index: usize) -> usize {
         assert!(
             coefficient_index < Self::num_gates(),
             "coefficient_index {} exceeds num_gates {}",
@@ -427,7 +427,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             Self::num_gates()
         );
 
-        2 * R::n() - 1 - Self::skip_gates() - coefficient_index
+        2 * R::n() + Self::skip_gates() + coefficient_index
     }
 }
 

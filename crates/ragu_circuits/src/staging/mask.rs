@@ -350,14 +350,14 @@ mod tests {
     }
 
     impl<R: Rank> StageMask<R> {
-        /// Returns the generator point for the `coefficient_index`-th $b$-wire
+        /// Returns the generator point for the `coefficient_index`-th $a$-wire
         /// coefficient of this stage.
         ///
-        /// The $b$-wire at gate $j$ occupies degree $2n - 1 - j$ in the
+        /// The $a$-wire at gate $j$ occupies degree $2n + j$ in the
         /// witness polynomial. The SYSTEM gate is included in `skip_gates`, so the
         /// first active gate is at index `skip_gates` and the formula
-        /// becomes $2n - 1 - \text{skip\_gates} - \text{coefficient\_index}$.
-        fn generator_for_b_coefficient<C: CurveAffine>(
+        /// becomes $2n + \text{skip\_gates} + \text{coefficient\_index}$.
+        fn generator_for_a_coefficient<C: CurveAffine>(
             &self,
             generators: &impl FixedGenerators<C>,
             coefficient_index: usize,
@@ -369,7 +369,7 @@ mod tests {
                 self.num_gates
             );
 
-            let idx = 2 * R::n() - 1 - self.skip_gates - coefficient_index;
+            let idx = 2 * R::n() + self.skip_gates + coefficient_index;
             generators.g()[idx]
         }
     }
@@ -832,9 +832,9 @@ mod tests {
         assert_eq!(sxy, sy.eval(x));
     }
 
-    /// A stage that allocates values only in b-positions (d = 0) for challenge smuggling.
+    /// A stage that allocates values only in a-positions (d = 0) for challenge smuggling.
     ///
-    /// Each value is paired with a zero to ensure it lands in a b-coefficient position
+    /// Each value is paired with a zero to ensure it lands in an a-coefficient position
     /// when the polynomial is built. This mimics the pattern used for smuggling challenges.
     #[derive(Default)]
     struct ParentAOnlyStage;
@@ -876,7 +876,7 @@ mod tests {
             Self: 'dr,
         {
             // Allocate each challenge value followed by zero, which
-            // ensures challenges land in b-positions, zeros in d-positions.
+            // ensures challenges land in a-positions, zeros in d-positions.
             let a0 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[0]))?;
             let b0 = Element::zero(dr);
             let a1 = Element::alloc(dr, &mut (), witness.as_ref().map(|w| w[1]))?;
@@ -936,10 +936,10 @@ mod tests {
         }
     }
 
-    /// Tests that `StageMask::generator_for_b_coefficient` returns the generator
-    /// at the index computed by `StageExt::generator_index_for_b`.
+    /// Tests that `StageMask::generator_for_a_coefficient` returns the generator
+    /// at the index computed by `StageExt::generator_index_for_a`.
     #[test]
-    fn test_generator_for_b_coefficient() {
+    fn test_generator_for_a_coefficient() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -951,9 +951,9 @@ mod tests {
         .unwrap();
 
         for i in 0..3 {
-            let gen_idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
+            let gen_idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let expected_gen = generators.g()[gen_idx];
-            let actual_gen = parent_mask.generator_for_b_coefficient(generators, i);
+            let actual_gen = parent_mask.generator_for_a_coefficient(generators, i);
             assert_eq!(actual_gen, expected_gen);
         }
 
@@ -964,39 +964,39 @@ mod tests {
         .unwrap();
 
         for i in 0..3 {
-            let gen_idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
+            let gen_idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let expected_gen = generators.g()[gen_idx];
-            let actual_gen = child_mask.generator_for_b_coefficient(generators, i);
+            let actual_gen = child_mask.generator_for_a_coefficient(generators, i);
             assert_eq!(actual_gen, expected_gen);
         }
     }
 
-    /// Tests the generator index formula `2n - 1 - skip - i` for both a root
+    /// Tests the generator index formula `2n + skip + i` for both a root
     /// stage and a child stage with non-zero skip.
     #[test]
     fn test_generator_index_edge_cases() {
         assert_eq!(
-            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(0),
-            2 * R::n() - 2
+            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(0),
+            2 * R::n() + 1
         );
         assert_eq!(
-            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(2),
-            2 * R::n() - 4
+            <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(2),
+            2 * R::n() + 3
         );
         assert_eq!(
-            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(0),
-            2 * R::n() - 5
+            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(0),
+            2 * R::n() + 4
         );
         assert_eq!(
-            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(2),
-            2 * R::n() - 7
+            <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(2),
+            2 * R::n() + 6
         );
     }
 
-    /// Tests that committing to an rx polynomial with values only in b-positions
-    /// matches a manual MSM using generators from `generator_index_for_b`.
+    /// Tests that committing to an rx polynomial with values only in a-positions
+    /// matches a manual MSM using generators from `generator_index_for_a`.
     #[test]
-    fn test_b_wire_commitment_for_challenge_smuggling() {
+    fn test_a_wire_commitment_for_challenge_smuggling() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -1008,21 +1008,21 @@ mod tests {
 
         let mut manual_commitment = EqAffine::identity();
         for (i, &challenge) in challenges.iter().enumerate() {
-            let idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
-            let b_gen = generators.g()[idx];
-            let contrib = b_gen * challenge;
+            let idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
+            let a_gen = generators.g()[idx];
+            let contrib = a_gen * challenge;
             manual_commitment = (manual_commitment.to_curve() + contrib).to_affine();
         }
 
         assert_eq!(
             poly_commitment, manual_commitment,
-            "B-wire commitment should match manual computation"
+            "A-wire commitment should match manual computation"
         );
     }
 
     /// Same as above but for a root stage (no parent, zero skip).
     #[test]
-    fn test_b_wire_commitment_via_staging_mechanism() {
+    fn test_a_wire_commitment_via_staging_mechanism() {
         let pasta = Pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
@@ -1031,12 +1031,12 @@ mod tests {
         let rx: sparse::Polynomial<Fp, R> = ParentAOnlyStage::rx(Fp::ZERO, challenges).unwrap();
         let poly_commitment: EqAffine = rx.commit_to_affine(generators);
 
-        // Manually compute expected commitment using StageExt::generator_index_for_b.
+        // Manually compute expected commitment using StageExt::generator_index_for_a.
         let mut manual_commitment = EqAffine::identity();
         for (i, &challenge) in challenges.iter().enumerate() {
-            let idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_b(i);
-            let b_gen = generators.g()[idx];
-            manual_commitment = (manual_commitment.to_curve() + b_gen * challenge).to_affine();
+            let idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
+            let a_gen = generators.g()[idx];
+            manual_commitment = (manual_commitment.to_curve() + a_gen * challenge).to_affine();
         }
 
         assert_eq!(
