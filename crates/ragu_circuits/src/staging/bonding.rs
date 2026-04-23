@@ -607,7 +607,7 @@ mod tests {
         view.b.push(Fp::ZERO);
         view.c.push(Fp::ZERO);
         view.d.push(Fp::ZERO);
-        // Layout: (0, b, 0, d) per gate.
+        // Mirrors `Standard::alloc`'s layout — update in lockstep.
         for &(b, d) in gate_values {
             view.a.push(Fp::ZERO);
             view.b.push(b);

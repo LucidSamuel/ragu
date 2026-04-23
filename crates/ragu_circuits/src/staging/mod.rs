@@ -118,18 +118,24 @@
 pub(crate) mod bonding;
 mod builder;
 pub(crate) mod mask;
+mod rx_driver;
 
 use alloc::boxed::Box;
 
 pub use builder::{StageBuilder, StageGuard};
 use ff::Field;
+use ragu_arithmetic::Coeff;
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverValue, emulator::Emulator},
+    drivers::{Driver, DriverTypes, DriverValue, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
     maybe::{Always, MaybeKind},
 };
-use ragu_primitives::io::Write;
+use ragu_primitives::{
+    allocator::{Allocator, Standard},
+    io::Write,
+};
+use rx_driver::RxDriver;
 
 use crate::{
     BondingObject, Circuit, WithAux,
@@ -353,42 +359,26 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
             });
         }
 
-        assert!(values.len() <= Self::values());
+        let mut dr = RxDriver::<F, R>::with_capacity(Self::skip_gates() + Self::num_gates());
 
-        let mut values = values.into_iter();
-        let mut view = sparse::View::trace();
-
-        let len = Self::skip_gates() + Self::num_gates();
-        view.a.reserve_exact(len);
-        view.b.reserve_exact(len);
-        view.c.reserve_exact(len);
-        view.d.reserve_exact(len);
-
-        // SYSTEM gate: d[0] receives alpha (degree 4n-1) to prevent
-        // point-at-infinity commitments.
-        view.a.push(F::ZERO);
-        view.b.push(F::ZERO);
-        view.c.push(F::ZERO);
-        view.d.push(alpha);
+        // SYSTEM gate
+        let (_, _, _, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
+        dr.assign_extra(extra, || Ok(Coeff::Arbitrary(alpha)))?;
 
         for _ in 0..(Self::skip_gates() - 1) {
-            view.a.push(F::ZERO);
-            view.b.push(F::ZERO);
-            view.c.push(F::ZERO);
-            view.d.push(F::ZERO);
+            // d[0] = 0 is default
+            dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
         }
 
-        // Layout: (0, b, 0, d) per gate.
-        for _ in 0..Self::num_gates() {
-            let b = values.next().unwrap_or(F::ZERO);
-            let d = values.next().unwrap_or(F::ZERO);
-            view.a.push(F::ZERO);
-            view.b.push(b);
-            view.c.push(F::ZERO);
-            view.d.push(d);
+        let mut allocator = Standard::<usize>::new();
+        for value in &values {
+            allocator.alloc(&mut dr, || Ok(Coeff::Arbitrary(*value)))?;
+        }
+        for _ in values.len()..Self::values() {
+            allocator.alloc(&mut dr, || Ok(Coeff::Zero))?;
         }
 
-        Ok(view.build())
+        Ok(dr.build())
     }
 
     /// Compute the (partial) $r(X)$ polynomial for this stage, using a
