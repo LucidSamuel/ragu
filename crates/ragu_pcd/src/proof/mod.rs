@@ -401,40 +401,6 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         self.native_p_commitment.0
     }
 
-    /// Yields every `(polynomial, commitment)` pair this proof
-    /// contributes to the parent's `native_p` accumulation, in the
-    /// order `compute_p` (`_10_p.rs`) applies them: the rx polynomials
-    /// indexed by [`RxIndex::ALL`], followed by `AbA`, `AbB`,
-    /// `native_registry_xy`, and `native_p`.
-    ///
-    /// Mirrors [`ChildOutput::points_for_p`] so the accumulation order
-    /// lives in parallel on the polynomial side (prover, `_10_p.rs`)
-    /// and the point-gadget side (loading circuit).
-    ///
-    /// [`ChildOutput::points_for_p`]: crate::internal::nested::stages::preamble::ChildOutput::points_for_p
-    pub(crate) fn polys_for_p(
-        &self,
-    ) -> impl Iterator<Item = (&sparse::Polynomial<C::CircuitField, R>, C::HostCurve)> {
-        RxIndex::ALL
-            .iter()
-            .map(move |&id| (&self[id], self.native_rx_commitment(id)))
-            .chain([
-                (
-                    &self[RxComponent::AbA],
-                    self.native_commitment(RxComponent::AbA),
-                ),
-                (
-                    &self[RxComponent::AbB],
-                    self.native_commitment(RxComponent::AbB),
-                ),
-                (
-                    self.native_registry_xy_poly(),
-                    self.native_registry_xy_commitment(),
-                ),
-                (self.native_p_poly(), self.native_p_commitment()),
-            ])
-    }
-
     pub(crate) fn bridge_preamble_commitment(&self) -> C::NestedCurve {
         self.bridge_preamble_commitment
     }

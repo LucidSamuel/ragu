@@ -21,7 +21,14 @@ use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, extract_endoscalar, lift_endoscalar};
 
 use super::{NativeF, NativeSPrime, RegistryWy};
-use crate::{Application, Proof, internal::nested::NUM_ENDOSCALING_POINTS, proof::ProofBuilder};
+use crate::{
+    Application, Proof,
+    internal::{
+        native::{RxComponent, RxIndex},
+        nested::NUM_ENDOSCALING_POINTS,
+    },
+    proof::ProofBuilder,
+};
 
 /// Accumulates polynomials with their commitments.
 struct Accumulator<'a, C: Cycle, R: Rank> {
@@ -80,24 +87,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             };
 
             for proof in [left, right] {
-                for (poly, commitment) in proof.polys_for_p() {
-                    acc.acc(poly, commitment);
+                for &id in &RxIndex::ALL {
+                    acc.acc(&proof[id], proof.native_rx_commitment(id));
                 }
+                acc.acc(
+                    &proof[RxComponent::AbA],
+                    proof.native_commitment(RxComponent::AbA),
+                );
+                acc.acc(
+                    &proof[RxComponent::AbB],
+                    proof.native_commitment(RxComponent::AbB),
+                );
+                acc.acc(
+                    proof.native_registry_xy_poly(),
+                    proof.native_registry_xy_commitment(),
+                );
+                acc.acc(proof.native_p_poly(), proof.native_p_commitment());
             }
 
-            for (poly, commitment) in [
-                (&s_prime.registry_wx0_poly, s_prime.registry_wx0_commitment),
-                (&s_prime.registry_wx1_poly, s_prime.registry_wx1_commitment),
-                (&registry_wy.poly, registry_wy.commitment),
-                (builder.native_a_poly(), builder.native_a_commitment()),
-                (builder.native_b_poly(), builder.native_b_commitment()),
-                (
-                    builder.native_registry_xy_poly(),
-                    builder.native_registry_xy_commitment(),
-                ),
-            ] {
-                acc.acc(poly, commitment);
-            }
+            acc.acc(&s_prime.registry_wx0_poly, s_prime.registry_wx0_commitment);
+            acc.acc(&s_prime.registry_wx1_poly, s_prime.registry_wx1_commitment);
+            acc.acc(&registry_wy.poly, registry_wy.commitment);
+            acc.acc(builder.native_a_poly(), builder.native_a_commitment());
+            acc.acc(builder.native_b_poly(), builder.native_b_commitment());
+            acc.acc(
+                builder.native_registry_xy_poly(),
+                builder.native_registry_xy_commitment(),
+            );
         }
 
         // Build the PointsStage input vector ([f.commitment, commitments..])

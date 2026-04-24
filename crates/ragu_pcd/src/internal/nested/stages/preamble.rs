@@ -176,20 +176,6 @@ impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> core::ops::Index<RxIndex>
 }
 
 impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildOutput<'dr, D, C> {
-    /// Yields all per-child commitment points in the order in which
-    /// `compute_p` (`_10_p.rs`) accumulates them into `native_p`: the
-    /// rx commitments indexed by [`RxIndex::ALL`], followed by
-    /// `stashed_ab_a`, `stashed_ab_b`, `stashed_registry_xy`, and
-    /// `stashed_p`.
-    pub fn points_for_p(&self) -> impl Iterator<Item = &Point<'dr, D, C>> {
-        RxIndex::ALL.iter().map(move |&id| &self[id]).chain([
-            &self.stashed_ab_a,
-            &self.stashed_ab_b,
-            &self.stashed_registry_xy,
-            &self.stashed_p,
-        ])
-    }
-
     fn alloc(dr: &mut D, witness: DriverValue<D, &ChildWitness<C>>) -> Result<Self> {
         Ok(ChildOutput {
             application: Point::alloc(dr, witness.as_ref().map(|w| w.application))?,
