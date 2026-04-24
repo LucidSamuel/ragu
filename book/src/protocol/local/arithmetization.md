@@ -149,10 +149,11 @@ $(4n-1)/|\F|$.[^sz-combined]
     revdot-based reduction regardless, and they _are_ sometimes useful.
 
 [^why4n]: The constraint vectors $\v{u_j}$ are the $Y$-coefficients of a
-    bivariate **wiring polynomial** $s(X, Y) = \sum_j u_j(X) Y^j$ (see [Wiring
-    Polynomials](wiring.md)); the vector $\v{s} = s(X, y)$ above is its
-    restriction at $Y = y$. Since $s(X, Y)$ must fit within the structured
-    polynomial space in each variable, the number of constraints is at most
+    bivariate **wiring polynomial** $s(X, Y) = \sum_j u_j(X) Y^j$ (see
+    [Wiring and Instance Polynomials](wiring.md)); the vector
+    $\v{s} = s(X, y)$ above is its restriction at $Y = y$. Since $s(X, Y)$
+    must fit within the structured polynomial space in each variable, the
+    number of constraints is at most
     $4n$. Reducing a general R1CS instance to a Ragu circuit takes just over
     $3n$ constraints in the worst case (closer to $2n$ in favorable cases),
     leaving headroom for public inputs.

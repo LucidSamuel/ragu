@@ -20,15 +20,16 @@ efficient.
 ```admonish info
 Due to technical reasons discussed later, the real protocol also requires the
 univariate restriction $s(x, Y)$ to be evaluated and manipulated. In order to
-provide for a homogenous degree bound, the degree of $s(X, Y)$ is less than $4n$
+provide for a homogeneous degree bound, the degree of $s(X, Y)$ is less than $4n$
 in each variable separately. As a consequence, there are only $4n$ possible
 constraints in a circuit arithmetization.
 ```
 
-For example, constraints fold into $s(X, Y)$ via the [Horner update](https://en.wikipedia.org/wiki/Horner%27s_method) $s \leftarrow
-Y \cdot s + u$, landing the first-emitted constraint at the highest $Y$-power
-and the last-emitted at $Y^0$. The $s(x, y)$ driver exploits this most sharply:
-the assembly rule is its evaluation loop.
+For example, constraints fold into $s(X, Y)$ via the
+[Horner update](https://en.wikipedia.org/wiki/Horner%27s_method)
+$s \leftarrow Y \cdot s + u$, landing the first-emitted constraint at the
+highest $Y$-power and the last-emitted at $Y^0$. The $s(x, y)$ driver exploits
+this most sharply: the assembly rule is its evaluation loop.
 
 ## Public Inputs
 
@@ -50,7 +51,7 @@ There is a special gate in all wiring polynomials called the `SYSTEM` gate,
 which is the first gate over wires $\v{a}_0, \v{b}_0, \v{c}_0, \v{d}_0$. The
 wire $\color{blue}{\v{d}_0}$ is a special wire called [`ONE`] which is the
 constant wire; in wiring polynomials that verify circuits, it is enforced to
-equal $1$ through the $0$th constraint, via $k(0) = s(X, 0) = X^0 = 1$.
+equal $1$ through the final constraint, via $k(0) = s(X, 0) = X^0 = 1$.
 
 The $\color{#7e22ce}{\v{c}_0 = 0}$ wire assignment ensures $r(0) = 0$ for every
 trace, and this is forced by the gate equations when $\color{blue}{\v{d}_0 =
@@ -58,10 +59,11 @@ trace, and this is forced by the gate equations when $\color{blue}{\v{d}_0 =
 (blinding) value $\color{#dc2626}{\alpha}$ for all traces, and thus $\v{b}_0 =
 0$ is assigned so that the gate equations are always satisfied.
 
-The constraint for $Y^{4n - 1}$ is reserved for the [registry](registry.md),
-which injects a fixed "key" value $\color{#7e22ce}{\kappa}$ into a meaningless
-constraint over the $\color{#7e22ce}{\v{c}_0}$ wire, which is assigned to $0$ in
-all traces anyway. The purpose of this key is to make non-trivial evaluations of
+The constraint for $Y^{4n - 1}$ is reserved for the
+[registry](../extensions/registry.md), which injects a fixed "key" value
+$\color{#7e22ce}{\kappa}$ into a meaningless constraint over the
+$\color{#7e22ce}{\v{c}_0}$ wire, which is assigned to $0$ in all traces
+anyway. The purpose of this key is to make non-trivial evaluations of
 $s(X, Y)$ unpredictable even to someone who chooses $s$, since the key can be
 computed as a hash digest of $s$ prior to the substitution of
 $\color{#7e22ce}{\kappa}$.
@@ -74,7 +76,7 @@ at most $4n - 2$ usable constraints and only $n - 1$ usable gates.
 ## Bonding Polynomials
 
 Wiring polynomials typically verify constraints for circuit traces, but there do
-exist wiring polynomials that just enforce constraints on incomplete traces.
+exist wiring polynomials that only enforce constraints on incomplete traces.
 These exist internally to Ragu and are called **bonding polynomials**.
 
 Unlike circuit wiring polynomials, which are checked with
@@ -82,8 +84,8 @@ $
 \revdot{\v{r}}{\v{r} \circ \v{z^{4n}} + \v{t} + \v{s}} = \dot{\v{k}}{\v{y^{4n}}}
 $,
 bonding polynomials instead appear in claims of the form
-$\revdot{\v{r}}{\v{s}} = 0$, which do not enforce the gate equations on the trace
-and permit batching.[^batching]
+$\revdot{\v{r}}{\v{s}} = 0$, which do not enforce the gate equations on the
+trace and permit batching.[^batching]
 
 [^batching]: As an example, if two separate $\v{r_0}$ and $\v{r_1}$ must satisfy
 a bonding revdot claim then $\revdot{\v{r_0} + z \v{r_1}}{\v{s}} = 0$ suffices
