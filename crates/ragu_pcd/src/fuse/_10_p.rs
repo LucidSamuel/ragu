@@ -7,7 +7,9 @@
 //! polynomial commitments using additive homomorphism:
 //! $\text{commit}(\sum\_j \beta^j \cdot p\_j) = \sum\_j \beta^j \cdot C\_j$.
 //!
-//! The commitment is computed via [`PointsWitness`] Horner evaluation.
+//! The commitment is computed via
+//! [`PointsWitness`](crate::internal::endoscalar::PointsWitness)
+//! Horner evaluation.
 
 use alloc::vec::Vec;
 use core::ops::AddAssign;
