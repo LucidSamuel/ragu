@@ -33,7 +33,6 @@ use ragu_primitives::Point;
 
 use crate::internal::{
     endoscalar::{EndoscalarStage, Points, PointsStage},
-    native::RxIndex,
     nested::{NUM_ENDOSCALING_POINTS, stages},
 };
 
@@ -131,21 +130,21 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         let mut walker = Walker::new(&points);
 
         for child in [&preamble.left, &preamble.right] {
-            for &id in &RxIndex::ALL {
-                walker.enforce_equal(dr, &child[id])?;
+            for point in child.points_for_p() {
+                walker.enforce_equal(dr, point)?;
             }
-            walker.enforce_equal(dr, &child.stashed_ab_a)?;
-            walker.enforce_equal(dr, &child.stashed_ab_b)?;
-            walker.enforce_equal(dr, &child.stashed_registry_xy)?;
-            walker.enforce_equal(dr, &child.stashed_p)?;
         }
 
-        walker.enforce_equal(dr, &s_prime.registry_wx0)?;
-        walker.enforce_equal(dr, &s_prime.registry_wx1)?;
-        walker.enforce_equal(dr, &inner_error.registry_wy)?;
-        walker.enforce_equal(dr, &ab.a)?;
-        walker.enforce_equal(dr, &ab.b)?;
-        walker.enforce_equal(dr, &query.registry_xy)?;
+        for point in [
+            &s_prime.registry_wx0,
+            &s_prime.registry_wx1,
+            &inner_error.registry_wy,
+            &ab.a,
+            &ab.b,
+            &query.registry_xy,
+        ] {
+            walker.enforce_equal(dr, point)?;
+        }
 
         walker.finish();
 
