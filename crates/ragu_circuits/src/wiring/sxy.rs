@@ -110,7 +110,7 @@ struct Evaluator<'fp, F, R> {
     /// The evaluation point $y$, used for Horner accumulation.
     y: F,
 
-    /// Evaluation of the `ONE` wire: $x^{2n}$.
+    /// Evaluation of the `ONE` wire: $1$ (monomial $x^0$).
     ///
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
@@ -326,21 +326,24 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     y: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<F> {
-    if x == F::ZERO {
-        // The polynomial is zero if x is zero.
-        return Ok(F::ZERO);
-    }
+    let one = F::ONE;
 
-    let x_inv = x.invert().expect("x is not zero");
+    // At x = 0 every monomial other than x^0 vanishes; the d[0] ONE wire
+    // (at x^0) still contributes. Set x_inv = 0 so the running monomials
+    // stay zero through synthesis and the ONE sentinel resolves normally.
+    let x_inv = if x == F::ZERO {
+        F::ZERO
+    } else {
+        x.invert().expect("x is not zero")
+    };
     let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
     let xn2 = xn.square(); // xn2 = x^(2n)
     let base_a_x = xn2 * x_inv; // x^(2n - 1)
     let base_b_x = xn2; // x^(2n)
     let xn4 = xn2.square(); // x^(4n)
     let base_c_x = xn4 * x_inv; // x^(4n - 1)
-    let xn_inv = x_inv.pow_vartime([R::n() as u64]); // x^(-n)
-    let base_b_x_inv = xn_inv.square(); // x^(-2n)
-    let one = base_b_x; // x^(2n)
+    let xn_inv = x_inv.pow_vartime([R::n() as u64]); // x^(-n), or 0 if x = 0
+    let base_b_x_inv = xn_inv.square(); // x^(-2n), or 0 if x = 0
 
     if y == F::ZERO {
         // If y is zero, all terms y^j for j > 0 vanish, leaving only the ONE

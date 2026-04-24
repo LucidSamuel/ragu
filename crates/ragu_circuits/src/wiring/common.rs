@@ -21,11 +21,13 @@
 //!
 //! ### `ONE` Wire Evaluation
 //!
-//! The `ONE` wire corresponds to the $b$ wire of the SYSTEM gate, with monomial
-//! $x^{2n}$. Since [`Driver::ONE`] must be a compile-time constant, it cannot
-//! hold this computed value. Instead, [`WireEval::One`] serves as a sentinel
-//! that [`WireEvalSum::add_term`] resolves to the cached $x^{2n}$ value
-//! at runtime.
+//! The `ONE` wire corresponds to the $d$ wire of the SYSTEM gate, with monomial
+//! $x^0 = 1$. Since [`Driver::ONE`] must be a compile-time constant and the
+//! evaluators may use a sentinel value distinct from $1$ (see [`metrics`]),
+//! [`WireEval::One`] serves as a sentinel that [`WireEvalSum::add_term`]
+//! resolves to the cached value at runtime.
+//!
+//! [`metrics`]: crate::metrics
 //!
 //! [`sx`]: super::sx
 //! [`sxy`]: super::sxy
@@ -49,9 +51,9 @@ use ragu_core::drivers::LinearExpression;
 ///
 /// - `One` — Represents the ONE wire. This variant exists because `Driver::ONE`
 ///   must be a compile-time constant, but the `ONE` wire's actual evaluation
-///   (e.g., $x^{2n}$) depends on the evaluation point.
-///   [`WireEvalSum::add_term`] resolves `One` to the cached evaluation at
-///   runtime.
+///   (plain $1$ for the `sx`/`sxy` evaluators, a random sentinel for the
+///   `metrics` counter) is determined at runtime. [`WireEvalSum::add_term`]
+///   resolves `One` to the cached evaluation at runtime.
 ///
 /// [`Driver::mul`]: ragu_core::drivers::Driver::mul
 /// [`Driver::add`]: ragu_core::drivers::Driver::add

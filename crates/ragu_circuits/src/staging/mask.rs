@@ -98,8 +98,8 @@ impl<R: Rank> StageMask<R> {
     /// the SYSTEM gate (gate 0) and must be at least 1. Gate wires are
     /// enforced to zero for gates `1..skip_gates` and
     /// `(skip_gates + num_gates)..n`. The SYSTEM gate is not constrained
-    /// here because `d[0]` carries the alpha blinding factor and
-    /// `b[0]` may or may not be set to 1; `a[0]` and `c[0]` are
+    /// here because `b[0]` carries the alpha blinding factor and
+    /// `d[0]` may or may not be set to 1; `a[0]` and `c[0]` are
     /// zero in all cases.
     pub fn new(skip_gates: usize, num_gates: usize) -> Result<Self> {
         assert!(skip_gates > 0, "skip_gates must include the SYSTEM gate");
@@ -300,7 +300,8 @@ mod tests {
             //
             // c[j] at degree 4n-1-j (j=1..n-1), b[j] at degree 2n+j (j=n-1..0),
             // a[j] at degree 2n-1-j (j=0..n-1), d[j] at degree j (j=n-1..1).
-            // d[0] at degree 0 is not issued (unconstrained blinding factor).
+            // d[0] at degree 0 is the ONE wire slot, not issued here (handled
+            // by orchestrate + Stripped for bonding polynomials).
             // c[0] is the registry key slot at degree 4n-1 — not emitted here.
             let wires = gates
                 .iter()

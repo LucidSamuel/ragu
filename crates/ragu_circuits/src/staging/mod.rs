@@ -334,11 +334,11 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
 
     /// Compute the (partial) $r(X)$ polynomial for this stage.
     ///
-    /// `alpha` is placed at `d[0]` of the resulting polynomial. Stage
-    /// traces can be all-zero without it, and linear combinations of
-    /// polynomials with predictable `d[0]` values could cancel to zero in
-    /// derived polynomials — either case produces a point-at-infinity
-    /// commitment. A random alpha prevents this.
+    /// `alpha` is placed at `b[0]` of the resulting polynomial. Stages
+    /// have no ONE wire, so without alpha a stage trace could be all-zero;
+    /// and any predictable wire slot can cancel in linear combinations of
+    /// stage polynomials — either case produces a point-at-infinity
+    /// commitment. A random alpha at `b[0]` prevents both.
     ///
     /// Pass a random field element in production; `F::ZERO` is acceptable
     /// in tests.
@@ -362,8 +362,9 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
         let mut dr = RxDriver::<F, R>::with_capacity(Self::skip_gates() + Self::num_gates());
 
         // SYSTEM gate
-        let (_, _, _, extra) = dr.gate(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
-        dr.assign_extra(extra, || Ok(Coeff::Arbitrary(alpha)))?;
+        let (_, _, _, extra) =
+            dr.gate(|| Ok((Coeff::Zero, Coeff::Arbitrary(alpha), Coeff::Zero)))?;
+        dr.assign_extra(extra, || Ok(Coeff::Zero))?;
 
         for _ in 0..(Self::skip_gates() - 1) {
             // d[0] = 0 is default
@@ -395,7 +396,7 @@ pub trait StageExt<F: Field, R: Rank>: Stage<F, R> {
     /// this stage's partial trace.
     ///
     /// Staging circuits do not behave like normal circuits because their
-    /// `ONE` gate carries only an alpha value in `d[0]` (no `b[0] = 1` ONE
+    /// `ONE` gate carries only an alpha value in `b[0]` (no `d[0] = 1` ONE
     /// wire) and they are used solely for partial trace commitments. As a
     /// result, their mask must be computed differently.
     fn mask<'a>() -> Result<BondingObject<'a, F, R>> {

@@ -18,8 +18,8 @@
 //!
 //! Every driver performs the same sequence around the circuit body:
 //!
-//! 1. **SYSTEM gate** — Allocate the SYSTEM gate (gate 0). Its $b$ wire
-//!    carries the constant $1$ (the `Driver::ONE` wire) and its $d$ wire
+//! 1. **SYSTEM gate** — Allocate the SYSTEM gate (gate 0). Its $d$ wire
+//!    carries the constant $1$ (the `Driver::ONE` wire) and its $b$ wire
 //!    carries the blinding factor $\alpha$. The $a$ and $c$ wires are zero.
 //! 2. **Witness** — Run the circuit's [`witness`](RawCircuit::witness) method,
 //!    passing the SYSTEM gate wires so that internal implementations (e.g.
@@ -155,7 +155,7 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapterRef<'_, C> 
 /// `MaybeKind = Empty` (polynomial evaluators, metrics), the gate closure is
 /// never called. For the trace driver (`MaybeKind = Always`), the zeros serve
 /// as placeholders that [`Trace::assemble`](crate::Trace::assemble) later
-/// overwrites with $b_0 = 1$ and $d_0 = \alpha$.
+/// overwrites with $d_0 = 1$ and $b_0 = \alpha$.
 ///
 /// # Public output enforcement
 ///
@@ -165,8 +165,8 @@ impl<F: Field, C: crate::Circuit<F>> RawCircuit<F> for CircuitAdapterRef<'_, C> 
 ///
 /// # ONE constraint
 ///
-/// The final constraint enforces `Driver::ONE` (the $b$ wire of the SYSTEM gate, which
-/// evaluates to $x^{2n}$) against the constant term of $k(Y)$. This ensures
+/// The final constraint enforces `Driver::ONE` (the $d$ wire of the SYSTEM gate, which
+/// evaluates to $1$) against the constant term of $k(Y)$. This ensures
 /// that $k(0) = 1$ for well-formed circuits. The result of [`orchestrate`]: the
 /// degree of $k(Y)$.
 pub(crate) struct Orchestrated {

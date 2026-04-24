@@ -40,7 +40,7 @@
 //!
 //! Wires are represented as evaluated monomials using the running monomial
 //! pattern described in the [`common`] module. The `ONE` wire evaluates to
-//! $x^{2n}$.
+//! $1$ (monomial $x^0$).
 //!
 //! [`common`]: super::common
 //!
@@ -58,7 +58,7 @@
 //! and [`sxy`] agree on which constraint maps to which $Y$-power.
 //!
 //! After reversal, the root segment's coefficients are ordered as:
-//! 1. $c\_{0}$: `ONE` wire constraint (the constant $x^{2n}$)
+//! 1. $c\_{0}$: `ONE` wire constraint (the constant $1$)
 //! 2. $c\_{1}, \ldots, c\_{p}$: public output constraints
 //! 3. $c\_{p+1}, \ldots, c\_{p+m}$: circuit-specific constraints
 //!
@@ -141,7 +141,7 @@ struct Evaluator<'fp, F: Field, R: Rank> {
     /// Cached inverse $x^{-1}$, used to advance decreasing monomials.
     x_inv: F,
 
-    /// Evaluation of the `ONE` wire: $x^{2n}$.
+    /// Evaluation of the `ONE` wire: $1$ (monomial $x^0$).
     ///
     /// Passed to [`WireEvalSum::new`] so that [`WireEval::One`] variants can be
     /// resolved during linear combination accumulation.
@@ -340,19 +340,19 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 /// - `floor_plan`: Per-segment absolute offsets, computed by
 ///   [`floor_plan()`](crate::floor_planner::floor_plan).
 ///
-/// # Special Cases
-///
-/// If $x = 0$, returns the zero polynomial since all monomials vanish.
 pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     circuit: &RC,
     x: F,
     floor_plan: &[ConstraintSegment],
 ) -> Result<sparse::Polynomial<F, R>> {
-    if x == F::ZERO {
-        return Ok(sparse::Polynomial::new());
-    }
-
-    let x_inv = x.invert().expect("x is not zero");
+    // At x = 0 every monomial other than x^0 vanishes; the d[0] ONE wire
+    // (at x^0) still contributes. Set x_inv = 0 so the running monomials
+    // stay zero through synthesis and the ONE sentinel resolves normally.
+    let x_inv = if x == F::ZERO {
+        F::ZERO
+    } else {
+        x.invert().expect("x is not zero")
+    };
     let xn = x.pow_vartime([R::n() as u64]);
     let xn2 = xn.square();
     let base_a_x = xn2 * x_inv;
@@ -361,7 +361,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     let base_c_x = xn4 * x_inv;
     let xn_inv = x_inv.pow_vartime([R::n() as u64]);
     let base_b_x_inv = xn_inv.square();
-    let one = base_b_x;
+    let one = F::ONE;
 
     let mut evaluator = Evaluator::<F, R> {
         // Zero-initialized: the evaluator fills specific indices during
