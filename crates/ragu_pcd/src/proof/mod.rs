@@ -92,6 +92,9 @@ pub(crate) struct ChildStageRx<F: ff::PrimeField, R: Rank> {
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Extract stage rx polynomials from this proof for storage as child
     /// data in a parent proof.
+    //
+    // TODO: wrap each child polynomial in `Arc` so this extraction can
+    // share ownership instead of cloning every rx polynomial.
     pub(crate) fn as_child_stage_rx(&self) -> ChildStageRx<C::ScalarField, R> {
         ChildStageRx {
             points_stage: self.nested_points_rx.clone(),
