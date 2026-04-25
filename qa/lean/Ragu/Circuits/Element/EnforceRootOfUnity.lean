@@ -13,8 +13,8 @@ Modeled as a `FormalAssertion`: the gadget is constraint-only (no
 output), `Assumptions` and `Spec` carry the same predicate, and
 the constraints are an exact reformulation of that predicate. -/
 def main (input : Expression (F p)) : Circuit (F p) (Var unit (F p)) := do
-  let square1 ← subcircuit Mul.circuit ⟨input, input⟩
-  let square2 ← subcircuit Mul.circuit ⟨square1, square1⟩
+  let square1 ← Mul.circuit ⟨input, input⟩
+  let square2 ← Mul.circuit ⟨square1, square1⟩
   assertZero (square2 - 1)
 
 /-- Caller must promise `input^4 = 1` for the honest prover to satisfy

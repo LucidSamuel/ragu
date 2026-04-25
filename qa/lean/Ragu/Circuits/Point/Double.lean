@@ -15,18 +15,18 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (input : Va
 
   -- delta = 3x^2 / 2y
   let double_y := y + y
-  let x2 ← subcircuit Element.Square.circuit x
+  let x2 ← Element.Square.circuit x
   let x2_scaled := (3 : F p) * x2
   let delta ← Element.DivNonzero.circuit hintReader ⟨x2_scaled, double_y⟩
 
   -- x3 = delta^2 - 2x
   let double_x := x + x
-  let delta2 ← subcircuit Element.Square.circuit delta
+  let delta2 ← Element.Square.circuit delta
   let x3 := delta2 - double_x
 
   -- y3 = delta * (x - x3) - y
   let x_sub_x3 := x - x3
-  let delta_x_sub_3 ← subcircuit Element.Mul.circuit ⟨delta, x_sub_x3⟩
+  let delta_x_sub_3 ← Element.Mul.circuit ⟨delta, x_sub_x3⟩
   let y3 := delta_x_sub_3 - y
 
   return ⟨x3, y3⟩

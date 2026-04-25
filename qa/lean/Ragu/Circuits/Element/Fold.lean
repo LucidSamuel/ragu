@@ -17,9 +17,9 @@ deriving ProvableStruct
 
 /-- Horner fold: `((x0 · s) + x1) · s + x2 = x0·s² + x1·s + x2`. -/
 def main (input : Var Input (F p)) : Circuit (F p) (Expression (F p)) := do
-  let acc0_s ← subcircuit Mul.circuit ⟨input.x0, input.s⟩
+  let acc0_s ← Mul.circuit ⟨input.x0, input.s⟩
   let acc1 := acc0_s + input.x1
-  let acc1_s ← subcircuit Mul.circuit ⟨acc1, input.s⟩
+  let acc1_s ← Mul.circuit ⟨acc1, input.s⟩
   return acc1_s + input.x2
 
 def Assumptions (_input : Input (F p)) := True
