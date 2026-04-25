@@ -36,7 +36,7 @@ Future changes might introduce new gaps.
 
 Anything other than the verified circuit is out of scope. Everything in the Rust source, the Rust compiler, the hardware, and the physical and social level is out of scope of formal verification. The mathematical theory behind the protocol is mostly out of scope. For example, the cryptographic reductions and the cryptographic assumptions are out of scope. The Rust implementation might behave in a nondeterministic way so that it might sometimes or always use different constraints from the constraints that it exports.
 
-The completeness theorem in the Ragu Formal Verification does not guarantee that the honest prover implementation does produce a proof that passes the verification. The Ragu Formal Verification does not prove any theorems about the Rust implementation of anything, so the prover implementation is not verified. The completeness results in Ragu Formal Verification just talk about the `witness` operations in the Lean code. The Lean `witness` operations are not compared against extractions from Rust.
+The completeness theorem in the Ragu Formal Verification does not guarantee that the honest prover implementation does produce a proof that passes the verification. The Ragu Formal Verification does not prove any theorems about the Rust implementation of anything. The completeness results in Ragu Formal Verification just talk about the `witness` operations in the Lean code. The Lean `witness` operations are not compared against extractions from Rust.
 
 If values in the circuit are copied somewhere else, the soundness theorems of the Ragu Formal Verification results doesn't tell the verifier anything about the copied values.
 
