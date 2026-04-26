@@ -22,8 +22,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Output := field
 
   Spec (input : Circuits.Boolean.ConditionalSelect.Input (F p)) (output : F p) :=
-    (input.cond = 0 ∨ input.cond = 1) →
-      output = input.a + input.cond * (input.b - input.a)
+    IsBool input.cond →
+      output = if input.cond = 1 then input.b else input.a
 
   deserializeInput
   serializeOutput

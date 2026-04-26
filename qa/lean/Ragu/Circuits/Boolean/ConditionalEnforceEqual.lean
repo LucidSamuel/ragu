@@ -40,12 +40,12 @@ by soundness — the constraints alone force `cond · (a - b) = 0`. -/
 def Assumptions (input : Input (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
   (input.cond = 0 ∨ input.cond = 1) ∧ (input.cond = 1 → input.a = input.b)
 
-/-- The verifier learns `cond · (a - b) = 0` unconditionally from the
-constraints. Stated independently of `Assumptions` so the trusted
-claim doesn't mislead callers into thinking they need to provide `a = b`
-as a precondition — the constraints *enforce* that when `cond = 1`. -/
+/-- High-level operation: when `cond = 1`, the circuit forces `a = b`;
+when `cond = 0`, the circuit imposes no relation between `a` and `b`.
+Holds unconditionally — the underlying `cond · (a - b) = 0` constraint
+implies this without needing a boolean precondition on `cond`. -/
 def Spec (input : Input (F p)) (_out : Unit) (_data : ProverData (F p)) :=
-  input.cond * (input.a - input.b) = 0
+  input.cond = 1 → input.a = input.b
 
 instance elaborated : ElaboratedCircuit (F p) Input unit where
   main
@@ -55,12 +55,13 @@ theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2
-  -- c1 : (env.get i₀) * (env.get (i₀+1)) = env.get (i₀+1+1)
-  -- c2 : env.get i₀ = input_cond
-  -- c3 : (env.get (i₀+1)) + -input_a + input_b = 0
-  -- c4 : env.get (i₀+1+1) = 0
-  -- Goal : input_cond * (input_a - input_b) = 0
-  linear_combination c1 - env.get (i₀ + 1) * c2 - input_cond * c3 + c4
+  -- c1 : env_x * env_y = env_z, c2 : env_x = input_cond
+  -- c3 : env_y - input_a + input_b = 0, c4 : env_z = 0
+  intro h_cond
+  -- h_cond : input_cond = 1
+  -- Goal : input_a = input_b
+  linear_combination
+    c1 - env.get (i₀ + 1) * c2 - c3 + c4 - env.get (i₀ + 1) * h_cond
 
 theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assumptions := by
   circuit_proof_start

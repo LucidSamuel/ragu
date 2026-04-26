@@ -21,12 +21,11 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   Input := Circuits.Boolean.ConditionalEnforceEqual.Input
   Output := unit
 
-  -- Unconditional: the constraints alone force `cond · (a - b) = 0`
-  -- regardless of what the caller provides. The boolean-ness and
-  -- conditional equality preconditions are only needed for completeness
-  -- (honest prover satisfiability), not for soundness.
+  -- High-level: when `cond = 1`, the circuit forces `a = b`. Stated
+  -- unconditionally — the underlying `cond · (a - b) = 0` constraint
+  -- implies this without a boolean precondition on `cond`.
   Spec (input : Circuits.Boolean.ConditionalEnforceEqual.Input (F p)) (_output : Unit) :=
-    input.cond * (input.a - input.b) = 0
+    input.cond = 1 → input.a = input.b
 
   deserializeInput
   serializeOutput

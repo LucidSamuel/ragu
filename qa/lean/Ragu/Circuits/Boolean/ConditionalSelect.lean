@@ -1,4 +1,5 @@
 import Clean.Circuit
+import Clean.Gadgets.Boolean
 import Ragu.Circuits.Core.AllocMul
 
 namespace Ragu.Circuits.Boolean.ConditionalSelect
@@ -26,15 +27,15 @@ def main (input : Var Input (F p)) : Circuit (F p) (Expression (F p)) := do
   assertZero (y - (input.b - input.a))
   return input.a + z
 
-/-- Caller must promise `cond` is boolean; the algebraic `Spec` holds
-regardless, but is only meaningful as a "select" under this precondition. -/
+/-- Caller must promise `cond` is boolean — without it, the "select"
+description below doesn't hold (the underlying circuit computes
+`a + cond · (b - a)`, which only collapses to a select when `cond ∈ {0, 1}`). -/
 def Assumptions (input : Input (F p)) :=
-  input.cond = 0 ∨ input.cond = 1
+  IsBool input.cond
 
-/-- Matches the Rust formula: `out = a + cond * (b - a)`. Under the boolean
-assumption this simplifies to `a` (when `cond = 0`) or `b` (when `cond = 1`). -/
+/-- High-level operation: select `b` when `cond = 1`, else `a`. -/
 def Spec (input : Input (F p)) (out : F p) :=
-  out = input.a + input.cond * (input.b - input.a)
+  out = if input.cond = 1 then input.b else input.a
 
 instance elaborated : ElaboratedCircuit (F p) Input field where
   main
@@ -44,8 +45,13 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2 c3
-  rw [← c1, c2, c3]
-  ring
+  -- The output is `input_a + env_z`. From the wire constraints,
+  -- env_z = env_x * env_y = input_cond * (input_b - input_a).
+  rcases h_assumptions with hc0 | hc1
+  · rw [hc0, if_neg (by norm_num : (0 : F p) ≠ 1), ← c1, c2, c3, hc0]
+    ring
+  · rw [hc1, if_pos rfl, ← c1, c2, c3, hc1]
+    ring
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
   circuit_proof_start
