@@ -23,9 +23,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec (input : Circuits.Point.ConditionalNegate.Input (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
-    (input.cond = 0 ∨ input.cond = 1) →
+    IsBool input.cond →
       (output.x = input.x
-        ∧ output.y = input.y + input.cond * (-input.y - input.y))
+        ∧ output.y = if input.cond = 1 then -input.y else input.y)
 
   deserializeInput
   serializeOutput

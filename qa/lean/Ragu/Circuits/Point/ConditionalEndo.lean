@@ -1,4 +1,5 @@
 import Clean.Circuit
+import Clean.Gadgets.Boolean
 import Ragu.Circuits.Boolean.ConditionalSelect
 import Ragu.Circuits.Point.Spec
 
@@ -21,17 +22,16 @@ def main (curveParams : Spec.CurveParams p) (input : Var Input (F p))
     ⟨input.cond, input.x, curveParams.ζ * input.x⟩
   return ⟨new_x, input.y⟩
 
-/-- Caller must promise `cond ∈ {0, 1}`; `Spec` holds unconditionally,
-but is only meaningful as a "conditional endomorphism" under this
-precondition. -/
+/-- Caller must promise `cond` is boolean; the high-level "conditional
+endomorphism" description below requires this to hold. -/
 def Assumptions (_curveParams : Spec.CurveParams p) (input : Input (F p)) :=
-  input.cond = 0 ∨ input.cond = 1
+  IsBool input.cond
 
-/-- New x is `x + cond · (ζ·x - x)`; new y is unchanged. Under `cond = 0`
-the x is unchanged; under `cond = 1` the x becomes `ζ·x`. -/
+/-- High-level operation: when `cond = 1`, scale `x` by `ζ`; else leave
+`x` unchanged. `y` is always unchanged. -/
 def Spec (curveParams : Spec.CurveParams p) (input : Input (F p))
     (output : Spec.Point (F p)) :=
-  output.x = input.x + input.cond * (curveParams.ζ * input.x - input.x) ∧
+  output.x = (if input.cond = 1 then curveParams.ζ * input.x else input.x) ∧
   output.y = input.y
 
 instance elaborated (curveParams : Spec.CurveParams p)

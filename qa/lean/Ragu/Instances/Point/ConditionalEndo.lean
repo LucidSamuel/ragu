@@ -23,8 +23,9 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   Spec (input : Circuits.Point.ConditionalEndo.Input (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
-    (input.cond = 0 ∨ input.cond = 1) →
-      (output.x = input.x + input.cond * (Circuits.Point.Spec.EpAffineParams.ζ * input.x - input.x)
+    IsBool input.cond →
+      (output.x = (if input.cond = 1
+        then Circuits.Point.Spec.EpAffineParams.ζ * input.x else input.x)
         ∧ output.y = input.y)
 
   deserializeInput

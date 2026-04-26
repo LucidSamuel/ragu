@@ -1,4 +1,5 @@
 import Clean.Circuit
+import Clean.Gadgets.Boolean
 import Ragu.Circuits.Boolean.ConditionalSelect
 import Ragu.Circuits.Point.Spec
 
@@ -19,16 +20,16 @@ def main (input : Var Input (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let new_y ← Boolean.ConditionalSelect.circuit ⟨input.cond, input.y, -input.y⟩
   return ⟨input.x, new_y⟩
 
-/-- Caller must promise `cond ∈ {0, 1}`; `Spec` holds unconditionally,
-but is only meaningful as a "conditional negate" under this precondition. -/
+/-- Caller must promise `cond` is boolean; the high-level "conditional
+negate" description below requires this to hold. -/
 def Assumptions (input : Input (F p)) :=
-  input.cond = 0 ∨ input.cond = 1
+  IsBool input.cond
 
-/-- New y is `y + cond · (-y - y)`; new x is unchanged. Under `cond = 0`
-the y is unchanged; under `cond = 1` the y becomes `-y`. -/
+/-- High-level operation: when `cond = 1`, negate `y`; else leave `y`
+unchanged. `x` is always unchanged. -/
 def Spec (input : Input (F p)) (output : Spec.Point (F p)) :=
   output.x = input.x ∧
-  output.y = input.y + input.cond * (-input.y - input.y)
+  output.y = if input.cond = 1 then -input.y else input.y
 
 instance elaborated : ElaboratedCircuit (F p) Input Spec.Point where
   main
