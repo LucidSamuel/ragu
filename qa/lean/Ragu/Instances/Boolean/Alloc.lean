@@ -11,6 +11,9 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var unit (F 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
 
+-- The `same_spec` field's `intro` step exceeds the default 200k heartbeat
+-- budget while reducing the subcircuit-composition goal type to whnf.
+set_option maxHeartbeats 400000 in
 def formal_instance : Core.Statements.GeneralFormalInstance where
   p
   inputLen
@@ -31,23 +34,26 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   same_constraints := by
     intro input
-    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
-      Operations.toFlat, circuit_norm,
+    simp only [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat,
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.Alloc.circuit,
-      Circuits.Boolean.Alloc.elaborated,
-      Circuits.Boolean.Alloc.main]
-    repeat (constructor; rfl)
+      Circuits.Boolean.Alloc.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.main,
+      circuit_norm]
     constructor
   same_output := by
     intro input
-    simp [circuit_norm,
+    simp only [
       GeneralFormalCircuit.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Boolean.Alloc.circuit,
-      Circuits.Boolean.Alloc.elaborated,
-      Circuits.Boolean.Alloc.main]
+      Circuits.Boolean.Alloc.main,
+      Circuits.Core.AllocMul.circuit,
+      Circuits.Core.AllocMul.main,
+      circuit_norm]
   same_spec := by
     intro input output
     dsimp only [Circuits.Boolean.Alloc.circuit,

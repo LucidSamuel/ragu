@@ -7,17 +7,13 @@ variable {p : ℕ} [Fact p.Prime]
 
 /-- `Boolean::alloc` constrains a wire to hold `0` or `1`.
 
-Emits the same 3-wire gate as `Core.AllocMul` (constraint `a * b = c`),
-then asserts `c = 0` (collapsing the gate to `a * b = 0`) and
+Delegates the 3-wire `a * b = c` gate to `Core.AllocMul`, then
+asserts `c = 0` (collapsing the gate to `a * b = 0`) and
 `1 - a - b = 0` (binding `b = 1 - a`). Together: `a * (1 - a) = 0`, so
-`a ∈ {0, 1}`. Flat reimplementation to keep `same_constraints` tractable. -/
-def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_ : Unit)
-    : Circuit (F p) (Expression (F p)) := do
-  let ⟨a, b, c⟩ ← (witness fun env =>
-    let r := hintReader env.hint
-    (⟨r.x, r.y, r.x * r.y⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
-  assertZero (a * b - c)
+`a ∈ {0, 1}`. -/
+def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) (_input : Unit)
+    : Circuit (F p) (Var field (F p)) := do
+  let ⟨a, b, c⟩ ← Core.AllocMul.circuit hintReader ()
   assertZero c
   assertZero (1 - a - b)
   return a
@@ -42,10 +38,9 @@ instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
 
 theorem soundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
-  circuit_proof_start
+  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
-  -- h_mul : a * b - c = 0, h_c : c = 0, h_lin : 1 - a - b = 0
-  rw [add_neg_eq_zero] at h_mul
+  -- h_mul : a * b = c, h_c : c = 0, h_lin : 1 - a - b = 0
   rw [h_c] at h_mul
   rcases mul_eq_zero.mp h_mul with ha | hb
   · exact Or.inl ha
@@ -53,18 +48,16 @@ theorem soundness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
 
 theorem completeness (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions hintReader) := by
-  circuit_proof_start
+  circuit_proof_start [
+    Core.AllocMul.circuit, Core.AllocMul.Assumptions,
+    Core.AllocMul.CompletenessSpec
+  ]
   obtain ⟨h_sum, h_prod⟩ := h_assumptions
-  have h0 := h_env (0 : Fin 3)
-  have h1 := h_env (1 : Fin 3)
-  have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
-  norm_num at h0 h1 h2
-  simp at h0 h1 h2
-  refine ⟨?_, ?_, ?_⟩
-  · rw [show i₀ + 1 + 1 = i₀ + 2 from by omega, h0, h1, h2]; ring
-  · rw [show i₀ + 1 + 1 = i₀ + 2 from by omega, h2]; exact h_prod
-  · rw [h0, h1]; linear_combination -h_sum
+  obtain ⟨_, hx, hy, hz⟩ := h_env
+  -- hx : a = r.x, hy : b = r.y, hz : c = r.x * r.y
+  refine ⟨?_, ?_⟩
+  · rw [hz]; exact h_prod
+  · rw [hx, hy]; linear_combination -h_sum
 
 def circuit (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit (F p) unit field :=
