@@ -23,7 +23,7 @@ The Ragu Formal Verification relies on some assumptions.
 
 ## Assumptions for the Ragu Formal Verification to be useful
 
-Lean theorems mean that any model of Lean type theory that satisfies all the assumptions, arguments and hypotheses of the theorem also satisfies the conclusion of the theorem. When you use Lean theorems to reason about the real world, you need to use the real world as a model of Lean type theory and prove (outside of Lean) that the real world as a model of Lean type theory satisfies all the assumptions, arguments and hypotheses of the theorem. Moreover, the conclusion of the theorem as applied to the same model of Lean type theory needs to be useful to establish the expectations about the real world.
+Lean theorems mean that any model of Lean type theory that satisfies all the assumptions, arguments and hypotheses of the theorem also satisfies the conclusion of the theorem. When you use Lean theorems to reason about the real world, you need to use the real world as a model of Lean type theory and prove (outside of Lean) that the real world as a model of Lean type theory satisfies all the assumptions, arguments and hypotheses of the theorem. Moreover, the conclusion of the theorem as applied to the same model of Lean type theory needs to be useful to establish the desired properties of the real world.
 
 Any gaps between the reality and the formalization can render the Ragu Formal Verification to be useless.
 Also, any gaps between expectations (yours or others', documented or undocumented, conscious or unconscious) and the formalization can render the Ragu Formal Verification to be useless.
