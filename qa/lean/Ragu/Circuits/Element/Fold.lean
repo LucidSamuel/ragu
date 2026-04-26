@@ -4,10 +4,13 @@ import Ragu.Circuits.Element.Mul
 namespace Ragu.Circuits.Element.Fold
 variable {p : ℕ} [Fact p.Prime]
 
-/-- `Element::fold` is variadic (`IntoIterator<Element>`). This extraction
-instance fixes length 3 as a representative choice. The scale factor is
-itself an `Element` in production — an input wire, not a compile-time
-parameter — so it appears in `Input`. -/
+/-- `Element::fold` is variadic (`IntoIterator<Element>`) in Rust. This
+Lean reimpl is monomorphized to length 3: it does not capture the full
+generality of the Rust gadget. The scale factor is an input wire (not
+a compile-time parameter), so it appears in `Input`.
+
+TODO: generalize to a length-polymorphic reimpl that mirrors the Rust
+gadget's full generality (parameterize on `n : ℕ`, recurse on `n`). -/
 structure Input (F : Type) where
   x0 : F
   x1 : F

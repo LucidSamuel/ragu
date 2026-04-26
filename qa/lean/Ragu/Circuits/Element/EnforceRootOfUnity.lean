@@ -4,10 +4,13 @@ import Ragu.Circuits.Element.Mul
 namespace Ragu.Circuits.Element.EnforceRootOfUnity
 variable {p : ℕ} [Fact p.Prime]
 
-/-- `Element::enforce_root_of_unity(k)` enforces `self^(2^k) = 1` by
-squaring `k` times. This extraction instance fixes k = 2 (enforces
-`self^4 = 1`). Other values of k require analogous instances with the
-appropriate number of square subcircuits.
+/-- `Element::enforce_root_of_unity(k)` is parameterized on `k` in Rust
+and enforces `self^(2^k) = 1` by squaring `k` times. This Lean reimpl
+is monomorphized to `k = 2` (enforces `self^4 = 1`): it does not
+capture the full generality of the Rust gadget.
+
+TODO: generalize to a `k`-polymorphic reimpl that mirrors the Rust
+gadget's full generality (parameterize on `k : ℕ`, recurse on `k`).
 
 Modeled as a `FormalAssertion`: the gadget is constraint-only (no
 output), `Assumptions` and `Spec` carry the same predicate, and
