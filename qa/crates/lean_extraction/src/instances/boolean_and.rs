@@ -2,11 +2,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::drivers::Driver;
 use ragu_pasta::Fp;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::CircuitInstance,
-};
+use crate::{driver::ExtractionDriver, expr::Expr, instance::CircuitInstance};
 
 pub struct BooleanAndInstance;
 

@@ -3,11 +3,7 @@ use ragu_arithmetic::Coeff;
 use ragu_core::drivers::{Driver, LinearExpression};
 use ragu_pasta::Fp;
 
-use crate::{
-    driver::ExtractionDriver,
-    expr::Expr,
-    instance::CircuitInstance,
-};
+use crate::{driver::ExtractionDriver, expr::Expr, instance::CircuitInstance};
 
 pub struct PointConditionalEndoInstance;
 
@@ -31,7 +27,12 @@ impl CircuitInstance for PointConditionalEndoInstance {
         //                        cond_diff = cond · diff    (mul + 2 enforce_equals)
         //                        selected_x = x + cond_diff (virtual)
         //   y is unchanged.
-        let endo_x = dr.add(|lc| lc.add_term(&point_x, Coeff::Arbitrary(<Fp as WithSmallOrderMulGroup<3>>::ZETA)));
+        let endo_x = dr.add(|lc| {
+            lc.add_term(
+                &point_x,
+                Coeff::Arbitrary(<Fp as WithSmallOrderMulGroup<3>>::ZETA),
+            )
+        });
         let diff = dr.add(|lc| lc.add(&endo_x).sub(&point_x));
         let (mul_a, mul_b, mul_c) = dr.mul(|| Ok((Coeff::Zero, Coeff::Zero, Coeff::Zero)))?;
         dr.enforce_equal(&mul_a, &cond_wire)?;
