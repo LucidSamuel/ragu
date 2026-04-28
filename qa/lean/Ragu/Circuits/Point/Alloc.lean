@@ -18,7 +18,9 @@ def main (curveParams : Spec.CurveParams p)
   assertZero ((x3 + (curveParams.b * 1)) - y_sq)
   return ⟨x, y⟩
 
-def Assumptions (curveParams : Spec.CurveParams p)
+def Assumptions (_input : Unit) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (curveParams : Spec.CurveParams p)
     (xReader yReader : ProverHint (F p) → F p)
     (_input : Unit) (_data : ProverData (F p)) (hint : ProverHint (F p)) :=
   let hx := xReader hint
@@ -36,7 +38,8 @@ instance elaborated (curveParams : Spec.CurveParams p)
 
 theorem soundness (curveParams : Spec.CurveParams p)
     (xReader yReader : ProverHint (F p) → F p) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated curveParams xReader yReader) (Spec curveParams) := by
+    GeneralFormalCircuit.Soundness (F p) (elaborated curveParams xReader yReader)
+      Assumptions (Spec curveParams) := by
   circuit_proof_start [
     Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
     Element.AllocSquare.Spec,
@@ -51,10 +54,11 @@ theorem soundness (curveParams : Spec.CurveParams p)
 theorem completeness (curveParams : Spec.CurveParams p)
     (xReader yReader : ProverHint (F p) → F p) :
     GeneralFormalCircuit.Completeness (F p) (elaborated curveParams xReader yReader)
-      (Assumptions curveParams xReader yReader) := by
+      (ProverAssumptions curveParams xReader yReader) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
-    Element.AllocSquare.Spec, Element.AllocSquare.CompletenessSpec,
+    Element.AllocSquare.Spec, Element.AllocSquare.ProverAssumptions,
+    Element.AllocSquare.ProverSpec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
   obtain ⟨⟨_, h_x, h_xsq⟩, h_mul, ⟨_, _, h_ysq⟩⟩ := h_env
@@ -69,8 +73,9 @@ def circuit (curveParams : Spec.CurveParams p)
     GeneralFormalCircuit (F p) unit Spec.Point :=
   {
     (elaborated curveParams xReader yReader) with
-    Assumptions := Assumptions curveParams xReader yReader,
+    Assumptions := Assumptions,
     Spec := (Spec curveParams),
+    ProverAssumptions := ProverAssumptions curveParams xReader yReader,
     soundness := soundness curveParams xReader yReader,
     completeness := completeness curveParams xReader yReader
   }

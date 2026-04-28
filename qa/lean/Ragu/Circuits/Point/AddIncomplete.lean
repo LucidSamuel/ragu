@@ -43,11 +43,14 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     nonzero := nonzero_out
   }
 
-def Assumptions (curveParams : Spec.CurveParams p)
+def Assumptions (_input : Inputs (F p)) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (curveParams : Spec.CurveParams p)
     (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.P1.isOnCurve curveParams ∧ input.P2.isOnCurve curveParams ∧
-  Element.DivNonzero.Assumptions hintReader ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
+  Element.DivNonzero.ProverAssumptions hintReader
+    ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Outputs (F p)) (_data : ProverData (F p)) :=
   input.P1.isOnCurve curveParams →
@@ -84,7 +87,7 @@ instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) 
 
 theorem soundness (curveParams : Spec.CurveParams p)
     (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) (Spec curveParams) := by
+    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Assumptions (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
@@ -100,7 +103,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   constructor
   · intro h
     have h_neq : ¬input_P2_x = input_P1_x := Ne.symm h
-    specialize c2 (by simp [h_neq])
+    have c2 := c2 trivial (Or.inl h_neq)
     rw [c2, c3, c2] at c4
     rw [c2] at c3
     rw [c4, c3]
@@ -122,13 +125,14 @@ theorem soundness (curveParams : Spec.CurveParams p)
 
 theorem completeness (curveParams : Spec.CurveParams p)
     (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions curveParams hintReader) := by
+    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
+      (ProverAssumptions curveParams hintReader) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
-  simp only [sub_eq_add_neg] at h_assumptions
+  simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
   exact h_assumptions.2.2
 
 def circuit (curveParams : Spec.CurveParams p)
@@ -136,8 +140,9 @@ def circuit (curveParams : Spec.CurveParams p)
     GeneralFormalCircuit (F p) Inputs Outputs :=
   {
     elaborated hintReader with
-    Assumptions := Assumptions curveParams hintReader,
+    Assumptions := Assumptions,
     Spec := Spec curveParams,
+    ProverAssumptions := ProverAssumptions curveParams hintReader,
     soundness := soundness curveParams hintReader,
     completeness := completeness curveParams hintReader
   }

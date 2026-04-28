@@ -61,16 +61,18 @@ x-coordinate). `x₁ ≠ x₂` is asserted here directly because the first
 DivNonzero's `GeneralAssumptions` gives only the weaker `x₂-x₁ ≠ 0 ∨
 y₂-y₁ = 0`, which isn't enough to discharge DivNonzero's `Spec` premise
 when bridging the symbolic quotient to the witness. -/
-def Assumptions (_curveParams : Spec.CurveParams p)
+def Assumptions (_input : Inputs (F p)) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (_curveParams : Spec.CurveParams p)
     (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
     (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   let x_r := ((input.P2.y - input.P1.y) / (input.P2.x - input.P1.x))^2
     - input.P1.x - input.P2.x
   input.P1.x ≠ input.P2.x ∧
-  Element.DivNonzero.Assumptions hintReader1
+  Element.DivNonzero.ProverAssumptions hintReader1
     ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint ∧
-  Element.DivNonzero.Assumptions hintReader2
+  Element.DivNonzero.ProverAssumptions hintReader2
     ⟨input.P1.y + input.P1.y, input.P1.x - x_r⟩ data hint
 
 /-- The output is `2·P1 + P2` under the curve-membership preconditions and
@@ -101,7 +103,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
     (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
     (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader1 hintReader2)
-        (Spec curveParams) := by
+        Assumptions (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
@@ -113,7 +115,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   -- Specialize c1 using `x₁ ≠ x₂` (equivalent to `x₂ + -x₁ ≠ 0`).
   have h_xne' : ¬input_P2_x + -input_P1_x = 0 := by
     intro h; rw [add_neg_eq_zero] at h; exact h_xne h.symm
-  specialize c1 (Or.inl h_xne')
+  specialize c1 trivial (Or.inl h_xne')
   -- Rewrite Sq₁ via c1, c2: eval(Sq₁) = ((y2-y1)/(x2-x1))^2.
   rw [c1] at c2
   -- At this point `P1.add_incomplete P2` still shows up in the goal. Unfold
@@ -147,7 +149,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
           -((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2)) = 0 := h
       linear_combination -this
     linear_combination hq
-  specialize c3 (Or.inl h_r_premise)
+  specialize c3 trivial (Or.inl h_r_premise)
   rw [c2] at c3
   rw [c1] at c4
   rw [c1, c2] at c5
@@ -310,14 +312,15 @@ theorem completeness (curveParams : Spec.CurveParams p)
     (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
     (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader1 hintReader2)
-        (Assumptions curveParams hintReader1 hintReader2) := by
+        (ProverAssumptions curveParams hintReader1 hintReader2) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions,
+    Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
+    Element.DivNonzero.ProverSpec,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [Element.DivNonzero.Spec] at h_env
-  simp only [sub_eq_add_neg] at h_assumptions
+  simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
   obtain ⟨h_xne, h_a1, h_a2⟩ := h_assumptions
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
   -- Discharge DivNonzero#1's outer `Assumptions → ...` via h_a1, then its
@@ -328,7 +331,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     intro h
     rw [add_neg_eq_zero] at h
     exact h_xne h.symm
-  have h_div1_eq := h_div1.1 h_prem
+  have h_div1_eq := h_div1.1 trivial h_prem
   simp only [Element.Square.Spec] at h_sq1_spec
   -- Goal: (hintReader1 GeneralAssumptions) ∧ (hintReader2 GeneralAssumptions at env x_r).
   -- First conjunct is `h_a1` directly; second needs the env-level
@@ -341,8 +344,9 @@ def circuit (curveParams : Spec.CurveParams p)
     (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit (F p) Inputs Spec.Point :=
   { elaborated hintReader1 hintReader2 with
-    Assumptions := Assumptions curveParams hintReader1 hintReader2,
+    Assumptions := Assumptions,
     Spec := Spec curveParams,
+    ProverAssumptions := ProverAssumptions curveParams hintReader1 hintReader2,
     soundness := soundness curveParams hintReader1 hintReader2,
     completeness := completeness curveParams hintReader1 hintReader2 }
 

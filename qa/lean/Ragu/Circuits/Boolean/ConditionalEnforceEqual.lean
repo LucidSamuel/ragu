@@ -38,7 +38,9 @@ def main (input : Var Input (F p)) : Circuit (F p) (Var unit (F p)) := do
 invocation) and, when `cond = 1`, `a = b` (otherwise the honest prover
 cannot satisfy the gate constraint). These preconditions are *not* used
 by soundness — the constraints alone force `cond · (a - b) = 0`. -/
-def Assumptions (input : Input (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
+def Assumptions (_input : Input (F p)) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (input : Input (F p)) (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
   IsBool input.cond ∧ (input.cond = 1 → input.a = input.b)
 
 /-- High-level operation: when `cond = 1`, the circuit forces `a = b`;
@@ -52,7 +54,7 @@ instance elaborated : ElaboratedCircuit (F p) Input unit where
   main
   localLength _ := 3
 
-theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Spec := by
+theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions Spec := by
   circuit_proof_start
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
   rw [add_neg_eq_zero] at c1 c2
@@ -64,7 +66,8 @@ theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Spec := by
   linear_combination
     c1 - env.get (i₀ + 1) * c2 - c3 + c4 - env.get (i₀ + 1) * h_cond
 
-theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assumptions := by
+theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated
+    ProverAssumptions (fun _ _ _ => True) := by
   circuit_proof_start
   obtain ⟨h_bool, h_eq⟩ := h_assumptions
   have h0 := h_env (0 : Fin 3)
@@ -75,11 +78,15 @@ theorem completeness : GeneralFormalCircuit.Completeness (F p) elaborated Assump
   simp at h0 h1 h2
   rw [show i₀ + 1 + 1 = i₀ + 2 from by omega]
   rw [h0, h1, h2]
+  have h_eq' : input_cond = 1 → input_a = input_b := by
+    simpa using h_eq
   refine ⟨?_, ?_, ?_, ?_⟩
   · -- gate: cond * (a - b) = 0, holds under the cond-bool + a=b-when-cond=1 assumption
     rcases h_bool with hc0 | hc1
-    · rw [hc0]; ring
-    · rw [hc1, h_eq hc1]; ring
+    · change input_cond = 0 at hc0
+      rw [hc0]; ring
+    · change input_cond = 1 at hc1
+      rw [hc1, h_eq' hc1]; ring
   · ring
   · ring
   · ring
@@ -88,6 +95,7 @@ def circuit : GeneralFormalCircuit (F p) Input unit :=
   { elaborated with
     Assumptions := Assumptions,
     Spec := Spec,
+    ProverAssumptions := ProverAssumptions,
     soundness := soundness,
     completeness := completeness }
 

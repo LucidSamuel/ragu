@@ -22,7 +22,9 @@ def main (hintReader : ProverHint (F p) → Bool) (_input : Unit)
   assertZero (1 - a - b)
   return a
 
-def Assumptions (_hintReader : ProverHint (F p) → Bool)
+def Assumptions (_input : Unit) (_data : ProverData (F p)) := True
+
+def ProverAssumptions (_hintReader : ProverHint (F p) → Bool)
     (_input : Unit) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 /-- The verifier learns the output wire is boolean-valued. -/
@@ -35,9 +37,10 @@ instance elaborated (hintReader : ProverHint (F p) → Bool)
   localLength _ := 3
 
 theorem soundness (hintReader : ProverHint (F p) → Bool)
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Spec := by
+    : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Assumptions Spec := by
   circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
+  have h_mul := h_mul trivial
   -- h_mul : a * b = c, h_c : c = 0, h_lin : 1 - a - b = 0
   rw [h_c] at h_mul
   rcases mul_eq_zero.mp h_mul with ha | hb
@@ -45,10 +48,11 @@ theorem soundness (hintReader : ProverHint (F p) → Bool)
   · exact Or.inr (by linear_combination -h_lin - hb)
 
 theorem completeness (hintReader : ProverHint (F p) → Bool)
-    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader) (Assumptions hintReader) := by
+    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
+        (ProverAssumptions hintReader) (fun _ _ _ => True) := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Assumptions,
-    Core.AllocMul.CompletenessSpec
+    Core.AllocMul.ProverAssumptions, Core.AllocMul.ProverSpec
   ]
   obtain ⟨_, hx, hy, hz⟩ := h_env
   -- hx : a = v, hy : b = 1 - v, hz : c = v * (1 - v), where v ∈ {0, 1}.
@@ -59,8 +63,9 @@ theorem completeness (hintReader : ProverHint (F p) → Bool)
 def circuit (hintReader : ProverHint (F p) → Bool)
     : GeneralFormalCircuit (F p) unit field :=
   { elaborated hintReader with
-    Assumptions := Assumptions hintReader,
+    Assumptions := Assumptions,
     Spec := Spec,
+    ProverAssumptions := ProverAssumptions hintReader,
     soundness := soundness hintReader,
     completeness := completeness hintReader }
 
