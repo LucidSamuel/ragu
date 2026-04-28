@@ -74,4 +74,6 @@ def circuit (hintReader : ProverHint (F p) → Row (F p)) : GeneralFormalCircuit
     completeness := completeness hintReader,
     completenessSpec := completenessSpec hintReader }
 
-end Ragu.Circuits.Core.AllocMul
+end Circuits.Core.AllocMul
+export Circuits.Core.AllocMul (Row)
+end Ragu

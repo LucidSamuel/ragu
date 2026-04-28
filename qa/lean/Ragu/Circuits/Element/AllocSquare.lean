@@ -11,10 +11,10 @@ deriving ProvableStruct
 
 def main (hintReader : ProverHint (F p) → F p) (_input : Unit) :
     Circuit (F p) (Var Square (F p)) := do
-  let ⟨x, y, z⟩ ← (witness fun env =>
+  let row : Var Row (F p) ← witness fun env =>
     let a := hintReader env.hint
-    (⟨a, a, a * a⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
+    ⟨a, a, a * a⟩
+  let ⟨x, y, z⟩ := row
   assertZero (x * y - z)
   assertZero (x - y)
   return ⟨x, z⟩
