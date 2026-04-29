@@ -13,8 +13,8 @@ def main (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
   let ⟨x, y, z⟩ ← (witness fun env =>
     let xv := Expression.eval env input.x
     let yv := Expression.eval env input.y
-    (⟨xv, yv, xv * yv⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
+    (⟨xv, yv, xv * yv⟩ : Row (F p))
+    : Circuit (F p) (Var Row (F p)))
   assertZero (x * y - z)
   assertZero (x - input.x)
   assertZero (y - input.y)

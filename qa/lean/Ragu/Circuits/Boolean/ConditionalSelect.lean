@@ -20,8 +20,8 @@ def main (input : Var Input (F p)) : Circuit (F p) (Expression (F p)) := do
     let cv := Expression.eval env input.cond
     let av := Expression.eval env input.a
     let bv := Expression.eval env input.b
-    (⟨cv, bv - av, cv * (bv - av)⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
+    (⟨cv, bv - av, cv * (bv - av)⟩ : Row (F p))
+    : Circuit (F p) (Var Row (F p)))
   assertZero (x * y - z)
   assertZero (x - input.cond)
   assertZero (y - (input.b - input.a))

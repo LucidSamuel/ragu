@@ -84,12 +84,12 @@ set_option maxHeartbeats 800000 in
 theorem soundness (curveParams : Spec.CurveParams p)
     : GeneralFormalCircuit.Soundness (F p) elaborated
         (Assumptions curveParams) (Spec curveParams) := by
-  circuit_proof_start
-  simp [circuit_norm,
+  circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
-  ] at h_holds ⊢
+  ]
+  simp only [neg_add_rev, neg_neg] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4, c5⟩ := h_holds
   obtain ⟨h_P1_mem, h_P2_mem, h_xne⟩ := h_assumptions
   -- Specialize c1 using `x₁ ≠ x₂` (equivalent to `x₂ + -x₁ ≠ 0`).

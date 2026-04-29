@@ -15,15 +15,15 @@ Together these pin down `is_zero = if x = 0 then 1 else 0`. -/
 def main (input : Expression (F p)) : Circuit (F p) (Expression (F p)) := do
   let ⟨x1, iz, zp⟩ ← (witness fun env =>
     let xv := Expression.eval env input
-    (⟨xv, (if xv = 0 then (1 : F p) else 0), 0⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
+    (⟨xv, (if xv = 0 then (1 : F p) else 0), 0⟩ : Row (F p))
+    : Circuit (F p) (Var Row (F p)))
   assertZero (x1 * iz - zp)
   assertZero (x1 - input)
   assertZero zp
   let ⟨x2, inv, inz⟩ ← (witness fun env =>
     let xv := Expression.eval env input
-    (⟨xv, xv⁻¹, (if xv = 0 then (0 : F p) else 1)⟩ : Core.AllocMul.Row (F p))
-    : Circuit (F p) (Var Core.AllocMul.Row (F p)))
+    (⟨xv, xv⁻¹, (if xv = 0 then (0 : F p) else 1)⟩ : Row (F p))
+    : Circuit (F p) (Var Row (F p)))
   assertZero (x2 * inv - inz)
   assertZero (x2 - input)
   assertZero (inz - 1 + iz)
