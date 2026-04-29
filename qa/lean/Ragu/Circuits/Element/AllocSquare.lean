@@ -29,7 +29,7 @@ def ProverSpec (input : F p) (out : Square (F p)) (_hint : ProverHint (F p)) :=
   out.a = input ∧ out.a_sq = input^2
 
 instance elaborated :
-    ElaboratedCircuit (F p) (Unconstrained (F p)) Square where
+    ElaboratedCircuit (F p) (UnconstrainedDep field) Square where
   main
   localLength _ := 3
 
@@ -56,7 +56,7 @@ theorem completeness :
     refine ⟨hx, ?_⟩
     rw [hz]; ring
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (F p)) Square :=
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) Square :=
   { elaborated with
     Assumptions := Assumptions,
     Spec,

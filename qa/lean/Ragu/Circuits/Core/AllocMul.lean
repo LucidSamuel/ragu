@@ -24,7 +24,7 @@ def ProverSpec (input : Row (F p)) (out : Row (F p)) (_ : ProverHint (F p)) :=
   let ⟨ x, y, _ ⟩ := input
   out.x = x ∧ out.y = y ∧ out.z = x * y
 
-instance elaborated : ElaboratedCircuit (F p) (Unconstrained (Row (F p))) Row where
+instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Row) Row where
   main
   localLength _ := 3
 
@@ -47,7 +47,7 @@ theorem completeness :
     ring_nf
   · exact ⟨h0, h1, h2⟩
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (Row (F p))) Row where
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Row) Row where
   elaborated
   Spec
   ProverSpec

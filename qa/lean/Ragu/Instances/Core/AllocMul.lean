@@ -5,51 +5,36 @@ import Ragu.Core
 namespace Ragu.Instances.Core.AllocMul
 open Ragu.Instances.Autogen.Core.AllocMul
 
-set_option linter.unusedVariables false in
-def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var unit (F p) := ()
+def deserializeInput (_ : Vector (Expression (F p)) inputLen) :
+    Var (UnconstrainedDep Circuits.Core.AllocMul.Row) (F p) :=
+  default
 
 def serializeOutput (output : Var Circuits.Core.AllocMul.Row (F p)) : Vector (Expression (F p)) 3 :=
   #v[output.x, output.y, output.z]
 
-def formal_instance : Core.Statements.GeneralFormalInstance where
+def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   p
   exportedOperations
   exportedOutput
 
-  Input := unit
-  Output := Circuits.Core.AllocMul.Row
-
   deserializeInput
   serializeOutput
 
-  Spec _input output := output.x * output.y = output.z
-
-  reimplementation := Circuits.Core.AllocMul.circuit (fun _ => ⟨0, 0, 0⟩)
+  reimplementation := Circuits.Core.AllocMul.circuit
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
-      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.main]
     rfl
   same_output := by
     intro input
     simp [circuit_norm,
-      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.Spec]
-    aesop
+      Circuits.Core.AllocMul.circuit, Circuits.Core.AllocMul.main]
 
 end Ragu.Instances.Core.AllocMul

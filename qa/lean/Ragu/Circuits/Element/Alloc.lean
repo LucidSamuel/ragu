@@ -24,7 +24,7 @@ can be part of a valid `(a, b, c)` triple with `a · b = c` (e.g. take
 def Spec (_input : Unit) (_out : F p) (_data : ProverData (F p)) := True
 
 instance elaborated
-    : ElaboratedCircuit (F p) (Unconstrained (Core.AllocMul.Row (F p))) field where
+    : ElaboratedCircuit (F p) (UnconstrainedDep Core.AllocMul.Row) field where
   main
   localLength _ := 3
 
@@ -38,7 +38,7 @@ theorem completeness
   circuit_proof_start [
     Core.AllocMul.circuit]
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (Unconstrained (Core.AllocMul.Row (F p))) field :=
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Core.AllocMul.Row) field :=
   { elaborated with
     Assumptions := Assumptions,
     Spec := Spec,
