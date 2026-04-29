@@ -50,8 +50,7 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   return ⟨x_s, y_s⟩
 
 /-- Verifier-side assumptions: both inputs are on curve and the first slope is
-well-defined. The second slope is handled by the spec's `add_incomplete`
-carve-out and by `ProverAssumptions` for completeness. -/
+well-defined. -/
 def Assumptions (curveParams : Spec.CurveParams p)
     (input : Inputs (F p)) (_data : ProverData (F p)) :=
   input.P1.isOnCurve curveParams ∧
@@ -73,7 +72,7 @@ the two non-degeneracy assumptions. Stated via `add_incomplete` twice:
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p))
     (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
   ∃ r, input.P1.add_incomplete input.P2 = some r ∧
-    (r.add_incomplete input.P1 = none ∨
+    (r.x ≠ input.P1.x →
       r.add_incomplete input.P1 = some output ∧
       output.isOnCurve curveParams)
 
@@ -105,13 +104,10 @@ theorem soundness (curveParams : Spec.CurveParams p)
   refine ⟨r, h_rOpt, ?_⟩
   simp only [rOpt, Spec.Point.add_incomplete, if_neg h_xne, Option.some.injEq] at h_rOpt
   subst r
-  by_cases h_rx_ne :
+  intro h_rx_ne
+  have h_rx_ne :
       ((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2 -
-          input_P1_x - input_P2_x ≠ input_P1_x
-  swap
-  · left
-    simp only [Spec.Point.add_incomplete, if_pos (not_not.mp h_rx_ne)]
-  right
+          input_P1_x - input_P2_x ≠ input_P1_x := h_rx_ne
   simp only [Spec.Point.add_incomplete, if_neg h_rx_ne, Option.some.injEq]
   -- The remaining branch is the non-degenerate second add.
   -- c3's premise: `x₁ - r.x ≠ 0 ∨ 2y₁ ≠ 0`. We discharge the disjunction
