@@ -19,19 +19,21 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := Circuits.Boolean.ConditionalEnforceEqual.circuit
+  reimplementation :=
+    FormalAssertion.isGeneralFormalCircuit
+      Circuits.Boolean.ConditionalEnforceEqual.circuit
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
+      FormalAssertion.isGeneralFormalCircuit,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Boolean.ConditionalEnforceEqual.circuit,
       Circuits.Boolean.ConditionalEnforceEqual.elaborated,
       Circuits.Boolean.ConditionalEnforceEqual.main]
-    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input

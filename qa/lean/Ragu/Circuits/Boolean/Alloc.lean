@@ -14,10 +14,9 @@ the row `(v, 1 - v, 0)` derived from the boolean hint, then asserts
 (binding `b = 1 - a`). Together: `a * (1 - a) = 0`, so `a ∈ {0, 1}`. -/
 def main (hint : ProverEnvironment (F p) → Bool)
     : Circuit (F p) (Var field (F p)) := do
-  let ⟨a, b, c⟩ ← Core.AllocMul.circuit
-    (fun env =>
-      let v : F p := if hint env then 1 else 0
-      ⟨v, 1 - v, 0⟩)
+  let ⟨a, b, c⟩ ← Core.AllocMul.circuit fun env =>
+    let v : F p := if hint env then 1 else 0
+    ⟨v, 1 - v, 0⟩
   assertZero c
   assertZero (1 - a - b)
   return a
