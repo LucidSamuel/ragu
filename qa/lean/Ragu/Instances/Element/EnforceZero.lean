@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := field
-  Output := unit
-
   deserializeInput
   serializeOutput
 

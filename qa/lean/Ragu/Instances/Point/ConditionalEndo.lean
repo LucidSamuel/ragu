@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Point.ConditionalEndo.Input
-  Output := Circuits.Point.Spec.Point
-
   Spec (input : Circuits.Point.ConditionalEndo.Input (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
     output.x = (if input.cond = 1

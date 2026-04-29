@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := field
-  Output := field
-
   Spec (input : F p) (output : F p) :=
     output = if input = 0 then 1 else 0
 

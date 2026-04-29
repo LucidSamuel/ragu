@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Point.ConditionalNegate.Input
-  Output := Circuits.Point.Spec.Point
-
   Spec (input : Circuits.Point.ConditionalNegate.Input (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
     output.x = input.x ∧ output.y = if input.cond = 1 then -input.y else input.y

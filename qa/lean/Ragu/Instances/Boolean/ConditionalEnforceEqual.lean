@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Boolean.ConditionalEnforceEqual.Input
-  Output := unit
-
   -- High-level: when `cond = 1`, the circuit forces `a = b`. Stated
   -- unconditionally — the underlying `cond · (a - b) = 0` constraint
   -- implies this without a boolean precondition on `cond`.

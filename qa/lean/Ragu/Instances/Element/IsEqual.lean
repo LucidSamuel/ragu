@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Element.IsEqual.Input
-  Output := field
-
   Spec (input : Circuits.Element.IsEqual.Input (F p)) (output : F p) :=
     output = if input.a = input.b then 1 else 0
 

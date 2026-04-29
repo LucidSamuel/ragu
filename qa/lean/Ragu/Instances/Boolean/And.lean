@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Boolean.And.Input
-  Output := field
-
   Spec (input : Circuits.Boolean.And.Input (F p)) (output : F p) :=
     output.val = input.a.val &&& input.b.val ∧ IsBool output
 

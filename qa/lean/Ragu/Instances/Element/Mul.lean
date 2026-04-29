@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Element.Mul.Input
-  Output := field
-
   deserializeInput
   serializeOutput
 

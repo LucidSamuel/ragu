@@ -16,9 +16,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Boolean.ConditionalSelect.Input
-  Output := field
-
   Spec (input : Circuits.Boolean.ConditionalSelect.Input (F p)) (output : F p) :=
     output = if input.cond = 1 then input.b else input.a
 
