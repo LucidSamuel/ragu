@@ -31,22 +31,20 @@ instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Row) Row where
 
 theorem soundness :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
-  circuit_proof_start [Spec]
+  circuit_proof_start
   simp only [add_neg_eq_zero] at h_holds
   exact h_holds
 
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated (fun _ _ _ => True) ProverSpec := by
   circuit_proof_start
+  -- TODO this is annoying, we need simp for ProvableStruct.toElements
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
   have h2 := h_env (2 : Fin 3)
-  simp only [toElements, circuit_norm, explicit_provable_type, List.sum] at h0 h1 h2
+  simp only [toElements, circuit_norm] at h0 h1 h2
   simp at h0 h1 h2
-  constructor
-  · rw [h0, h1, h2]
-    ring_nf
-  · exact ⟨h0, h1, h2⟩
+  simp [h0, h1, h2]
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Row) Row where
   elaborated

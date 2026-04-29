@@ -7,7 +7,7 @@ open Ragu.Instances.Autogen.Element.InvertWith
 
 def deserializeInput (input : Vector (Expression (F p)) inputLen) :
     Var Circuits.Element.InvertWith.Input (F p) :=
-  { input := input[0], hint := fun _ => ⟨0, 0, 0⟩ }
+  { input := input[0], inverse := fun _ => 0 }
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]

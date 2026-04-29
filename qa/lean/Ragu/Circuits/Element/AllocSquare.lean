@@ -11,16 +11,11 @@ deriving ProvableStruct
 
 def main (hint : ProverEnvironment (F p) → F p) :
     Circuit (F p) (Var Square (F p)) := do
-  let ⟨x, y, z⟩ ← Core.AllocMul.circuit
-    (fun env =>
-      let a := hint env
-      ⟨a, a, a * a⟩)
+  let ⟨x, y, z⟩ ← Core.AllocMul.circuit fun env =>
+    let a := hint env
+    ⟨a, a, a * a⟩
   assertZero (x - y)
   return ⟨x, z⟩
-
-def Assumptions (_input : Unit) (_data : ProverData (F p)) := True
-
-def ProverAssumptions (_input : F p) (_data : ProverData (F p)) (_hint : ProverHint (F p)) := True
 
 def Spec (_input : Unit) (out : Square (F p)) (_data : ProverData (F p)) :=
   out.a_sq = out.a^2
@@ -31,10 +26,11 @@ def ProverSpec (input : F p) (out : Square (F p)) (_hint : ProverHint (F p)) :=
 instance elaborated :
     ElaboratedCircuit (F p) (UnconstrainedDep field) Square where
   main
+  output _ offset := { a := varFromOffset field offset, a_sq := varFromOffset field (offset + 2) }
   localLength _ := 3
 
 theorem soundness :
-    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated Assumptions Spec := by
+    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
   circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
   obtain ⟨h_mul, h_eq⟩ := h_holds
   -- h_mul : x * y = z, h_eq : x - y = 0
@@ -44,25 +40,13 @@ theorem soundness :
 
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
-      ProverAssumptions ProverSpec := by
+      (fun _ _ _ => True) ProverSpec := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.ProverSpec
   ]
-  obtain ⟨_, hx, hy, hz⟩ := h_env
-  constructor
-  · -- hx : x = a, hy : y = a → x - y = 0
-    rw [hx, hy]; ring
-  · -- hx : x = a, hz : z = a * a
-    refine ⟨hx, ?_⟩
-    rw [hz]; ring
+  grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) Square :=
-  { elaborated with
-    Assumptions := Assumptions,
-    Spec,
-    ProverAssumptions := ProverAssumptions,
-    ProverSpec := ProverSpec,
-    soundness := soundness,
-    completeness := completeness }
+  { elaborated with Spec, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.AllocSquare

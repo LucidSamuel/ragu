@@ -6,13 +6,13 @@ namespace Ragu.Instances.Element.Invert
 open Ragu.Instances.Autogen.Element.Invert
 
 def deserializeInput (input : Vector (Expression (F p)) inputLen) :
-    Var Circuits.Element.Invert.Input (F p) :=
-  { input := input[0], hint := fun _ => ⟨0, 0, 0⟩ }
+    Var field (F p) :=
+  input[0]
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
 
-def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
+def formal_instance : Core.Statements.GeneralFormalInstance where
   p
   exportedOperations
   exportedOutput
@@ -26,6 +26,8 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
+      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.Invert.circuit,
@@ -42,6 +44,8 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   same_output := by
     intro input
     simp [circuit_norm,
+      GeneralFormalCircuit.toSubcircuit,
+      GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, serializeOutput,
       Circuits.Element.Invert.circuit,

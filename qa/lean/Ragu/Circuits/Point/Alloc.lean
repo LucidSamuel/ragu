@@ -38,8 +38,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint.Soundness (F p) (elaborated curveParams)
       Assumptions (Spec curveParams) := by
   circuit_proof_start [
-    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
-    Element.AllocSquare.Spec,
+    Element.AllocSquare.circuit, Element.AllocSquare.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
   simp only [Spec.Point.isOnCurve]
@@ -52,8 +51,8 @@ theorem completeness (curveParams : Spec.CurveParams p)
     : GeneralFormalCircuit.WithHint.Completeness (F p) (elaborated curveParams)
       (ProverAssumptions curveParams) ProverSpec := by
   circuit_proof_start [
-    Element.AllocSquare.circuit, Element.AllocSquare.Assumptions,
-    Element.AllocSquare.Spec, Element.AllocSquare.ProverAssumptions,
+    Element.AllocSquare.circuit,
+    Element.AllocSquare.Spec,
     Element.AllocSquare.ProverSpec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ]
@@ -66,15 +65,13 @@ theorem completeness (curveParams : Spec.CurveParams p)
     simp_all
 
 def circuit (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Spec.Point) Spec.Point :=
-  {
-    (elaborated curveParams) with
-    Assumptions := Assumptions,
-    Spec := (Spec curveParams),
-    ProverAssumptions := ProverAssumptions curveParams,
-    ProverSpec := ProverSpec,
-    soundness := soundness curveParams,
-    completeness := completeness curveParams
-  }
+    GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Spec.Point) Spec.Point where
+  elaborated := elaborated curveParams
+  Assumptions := Assumptions
+  Spec := Spec curveParams
+  ProverAssumptions := ProverAssumptions curveParams
+  ProverSpec := ProverSpec
+  soundness := soundness curveParams
+  completeness := completeness curveParams
 
 end Ragu.Circuits.Point.Alloc

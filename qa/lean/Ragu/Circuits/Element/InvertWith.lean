@@ -1,4 +1,5 @@
 import Clean.Circuit
+import Ragu.Core
 import Ragu.Circuits.Core.AllocMul
 
 namespace Ragu.Circuits.Element.InvertWith
@@ -6,7 +7,7 @@ variable {p : ℕ} [Fact p.Prime]
 
 structure Input (F : Type) where
   input : F
-  hint : UnconstrainedDep Core.AllocMul.Row F
+  inverse : UnconstrainedDep field F
 deriving CircuitType
 
 @[circuit_norm] lemma eval_verifier {F : Type} [Field F] (env : Environment F) (input : Var Input F) :
@@ -19,31 +20,35 @@ deriving CircuitType
 enforces `a = input` and `c = 1`, returning `b` as the inverse wire. -/
 def main (input : Var Input (F p))
     : Circuit (F p) (Expression (F p)) := do
-  let ⟨input, hint⟩ := input
-  let ⟨a, b, c⟩ ← Core.AllocMul.circuit hint
+  let ⟨input, inverse⟩ := input
+  let ⟨a, b, c⟩ ← Core.AllocMul.circuit fun env =>
+    ⟨env input, inverse env, 1⟩
   assertZero (a - input)
   assertZero (c - 1)
   return b
 
-def Assumptions (_input : Value Input (F p))
-    (_data : ProverData (F p)) := True
-
 def ProverAssumptions (input : ProverValue Input (F p))
     (_data : ProverData (F p)) (_hint : ProverHint (F p)) :=
-  input.hint.x = input.input ∧ input.hint.x * input.hint.y = 1
+  let inputValue : F p := input.input
+  let inverse : F p := input.inverse
+  inputValue * inverse = 1
 
 def Spec (input : Value Input (F p))
     (out : F p) (_data : ProverData (F p)) :=
-  let inputValue : F p := input.input
-  inputValue * out = 1
+  input.input * out = 1
+
+def ProverSpec (input : ProverValue Input (F p))
+    (out : F p) (_hint : ProverHint (F p)) :=
+  out = input.inverse
 
 instance elaborated
     : ElaboratedCircuit (F p) Input field where
   main
+  output _ offset := varFromOffset field (offset + 1)
   localLength _ := 3
 
-theorem soundness
-    : GeneralFormalCircuit.WithHint.Soundness (F p) elaborated Assumptions Spec := by
+theorem soundness :
+    GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
   circuit_proof_start [
     Core.AllocMul.circuit, Core.AllocMul.Spec
   ]
@@ -53,27 +58,12 @@ theorem soundness
   rw [← h_input]
   exact h_mul
 
-theorem completeness
-    : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
-        ProverAssumptions (fun _ _ _ => True) := by
-  circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec
-  ]
-  obtain ⟨_, h_x_eq, h_y_eq, h_z_eq⟩ := h_env
-  rw [← h_input] at h_assumptions
-  simp [circuit_norm] at h_assumptions
-  obtain ⟨h_x_in, h_prod_in⟩ := h_assumptions
-  rw [add_neg_eq_zero, add_neg_eq_zero]
-  refine ⟨?_, ?_⟩
-  · rw [h_x_eq]; exact h_x_in
-  · rw [h_z_eq]; exact h_prod_in
+theorem completeness :
+    GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions ProverSpec := by
+  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec]
+  grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field :=
-  { elaborated with
-    Assumptions := Assumptions,
-    Spec := Spec,
-    ProverAssumptions := ProverAssumptions,
-    soundness := soundness,
-    completeness := completeness }
+  { elaborated with Spec, ProverAssumptions, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.InvertWith
