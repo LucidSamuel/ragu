@@ -20,15 +20,15 @@ structure Outputs (F : Type) where
   nonzero : F
 deriving ProvableStruct
 
-def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (input : Var Inputs (F p)) : Circuit (F p) (Var Outputs (F p)) := do
+def main (input : Var Inputs (F p)) : Circuit (F p) (Var Outputs (F p)) := do
   let ⟨⟨x1, y1⟩, ⟨x2, y2⟩, nonzero⟩ := input
 
   -- delta = (y2 - y1) / (x2 - x1)
   let tmp := x2 - x1
   let nonzero_out ← Element.Mul.circuit ⟨nonzero, tmp⟩
 
-  let delta ← Element.DivNonzero.circuit hintReader ⟨y2 - y1, tmp⟩
+  let delta ← Element.DivNonzero.circuit
+    { x := y2 - y1, y := tmp }
 
   -- x3 = delta^2 - x1 - x2
   let delta2 ← Element.Square.circuit delta
@@ -46,11 +46,10 @@ def main (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
 def Assumptions (_input : Inputs (F p)) (_data : ProverData (F p)) := True
 
 def ProverAssumptions (curveParams : Spec.CurveParams p)
-    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   input.P1.isOnCurve curveParams ∧ input.P2.isOnCurve curveParams ∧
-  Element.DivNonzero.ProverAssumptions hintReader
-    ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint
+  Element.DivNonzero.ProverAssumptions
+    { x := input.P2.y - input.P1.y, y := input.P2.x - input.P1.x } data hint
 
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Outputs (F p)) (_data : ProverData (F p)) :=
   input.P1.isOnCurve curveParams →
@@ -80,18 +79,17 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p)) (output : Out
     )
   )
 
-instance elaborated (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+instance elaborated :
     ElaboratedCircuit (F p) Inputs Outputs where
-  main := main hintReader
+  main
   localLength _ := 12
 
-theorem soundness (curveParams : Spec.CurveParams p)
-    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Soundness (F p) (elaborated hintReader) Assumptions (Spec curveParams) := by
+theorem soundness (curveParams : Spec.CurveParams p) :
+    GeneralFormalCircuit.Soundness (F p) elaborated Assumptions (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
 
@@ -103,7 +101,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   constructor
   · intro h
     have h_neq : ¬input_P2_x = input_P1_x := Ne.symm h
-    have c2 := c2 trivial (Or.inl h_neq)
+    have c2 := c2 (Or.inl h_neq)
     rw [c2, c3, c2] at c4
     rw [c2] at c3
     rw [c4, c3]
@@ -123,10 +121,9 @@ theorem soundness (curveParams : Spec.CurveParams p)
     apply Ne.symm
     exact h1
 
-theorem completeness (curveParams : Spec.CurveParams p)
-    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
-    GeneralFormalCircuit.Completeness (F p) (elaborated hintReader)
-      (ProverAssumptions curveParams hintReader) (fun _ _ _ => True) := by
+theorem completeness (curveParams : Spec.CurveParams p) :
+    GeneralFormalCircuit.Completeness (F p) elaborated
+      (ProverAssumptions curveParams) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
     Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
@@ -135,16 +132,15 @@ theorem completeness (curveParams : Spec.CurveParams p)
   simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
   exact h_assumptions.2.2
 
-def circuit (curveParams : Spec.CurveParams p)
-    (hintReader : ProverHint (F p) → Core.AllocMul.Row (F p)) :
+def circuit (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit (F p) Inputs Outputs :=
   {
-    elaborated hintReader with
+    elaborated with
     Assumptions := Assumptions,
     Spec := Spec curveParams,
-    ProverAssumptions := ProverAssumptions curveParams hintReader,
-    soundness := soundness curveParams hintReader,
-    completeness := completeness curveParams hintReader
+    ProverAssumptions := ProverAssumptions curveParams,
+    soundness := soundness curveParams,
+    completeness := completeness curveParams
   }
 
 end Ragu.Circuits.Point.AddIncomplete

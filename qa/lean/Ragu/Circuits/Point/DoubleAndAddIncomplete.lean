@@ -23,16 +23,15 @@ zcash optimization that avoids materializing `P1 + P2` explicitly:
 - x_s = λ₂² - x_r - x₁.
 - y_s = λ₂ (x₁ - x_s) - y₁.
 
-Result: (x_s, y_s) = 2·P1 + P2. Two DivNonzero subcircuits (one hint each)
+Result: (x_s, y_s) = 2·P1 + P2. Two DivNonzero subcircuits
 + two Square subcircuits + one Mul subcircuit = 15 wires. -/
-def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-         (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
+def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let ⟨⟨x1, y1⟩, ⟨x2, y2⟩⟩ := input
 
   -- λ₁ = (y₂ - y₁) / (x₂ - x₁)
   let tmp1 := x2 - x1
-  let lambda_1 ← Element.DivNonzero.circuit hintReader1 ⟨y2 - y1, tmp1⟩
+  let lambda_1 ← Element.DivNonzero.circuit
+    { x := y2 - y1, y := tmp1 }
 
   -- x_r = λ₁² - x₁ - x₂
   let lambda_1_sq ← Element.Square.circuit lambda_1
@@ -40,7 +39,8 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
 
   -- λ₂ = 2y₁ / (x₁ - x_r) - λ₁
   let tmp2 := x1 - x_r
-  let lambda_2_half ← Element.DivNonzero.circuit hintReader2 ⟨y1 + y1, tmp2⟩
+  let lambda_2_half ← Element.DivNonzero.circuit
+    { x := y1 + y1, y := tmp2 }
   let lambda_2 := lambda_2_half - lambda_1
 
   -- x_s = λ₂² - x_r - x₁
@@ -53,27 +53,21 @@ def main (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
 
   return ⟨x_s, y_s⟩
 
-/-- Completeness needs both DivNonzero hints to describe valid witnesses
-(quotient and denominator agree with the respective inputs) and the two
-intermediate non-degeneracies: `x₁ ≠ x₂` (for the first slope) and
+/-- Completeness needs the two intermediate non-degeneracies:
+`x₁ ≠ x₂` (for the first slope) and
 `x₁ ≠ x_r` (for the second slope, after computing the midpoint
-x-coordinate). `x₁ ≠ x₂` is asserted here directly because the first
-DivNonzero's `GeneralAssumptions` gives only the weaker `x₂-x₁ ≠ 0 ∨
-y₂-y₁ = 0`, which isn't enough to discharge DivNonzero's `Spec` premise
-when bridging the symbolic quotient to the witness. -/
+x-coordinate). -/
 def Assumptions (_input : Inputs (F p)) (_data : ProverData (F p)) := True
 
 def ProverAssumptions (_curveParams : Spec.CurveParams p)
-    (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
   let x_r := ((input.P2.y - input.P1.y) / (input.P2.x - input.P1.x))^2
     - input.P1.x - input.P2.x
   input.P1.x ≠ input.P2.x ∧
-  Element.DivNonzero.ProverAssumptions hintReader1
-    ⟨input.P2.y - input.P1.y, input.P2.x - input.P1.x⟩ data hint ∧
-  Element.DivNonzero.ProverAssumptions hintReader2
-    ⟨input.P1.y + input.P1.y, input.P1.x - x_r⟩ data hint
+  Element.DivNonzero.ProverAssumptions
+    { x := input.P2.y - input.P1.y, y := input.P2.x - input.P1.x } data hint ∧
+  Element.DivNonzero.ProverAssumptions
+    { x := input.P1.y + input.P1.y, y := input.P1.x - x_r } data hint
 
 /-- The output is `2·P1 + P2` under the curve-membership preconditions and
 the two non-degeneracy assumptions. Stated via `add_incomplete` twice:
@@ -92,22 +86,18 @@ def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p))
        | some s => output = s)
       ∧ output.isOnCurve curveParams))
 
-instance elaborated (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : ElaboratedCircuit (F p) Inputs Spec.Point where
-  main := main hintReader1 hintReader2
+instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
+  main
   localLength _ := 15
 
 set_option maxHeartbeats 800000 in
 theorem soundness (curveParams : Spec.CurveParams p)
-    (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Soundness (F p) (elaborated hintReader1 hintReader2)
+    : GeneralFormalCircuit.Soundness (F p) elaborated
         Assumptions (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.DivNonzero.circuit, Element.DivNonzero.Spec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4, c5⟩ := h_holds
@@ -115,7 +105,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   -- Specialize c1 using `x₁ ≠ x₂` (equivalent to `x₂ + -x₁ ≠ 0`).
   have h_xne' : ¬input_P2_x + -input_P1_x = 0 := by
     intro h; rw [add_neg_eq_zero] at h; exact h_xne h.symm
-  specialize c1 trivial (Or.inl h_xne')
+  specialize c1 (Or.inl h_xne')
   -- Rewrite Sq₁ via c1, c2: eval(Sq₁) = ((y2-y1)/(x2-x1))^2.
   rw [c1] at c2
   -- At this point `P1.add_incomplete P2` still shows up in the goal. Unfold
@@ -128,7 +118,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
   have h_r_premise : input_P1_x + (input_P2_x + (input_P1_x +
         -Expression.eval env
           (Element.Square.main
-            (Element.DivNonzero.main hintReader1
+            (Element.DivNonzero.main
               { x := input_var_P2_y - input_var_P1_y,
                 y := input_var_P2_x - input_var_P1_x } i₀).1
             (i₀ + 3)).1)) ≠ 0 := by
@@ -149,7 +139,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
           -((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2)) = 0 := h
       linear_combination -this
     linear_combination hq
-  specialize c3 trivial (Or.inl h_r_premise)
+  specialize c3 (Or.inl h_r_premise)
   rw [c2] at c3
   rw [c1] at c4
   rw [c1, c2] at c5
@@ -183,12 +173,12 @@ theorem soundness (curveParams : Spec.CurveParams p)
   -- Prove the two coordinate equalities individually, then assemble.
   have h_x : Expression.eval env
         (Element.Square.main
-          ((Element.DivNonzero.main hintReader2
+          ((Element.DivNonzero.main
                 { x := input_var_P1_y + input_var_P1_y,
                   y :=
                     input_var_P1_x -
                       ((Element.Square.main
-                              (Element.DivNonzero.main hintReader1
+                              (Element.DivNonzero.main
                                   { x := input_var_P2_y - input_var_P1_y,
                                     y := input_var_P2_x - input_var_P1_x }
                                   i₀).1
@@ -196,13 +186,13 @@ theorem soundness (curveParams : Spec.CurveParams p)
                           input_var_P1_x -
                         input_var_P2_x) }
                 (i₀ + 3 + 3)).1 -
-            (Element.DivNonzero.main hintReader1
+            (Element.DivNonzero.main
                 { x := input_var_P2_y - input_var_P1_y,
                   y := input_var_P2_x - input_var_P1_x } i₀).1)
           (i₀ + 3 + 3 + 3)).1 +
       (input_P2_x + (input_P1_x + -Expression.eval env
         (Element.Square.main
-          (Element.DivNonzero.main hintReader1
+          (Element.DivNonzero.main
             { x := input_var_P2_y - input_var_P1_y,
               y := input_var_P2_x - input_var_P1_x } i₀).1
           (i₀ + 3)).1)) + -input_P1_x = s.x := by
@@ -229,12 +219,12 @@ theorem soundness (curveParams : Spec.CurveParams p)
       (Element.Mul.main
         {
           x :=
-            (Element.DivNonzero.main hintReader2
+            (Element.DivNonzero.main
                   { x := input_var_P1_y + input_var_P1_y,
                     y :=
                       input_var_P1_x -
                         ((Element.Square.main
-                                (Element.DivNonzero.main hintReader1
+                                (Element.DivNonzero.main
                                     { x := input_var_P2_y - input_var_P1_y,
                                       y := input_var_P2_x - input_var_P1_x }
                                     i₀).1
@@ -242,18 +232,18 @@ theorem soundness (curveParams : Spec.CurveParams p)
                             input_var_P1_x -
                           input_var_P2_x) }
                   (i₀ + 3 + 3)).1 -
-              (Element.DivNonzero.main hintReader1
+              (Element.DivNonzero.main
                   { x := input_var_P2_y - input_var_P1_y,
                     y := input_var_P2_x - input_var_P1_x } i₀).1,
           y :=
             input_var_P1_x -
               ((Element.Square.main
-                      ((Element.DivNonzero.main hintReader2
+                      ((Element.DivNonzero.main
                             { x := input_var_P1_y + input_var_P1_y,
                               y :=
                                 input_var_P1_x -
                                   ((Element.Square.main
-                                          (Element.DivNonzero.main hintReader1
+                                          (Element.DivNonzero.main
                                               { x := input_var_P2_y - input_var_P1_y,
                                                 y := input_var_P2_x - input_var_P1_x }
                                               i₀).1
@@ -261,13 +251,13 @@ theorem soundness (curveParams : Spec.CurveParams p)
                                       input_var_P1_x -
                                     input_var_P2_x) }
                             (i₀ + 3 + 3)).1 -
-                        (Element.DivNonzero.main hintReader1
+                        (Element.DivNonzero.main
                             { x := input_var_P2_y - input_var_P1_y,
                               y := input_var_P2_x - input_var_P1_x }
                             i₀).1)
                       (i₀ + 3 + 3 + 3)).1 -
                   ((Element.Square.main
-                          (Element.DivNonzero.main hintReader1
+                          (Element.DivNonzero.main
                               { x := input_var_P2_y - input_var_P1_y,
                                 y := input_var_P2_x - input_var_P1_x }
                               i₀).1
@@ -309,45 +299,38 @@ theorem soundness (curveParams : Spec.CurveParams p)
 
 set_option maxHeartbeats 800000 in
 theorem completeness (curveParams : Spec.CurveParams p)
-    (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    : GeneralFormalCircuit.Completeness (F p) (elaborated hintReader1 hintReader2)
-        (ProverAssumptions curveParams hintReader1 hintReader2) (fun _ _ _ => True) := by
+    : GeneralFormalCircuit.Completeness (F p) elaborated
+        (ProverAssumptions curveParams) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
     Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
-    Element.DivNonzero.ProverSpec,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [Element.DivNonzero.Spec] at h_env
   simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
   obtain ⟨h_xne, h_a1, h_a2⟩ := h_assumptions
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
-  -- Discharge DivNonzero#1's outer `Assumptions → ...` via h_a1, then its
-  -- inner `(y ≠ 0 ∨ x ≠ 0) → out = x/y` via `x₁ ≠ x₂`.
   have h_div1 := h_div1_spec h_a1
   have h_prem : input_P2_x + -input_P1_x ≠ 0 ∨ input_P2_y + -input_P1_y ≠ 0 := by
     left
     intro h
     rw [add_neg_eq_zero] at h
     exact h_xne h.symm
-  have h_div1_eq := h_div1.1 trivial h_prem
+  have h_div1_eq := h_div1 h_prem
   simp only [Element.Square.Spec] at h_sq1_spec
-  -- Goal: (hintReader1 GeneralAssumptions) ∧ (hintReader2 GeneralAssumptions at env x_r).
+  -- Goal: first DivNonzero assumption and second DivNonzero assumption at env x_r.
   -- First conjunct is `h_a1` directly; second needs the env-level
   -- `Square(lambda_1)` → `lambda_1^2` → `((y2-y1)/(x2-x1))^2` rewrite chain.
   rw [h_sq1_spec, h_div1_eq]
   exact ⟨h_a1, h_a2⟩
 
 def circuit (curveParams : Spec.CurveParams p)
-    (hintReader1 : ProverHint (F p) → Core.AllocMul.Row (F p))
-    (hintReader2 : ProverHint (F p) → Core.AllocMul.Row (F p))
     : GeneralFormalCircuit (F p) Inputs Spec.Point :=
-  { elaborated hintReader1 hintReader2 with
+  { elaborated with
     Assumptions := Assumptions,
     Spec := Spec curveParams,
-    ProverAssumptions := ProverAssumptions curveParams hintReader1 hintReader2,
-    soundness := soundness curveParams hintReader1 hintReader2,
-    completeness := completeness curveParams hintReader1 hintReader2 }
+    ProverAssumptions := ProverAssumptions curveParams,
+    soundness := soundness curveParams,
+    completeness := completeness curveParams }
 
 end Ragu.Circuits.Point.DoubleAndAddIncomplete

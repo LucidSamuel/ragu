@@ -26,6 +26,7 @@ def ProverSpec (input : Row (F p)) (out : Row (F p)) (_ : ProverHint (F p)) :=
 
 instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Row) Row where
   main
+  output _ offset := varFromOffset Row offset
   localLength _ := 3
 
 theorem soundness :

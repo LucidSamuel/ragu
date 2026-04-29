@@ -20,9 +20,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Input := Circuits.Point.DoubleAndAddIncomplete.Inputs
-  Output := Circuits.Point.Spec.Point
-
   Spec (input : Circuits.Point.DoubleAndAddIncomplete.Inputs (F p))
        (output : Circuits.Point.Spec.Point (F p)) :=
     input.P1.isOnCurve Circuits.Point.Spec.EpAffineParams →
@@ -42,7 +39,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   reimplementation :=
     Circuits.Point.DoubleAndAddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
-      (fun _ => ⟨0, 0, 0⟩) (fun _ => ⟨0, 0, 0⟩)
 
   same_constraints := by
     intro input
@@ -56,7 +52,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.DoubleAndAddIncomplete.main,
       Circuits.Element.DivNonzero.circuit,
       Circuits.Element.DivNonzero.elaborated,
-      Circuits.Element.DivNonzero.main,
+        Circuits.Element.DivNonzero.main,
       Circuits.Element.Square.circuit,
       Circuits.Element.Square.elaborated,
       Circuits.Element.Square.main,
@@ -80,7 +76,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Point.DoubleAndAddIncomplete.main,
       Circuits.Element.DivNonzero.circuit,
       Circuits.Element.DivNonzero.elaborated,
-      Circuits.Element.DivNonzero.main,
+        Circuits.Element.DivNonzero.main,
       Circuits.Element.Square.circuit,
       Circuits.Element.Square.elaborated,
       Circuits.Element.Square.main,
