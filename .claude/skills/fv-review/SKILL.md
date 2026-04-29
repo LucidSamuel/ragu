@@ -29,17 +29,31 @@ A Rust "circuit" that only builds expressions (e.g., `negate`, `add`, `sub`, `do
 
 **Rule:** before writing a Lean reimpl, check whether the Rust function actually emits operations (witnesses, lookups, asserts). If not, skip it. Don't reflexively mirror every Rust helper as a trivial Lean circuit.
 
+## How preconditions split: `Assumptions` / `ProverAssumptions` / `ProverSpec`
+
+After the Clean dependency bump (PR #690, commits `04b5782b` and `bb41827e`), `GeneralFormalCircuit` exposes preconditions on three axes, not one. This split is what makes the type-picking heuristic below work.
+
+| Field | Visible to | Role |
+|---|---|---|
+| `Assumptions` | both soundness *and* completeness | Verifier-side precondition: the contract every caller must satisfy. |
+| `ProverAssumptions` | completeness only | Prover-only precondition: extra witness conditions the verifier doesn't see. |
+| `ProverSpec` (was `CompletenessSpec`) | completeness only | Extra prover-side conclusion completeness establishes. |
+
+**Pre-PR shape:** `GeneralFormalCircuit.Soundness` had no `Assumptions` argument at all. Verifier-side preconditions had to be wedged into `Spec` as antecedents (`precondition → conclusion`), producing nested-implication specs that don't compose cleanly. The Clean upstream change added the `Assumptions` slot to soundness, which is what allowed those antecedents to migrate out of `Spec` into a proper precondition field. `ProverAssumptions` was carved out at the same time to retain the prover-only role old `Assumptions` had been playing.
+
+`FormalCircuit` and `FormalAssertion` keep a simpler picture: a single `Assumptions` field shared by both halves (no separate prover side). They're now reachable by *downgrading* — see below.
+
 ## Pick the right circuit type
 
 Three flavors, in order of specificity:
 
 | Type | Use when | Pitfall |
 |---|---|---|
-| `FormalCircuit` | Function-like: completeness and soundness share the same assumptions ("constraints work for all valid inputs"). | Default for input → output gadgets. **Both soundness and completeness see `Assumptions`** — so if your spec needs `IsBool input` to make sense, this is the type to reach for. |
-| `FormalAssertion` | Assertion-like: constraints intentionally narrow the allowed input (e.g., `enforce_root_of_unity`, `enforce_zero`). | If you reach for `GeneralFormalCircuit` and find yourself with `Assumptions = Spec`, this is what you actually want. |
-| `GeneralFormalCircuit` | Most flexible — different completeness vs. soundness assumptions. | Causes duplication when the generality isn't needed. **`Assumptions` is only consulted by completeness, not soundness** — so a spec referring to "boolean inputs" must either bake the bool constraints into the gadget body or downgrade to `FormalCircuit`. Last resort. |
+| `FormalCircuit` | Function-like: prover and verifier share one precondition body. | Default for input → output gadgets. Single `Assumptions` field, seen by both halves. |
+| `FormalAssertion` | Assertion-like: constraints intentionally narrow the allowed input (e.g., `enforce_root_of_unity`, `enforce_zero`). | When `Assumptions ↔ Spec` *and* the prover side needs nothing extra, this is what you actually want. `Boolean.ConditionalEnforceEqual` (commit `feda3096`) is the worked example: dropping one prover assumption made `ProverAssumptions = Assumptions = Spec`, enabling the downgrade. |
+| `GeneralFormalCircuit` | Most flexible — `ProverAssumptions ≠ Assumptions`, or you need `ProverSpec`. | Reach for this only when the prover genuinely needs preconditions or conclusions the verifier doesn't. If `ProverAssumptions = Assumptions` and `ProverSpec` is degenerate, downgrade to `FormalCircuit`. `Point.Double` (commit `3326f33b`) made exactly this downgrade. |
 
-**Heuristic:** `Assumptions = Spec` → `FormalAssertion`. "Function of inputs (under preconditions)" → `FormalCircuit`. Different soundness vs. completeness preconditions → `GeneralFormalCircuit`.
+**Heuristic:** `Assumptions ↔ Spec` and `ProverAssumptions` degenerate → `FormalAssertion`. Single precondition body, no prover/verifier asymmetry → `FormalCircuit`. Distinct `ProverAssumptions` or non-degenerate `ProverSpec` needed → `GeneralFormalCircuit`.
 
 ## Specs lift to high-level operations, not low-level constraints
 
@@ -173,7 +187,7 @@ Steps 1–2 can swap. Sub-gadgets stop after step 5.
 4. **Mirror Rust call structure** — delegate to the same sub-gadgets Rust delegates to; use `Core.mul` for Rust `dr.mul()` calls.
 5. **Write the spec at the operation level** — boolean / Nat / `if`-`then`-`else` / "input.cond = 1 → output equals X". If your spec reads like the constraint system, rewrite it.
 6. **Sanity-check `Assumptions`** — should be a high-level precondition (`IsBool x`, often `True`). A complex math identity in `Assumptions` is a smell; suspect the interface.
-7. **For `GeneralFormalCircuit`, remember soundness doesn't see `Assumptions`** — if you need invariants on inputs, either bake them into the constraints or use `FormalCircuit`.
+7. **Sort preconditions into the right slot** — verifier-visible preconditions go in `Assumptions` (seen by both halves); prover-only witness conditions go in `ProverAssumptions` (completeness only). If the two end up equal, downgrade to `FormalCircuit`; if also `Assumptions ↔ Spec`, downgrade further to `FormalAssertion`. Old advice that "soundness doesn't see `Assumptions`" is obsolete after the Clean dependency bump.
 8. **Drop unused parameters**; underscore-prefix unused props arguments.
 9. **Use plain names** (`circuit`, `Spec`, `soundness`) — no `General*` prefix.
 10. **Run `lake build` after each commit**; audit specs for correctness.
