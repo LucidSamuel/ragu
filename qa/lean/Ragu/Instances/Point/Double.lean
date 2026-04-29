@@ -20,13 +20,15 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   serializeOutput
 
   reimplementation :=
-    Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams
+    FormalCircuit.isGeneralFormalCircuit
+      (Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams)
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm, GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
+      FormalCircuit.isGeneralFormalCircuit,
       deserializeInput, exportedOperations,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,
@@ -40,6 +42,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
     intro input;
     simp [circuit_norm, GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
+      FormalCircuit.isGeneralFormalCircuit,
       deserializeInput, serializeOutput,
       Circuits.Point.Double.circuit, Circuits.Point.Double.elaborated, Circuits.Point.Double.main,
       Circuits.Element.Square.circuit, Circuits.Element.Square.elaborated, Circuits.Element.Square.main,

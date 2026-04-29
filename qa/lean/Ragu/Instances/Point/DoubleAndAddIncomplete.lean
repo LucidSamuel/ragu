@@ -20,20 +20,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   exportedOperations
   exportedOutput
 
-  Spec (input : Circuits.Point.DoubleAndAddIncomplete.Inputs (F p))
-       (output : Circuits.Point.Spec.Point (F p)) :=
-    input.P1.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    input.P2.isOnCurve Circuits.Point.Spec.EpAffineParams →
-    input.P1.x ≠ input.P2.x →
-    (match input.P1.add_incomplete input.P2 with
-     | none => False
-     | some r =>
-       r.x ≠ input.P1.x →
-       ((match r.add_incomplete input.P1 with
-         | none => False
-         | some s => output = s)
-        ∧ output.isOnCurve Circuits.Point.Spec.EpAffineParams))
-
   deserializeInput
   serializeOutput
 
@@ -42,7 +28,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
 
   same_constraints := by
     intro input
-    simp [Operations.toFlat, circuit_norm, exportedOperations,
+    simp [Core.Statements.FlatOperation.eraseCompute, List.map,
+      Operations.toFlat, circuit_norm, exportedOperations,
       GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       FormalCircuit.toSubcircuit,
@@ -88,10 +75,5 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Core.AllocMul.main]
     refine ⟨?_, rfl⟩
     rfl
-  same_spec := by
-    intro input output
-    dsimp only [Circuits.Point.DoubleAndAddIncomplete.circuit,
-      Circuits.Point.DoubleAndAddIncomplete.Spec]
-    aesop
 
 end Ragu.Instances.Point.DoubleAndAddIncomplete

@@ -29,18 +29,14 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let ⟨⟨x1, y1⟩, ⟨x2, y2⟩⟩ := input
 
   -- λ₁ = (y₂ - y₁) / (x₂ - x₁)
-  let tmp1 := x2 - x1
-  let lambda_1 ← Element.DivNonzero.circuit
-    { x := y2 - y1, y := tmp1 }
+  let lambda_1 ← Element.DivNonzero.circuit ⟨y2 - y1, x2 - x1⟩
 
   -- x_r = λ₁² - x₁ - x₂
   let lambda_1_sq ← Element.Square.circuit lambda_1
   let x_r := lambda_1_sq - x1 - x2
 
   -- λ₂ = 2y₁ / (x₁ - x_r) - λ₁
-  let tmp2 := x1 - x_r
-  let lambda_2_half ← Element.DivNonzero.circuit
-    { x := y1 + y1, y := tmp2 }
+  let lambda_2_half ← Element.DivNonzero.circuit ⟨y1 + y1, x1 - x_r⟩
   let lambda_2 := lambda_2_half - lambda_1
 
   -- x_s = λ₂² - x_r - x₁
@@ -53,38 +49,37 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
 
   return ⟨x_s, y_s⟩
 
+/-- Verifier-side assumptions: both inputs are on curve and the first slope is
+well-defined. The second slope is handled by the spec's `add_incomplete`
+carve-out and by `ProverAssumptions` for completeness. -/
+def Assumptions (curveParams : Spec.CurveParams p)
+    (input : Inputs (F p)) (_data : ProverData (F p)) :=
+  input.P1.isOnCurve curveParams ∧
+  input.P2.isOnCurve curveParams ∧
+  input.P1.x ≠ input.P2.x
+
 /-- Completeness needs the two intermediate non-degeneracies:
 `x₁ ≠ x₂` (for the first slope) and
 `x₁ ≠ x_r` (for the second slope, after computing the midpoint
 x-coordinate). -/
-def Assumptions (_input : Inputs (F p)) (_data : ProverData (F p)) := True
-
-def ProverAssumptions (_curveParams : Spec.CurveParams p)
-    (input : Inputs (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
-  let x_r := ((input.P2.y - input.P1.y) / (input.P2.x - input.P1.x))^2
-    - input.P1.x - input.P2.x
-  input.P1.x ≠ input.P2.x ∧
-  Element.DivNonzero.ProverAssumptions
-    { x := input.P2.y - input.P1.y, y := input.P2.x - input.P1.x } data hint ∧
-  Element.DivNonzero.ProverAssumptions
-    { x := input.P1.y + input.P1.y, y := input.P1.x - x_r } data hint
+def ProverAssumptions (curveParams : Spec.CurveParams p)
+    (input : Inputs (F p)) (data : ProverData (F p)) (_hint : ProverHint (F p)) :=
+  Assumptions curveParams input data ∧
+  (match input.P1.add_incomplete input.P2 with
+   | none => False
+   | some r => r.x ≠ input.P1.x)
 
 /-- The output is `2·P1 + P2` under the curve-membership preconditions and
 the two non-degeneracy assumptions. Stated via `add_incomplete` twice:
 `r = P1 + P2`, then `s = r + P1 = 2P1 + P2`. -/
 def Spec (curveParams : Spec.CurveParams p) (input : Inputs (F p))
     (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
-  input.P1.isOnCurve curveParams →
-  input.P2.isOnCurve curveParams →
-  input.P1.x ≠ input.P2.x →
   (match input.P1.add_incomplete input.P2 with
    | none => False
    | some r =>
-     r.x ≠ input.P1.x →
-     ((match r.add_incomplete input.P1 with
-       | none => False
-       | some s => output = s)
-      ∧ output.isOnCurve curveParams))
+     match r.add_incomplete input.P1 with
+     | none => True
+     | some s => output = s ∧ output.isOnCurve curveParams)
 
 instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
   main
@@ -93,7 +88,7 @@ instance elaborated : ElaboratedCircuit (F p) Inputs Spec.Point where
 set_option maxHeartbeats 800000 in
 theorem soundness (curveParams : Spec.CurveParams p)
     : GeneralFormalCircuit.Soundness (F p) elaborated
-        Assumptions (Spec curveParams) := by
+        (Assumptions curveParams) (Spec curveParams) := by
   circuit_proof_start
   simp [circuit_norm,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
@@ -101,7 +96,7 @@ theorem soundness (curveParams : Spec.CurveParams p)
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
   ] at h_holds ⊢
   obtain ⟨c1, c2, c3, c4, c5⟩ := h_holds
-  intro h_P1_mem h_P2_mem h_xne
+  obtain ⟨h_P1_mem, h_P2_mem, h_xne⟩ := h_assumptions
   -- Specialize c1 using `x₁ ≠ x₂` (equivalent to `x₂ + -x₁ ≠ 0`).
   have h_xne' : ¬input_P2_x + -input_P1_x = 0 := by
     intro h; rw [add_neg_eq_zero] at h; exact h_xne h.symm
@@ -111,17 +106,17 @@ theorem soundness (curveParams : Spec.CurveParams p)
   -- At this point `P1.add_incomplete P2` still shows up in the goal. Unfold
   -- it using h_xne.
   simp only [Spec.Point.add_incomplete, if_neg h_xne]
-  intro h_rx_ne
+  by_cases h_rx_ne :
+      ((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2 -
+          input_P1_x - input_P2_x ≠ input_P1_x
+  swap
+  · simp only [if_pos (not_not.mp h_rx_ne)]
+  simp only [if_neg h_rx_ne]
+  -- The remaining branch is the non-degenerate second add.
   -- c3's premise: `x₁ - r.x ≠ 0 ∨ 2y₁ ≠ 0`. We discharge the disjunction
   -- with the left disjunct, deriving `x₁ - r.x ≠ 0` from h_rx_ne (plus the
   -- c2 rewrite bridging Sq₁ to λ₁²).
-  have h_r_premise : input_P1_x + (input_P2_x + (input_P1_x +
-        -Expression.eval env
-          (Element.Square.main
-            (Element.DivNonzero.main
-              { x := input_var_P2_y - input_var_P1_y,
-                y := input_var_P2_x - input_var_P1_x } i₀).1
-            (i₀ + 3)).1)) ≠ 0 := by
+  specialize c3 (Or.inl (by
     intro h
     rw [c2] at h
     apply h_rx_ne
@@ -135,11 +130,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
     -- Goal: q - x1 - x2 = x1. Algebraically: q - x1 - x2 = 2x1 + x2 - x1 - x2 = x1.
     have hq : ((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x))^2 =
               input_P1_x + input_P2_x + input_P1_x := by
-      have : input_P1_x + (input_P2_x + (input_P1_x +
-          -((input_P2_y - input_P1_y) / (input_P2_x - input_P1_x)) ^ 2)) = 0 := h
-      linear_combination -this
-    linear_combination hq
-  specialize c3 (Or.inl h_r_premise)
+      linear_combination -h
+    linear_combination hq))
   rw [c2] at c3
   rw [c1] at c4
   rw [c1, c2] at c5
@@ -168,34 +160,10 @@ theorem soundness (curveParams : Spec.CurveParams p)
      ((input_P1_y - r.y) / (input_P1_x - r.x)) *
        (r.x - (((input_P1_y - r.y) / (input_P1_x - r.x)) ^ 2 - r.x - input_P1_x)) - r.y⟩ with hs_def
   change s.isOnCurve curveParams at h_s_mem
-  -- Unfold the inner add_incomplete's if using h_rx_ne.
-  rw [if_neg h_rx_ne]
   -- Prove the two coordinate equalities individually, then assemble.
-  have h_x : Expression.eval env
-        (Element.Square.main
-          ((Element.DivNonzero.main
-                { x := input_var_P1_y + input_var_P1_y,
-                  y :=
-                    input_var_P1_x -
-                      ((Element.Square.main
-                              (Element.DivNonzero.main
-                                  { x := input_var_P2_y - input_var_P1_y,
-                                    y := input_var_P2_x - input_var_P1_x }
-                                  i₀).1
-                              (i₀ + 3)).1 -
-                          input_var_P1_x -
-                        input_var_P2_x) }
-                (i₀ + 3 + 3)).1 -
-            (Element.DivNonzero.main
-                { x := input_var_P2_y - input_var_P1_y,
-                  y := input_var_P2_x - input_var_P1_x } i₀).1)
-          (i₀ + 3 + 3 + 3)).1 +
-      (input_P2_x + (input_P1_x + -Expression.eval env
-        (Element.Square.main
-          (Element.DivNonzero.main
-            { x := input_var_P2_y - input_var_P1_y,
-              y := input_var_P2_x - input_var_P1_x } i₀).1
-          (i₀ + 3)).1)) + -input_P1_x = s.x := by
+  have h_x :
+      env.get (i₀ + 3 + 3 + 3 + 2) +
+        (input_P2_x + (input_P1_x + -env.get (i₀ + 3 + 2))) + -input_P1_x = s.x := by
     simp only [hs_def, hr_def]; rw [c4, c3, c2]
     have e1 : input_P2_y + -input_P1_y = input_P2_y - input_P1_y := by ring
     have e2 : input_P2_x + -input_P1_x = input_P2_x - input_P1_x := by ring
@@ -215,58 +183,8 @@ theorem soundness (curveParams : Spec.CurveParams p)
       linear_combination heq
     field_simp
     ring
-  have h_y : Expression.eval env
-      (Element.Mul.main
-        {
-          x :=
-            (Element.DivNonzero.main
-                  { x := input_var_P1_y + input_var_P1_y,
-                    y :=
-                      input_var_P1_x -
-                        ((Element.Square.main
-                                (Element.DivNonzero.main
-                                    { x := input_var_P2_y - input_var_P1_y,
-                                      y := input_var_P2_x - input_var_P1_x }
-                                    i₀).1
-                                (i₀ + 3)).1 -
-                            input_var_P1_x -
-                          input_var_P2_x) }
-                  (i₀ + 3 + 3)).1 -
-              (Element.DivNonzero.main
-                  { x := input_var_P2_y - input_var_P1_y,
-                    y := input_var_P2_x - input_var_P1_x } i₀).1,
-          y :=
-            input_var_P1_x -
-              ((Element.Square.main
-                      ((Element.DivNonzero.main
-                            { x := input_var_P1_y + input_var_P1_y,
-                              y :=
-                                input_var_P1_x -
-                                  ((Element.Square.main
-                                          (Element.DivNonzero.main
-                                              { x := input_var_P2_y - input_var_P1_y,
-                                                y := input_var_P2_x - input_var_P1_x }
-                                              i₀).1
-                                          (i₀ + 3)).1 -
-                                      input_var_P1_x -
-                                    input_var_P2_x) }
-                            (i₀ + 3 + 3)).1 -
-                        (Element.DivNonzero.main
-                            { x := input_var_P2_y - input_var_P1_y,
-                              y := input_var_P2_x - input_var_P1_x }
-                            i₀).1)
-                      (i₀ + 3 + 3 + 3)).1 -
-                  ((Element.Square.main
-                          (Element.DivNonzero.main
-                              { x := input_var_P2_y - input_var_P1_y,
-                                y := input_var_P2_x - input_var_P1_x }
-                              i₀).1
-                          (i₀ + 3)).1 -
-                      input_var_P1_x -
-                    input_var_P2_x) -
-                input_var_P1_x) }
-        (i₀ + 3 + 3 + 3 + 3)).1 +
-      -input_P1_y = s.y := by
+  have h_y :
+      env.get (i₀ + 3 + 3 + 3 + 3 + 2) + -input_P1_y = s.y := by
     simp only [hs_def, hr_def]
     rw [c5, c4, c3]
     -- Same divisional ring issue as in h_x; bridge `+-` form and apply field_simp.
@@ -303,31 +221,35 @@ theorem completeness (curveParams : Spec.CurveParams p)
         (ProverAssumptions curveParams) (fun _ _ _ => True) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
+    Element.DivNonzero.circuit,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [Element.DivNonzero.Spec] at h_env
-  simp only [sub_eq_add_neg] at h_assumptions
-  obtain ⟨h_xne, h_a1, h_a2⟩ := h_assumptions
+  obtain ⟨⟨_, _, h_xne⟩, h_a2⟩ := h_assumptions
+  simp only [Spec.Point.add_incomplete, if_neg h_xne, sub_eq_add_neg] at h_a2
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
-  have h_div1 := h_div1_spec h_a1
-  have h_prem : input_P2_x + -input_P1_x ≠ 0 ∨ input_P2_y + -input_P1_y ≠ 0 := by
-    left
+  have h_a1 : input_P2_x + -input_P1_x ≠ 0 := by
     intro h
     rw [add_neg_eq_zero] at h
     exact h_xne h.symm
+  have h_prem : input_P2_x + -input_P1_x ≠ 0 ∨ input_P2_y + -input_P1_y ≠ 0 :=
+    Or.inl h_a1
+  have h_div1 := h_div1_spec h_a1
   have h_div1_eq := h_div1 h_prem
   simp only [Element.Square.Spec] at h_sq1_spec
   -- Goal: first DivNonzero assumption and second DivNonzero assumption at env x_r.
-  -- First conjunct is `h_a1` directly; second needs the env-level
+  -- First conjunct follows from `x₁ ≠ x₂`; second needs the env-level
   -- `Square(lambda_1)` → `lambda_1^2` → `((y2-y1)/(x2-x1))^2` rewrite chain.
   rw [h_sq1_spec, h_div1_eq]
-  exact ⟨h_a1, h_a2⟩
+  exact ⟨h_a1, by
+    intro h
+    rw [add_neg_eq_zero] at h
+    exact h_a2 h.symm⟩
 
 def circuit (curveParams : Spec.CurveParams p)
     : GeneralFormalCircuit (F p) Inputs Spec.Point :=
   { elaborated with
-    Assumptions := Assumptions,
+    Assumptions := Assumptions curveParams,
     Spec := Spec curveParams,
     ProverAssumptions := ProverAssumptions curveParams,
     soundness := soundness curveParams,

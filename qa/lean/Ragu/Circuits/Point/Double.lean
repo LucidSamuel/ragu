@@ -30,18 +30,12 @@ def main (input : Var Spec.Point (F p)) : Circuit (F p) (Var Spec.Point (F p)) :
 
   return ⟨x3, y3⟩
 
-def Assumptions (_input : Spec.Point (F p)) (_data : ProverData (F p)) := True
-
-def ProverAssumptions (curveParams : Spec.CurveParams p)
-    (input : Spec.Point (F p)) (data : ProverData (F p)) (hint : ProverHint (F p)) :=
+def Assumptions (curveParams : Spec.CurveParams p)
+    (input : Spec.Point (F p)) :=
   input.isOnCurve curveParams ∧
-  curveParams.noOrderTwoPoints ∧
-  Element.DivNonzero.ProverAssumptions
-    { x := (3 : F p) * input.x^2, y := input.y + input.y } data hint
+  curveParams.noOrderTwoPoints
 
-def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output : Spec.Point (F p)) (_data : ProverData (F p)) :=
-  input.isOnCurve curveParams →
-  curveParams.noOrderTwoPoints →
+def Spec (curveParams : Spec.CurveParams p) (input : Spec.Point (F p)) (output : Spec.Point (F p)) :=
   (match input.double with
   | none => False -- this case never happens
   | some double => output = double)
@@ -54,15 +48,14 @@ instance elaborated :
   localLength _ := 12
 
 theorem soundness (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit.Soundness (F p) elaborated Assumptions (Spec curveParams) := by
-  circuit_proof_start
-  simp [circuit_norm,
+    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+  circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
-  ] at h_holds ⊢
+  ]
   obtain ⟨c1, c2, c3, c4⟩ := h_holds
-  intro h_membership h_order
+  obtain ⟨h_membership, h_order⟩ := h_assumptions
 
   have hy : input_y ≠ 0 := h_order ⟨input_x, input_y⟩ h_membership
   have h2y_ne : input_y + input_y ≠ 0 := by
@@ -79,7 +72,7 @@ theorem soundness (curveParams : Spec.CurveParams p) :
   constructor
   · simp only [Spec.Point.mk.injEq]
     rw [c3, c4]
-    constructor <;> ring
+    constructor <;> ring_nf
   · have h_d := Lemmas.double_preserves_membership ⟨input_x, input_y⟩ curveParams h_membership h_order
     simp only [Spec.Point.double, if_neg hy] at h_d
     simp only [Spec.Point.isOnCurve] at h_d ⊢
@@ -87,24 +80,23 @@ theorem soundness (curveParams : Spec.CurveParams p) :
     ring_nf at ⊢ h_d
     exact h_d
 
-omit [NeZero (2 : F p)] in
 theorem completeness (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit.Completeness (F p) elaborated
-      (ProverAssumptions curveParams) (fun _ _ _ => True) := by
+    Completeness (F p) elaborated (Assumptions curveParams) := by
   circuit_proof_start [
     Element.Square.circuit, Element.Square.Assumptions,
-    Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
+    Element.DivNonzero.circuit,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
-  exact h_assumptions.2.2
+  rw [← two_mul]
+  exact mul_ne_zero (NeZero.ne 2)
+    (h_assumptions.2 ⟨input_x, input_y⟩ h_assumptions.1)
 
 def circuit (curveParams : Spec.CurveParams p) :
-    GeneralFormalCircuit (F p) Spec.Point Spec.Point :=
+    FormalCircuit (F p) Spec.Point Spec.Point :=
   {
     elaborated with
-    Assumptions := Assumptions,
+    Assumptions := Assumptions curveParams,
     Spec := Spec curveParams,
-    ProverAssumptions := ProverAssumptions curveParams,
     soundness := soundness curveParams,
     completeness := completeness curveParams
   }
