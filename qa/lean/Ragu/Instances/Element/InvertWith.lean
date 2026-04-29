@@ -31,9 +31,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.InvertWith.circuit,
       Circuits.Element.InvertWith.elaborated,
       Circuits.Element.InvertWith.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -44,8 +42,6 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.InvertWith.circuit,
       Circuits.Element.InvertWith.elaborated,
       Circuits.Element.InvertWith.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Element.InvertWith

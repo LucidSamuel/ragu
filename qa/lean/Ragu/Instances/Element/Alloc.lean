@@ -31,9 +31,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.Alloc.circuit,
       Circuits.Element.Alloc.elaborated,
       Circuits.Element.Alloc.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
     rfl
   same_output := by
     intro input
@@ -43,8 +41,6 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.Alloc.circuit,
       Circuits.Element.Alloc.elaborated,
       Circuits.Element.Alloc.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Element.Alloc

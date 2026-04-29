@@ -1,7 +1,7 @@
 import Clean.Circuit
 import Clean.Gadgets.Boolean
 import Mathlib.Tactic.LinearCombination
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Boolean.ConditionalEnforceEqual
 variable {p : ℕ} [Fact p.Prime]
@@ -23,7 +23,7 @@ three extra constraints:
 Together these enforce `cond · (a - b) = 0`: when `cond = 0` the constraint
 is trivially satisfied, and when `cond = 1` it forces `a = b`. -/
 def main (input : Var Input (F p)) : Circuit (F p) (Var unit (F p)) := do
-  let ⟨x, y, z⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨x, y, z⟩ ← Core.mul fun env =>
     ⟨env input.cond, env input.a - env input.b, 0⟩
   assertZero (x - input.cond)
   assertZero (y - input.a + input.b)
@@ -41,11 +41,11 @@ instance elaborated : ElaboratedCircuit (F p) Input unit where
   localLength _ := 3
 
 theorem soundness : FormalAssertion.Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   grind
 
 theorem completeness : FormalAssertion.Completeness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec, IsBool]
+  circuit_proof_start [IsBool]
   and_intros
   · grind
   · grind

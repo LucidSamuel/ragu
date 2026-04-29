@@ -1,6 +1,6 @@
 import Clean.Circuit
 import Ragu.Core
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.InvertWith
 variable {p : ℕ} [Fact p.Prime]
@@ -21,7 +21,7 @@ enforces `a = input` and `c = 1`, returning `b` as the inverse wire. -/
 def main (input : Var Input (F p))
     : Circuit (F p) (Expression (F p)) := do
   let ⟨input, inverse⟩ := input
-  let ⟨a, b, c⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨a, b, c⟩ ← Core.mul fun env =>
     ⟨env input, inverse env, 1⟩
   assertZero (a - input)
   assertZero (c - 1)
@@ -49,9 +49,7 @@ instance elaborated
 
 theorem soundness :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
-  circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.Spec
-  ]
+  circuit_proof_start
   obtain ⟨h_mul, h_a, h_c⟩ := h_holds
   rw [add_neg_eq_zero] at h_a h_c
   rw [h_a, h_c] at h_mul
@@ -60,7 +58,7 @@ theorem soundness :
 
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions ProverSpec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec]
+  circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field :=

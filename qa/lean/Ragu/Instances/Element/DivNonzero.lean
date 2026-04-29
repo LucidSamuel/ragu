@@ -32,8 +32,8 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.DivNonzero.circuit,
       Circuits.Element.DivNonzero.elaborated,
       Circuits.Element.DivNonzero.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated]
+      Circuits.Core.Mul.main]
+    repeat (constructor; rfl)
     constructor
   same_output := by
     intro input
@@ -45,7 +45,6 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
       Circuits.Element.DivNonzero.circuit,
       Circuits.Element.DivNonzero.elaborated,
       Circuits.Element.DivNonzero.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated]
+      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Element.DivNonzero

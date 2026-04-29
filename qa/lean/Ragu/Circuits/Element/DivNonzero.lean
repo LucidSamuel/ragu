@@ -1,6 +1,6 @@
 import Clean.Circuit
 import Ragu.Core
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.DivNonzero
 variable {p : ℕ} [Fact p.Prime]
@@ -13,7 +13,7 @@ deriving ProvableStruct
 -- quotient * denominator = numerator, with denominator = y, numerator = x
 def main (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
   let { x, y } := input
-  let ⟨quotient, denominator, numerator⟩ ← Core.AllocMul.circuit fun eval =>
+  let ⟨quotient, denominator, numerator⟩ ← Core.mul fun eval =>
     ⟨(eval x) / (eval y), (eval y), (eval x)⟩
   assertZero (x - numerator)
   assertZero (y - denominator)
@@ -45,12 +45,12 @@ instance elaborated : ElaboratedCircuit (F p) Input field where
   localLength _ := 3
 
 theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   grind
 
 theorem completeness
     : GeneralFormalCircuit.Completeness (F p) elaborated ProverAssumptions (fun _ _ _ => True) := by
-  circuit_proof_all [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec]
+  circuit_proof_all
 
 def circuit : GeneralFormalCircuit (F p) Input field :=
   { elaborated with

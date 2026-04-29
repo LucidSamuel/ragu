@@ -1,20 +1,20 @@
 import Clean.Circuit
 import Clean.Gadgets.Boolean
 import Mathlib.Tactic.LinearCombination
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Boolean.Alloc
 variable {p : ℕ} [Fact p.Prime]
 
 /-- `Boolean::alloc` constrains a wire to hold `0` or `1`.
 
-Delegates the 3-wire `a * b = c` gate to `Core.AllocMul`, feeding it
+Delegates the 3-wire `a * b = c` gate to `Core.mul`, feeding it
 the row `(v, 1 - v, 0)` derived from the boolean hint, then asserts
 `c = 0` (collapsing the gate to `a * b = 0`) and `1 - a - b = 0`
 (binding `b = 1 - a`). Together: `a * (1 - a) = 0`, so `a ∈ {0, 1}`. -/
 def main (hint : ProverEnvironment (F p) → Bool)
     : Circuit (F p) (Var field (F p)) := do
-  let ⟨a, b, c⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨a, b, c⟩ ← Core.mul fun env =>
     let v : F p := if hint env then 1 else 0
     ⟨v, 1 - v, 0⟩
   assertZero c
@@ -36,7 +36,7 @@ instance elaborated
 
 theorem soundness
     : GeneralFormalCircuit.WithHint.Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   obtain ⟨h_mul, h_c, h_lin⟩ := h_holds
   -- h_mul : a * b = c, h_c : c = 0, h_lin : 1 - a - b = 0
   rw [h_c] at h_mul
@@ -47,9 +47,7 @@ theorem soundness
 theorem completeness
     : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
         ProverAssumptions (fun _ _ _ => True) := by
-  circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.ProverSpec
-  ]
+  circuit_proof_start
   obtain ⟨_, hx, hy, hz⟩ := h_env
   -- hx : a = v, hy : b = 1 - v, hz : c = v * (1 - v), where v ∈ {0, 1}.
   refine ⟨?_, ?_⟩

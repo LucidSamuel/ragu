@@ -32,9 +32,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
       Circuits.Element.AllocSquare.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
     repeat (constructor; rfl)
     constructor
   same_output := by
@@ -45,8 +43,6 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       Circuits.Element.AllocSquare.circuit,
       Circuits.Element.AllocSquare.elaborated,
       Circuits.Element.AllocSquare.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.elaborated,
-      Circuits.Core.AllocMul.main]
+      Circuits.Core.Mul.main]
 
 end Ragu.Instances.Element.AllocSquare

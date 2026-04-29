@@ -1,13 +1,15 @@
 import Clean.Circuit
 
-namespace Ragu.Circuits.Core.AllocMul
-variable {p : ℕ} [Fact p.Prime]
-
+namespace Ragu.Circuits
+/-- A single R1CS row, used in the constraint x * y = z -/
 structure Row (F : Type) where
   x : F
   y : F
   z : F
 deriving ProvableStruct
+
+namespace Core.Mul
+variable {p : ℕ} [Fact p.Prime]
 
 def main (hint : ProverEnvironment (F p) → Row (F p)) : Circuit (F p) (Var Row (F p)) := do
   let row : Var Row (F p) ← witness fun env =>
@@ -16,14 +18,19 @@ def main (hint : ProverEnvironment (F p) → Row (F p)) : Circuit (F p) (Var Row
   assertZero (row.x * row.y - row.z)
   return row
 
+/-- We add this spec to the simp set since many gadgets rely on it -/
+@[circuit_norm]
 def Spec (_input : Unit) (out : Row (F p)) (_data : ProverData (F p)) :=
   out.x * out.y = out.z
 
-/-- The output row equals `hintReader` applied to the runtime hint. -/
+/-- The output row equals `hintReader` applied to the runtime hint.
+We add this to the simp set since many gadgets rely on it -/
+@[circuit_norm]
 def ProverSpec (input : Row (F p)) (out : Row (F p)) (_ : ProverHint (F p)) :=
   let ⟨ x, y, _ ⟩ := input
   out.x = x ∧ out.y = y ∧ out.z = x * y
 
+@[circuit_norm]
 instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Row) Row where
   main
   output _ offset := varFromOffset Row offset
@@ -46,13 +53,15 @@ theorem completeness :
   simp at h0 h1 h2
   simp [h0, h1, h2]
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Row) Row where
+@[circuit_norm]
+def mul : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Row) Row where
   elaborated
   Spec
   ProverSpec
   soundness
   completeness
+end Mul
 
-end Circuits.Core.AllocMul
-export Circuits.Core.AllocMul (Row)
-end Ragu
+-- export as `Core.mul` for use in other circuits
+export Mul (mul)
+end Ragu.Circuits.Core

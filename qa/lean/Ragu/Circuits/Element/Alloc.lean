@@ -1,5 +1,5 @@
 import Clean.Circuit
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.Alloc
 variable {p : ℕ} [Fact p.Prime]
@@ -10,7 +10,7 @@ two are discarded. The returned wire is unconstrained (there always
 exist `b`, `c` satisfying `a · b = c` for any `a`, e.g. `b = c = 0`). -/
 def main (hint : ProverEnvironment (F p) → F p)
     : Circuit (F p) (Expression (F p)) := do
-  let ⟨a, _, _⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨a, _, _⟩ ← Core.mul fun env =>
     ⟨hint env, 0, 0⟩
   return a
 
@@ -33,7 +33,7 @@ theorem soundness
 
 theorem completeness : GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
     (fun _ _ _ => True) ProverSpec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.ProverSpec]
+  circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) field :=

@@ -1,5 +1,5 @@
 import Clean.Circuit
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.AllocSquare
 variable {p : ℕ} [Fact p.Prime]
@@ -11,7 +11,7 @@ deriving ProvableStruct
 
 def main (hint : ProverEnvironment (F p) → F p) :
     Circuit (F p) (Var Square (F p)) := do
-  let ⟨x, y, z⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨x, y, z⟩ ← Core.mul fun env =>
     let a := hint env
     ⟨a, a, a * a⟩
   assertZero (x - y)
@@ -31,7 +31,7 @@ instance elaborated :
 
 theorem soundness :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   obtain ⟨h_mul, h_eq⟩ := h_holds
   -- h_mul : x * y = z, h_eq : x - y = 0
   rw [add_neg_eq_zero] at h_eq
@@ -41,9 +41,7 @@ theorem soundness :
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated
       (fun _ _ _ => True) ProverSpec := by
-  circuit_proof_start [
-    Core.AllocMul.circuit, Core.AllocMul.ProverSpec
-  ]
+  circuit_proof_start
   grind
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) Square :=

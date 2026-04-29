@@ -31,8 +31,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       deserializeInput, exportedOperations,
       Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.main,
+      Circuits.Core.Mul.main,
       circuit_norm]
     constructor
   same_output := by
@@ -42,8 +41,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
       deserializeInput, serializeOutput,
       Circuits.Boolean.Alloc.circuit,
       Circuits.Boolean.Alloc.main,
-      Circuits.Core.AllocMul.circuit,
-      Circuits.Core.AllocMul.main,
+      Circuits.Core.Mul.main,
       circuit_norm]
 
 end Ragu.Instances.Boolean.Alloc

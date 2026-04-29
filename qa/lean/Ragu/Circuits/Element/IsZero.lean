@@ -1,6 +1,6 @@
 import Clean.Circuit
 import Mathlib.Tactic.LinearCombination
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.IsZero
 variable {p : ℕ} [Fact p.Prime]
@@ -13,12 +13,12 @@ variable {p : ℕ} [Fact p.Prime]
 
 Together these pin down `is_zero = if x = 0 then 1 else 0`. -/
 def main (input : Expression (F p)) : Circuit (F p) (Expression (F p)) := do
-  let ⟨x1, iz, zp⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨x1, iz, zp⟩ ← Core.mul fun env =>
     let xv := Expression.eval env input
     ⟨xv, (if xv = 0 then (1 : F p) else 0), 0⟩
   assertZero (x1 - input)
   assertZero zp
-  let ⟨x2, _, inz⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨x2, _, inz⟩ ← Core.mul fun env =>
     let xv := Expression.eval env input
     ⟨xv, xv⁻¹, (if xv = 0 then (0 : F p) else 1)⟩
   assertZero (x2 - input)
@@ -36,7 +36,7 @@ instance elaborated : ElaboratedCircuit (F p) field field where
   localLength _ := 6
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   obtain ⟨c1, c2, c3, c4, c5, c6⟩ := h_holds
   rw [add_neg_eq_zero] at c2 c5
   -- c1 : x1 * iz = zp        c4 : x2 * inv = inz
@@ -55,7 +55,7 @@ theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
     · exact hiz
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.ProverSpec]
+  circuit_proof_start
   obtain ⟨⟨_, h0, h1, h2⟩, ⟨_, h3, h4, h5⟩⟩ := h_env
   refine ⟨?_, ?_, ?_, ?_⟩
   · rw [h0]; ring

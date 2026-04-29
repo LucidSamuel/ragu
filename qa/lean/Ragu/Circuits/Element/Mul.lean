@@ -1,5 +1,5 @@
 import Clean.Circuit
-import Ragu.Circuits.Core.AllocMul
+import Ragu.Circuits.Core.Mul
 
 namespace Ragu.Circuits.Element.Mul
 variable {p : ℕ} [Fact p.Prime]
@@ -10,7 +10,7 @@ structure Input (F : Type) where
 deriving ProvableStruct
 
 def main (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
-  let ⟨x, y, z⟩ ← Core.AllocMul.circuit fun env =>
+  let ⟨x, y, z⟩ ← Core.mul fun env =>
     ⟨env input.x, env input.y, env input.x * env input.y⟩
   assertZero (x - input.x)
   assertZero (y - input.y)
@@ -27,13 +27,13 @@ instance elaborated : ElaboratedCircuit (F p) Input field where
   localLength _ := 3
 
 theorem soundness : Soundness (F p) elaborated Assumptions Spec := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.Spec]
+  circuit_proof_start
   obtain ⟨c1, c2, c3⟩ := h_holds
   rw [add_neg_eq_zero] at c2 c3
   rw [←c2, ←c3, c1]
 
 theorem completeness : Completeness (F p) elaborated Assumptions := by
-  circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.ProverSpec]
+  circuit_proof_start
   grind
 
 def circuit : FormalCircuit (F p) Input field :=
