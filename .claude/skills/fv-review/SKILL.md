@@ -72,6 +72,8 @@ The high-level form is what callers reason against. The constraint-level form is
 
 Reusable building blocks: `IsBool x` (from `Clean.Gadgets.Boolean`) for "0 or 1"; `&&&` / `|||` for bitwise ops on `.val`; `if … then … else …` for conditional outputs; `IsBool.and_eq_val_and` / `IsBool.and_is_bool` to bridge field multiplication to boolean operations in soundness proofs.
 
+**Partial operations.** When a `Spec` involves a possibly-failing operation (point doubling, inversion), prefer `lhs = some output` over `match lhs with | none => False | some o => output = o`. Logically equivalent; the equality form composes cleanly with `simp` and `rw`, the `match` form leaves goals stuck on case analysis. Commits `fd3dd437`, `6e29e465`.
+
 ## Specs are unconditional; caller obligations live in `Assumptions`
 
 A close cousin of the previous lesson, but distinct: a spec should be an **unconditional** fact about the input/output relation. Premises the *caller* must establish belong in `Assumptions`, not as antecedents inside `Spec`.
@@ -138,6 +140,8 @@ let ⟨a, b, c⟩ ← Core.mul fun env =>
 
 This keeps the public interface aligned with Rust and prevents Assumption inflation (see previous section).
 
+**Calling convention.** `Core.mul` (and Clean's other hint-aware primitives) take a closure of shape `(eval : Expression F → F) → Row` — given a way to evaluate already-allocated wires, return the new row's values. Witness derivation always lives inside this closure; there is no parameter or callback shape to plumb through signatures.
+
 ## Naming conventions
 
 - **No `General*` prefix.** Use plain `circuit`, `Spec`, `Assumptions`, `soundness`, `completeness`. The prefix is noise even when the underlying type is `GeneralFormalCircuit`.
@@ -167,6 +171,29 @@ If Rust calls the driver primitive `dr.mul()`, Lean should call `Core.mul`.
 This keeps the abstraction boundary aligned across Rust and Lean and avoids duplicate proofs.
 
 **Current pattern: use `Core.mul` for env-aware rows.** `Core.mul` takes an `UnconstrainedDep Row` input, so callers can pass a function of the prover environment and compute the row locally from `eval`ed inputs.
+
+## Pass subcircuit lemmas to `circuit_proof_start`
+
+Composed gadgets — anything that calls another gadget as a subcircuit — need their soundness / completeness proofs to know about the children's `Spec` and `Assumptions`. The vehicle is `circuit_proof_start`'s argument list.
+
+**Pattern.** For every subcircuit you compose with, pass its `circuit`, `Assumptions`, and `Spec` to `circuit_proof_start`:
+
+```lean
+theorem soundness (curveParams : Spec.CurveParams p) :
+    Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
+  circuit_proof_start [
+    Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
+    Element.DivNonzero.circuit, Element.DivNonzero.Assumptions, Element.DivNonzero.Spec,
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec
+  ]
+  ...
+```
+
+Without these in the list, the proof state stalls on un-unfolded subcircuit terms — `simp` can't see through `Element.DivNonzero.circuit` to apply its `Spec`, and you end up manually unfolding each one with `dsimp [...]` calls.
+
+**Why this matters for complex gadgets.** A leaf gadget with no subcircuits passes `circuit_proof_start` with no arguments. A four-deep composition like `DoubleAndAddIncomplete` needs ~12 lemmas — three per subcircuit. Getting the list right is the difference between a one-shot proof and an hour of manual unfolding. Forgetting a subcircuit's `Spec` is the most common cause of "the proof was almost there but `simp` got stuck" frustration.
+
+**Heuristic.** Before writing a soundness or completeness proof for a composed gadget, enumerate every gadget you call as a subcircuit. For each, add `<Sub>.circuit`, `<Sub>.Assumptions`, `<Sub>.Spec` to the `circuit_proof_start` argument list. If your proof later stalls on a goal mentioning `(<Sub>.circuit input).output ...` or unfolded `Sub.Spec`, you missed a triple — add it.
 
 ## Length polymorphism is supported
 
