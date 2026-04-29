@@ -8,9 +8,10 @@ variable {p : ℕ} [Fact p.Prime]
 which emits a full 3-wire gate but returns the first wire — the other
 two are discarded. The returned wire is unconstrained (there always
 exist `b`, `c` satisfying `a · b = c` for any `a`, e.g. `b = c = 0`). -/
-def main (hint : ProverEnvironment (F p) → Row (F p))
+def main (hint : ProverEnvironment (F p) → F p)
     : Circuit (F p) (Expression (F p)) := do
-  let ⟨a, _, _⟩ ← Core.AllocMul.circuit hint
+  let ⟨a, _, _⟩ ← Core.AllocMul.circuit fun env =>
+    ⟨hint env, 0, 0⟩
   return a
 
 /-- The output is unconstrained from the verifier's perspective — any value
@@ -18,10 +19,10 @@ can be part of a valid `(a, b, c)` triple with `a · b = c` (e.g. take
 `a = c = 0`). The useful content is the allocation itself. -/
 def Spec (_input : Unit) (_out : F p) (_data : ProverData (F p)) := True
 
-def ProverSpec (input : Row (F p)) (out : F p) (_ : ProverHint (F p)) :=
-  out = input.x
+def ProverSpec (input : F p) (out : F p) (_ : ProverHint (F p)) :=
+  out = input
 
-instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep Core.AllocMul.Row) field where
+instance elaborated : ElaboratedCircuit (F p) (UnconstrainedDep field) field where
   main
   output _ offset := varFromOffset field offset
   localLength _ := 3
@@ -35,7 +36,7 @@ theorem completeness : GeneralFormalCircuit.WithHint.Completeness (F p) elaborat
   circuit_proof_start [Core.AllocMul.circuit, Core.AllocMul.ProverSpec]
   grind
 
-def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Core.AllocMul.Row) field :=
+def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep field) field :=
   { elaborated with Spec, ProverSpec, soundness, completeness }
 
 end Ragu.Circuits.Element.Alloc

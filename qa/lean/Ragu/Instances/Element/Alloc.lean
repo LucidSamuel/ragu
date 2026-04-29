@@ -6,8 +6,8 @@ namespace Ragu.Instances.Element.Alloc
 open Ragu.Instances.Autogen.Element.Alloc
 
 def deserializeInput (_ : Vector (Expression (F p)) inputLen) :
-    Var (UnconstrainedDep Circuits.Core.AllocMul.Row) (F p) :=
-  fun _ => ⟨0, 0, 0⟩
+    Var (UnconstrainedDep field) (F p) :=
+  fun _ => 0
 
 def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
   #v[output]
