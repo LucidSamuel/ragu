@@ -307,7 +307,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
   simp only [Element.DivNonzero.Spec] at h_env
-  simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
+  simp only [sub_eq_add_neg] at h_assumptions
   obtain ⟨h_xne, h_a1, h_a2⟩ := h_assumptions
   obtain ⟨h_div1_spec, h_sq1_spec, _⟩ := h_env
   have h_div1 := h_div1_spec h_a1

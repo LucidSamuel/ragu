@@ -49,8 +49,7 @@ theorem soundness : GeneralFormalCircuit.Soundness (F p) elaborated Assumptions 
 
 theorem completeness
     : GeneralFormalCircuit.Completeness (F p) elaborated ProverAssumptions (fun _ _ _ => True) := by
-  circuit_proof_all [Core.AllocMul.circuit, Core.AllocMul.Spec,
-    Core.AllocMul.ProverSpec, ProverAssumptions]
+  circuit_proof_all [Core.AllocMul.circuit, Core.AllocMul.Spec, Core.AllocMul.ProverSpec]
 
 def circuit : GeneralFormalCircuit (F p) Input field :=
   { elaborated with

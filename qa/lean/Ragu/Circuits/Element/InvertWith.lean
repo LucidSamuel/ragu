@@ -61,7 +61,7 @@ theorem completeness
   ]
   obtain ⟨_, h_x_eq, h_y_eq, h_z_eq⟩ := h_env
   rw [← h_input] at h_assumptions
-  simp [ProverAssumptions, circuit_norm] at h_assumptions
+  simp [circuit_norm] at h_assumptions
   obtain ⟨h_x_in, h_prod_in⟩ := h_assumptions
   rw [add_neg_eq_zero, add_neg_eq_zero]
   refine ⟨?_, ?_⟩

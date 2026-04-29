@@ -5,10 +5,9 @@ import Ragu.Core
 namespace Ragu.Instances.Point.AllocFq
 open Ragu.Instances.Autogen.Point.AllocFq
 
-set_option linter.unusedVariables false in
-def deserializeInput (input : Vector (Expression (F p)) 0) :
+def deserializeInput (_ : Vector (Expression (F p)) 0) :
     Var (UnconstrainedDep Circuits.Point.Spec.Point) (F p) :=
-  fun _ => default
+  default
 
 def serializeOutput (output : Var Circuits.Point.Spec.Point (F p)) : Vector (Expression (F p)) 2 :=
   #v[ output.x, output.y ]
@@ -21,7 +20,7 @@ def formal_instance : Core.Statements.GeneralFormalWithHintInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := @Circuits.Point.Alloc.circuit p _ Circuits.Point.Spec.EqAffineParams
+  reimplementation := Circuits.Point.Alloc.circuit Circuits.Point.Spec.EqAffineParams
 
   same_constraints := by
     intro input

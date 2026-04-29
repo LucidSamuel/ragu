@@ -129,7 +129,7 @@ theorem completeness (curveParams : Spec.CurveParams p) :
     Element.DivNonzero.circuit, Element.DivNonzero.ProverAssumptions,
     Element.Mul.circuit, Element.Mul.Assumptions
   ]
-  simp only [ProverAssumptions, Element.DivNonzero.ProverAssumptions, sub_eq_add_neg] at h_assumptions
+  simp only [sub_eq_add_neg] at h_assumptions
   exact h_assumptions.2.2
 
 def circuit (curveParams : Spec.CurveParams p) :

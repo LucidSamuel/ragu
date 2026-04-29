@@ -5,7 +5,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "b5ef88185e3f5c31f634ff9df3bb74fb228c27d7",
+   "rev": "e3592009ea847559b692f8d53843d0b59ee228c7",
    "name": "clean",
    "manifestFile": "lake-manifest.json",
    "inputRev": "circuittype-deriver",

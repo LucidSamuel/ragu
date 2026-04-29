@@ -37,7 +37,7 @@ theorem soundness :
 
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated (fun _ _ _ => True) ProverSpec := by
-  circuit_proof_start [ProverSpec]
+  circuit_proof_start
   have h0 := h_env (0 : Fin 3)
   have h1 := h_env (1 : Fin 3)
   have h2 := h_env (2 : Fin 3)

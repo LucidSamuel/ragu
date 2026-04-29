@@ -63,7 +63,7 @@ theorem completeness (curveParams : Spec.CurveParams p)
     rw [show input.x * input.x ^ 2 = input.x ^ 3 from by ring]
     rw [← h_assumptions]
   · cases input
-    simp_all [ProverSpec]
+    simp_all
 
 def circuit (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint (F p) (UnconstrainedDep Spec.Point) Spec.Point :=
