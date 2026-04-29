@@ -28,7 +28,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   serializeOutput
 
   reimplementation :=
-    Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams
+    (Circuits.Point.AddIncomplete.circuit Circuits.Point.Spec.EpAffineParams).toWithHint
 
   same_constraints := by
     intro input

@@ -20,9 +20,7 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation :=
-    FormalCircuit.isGeneralFormalCircuit
-      (Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams)
+  reimplementation := (Circuits.Point.Double.circuit Circuits.Point.Spec.EpAffineParams).isGeneralFormalCircuit.toWithHint
 
   same_constraints := by
     intro input

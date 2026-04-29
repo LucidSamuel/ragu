@@ -46,40 +46,6 @@ structure GeneralFormalInstance where
   [pPrime : Fact p.Prime]
 
   {Input : TypeMap}
-  [InputProvable : ProvableType Input]
-
-  {Output : TypeMap}
-  [OutputProvable : ProvableType Output]
-
-  exportedOperations : Vector (Expression (F p)) (size Input)  → Operations (F p)
-  exportedOutput : Vector (Expression (F p)) (size Input) → Vector (Expression (F p)) (size Output)
-
-  deserializeInput : Vector (Expression (F p)) (size Input) → Var Input (F p)
-  serializeOutput : Var Output (F p) → Vector (Expression (F p)) (size Output)
-
-  reimplementation : GeneralFormalCircuit (F p) Input Output
-
-  Spec (input : Input (F p)) (output : Output (F p)) : Prop :=
-    reimplementation.Spec input output (fun _ _ => #[])
-
-  -- Compare circuit constraints, ignoring witness generation
-  same_constraints : ∀ (input : Vector (Expression (F p)) (size Input)),
-    (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
-    = (exportedOperations input).toFlat.map FlatOperation.eraseCompute
-
-  same_output : ∀ (input : Vector (Expression (F p)) (size Input)),
-    (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
-
-  -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead
-  same_spec : ∀ input : Input (F p), ∀ output : Output (F p),
-    (Spec input output) ↔ (reimplementation.Spec input output (fun _ _ => #[]))
-    := by intros; rfl
-
-structure GeneralFormalWithHintInstance where
-  p : ℕ
-  [pPrime : Fact p.Prime]
-
-  {Input : TypeMap}
   [InputCircuit : CircuitType Input]
   [InputValueProvable : ProvableType (Value Input)]
 

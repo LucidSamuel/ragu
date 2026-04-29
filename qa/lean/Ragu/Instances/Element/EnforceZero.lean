@@ -19,16 +19,14 @@ def formal_instance : Core.Statements.GeneralFormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation :=
-    FormalAssertion.isGeneralFormalCircuit
-      Circuits.Element.EnforceZero.circuit
+  reimplementation := Circuits.Element.EnforceZero.circuit.isGeneralFormalCircuit.toWithHint
 
   same_constraints := by
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
       FormalAssertion.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toSubcircuit, GeneralFormalCircuit.toWithHint,
+      GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.EnforceZero.circuit, Circuits.Element.EnforceZero.elaborated, Circuits.Element.EnforceZero.main]

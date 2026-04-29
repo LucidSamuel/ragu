@@ -77,8 +77,8 @@ Because of that, it is a good candidate for partial automation, including LLM-as
 
 ## The formal instance interface
 
-The `GeneralFormalInstance` and `GeneralFormalWithHintInstance` objects package a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
-Use the hint-aware variant when the structured Lean input contains `CircuitType` hints such as `Unconstrained` or `UnconstrainedDep`.
+The `GeneralFormalInstance` object packages a concrete exported circuit instantiation, together with the reimplementation, and proofs about it.
+Its reimplementation field uses `GeneralFormalCircuit.WithHint` (clean's most general circuit interface), so ordinary `GeneralFormalCircuit`s are embedded with `.toWithHint`.
 
 Intuitively, the definition of a formal instance will provide:
 
@@ -98,7 +98,7 @@ At a high level, its fields have the following roles:
 - `deserializeInput` interprets the flat exported input vector as a structured `Input`.
 - `serializeOutput` maps a structured `Output` back to the flat exported output vector.
 - `Spec` is the intended property stated for this concrete instance; by default it delegates to the reimplementation's spec.
-- `reimplementation` is the structured `Clean` `GeneralFormalCircuit` or `GeneralFormalCircuit.WithHint` used for the actual proofs.
+- `reimplementation` is the structured `Clean` `GeneralFormalCircuit.WithHint` used for the actual proofs.
 - `same_constraints` proves that the reimplementation emits exactly the exported operations, after erasing witness-generation functions.
 - `same_output` proves that the reimplementation returns exactly the exported outputs, after serialization.
 - `same_spec` proves that the instance specification agrees with the specification of the reimplementation.
