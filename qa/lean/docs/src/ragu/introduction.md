@@ -85,22 +85,15 @@ Intuitively, the definition of a formal instance will provide:
 - the concrete exported circuit interface,
 - the structured Lean interpretation of that interface,
 - the Clean reimplementation we want to reason about,
-- the assumptions and specification for this concrete instance,
 - and the proofs that the reimplementation matches the exported circuit exactly.
 
 At a high level, its fields have the following roles:
 
 - `p` fixes the concrete prime field.
-- `inputLen` and `outputLen` fix the flat arities of the exported interface.
 - `exportedOperations` is the low-level operation trace produced by extraction.
 - `exportedOutput` is the low-level vector of output expressions produced by extraction.
-- `Input` and `Output` are the structured Lean input/output types used for reasoning.
 - `deserializeInput` interprets the flat exported input vector as a structured `Input`.
 - `serializeOutput` maps a structured `Output` back to the flat exported output vector.
-- `Spec` is the intended property stated for this concrete instance; by default it delegates to the reimplementation's spec.
 - `reimplementation` is the structured `Clean` `GeneralFormalCircuit.WithHint` used for the actual proofs.
 - `same_constraints` proves that the reimplementation emits exactly the exported operations, after erasing witness-generation functions.
 - `same_output` proves that the reimplementation returns exactly the exported outputs, after serialization.
-- `same_spec` proves that the instance specification agrees with the specification of the reimplementation.
-
-> TODO: adjust later for completeness

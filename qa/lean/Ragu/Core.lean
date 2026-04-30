@@ -60,9 +60,6 @@ structure FormalInstance where
 
   reimplementation : GeneralFormalCircuit.WithHint (F p) Input Output
 
-  Spec (input : Value Input (F p)) (output : Output (F p)) : Prop :=
-    reimplementation.Spec input output (fun _ _ => #[])
-
   -- Compare circuit constraints, ignoring witness generation.
   same_constraints : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
     (input |> deserializeInput |> reimplementation |>.operations 0).toFlat.map FlatOperation.eraseCompute
@@ -70,11 +67,6 @@ structure FormalInstance where
 
   same_output : ∀ (input : Vector (Expression (F p)) (size (Value Input))),
     (input |> deserializeInput |> reimplementation |>.output 0 |> serializeOutput) = exportedOutput input
-
-  -- NOTE: this can be relaxed by proving that the reimplementation spec implies the instance spec instead.
-  same_spec : ∀ input : Value Input (F p), ∀ output : Output (F p),
-    (Spec input output) ↔ (reimplementation.Spec input output (fun _ _ => #[]))
-    := by intros; rfl
 
 end Statements
 
