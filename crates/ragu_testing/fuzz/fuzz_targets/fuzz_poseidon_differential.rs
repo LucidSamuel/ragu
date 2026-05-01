@@ -176,13 +176,27 @@ fuzz_target!(|input: Input| {
     let params = Pasta::baked();
 
     // --- Native reference ---
+    // Skip Squeeze ops scheduled before any Absorb. The circuit Sponge rejects
+    // squeeze-from-empty as a precondition error while the native reference
+    // would silently squeeze zero-state output — that divergence is not what
+    // the differential is meant to exercise. Both sides apply the same gating
+    // so squeeze indices stay aligned.
     let mut native = NativeSponge::new(Pasta::circuit_poseidon(params));
     let mut native_squeezes = Vec::new();
+    let mut native_absorb_idx = 0;
 
     for op in &input.ops {
         match op_value(op) {
-            Some(v) => native.absorb(v),
-            None => native_squeezes.push(native.squeeze()),
+            Some(v) => {
+                native.absorb(v);
+                native_absorb_idx += 1;
+            }
+            None => {
+                if native_absorb_idx == 0 {
+                    continue;
+                }
+                native_squeezes.push(native.squeeze());
+            }
         }
     }
     // Always squeeze at least once
@@ -216,6 +230,10 @@ fuzz_target!(|input: Input| {
                     absorb_idx += 1;
                 }
                 Op::Squeeze => {
+                    // Mirror the native-side gating: skip pre-absorb squeezes.
+                    if absorb_idx == 0 {
+                        continue;
+                    }
                     let squeezed = sponge.squeeze(dr)?;
                     circuit_squeezes[squeeze_idx].set(*squeezed.value().take());
                     squeeze_idx += 1;
