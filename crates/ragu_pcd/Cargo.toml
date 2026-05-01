@@ -30,6 +30,9 @@ alloc = []
 default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_arithmetic/multicore", "ragu_circuits/multicore", "std"]
 std = []
+# Exposes the `fuzz_utils` module, which provides proof-corruption helpers
+# used by external fuzz harnesses. Not part of the stable public API.
+unstable-fuzzing = []
 
 [lib]
 bench = false

@@ -35,7 +35,7 @@ ragu_primitives = { path = "../../ragu_primitives" }
 ragu_pasta = { path = "../../ragu_pasta", features = ["baked"] }
 ragu_core = { path = "../../ragu_core" }
 ragu_circuits = { path = "../../ragu_circuits" }
-ragu_pcd = { path = "../../ragu_pcd" }
+ragu_pcd = { path = "../../ragu_pcd", features = ["unstable-fuzzing"] }
 rand = "0.10"
 
 # Mirror of the repo-root `[patch.crates-io]`. Patches don't propagate into

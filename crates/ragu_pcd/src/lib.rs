@@ -25,6 +25,7 @@ extern crate alloc;
 extern crate std;
 
 mod fuse;
+#[cfg(feature = "unstable-fuzzing")]
 pub mod fuzz_utils;
 pub mod header;
 mod internal;
