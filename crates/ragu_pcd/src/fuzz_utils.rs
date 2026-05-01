@@ -2,7 +2,10 @@
 
 use ff::Field;
 use ragu_arithmetic::Cycle;
-use ragu_circuits::{polynomials::Rank, registry::CircuitIndex};
+use ragu_circuits::{
+    polynomials::{Rank, sparse},
+    registry::CircuitIndex,
+};
 
 use crate::{Application, Proof};
 
@@ -10,23 +13,23 @@ use crate::{Application, Proof};
 ///
 /// Each variant breaks a specific verification check.
 pub enum Corruption<F> {
-    /// Overwrite `p.blind`, breaking the P commitment check.
+    /// Perturb `native_p_poly` at coefficient 0, breaking the P commitment check.
     PBlind(F),
-    /// Overwrite `p.v`, breaking the P evaluation check.
+    /// Perturb `native_p_poly` at coefficient 1, breaking the P evaluation check.
     PEval(F),
-    /// Overwrite `ab.c`, breaking native revdot claims.
+    /// Perturb `native_a_poly` at coefficient 0, breaking native revdot claims.
     AbC(F),
-    /// Set `application.circuit_id` to an out-of-domain index.
+    /// Set `circuit_id` to an out-of-domain index.
     CircuitId(u32),
-    /// Overwrite `challenges.u`, breaking the P evaluation check.
+    /// Overwrite challenge `u`, breaking the P evaluation check.
     ChallengeU(F),
-    /// Overwrite `challenges.x`, breaking the registry xy check.
+    /// Overwrite challenge `x`, breaking the registry xy check.
     ChallengeX(F),
-    /// Overwrite `challenges.y`, breaking the registry xy check.
+    /// Overwrite challenge `y`, breaking the registry xy check.
     ChallengeY(F),
-    /// Resize `application.left_header` to the given length.
+    /// Resize `left_header` to the given length.
     LeftHeaderLen(usize),
-    /// Resize `application.right_header` to the given length.
+    /// Resize `right_header` to the given length.
     RightHeaderLen(usize),
 }
 
@@ -34,24 +37,29 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Apply a [`Corruption`] to this proof.
     pub fn corrupt(&mut self, corruption: Corruption<C::CircuitField>) {
         match corruption {
-            Corruption::PBlind(v) => self.p.blind = v,
-            Corruption::PEval(v) => self.p.v = v,
-            Corruption::AbC(v) => self.ab.c = v,
+            Corruption::PBlind(v) => self
+                .native_p_poly
+                .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![v])),
+            Corruption::PEval(v) => self
+                .native_p_poly
+                .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
+                    C::CircuitField::ZERO,
+                    v,
+                ])),
+            Corruption::AbC(v) => self
+                .native_a_poly
+                .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![v])),
             Corruption::CircuitId(id) => {
-                self.application.circuit_id = CircuitIndex::from_u32(id);
+                self.circuit_id = CircuitIndex::from_u32(id);
             }
-            Corruption::ChallengeU(v) => self.challenges.u = v,
-            Corruption::ChallengeX(v) => self.challenges.x = v,
-            Corruption::ChallengeY(v) => self.challenges.y = v,
+            Corruption::ChallengeU(v) => self.u = v,
+            Corruption::ChallengeX(v) => self.x = v,
+            Corruption::ChallengeY(v) => self.y = v,
             Corruption::LeftHeaderLen(len) => {
-                self.application
-                    .left_header
-                    .resize(len, C::CircuitField::ZERO);
+                self.left_header.resize(len, C::CircuitField::ZERO);
             }
             Corruption::RightHeaderLen(len) => {
-                self.application
-                    .right_header
-                    .resize(len, C::CircuitField::ZERO);
+                self.right_header.resize(len, C::CircuitField::ZERO);
             }
         }
     }
