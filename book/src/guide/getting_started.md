@@ -30,6 +30,17 @@ ff = "0.13"
 rand = "0.8"
 ```
 
+## Overview: Building a Merkle Tree with Proofs
+
+This application implements two core operations:
+
+1. **CreateLeaf**: Takes a value, hashes it, and produces a leaf proof
+2. **CombineNodes**: Takes two leaf proofs and combines them into an internal
+   node proof
+
+The result is a proof tree where each node proves it was correctly computed
+from its children.
+
 ## Configuration at a Glance
 
 This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
@@ -43,17 +54,6 @@ This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
 These defaults work for most applications. See
 [Configuration](configuration.md) for guidance on choosing different values.
 
-## Overview: Building a Merkle Tree with Proofs
-
-This application implements two core operations:
-
-1. **CreateLeaf**: Takes a value, hashes it, and produces a leaf proof
-2. **CombineNodes**: Takes two leaf proofs and combines them into an internal
-   node proof
-
-The result is a proof tree where each node proves it was correctly computed
-from its children.
-
 ## Step 1: Define Header Types
 
 Headers define what data flows through the proof tree. This example uses two
@@ -63,8 +63,8 @@ types:
 use ff::Field;
 use ragu_core::{Result, drivers::{Driver, DriverValue}, gadgets::{Bound, Kind}, maybe::Maybe};
 use ragu_pcd::header::{Header, Suffix};
-use ragu_primitives::Element;
 use ragu_primitives::allocator::{Allocator, Standard};
+use ragu_primitives::Element;
 use ragu_primitives::poseidon::Sponge;
 
 // LeafNode: carries a hash of raw data
@@ -106,7 +106,9 @@ impl<F: Field> Header<F> for InternalNode {
 - `SUFFIX`: Unique identifier for each header type
 - `Data`: The Rust type for this header's data (field elements)
 - `Output`: The circuit representation (Element gadget)
-- `encode`: How to convert Data into circuit form
+- `encode`: How to convert `Data` into circuit form. The `allocator`
+  parameter controls allocation; see
+  [Allocation](primitives/allocation.md)
 
 ## Step 2: Implement CreateLeaf Step
 
@@ -221,8 +223,8 @@ impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
         Self: 'dr,
     {
         // 1. Encode input proofs
-        let left = Encoded::new(dr, left)?;
-        let right = Encoded::new(dr, right)?;
+        let left = Encoded::new(dr, &mut (), left)?;
+        let right = Encoded::new(dr, &mut (), right)?;
 
         // 2. Hash both headers together
         let mut sponge = Sponge::new(dr, self.poseidon_params);
@@ -240,10 +242,10 @@ impl<'params, C: Cycle> Step<C> for CombineNodes<'params, C> {
 }
 ```
 
-**What `Encoded::new(dr, left)?` does:** Converts the header data into a
-circuit gadget by allocating field elements. This makes the input proof's
-header data available for use in the circuit logic (e.g., hashing the two
-headers together).
+**What `Encoded::new(dr, &mut (), left)?` does:** Converts the header data
+into a circuit gadget by allocating field elements. This makes the input
+proof's header data available for use in the circuit logic (e.g., hashing
+the two headers together).
 
 ## Step 4: Build the Application
 

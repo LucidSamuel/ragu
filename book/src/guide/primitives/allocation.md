@@ -63,7 +63,7 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
 In exchange for being stateless, this allocator creates a gate for
 every free wire, which is not optimal.
 
-## [`SimpleAllocator`] {#simple-allocator}
+## [`Standard`] {#standard}
 
 Theoretically, an allocator could offer two wires per gate by
 distributing the $A$ and $B$ wires of each [`mul()`], allowing $C$
@@ -74,25 +74,23 @@ and is more expensive to manipulate. Instead, the more general
 and $D$ wires are distributed and the $A$ and $C$ wires are
 assigned to zero.
 
-[`SimpleAllocator`] exploits this by creating gates, assigning the
-$B$ wire, and then stashing the $D$ wire's token for future
-allocation with the [driver's assistance][assign-extra]. In exchange
-for being stateful, it is less wasteful.
-
-Typical usage:
+[`Standard`] exploits this by creating gates, assigning the $B$
+wire, and then stashing the $D$ wire's token for future allocation
+with the [driver's assistance][assign-extra]. In exchange for being
+stateful, it is less wasteful.
 
 ```rust
-let allocator = &mut SimpleAllocator::new();
+let allocator = &mut Standard::new();
 let a = Element::alloc(dr, allocator, witness_a)?;
 let b = Element::alloc(dr, allocator, witness_b)?;
 // Both a and b share one gate.
 ```
 
-## [`PoolAllocator`] {#pool-allocator}
+### Donated Tokens {#donated-tokens}
 
 Some gadgets allocate a gate whose $D$ wire is unconstrained because
 $C$ is constrained to be zero. Rather than waste that wire, they
-can _donate_ the `Extra` token to the allocator. [`PoolAllocator`]
+can _donate_ the `Extra` token to the allocator. [`Standard`]
 collects these donated tokens and hands them out on future `alloc`
 calls before falling back to new gates.
 
@@ -109,11 +107,11 @@ dr.enforce_zero(|lc| lc.add(&c)); // c = 0
 allocator.donate(extra);
 ```
 
-When using `PoolAllocator`, subsequent allocations redeem these
-donated tokens at zero gate cost:
+Subsequent allocations redeem these donated tokens at zero gate
+cost:
 
 ```rust
-let allocator = &mut PoolAllocator::new();
+let allocator = &mut Standard::new();
 let flag = Boolean::alloc(dr, allocator, bit)?;   // 1 gate
 let x = Element::alloc(dr, allocator, witness)?;  // 0 gates
 ```
@@ -127,8 +125,7 @@ but a rough guide:
 
 | Situation | Allocator |
 |-----------|-----------|
-| Two or more consecutive allocations | [`SimpleAllocator`] |
-| Allocations interleaved with donating gadgets | [`PoolAllocator`] |
+| Two or more allocations, or donating gadgets | [`Standard`] |
 | Single isolated allocation | `()` |
 
 ## Cost Accounting {#cost-accounting}
@@ -149,7 +146,7 @@ assert_eq!(sim.num_gates(), 2);
 // Two paired allocations: 1 gate
 let sim = Simulator::simulate((a, b), |dr, witness| {
     let (a, b) = witness.cast();
-    let alloc = &mut SimpleAllocator::new();
+    let alloc = &mut Standard::new();
     let _ = Element::alloc(dr, alloc, a)?;
     let _ = Element::alloc(dr, alloc, b)?;
     Ok(())
@@ -166,8 +163,7 @@ catch unnecessary gate overhead early.
 [`Allocator`]: ragu_primitives::allocator::Allocator
 [`Element::alloc`]: ragu_primitives::Element::alloc
 [`Driver::mul`]: ragu_core::drivers::Driver::mul
-[`SimpleAllocator`]: ragu_primitives::allocator::SimpleAllocator
-[`PoolAllocator`]: ragu_primitives::allocator::PoolAllocator
+[`Standard`]: ragu_primitives::allocator::Standard
 [assign-extra]: ragu_core::drivers::DriverTypes::assign_extra
 [`Boolean::alloc`]: ragu_primitives::Boolean::alloc
 [`Simulator`]: ragu_primitives::Simulator

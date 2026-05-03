@@ -17,9 +17,11 @@
     - [The GadgetKind Trait](guide/gadgets/gadgetkind.md)
     - [The Kind! Macro](guide/gadgets/kind.md)
     - [Conversion](guide/gadgets/conversion.md)
+    - [Demotion](guide/gadgets/demotion.md)
   - [Routines](guide/routines.md)
   - [Primitives](guide/primitives/index.md) <!-- todo -->
     - [Allocation](guide/primitives/allocation.md) <!-- todo -->
+    - [Simulator](guide/primitives/simulator.md)
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
 - [Part II: Protocol Design]()

@@ -64,8 +64,8 @@ Because emulators are not involved in enforcing constraints, they short-circuit
 [predict](ragu_core::routines::Routine::predict) its output, the emulator skips
 [`execute`](ragu_core::routines::Routine::execute) entirely and returns the
 prediction. This contrasts with the [`Simulator`], which always executes even
-for known predictions so it can verify consistency between the prediction and
-the actual result.
+for known predictions so the full routine body contributes to its metrics
+and all constraints are enforced.
 
 ### Wire Extraction {#wire-extraction}
 
