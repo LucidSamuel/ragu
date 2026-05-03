@@ -1,5 +1,13 @@
 # Nested Commitment
 
+Recursive proof systems need to verify commitments from one curve inside
+circuits defined over another. A commitment to a Vesta polynomial is a Vesta
+point with $\F_q$ coordinates, but verifying it requires arithmetic in
+an $\F_p$ circuit and non-native field arithmetic is prohibitively expensive.
+Nested commitments solve this by re-committing the foreign-field data with
+a polynomial whose coefficients live in the native field, producing a point
+the circuit can manipulate directly.
+
 Ragu uses a
 [curve cycle](https://zcash.github.io/halo2/background/curves.html#cycles-of-curves).
 Concretely, we use the

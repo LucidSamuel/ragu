@@ -75,7 +75,7 @@ never called. [`try_just`] is the same, but it accepts a fallible closure and
 propagates its error. For example, this [`Point`] reconstructs its full witness
 value from the two coordinate elements it stores:
 
-```rust,ignore
+```rust
 D::just(|| {
     let x = *self.x.value().take();
     let y = *self.y.value().take();
@@ -86,6 +86,17 @@ D::just(|| {
 Each [`take`] extracts a coordinate’s witness value, and the outer [`just`]
 wraps the composed result back into a [`DriverValue<D, T>`]. Under `Empty`, the
 entire expression collapses to a no-op.
+
+### [`unit`] {#unit}
+
+[`D::unit()`] is shorthand for `D::just(|| ())`. It constructs a
+`DriverValue<D, ()>` and is used wherever a Step needs to return a
+unit-typed value. The most common site is the return tuple of
+[`Step::witness`], when `Aux = ()`:
+
+```rust
+Ok(((left, right, output), output_value, D::unit()))
+```
 
 ### [`cast`] {#cast}
 
@@ -102,6 +113,60 @@ decomposition; the built-in implementations cover tuples and arrays.
 conditional on `T: Clone`, so a dedicated trait method fills the gap. It behaves
 identically to [`Clone::clone`] when the value is present; under `Empty`, it
 returns `Empty`.
+
+## Choosing the Right Method {#choosing}
+
+The extraction methods — [`take`], [`snag`], and [`as_ref`] — serve
+different ownership needs. Picking the wrong one either moves a value
+you still need or forces unnecessary cloning.
+
+**[`snag`]** is the default choice. It borrows the inner value and
+returns `&T`, leaving the original intact. Most witness reads in
+circuit code use [`snag`]:
+
+```rust
+let a = *self.value.snag();
+let b = *other.value.snag();
+a * b
+```
+
+**[`take`]** consumes the `Maybe<T>` by value. Use it when you are
+done with the witness and need the owned `T` — typically at the
+boundary of a construction or inside a closure that returns the
+value:
+
+```rust
+D::try_just(|| {
+    let coordinates = p.take().coordinates().into_option();
+    coordinates.ok_or_else(|| Error::InvalidWitness("...".into()))
+})
+```
+
+**[`as_ref`]** returns a `Maybe<&T>` that you can chain further
+operations on. It is useful when the borrowed value feeds into
+[`map`] or a method that expects a `Maybe`:
+
+```rust
+let x = Element::alloc(dr, allocator,
+    coordinates.as_ref().map(|p| *p.x()))?;
+```
+
+For construction, the choice between [`just`], [`try_just`], and
+[`unit`] follows from the value being produced:
+
+- [`D::just(f)`] when the closure is infallible — the witness value
+  is always computable from what you already have.
+- [`D::try_just(f)`] when the closure can fail (e.g., inverting a
+  field element that might be zero). The error propagates via `?`.
+- [`D::unit()`] when the value is `()` — almost always in the `Aux`
+  slot of a [`Step::witness`] return tuple.
+
+For composite witness values, [`cast`] splits a `Maybe<(A, B)>` into
+`(Maybe<A>, Maybe<B>)` so each component can be passed independently:
+
+```rust
+let (left_witness, right_witness) = witness.cast();
+```
 
 ## [`MaybeKind`] and the [`Perhaps`] Alias {#generic-code}
 
@@ -134,3 +199,8 @@ type alias. These are documented in the [`maybe`] module.
 [`Perhaps`]: ragu_core::maybe::Perhaps
 [`maybe`]: ragu_core::maybe
 [`Point`]: ragu_primitives::point::Point
+[`unit`]: ragu_core::drivers::DriverTypes::unit
+[`D::unit()`]: ragu_core::drivers::DriverTypes::unit
+[`D::just(f)`]: ragu_core::maybe::Maybe::just
+[`D::try_just(f)`]: ragu_core::maybe::Maybe::try_just
+[`Step::witness`]: ragu_pcd::step::Step::witness

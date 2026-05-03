@@ -59,7 +59,7 @@ compile-time constants and do not require initialization.
 - **Battle-tested**: Used in production by Zcash
 - **Standard**: Compatible with Halo 2 and other Pasta-based systems
 
-## 2. Rank: R\<N\>
+## 2. Rank: `R<N>`
 
 The **Rank** parameter controls circuit capacity - how many constraints each
 circuit can handle.

@@ -123,7 +123,7 @@ type Output = InternalNode;  // Produces InternalNode
 
 The key operations in a fuse step:
 1. **Encode inputs** - Convert input proof headers to circuit gadgets via
-   `Encoded::new(dr, left)?`
+   `Encoded::new(dr, &mut (), left)?`
 2. **Extract data** - Get header values with `.as_gadget()`
 3. **Combine** - Hash or process the data together
 4. **Encode output** - Package combined result as a new proof
@@ -135,12 +135,14 @@ These proofs are created using `app.fuse()`.
 When working with input proofs in a fuse step:
 
 ```rust
-let left = Encoded::new(dr, left)?;
-let right = Encoded::new(dr, right)?;
+let left = Encoded::new(dr, &mut (), left)?;
+let right = Encoded::new(dr, &mut (), right)?;
 ```
 
 The `Encoded::new()` call:
-- Converts the header data into circuit gadgets (allocates field elements)
+- Takes an allocator (`&mut ()` uses the default) that controls wire
+  allocation — see [Allocation](primitives/allocation.md)
+- Converts the header data into circuit gadgets
 - Makes the proof's header data available for use in circuit logic
 - Returns an `Encoded` proof that can be passed to the next step
 
@@ -152,30 +154,16 @@ let right_data = right.as_gadget();
 
 ## Working with Headers
 
-Headers define what data flows through the proof tree:
+Headers define what data flows through the proof tree. Each header
+implementation specifies a `SUFFIX` (unique identifier), a `Data` type
+(the native Rust value), an `Output` type (the circuit gadget
+representation), and an `encode` function that converts `Data` into
+`Output` by allocating circuit elements.
 
-```rust
-struct LeafNode;
-
-impl<F: Field> Header<F> for LeafNode {
-    const SUFFIX: Suffix = Suffix::new(0);  // Unique ID
-    type Data = F;                 // Data type
-    type Output = Kind![F; Element<'_, _>]; // Gadget output
-
-    fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
-        dr: &mut D,
-        allocator: &mut A,
-        witness: DriverValue<D, Self::Data>,
-    ) -> Result<Bound<'dr, D, Self::Output>> {
-        Element::alloc(dr, allocator, witness)
-    }
-}
-```
-
-**SUFFIX**: Unique identifier for this header type (used for type safety)
-**Data**: The native Rust type for this header's data
-**Output**: The gadget representation (circuit elements)
-**encode**: How to convert `Data` into `Output`
+For a complete example with multiple header types, see
+[Getting Started — Define Header Types](getting_started.md#step-1-define-header-types).. The `allocator` parameter
+controls how field elements are allocated; see
+[Allocation](primitives/allocation.md) for details on choosing an allocator.
 
 ## Common Patterns
 
