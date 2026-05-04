@@ -52,7 +52,7 @@ $$
   \underbrace{1}_{\v{k}_0}\,,\;
   \underbrace{\v{k}_1, \ldots, \v{k}_\ell}_{\text{public outputs (reversed)}}\,,\;
   \underbrace{0, \ldots, 0}_{\text{constraints}}\,
-\bigr).
+\bigr)
 $$
 
 due to the Horner ordering described above (last emitted at the lowest
@@ -76,17 +76,19 @@ which is the first gate over wires $\v{a}_0, \v{b}_0, \v{c}_0, \v{d}_0$:
 
 * The wire $\color{blue}{\v{d}_0}$ is a special wire called [`ONE`] which is the
   constant wire; in wiring polynomials that verify circuits, it is enforced to
-  equal $1$ through the final constraint, via $k(0) = s(X, 0) = \v{k}_0 X^0 =
-  1$. In a sense, the `ONE` wire stashes the $1$ value provided at $\v{k}_0$ by
-  the verifier so that it is available in all future constraints.
+  equal $1$ through the final constraint, via $k(0) = s(X, 0) = X^0 = 1$. In a
+  sense, the `ONE` wire stashes the $1$ value provided at $\v{k}_0$ by the
+  verifier so that it is available in all future constraints.
 * The $\color{#7e22ce}{\v{c}_0 = 0}$ wire assignment ensures $r(0) = 0$ for
-  every trace, and this is forced by the gate equations when $\color{blue}{\v{d}_0
-  = 1}$.
+  every trace. Note that this assignment is forced by the gate equations when
+  $\color{blue}{\v{d}_0 = 1}$ anyway.
 * The $\color{#dc2626}{\v{a}_0}$ slot carries an arbitrary value
   $\color{#dc2626}{\alpha}$ for every trace, with $\v{b}_0 = 0$ chosen so the
   gate equations remain satisfied.[^conventionally] This value is not a
   zero-knowledge blind, and is meant to keep adversarially-determined linear
   combinations of polynomial commitments away from the point at infinity.
+
+The presence of the `SYSTEM` gate reduces the number of usable gates to $n - 1$.
 
 There is also a special constraint $\color{#7e22ce}{\kappa} \v{c}_0 = 0$
 injected in all wiring polynomials at the $Y^{4n - 1}$ position; circuits are
@@ -94,7 +96,7 @@ restricted in the number of constraints they emit to avoid overlapping this
 term. This so-called [registry constraint](../extensions/registry.md) is
 trivially satisfied for all values of $\color{#7e22ce}{\kappa}$, since $\v{c}_0
 = 0$ anyway. In practice, $\color{#7e22ce}{\kappa}$ is a fixed value computed as
-a digest of $s(X, Y)$ prior to its substitution, forcing every non-trivial
+a digest of $s(X, Y)$ prior to substitution, forcing every non-trivial
 evaluation of $s$ to be unpredictable even to someone who chooses $s$.
 
 [^conventionally]: There is nothing preventing the roles of $\v{a}_0$ and
@@ -138,14 +140,20 @@ constrained elsewhere, we instead use the _global mask polynomial_
 
 $$s_{\text{global}}(X, Y) = s_{\max}(X, Y) - \bigl(1 + (XY)^{2n}\bigr)\bigl(1 + (XY)^{2n-1}\bigr),$$
 
-which zeros every wire belonging to a non-`SYSTEM` gate (gates $1, 2, \ldots, n-1$).
+which zeros every wire belonging to a non-`SYSTEM` gate (gates $1, 2, \ldots,
+n-1$).
 
 A stage is parameterized by two integers $(g, m)$ with $g \geq 1$, $m \geq 0$,
 and $g + m \leq n$; it owns the $m$ consecutive gates $g, g+1, \ldots, g+m-1$
 and their $4m$ wire positions. Its mask polynomial is $s_{\text{global}}$ with
 those positions removed:
 
-$$s_{\text{mask}}(X, Y) = s_{\text{global}}(X, Y) - \bigl(1 + (XY)^{2n}\bigr)\bigl((XY)^g + (XY)^{2n-g-m}\bigr)\sum_{i=0}^{m-1}(XY)^i.$$
+$$
+\begin{array}{ll}
+s_{\text{mask}}(X, Y) &= \color{#7e22ce}{\kappa}\color{black} \cdot (XY)^{4n - 1} + s_{\text{global}}(X, Y) \\
+&- \bigl(1 + (XY)^{2n}\bigr)\bigl((XY)^g + (XY)^{2n-g-m}\bigr)\sum_{i=0}^{m-1}(XY)^i.
+\end{array}
+$$
 
 ## Layout for Wiring Polynomials
 
@@ -155,5 +163,9 @@ $$s_{\text{mask}}(X, Y) = s_{\text{global}}(X, Y) - \bigl(1 + (XY)^{2n}\bigr)\bi
 | $\left.\begin{array}{ll} \v{b}_{n-1} & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{b}_1 \\ \v{b}_0 & = 0 \end{array}\right\}\v{b}$ | $\begin{array}{c} X^{3n-1} \\ \vdots \\ X^{2n+1} \\ X^{2n} \end{array}$ | $\v{a}\left\{\begin{array}{c} \v{a}_{n-1} \\ \vdots \\ \v{a}_1 \\ \color{#dc2626}{\v{a}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \color{#dc2626}{0} \end{array}$ |
 | $\left.\begin{array}{ll} \color{#dc2626}{\v{a}_0} & = \color{#dc2626}{\alpha} \\ \v{a}_1 & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{a}_{n-1} \end{array}\right\}\v{a}$ | $\begin{array}{c} X^{2n-1} \\ X^{2n-2} \\ \vdots \\ X^n \end{array}$ | $\v{b}\left\{\begin{array}{c} \v{b}_0 \\ \v{b}_1 \\ \vdots \\ \v{b}_{n-1} \end{array}\right.$ | $\begin{array}{c} 0 \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ | $\begin{array}{c} 0 \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} 0 \\ \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \end{array}$ |
 | $\left.\begin{array}{ll} \v{c}_{n-1} & \phantom{= 0 \, \text{or} \, 1} \\ \vdots \\ \v{c}_1 \\ \color{#7e22ce}{\v{c}_0} & \color{#7e22ce}{= 0} \end{array}\right\}\v{c}$ | $\begin{array}{c} X^{n-1} \\ \vdots \\ X^1 \\ X^0 \end{array}$ | $\v{d}\left\{\begin{array}{c} \v{d}_{n-1} \\ \vdots \\ \v{d}_1 \\ \color{blue}{\v{d}_0} \end{array}\right.$ | $\begin{array}{c} \phantom{0 \, \text{or} \, 1} \\ \phantom{\vdots} \\ \phantom{0 \, \text{or} \, 1} \\ \color{blue}{0 \, \text{or} \, 1} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ | $\begin{array}{c} \phantom{0} \\ \phantom{\vdots} \\ \phantom{0} \\ \phantom{0} \end{array}$ |
+
+All wiring polynomials share the same layout. Circuit wiring polynomials have
+$s(X, 0) = 1$ (because of the `ONE` constraint against $\v{k}_0$) but bonding
+polynomials skip this constraint with $s(X, 0) = 0$.
 
 [`ONE`]: ragu_core::drivers::Driver::ONE
