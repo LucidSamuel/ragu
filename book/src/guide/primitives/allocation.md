@@ -43,7 +43,7 @@ the best decision themselves.
 ## The Unit Allocator {#unit-allocator}
 
 The simplest allocator is `()`. Each call invokes [`mul()`] with
-$A = C = 0$ and returns the $B$ wire:
+$B = C = 0$ and returns the $A$ wire:
 
 ```rust
 impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
@@ -52,10 +52,10 @@ impl<'dr, D: Driver<'dr>> Allocator<'dr, D> for () {
         dr: &mut D,
         value: impl Fn() -> Result<Coeff<D::F>>,
     ) -> Result<D::Wire> {
-        let (_, b, _) = dr.mul(
-            || Ok((Coeff::Zero, value()?, Coeff::Zero)),
+        let (a, _, _) = dr.mul(
+            || Ok((value()?, Coeff::Zero, Coeff::Zero)),
         )?;
-        Ok(b)
+        Ok(a)
     }
 }
 ```
@@ -70,11 +70,11 @@ distributing the $A$ and $B$ wires of each [`mul()`], allowing $C$
 to be a meaningless product that is discarded. This is slightly
 suboptimal because the trace contains the useless discarded product
 and is more expensive to manipulate. Instead, the more general
-[`gate()`] (which creates four wires) can be used, where the $B$
-and $D$ wires are distributed and the $A$ and $C$ wires are
+[`gate()`] (which creates four wires) can be used, where the $A$
+and $D$ wires are distributed and the $B$ and $C$ wires are
 assigned to zero.
 
-[`Standard`] exploits this by creating gates, assigning the $B$
+[`Standard`] exploits this by creating gates, assigning the $A$
 wire, and then stashing the $D$ wire's token for future allocation
 with the [driver's assistance][assign-extra]. In exchange for being
 stateful, it is less wasteful.

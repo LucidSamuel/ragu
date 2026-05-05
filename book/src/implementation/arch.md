@@ -132,7 +132,7 @@ APIs that represent, compute, or manipulate them.
 | Transcript (Fiat-Shamir) | `Sponge<'dr, D, P>` | `ragu_primitives` |
 | PCD step | `Step<C>` | `ragu_pcd` |
 | Recursive proof | `Proof<C, R>` | `ragu_pcd` |
-| Proof-carrying data | `Pcd<'source, C, R, H>` | `ragu_pcd` |
+| Proof-carrying data | `Pcd<C, R, H>` | `ragu_pcd` |
 | Seed (base proof) | `Application::seed()` | `ragu_pcd` |
 | Fuse (accumulate) | `Application::fuse()` | `ragu_pcd` |
 

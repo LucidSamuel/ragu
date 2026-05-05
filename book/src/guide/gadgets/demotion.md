@@ -15,16 +15,16 @@ individual constituents, so they can hold demoted versions of those
 constituents and recover the original gadgets only when necessary to
 create new wires.
 
-Once demoted, a gadget is bound to a different driver than its
-original. Any API that needs to interact with the original concrete
-driver type is therefore no longer directly available; to use those
-APIs, the gadget must be restored to its original form. Restoration
-requires assistance from the gadget itself, since only the gadget type
-knows how to reconstruct its fields from a demoted handle and fresh
-witness data. Gadgets can opt into a shared convention by implementing
-the [`Promotion`][promotion-trait] trait, which declares the witness
-data needed to [`promote`][demoted-promote] the gadget back into its
-original form.
+Once demoted, some of the gadget's APIs are no longer available —
+especially those that need to create new gates or constraints. To
+use them, the gadget must be restored to its original form.
+Restoration requires assistance from the gadget itself, since only
+the gadget type knows how to reconstruct its fields from a demoted
+handle and fresh witness data. Gadgets can opt into a shared
+convention by implementing the [`Promotion`][promotion-trait]
+trait, which declares the witness data needed to
+[`promote`][demoted-promote] the gadget back into its original
+form.
 
 ## Example: Endoscalar
 

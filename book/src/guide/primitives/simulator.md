@@ -52,14 +52,14 @@ let sim = Simulator::simulate((x, z), |dr, witness| {
 
 ## Example
 
-To confirm that a small arithmetic step fits inside `R<7>` (32 gates)
-before committing to a rank:
+To confirm that a chain of element multiplications fits inside `R<7>`
+(32 gates) before committing to a rank:
 
 ```rust,ignore
 use ragu_pasta::Fp;
 use ragu_primitives::{Element, Simulator, allocator::Standard};
 
-let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
+let sim = Simulator::simulate((Fp::from(2u64), Fp::from(3u64)), |dr, witness| {
     let (a, b) = witness.cast();
     let allocator = &mut Standard::new();
     let a = Element::alloc(dr, allocator, a)?;
@@ -67,12 +67,12 @@ let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
 
     dr.reset();
 
-    let sum = a.add(dr, &b);
-    let _square = sum.square(dr)?;
-
-    assert!(dr.num_gates() <= 32);
+    let ab = a.mul(dr, &b)?;
+    let _abb = ab.mul(dr, &b)?;
     Ok(())
 })?;
+
+assert!(sim.num_gates() < 1 << 7);
 ```
 
 If `num_gates()` exceeds 32, the circuit doesn't fit in `R<7>`; pick a

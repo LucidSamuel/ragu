@@ -148,5 +148,5 @@ type alias. These are documented in the [`maybe`] module.
 [`Perhaps`]: ragu_core::maybe::Perhaps
 [`maybe`]: ragu_core::maybe
 [`Point`]: ragu_primitives::point::Point
-[`D::unit()`]: ragu_core::drivers::DriverTypes::unit
+[`D::unit()`]: ragu_core::drivers::Driver::unit
 [`Step`]: ragu_pcd::step::Step
