@@ -26,9 +26,9 @@
 //! matrices determined by the `enforce_zero` (and indirectly,
 //! [`add`](ragu_core::drivers::Driver::add)) calls.
 //!
-//! The exponent layout matches the structured polynomial representation. This
-//! is what allows revdot-style checks to line up with circuit constraints and
-//! with the $t(X, z)$ identity polynomial defined in the polynomials module.
+//! The exponent layout shown above is shared with the $t(X, z)$ identity
+//! polynomial computed by [`Rank::tz`](crate::polynomials::Rank::tz), which
+//! lets revdot-style checks line up with the circuit's constraint structure.
 //!
 //! ### Circuit Synthesis
 //!
