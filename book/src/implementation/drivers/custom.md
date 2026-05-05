@@ -60,8 +60,8 @@ Each type controls a specific axis of behavior:
   `gate()`/`mul()`) execute. `Empty` means those closures are never called
   and their bodies are dead-code-eliminated after monomorphization.
   `Always<()>` means they always execute. Expression-building closures
-  on `add()` and `enforce_zero()` are controlled independently by each
-  driver, not by `MaybeKind`.
+  on `add()` and `enforce_zero()` are not gated by `MaybeKind` —
+  drivers always call them when they need constraint structure.
 
 * **`LCadd`** and **`LCenforce`**: the [`LinearExpression`] types used by
   `add()` and `enforce_zero()`. The trivial `()` implementation ignores
@@ -218,8 +218,8 @@ its constraint counter.
 
 `MaybeKind` controls whether witness-producing closures (on
 `gate()`/`mul()`) run. It does not govern expression-building closures
-on `add()` and `enforce_zero()`, which each driver handles
-independently.
+on `add()` and `enforce_zero()`; drivers always call those when they
+need constraint structure.
 
 | `MaybeKind` | Witness closures | `DriverValue<D, T>` | Use Case |
 |---|---|---|---|

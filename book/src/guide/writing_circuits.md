@@ -140,8 +140,9 @@ let right = Encoded::new(dr, &mut (), right)?;
 ```
 
 The `Encoded::new()` call:
-- Takes an allocator (`&mut ()` uses the default) that controls wire
-  allocation — see [Allocation](primitives/allocation.md)
+- Takes an allocator (here `&mut ()`, the stateless unit allocator)
+  that controls wire allocation — see
+  [Allocation](primitives/allocation.md)
 - Converts the header data into circuit gadgets
 - Makes the proof's header data available for use in circuit logic
 - Returns an `Encoded` proof that can be passed to the next step
@@ -161,9 +162,10 @@ representation), and an `encode` function that converts `Data` into
 `Output` by allocating circuit elements.
 
 For a complete example with multiple header types, see
-[Getting Started — Define Header Types](getting_started.md#step-1-define-header-types).. The `allocator` parameter
-controls how field elements are allocated; see
-[Allocation](primitives/allocation.md) for details on choosing an allocator.
+[Getting Started — Define Header Types](getting_started.md#step-1-define-header-types).
+The `allocator` parameter controls how field elements are allocated;
+see [Allocation](primitives/allocation.md) for details on choosing an
+allocator.
 
 ## Common Patterns
 

@@ -17,12 +17,7 @@ where each curve's scalar field is the other's base field.
 - Vesta has base field $\F_q$ and scalar field $\F_p$
 - Pallas has base field $\F_p$ and scalar field $\F_q$
 
-During recursive proofs, you often need to commit to data that lives in the 
-"wrong" field — for example, representing Vesta points (with $\F_q$ coordinates)
-inside an $\F_p$ circuit.
-
-A **nested commitment** solves this by wrapping a commitment from one curve in
-a commitment on the other:
+The construction has three steps:
 
 * Encode the coordinates of the original commitment points as a polynomial
 * Commit to that polynomial with coefficients in the foreign field

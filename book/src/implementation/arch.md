@@ -124,15 +124,16 @@ APIs that represent, compute, or manipulate them.
 | Wire | `D::Wire` (associated type) | `ragu_core` |
 | Gadget | `Gadget<'dr, D>` | `ragu_core` |
 | Routine | `Routine<F>` | `ragu_core` |
-| Witness polynomial $r(X)$ | `structured::Polynomial<F, R>` | `ragu_circuits` |
-| Wiring polynomial $s(X, Y)$ | `CircuitObject<F, R>` via `sxy`, `sx`, and `sy` | `ragu_circuits` |
+| Witness polynomial $r(X)$ | `trace::Trace<F>`, assembled into `polynomials::sparse::Polynomial<F, R>` | `ragu_circuits` |
+| Wiring polynomial $s(X, Y)$ | internal `WiringObject` trait (constructed from `Circuit` impls) | `ragu_circuits` |
 | Public input / instance encoding $k(Y)$ | `Circuit::Output: Write<F>` and `CircuitExt::ky()` | `ragu_circuits` |
 | Domain | `Domain<F>` | `ragu_arithmetic` |
-| Polynomial commitment (IPA) | `structured::Polynomial::commit()` and `unstructured::Polynomial::commit()` | `ragu_circuits` |
+| Polynomial commitment (IPA) | `polynomials::sparse::Polynomial::commit()` | `ragu_circuits` |
 | Transcript (Fiat-Shamir) | `Sponge<'dr, D, P>` | `ragu_primitives` |
 | PCD step | `Step<C>` | `ragu_pcd` |
 | Recursive proof | `Proof<C, R>` | `ragu_pcd` |
 | Proof-carrying data | `Pcd<'source, C, R, H>` | `ragu_pcd` |
 | Seed (base proof) | `Application::seed()` | `ragu_pcd` |
 | Fuse (accumulate) | `Application::fuse()` | `ragu_pcd` |
+
 [Pasta curve cycle]: https://electriccoin.co/blog/the-pasta-curves-for-halo-2-and-beyond/

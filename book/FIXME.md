@@ -5,21 +5,6 @@ Tracked issues from structural review that are deferred for later. Use
 
 ## Deferred Issues
 
-### Section ordering in `guide/getting_started.md`
-
-"Configuration at a Glance" appears before the reader knows what they're
-building. Consider moving it after "Overview: Building a Merkle Tree with
-Proofs" so readers understand WHAT they're building before seeing configuration
-parameters. (Blocked: file is modified in PR #659.)
-
-### Redundant Header trait explanation
-
-`guide/getting_started.md` (Step 1) and `guide/writing_circuits.md` (Working
-with Headers) cover near-identical Header trait implementations. Consider
-consolidating: keep the minimal example in getting_started.md and have
-writing_circuits.md reference it with deeper explanation. (Blocked: both
-files are modified in PR #659.)
-
 ### Wire variable case inconsistency between allocation and drivers pages
 
 `guide/primitives/allocation.md` uses uppercase $(A, B, C, D)$ for gate

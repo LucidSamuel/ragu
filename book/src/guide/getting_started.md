@@ -54,7 +54,7 @@ This guide uses `ApplicationBuilder::<Pasta, R<13>, 4>`:
 These defaults work for most applications. See
 [Configuration](configuration.md) for guidance on choosing different values.
 
-## Step 1: Define Header Types
+## Step 1: Define Header Types {#step-1-define-header-types}
 
 Headers define what data flows through the proof tree. This example uses two
 types:
