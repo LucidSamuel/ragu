@@ -81,7 +81,7 @@ never called. [`try_just`] is the same, but it accepts a fallible closure and
 propagates its error. For example, this [`Point`] reconstructs its full witness
 value from the two coordinate elements it stores:
 
-```rust
+```rust,ignore
 D::just(|| {
     let x = *self.x.value().take();
     let y = *self.y.value().take();

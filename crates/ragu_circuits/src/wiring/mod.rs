@@ -26,10 +26,6 @@
 //! matrices determined by the `enforce_zero` (and indirectly,
 //! [`add`](ragu_core::drivers::Driver::add)) calls.
 //!
-//! The exponent layout shown above is shared with the $t(X, z)$ identity
-//! polynomial computed by [`Rank::tz`](crate::polynomials::Rank::tz), which
-//! lets revdot-style checks line up with the circuit's constraint structure.
-//!
 //! ### Circuit Synthesis
 //!
 //! Naively, one could pre-compute $s(X, Y)$ as a bivariate polynomial for each

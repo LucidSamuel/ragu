@@ -52,15 +52,13 @@ let sim = Simulator::simulate((x, z), |dr, witness| {
 
 ## Example
 
-To confirm a Poseidon-hashed two-element step fits inside `R<7>` (32 gates)
+To confirm that a small arithmetic step fits inside `R<7>` (32 gates)
 before committing to a rank:
 
 ```rust,ignore
 use ragu_pasta::Fp;
-use ragu_primitives::{Element, Simulator, allocator::Standard, poseidon::Sponge};
+use ragu_primitives::{Element, Simulator, allocator::Standard};
 
-// `poseidon_params` is assumed to be in scope; see the Poseidon page
-// for how to construct one.
 let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
     let (a, b) = witness.cast();
     let allocator = &mut Standard::new();
@@ -69,12 +67,10 @@ let sim = Simulator::simulate((Fp::from(1u64), Fp::from(2u64)), |dr, witness| {
 
     dr.reset();
 
-    let mut sponge = Sponge::new(dr, &poseidon_params);
-    sponge.absorb(dr, &a)?;
-    sponge.absorb(dr, &b)?;
-    let _hash = sponge.squeeze(dr)?;
+    let sum = a.add(dr, &b);
+    let _square = sum.square(dr)?;
 
-    println!("gates: {}, constraints: {}", dr.num_gates(), dr.num_constraints());
+    assert!(dr.num_gates() <= 32);
     Ok(())
 })?;
 ```
