@@ -28,6 +28,8 @@ The chapters that follow cover individual primitives in detail:
 
 * [**Allocation**](allocation.md) — how gadgets obtain standalone
   wires via the `Allocator` trait.
+* [**Simulator**](simulator.md) — measuring constraint costs and
+  catching witness bugs before proving.
 
 [`ragu_primitives`]: https://docs.rs/ragu_primitives
 [`Element`]: ragu_primitives::Element

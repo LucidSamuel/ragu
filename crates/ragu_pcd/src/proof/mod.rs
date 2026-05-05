@@ -1,8 +1,11 @@
 //! Proof and proof-carrying data structures.
 //!
 //! Defines the [`Proof`] structure containing trace polynomials, commitments,
-//! and accumulated claims, along with [`Pcd`] which bundles a [`Proof`] with the
-//! data that a [`Header`] succinctly encodes.
+//! and accumulated claims, along with [`Pcd`] which bundles a [`Proof`] with
+//! the data that a [`Header`] succinctly encodes. Fields are organized by
+//! protocol phase (application proof, folding, query/evaluation, and
+//! commitment opening) alongside verifier challenges and bridge/nested-curve
+//! data, kept flat to make verification and proof transformation explicit.
 
 #![allow(dead_code)]
 

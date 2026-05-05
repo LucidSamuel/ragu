@@ -60,6 +60,12 @@ elimination pass removes those call sites entirely.
 [`take`] consumes the `Maybe<T>` by value, [`snag`] covers the common case of
 obtaining a `&T` without consuming the original value.
 
+```admonish tip
+Default to [`snag`] for ordinary witness reads. Use [`take`] when
+ownership is needed (e.g. inside a `just` closure), and [`as_ref`]
+when staying inside the `Maybe` world (e.g. piping into [`map`]).
+```
+
 ### [`map`] and [`and_then`] {#map-and-then}
 
 [`map`] and [`and_then`] behave like their [`Option`] counterparts. Both
@@ -86,6 +92,14 @@ D::just(|| {
 Each [`take`] extracts a coordinate’s witness value, and the outer [`just`]
 wraps the composed result back into a [`DriverValue<D, T>`]. Under `Empty`, the
 entire expression collapses to a no-op.
+
+```admonish tip
+Reach for [`try_just`] only when the closure can fail (e.g. inverting
+a field element that might be zero), so the error can propagate via
+`?`; otherwise [`just`] is sufficient. [`D::unit()`] is shorthand for
+`D::just(|| ())`, useful when a `DriverValue<D, ()>` is needed
+(e.g. the `Aux = ()` slot of a [`Step`] witness return).
+```
 
 ### [`cast`] {#cast}
 
@@ -134,3 +148,5 @@ type alias. These are documented in the [`maybe`] module.
 [`Perhaps`]: ragu_core::maybe::Perhaps
 [`maybe`]: ragu_core::maybe
 [`Point`]: ragu_primitives::point::Point
+[`D::unit()`]: ragu_core::drivers::Driver::unit
+[`Step`]: ragu_pcd::step::Step

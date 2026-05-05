@@ -1,5 +1,13 @@
 # Nested Commitment
 
+Recursive proof systems need to verify commitments from one curve inside
+circuits defined over another. A commitment to a Vesta polynomial is a Vesta
+point with $\F_q$ coordinates, but verifying it requires arithmetic in
+an $\F_p$ circuit and non-native field arithmetic is prohibitively expensive.
+Nested commitments solve this by re-committing the foreign-field data with
+a polynomial whose coefficients live in the native field, producing a point
+the circuit can manipulate directly.
+
 Ragu uses a
 [curve cycle](https://zcash.github.io/halo2/background/curves.html#cycles-of-curves).
 Concretely, we use the
@@ -9,12 +17,7 @@ where each curve's scalar field is the other's base field.
 - Vesta has base field $\F_q$ and scalar field $\F_p$
 - Pallas has base field $\F_p$ and scalar field $\F_q$
 
-During recursive proofs, you often need to commit to data that lives in the 
-"wrong" field — for example, representing Vesta points (with $\F_q$ coordinates)
-inside an $\F_p$ circuit.
-
-A **nested commitment** solves this by wrapping a commitment from one curve in
-a commitment on the other:
+The construction has three steps:
 
 * Encode the coordinates of the original commitment points as a polynomial
 * Commit to that polynomial with coefficients in the foreign field

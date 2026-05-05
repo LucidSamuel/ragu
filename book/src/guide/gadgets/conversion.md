@@ -94,14 +94,8 @@ the destination driver's context:
 let output: Bound<'dst, DstDriver, _> = CloneWires::remap(&gadget)?;
 ```
 
-```admonish tip
-This strategy is useful for [demotion][gadgetext-demote]. Internally, a demoted
-gadget uses [`CloneWires`][clonewires-type] to preserve wires and strip witness
-data. The corresponding [`promote`][demoted-promote] method allows the original
-gadget to be restored.
-
-<!-- TODO: When a demotion page is added to the book, let's rework this block. -->
-```
+This strategy is used by [demotion](demotion.md) to preserve wires while
+discarding witness data.
 
 ## [`StripWires`][stripwires-type] {#stripwires}
 
@@ -134,5 +128,3 @@ conversion from the caller's driver to that emulator automatically.
 [maybekind-trait]: ragu_core::maybe::MaybeKind
 [`Default`]: core::default::Default
 [`Emulator`]: ragu_core::drivers::emulator::Emulator
-[gadgetext-demote]: ragu_primitives::GadgetExt::demote
-[demoted-promote]: ragu_primitives::promotion::Demoted::promote

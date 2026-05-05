@@ -64,8 +64,8 @@ Because emulators are not involved in enforcing constraints, they short-circuit
 [predict](ragu_core::routines::Routine::predict) its output, the emulator skips
 [`execute`](ragu_core::routines::Routine::execute) entirely and returns the
 prediction. This contrasts with the [`Simulator`], which always executes even
-for known predictions so it can verify consistency between the prediction and
-the actual result.
+for known predictions, so the full routine body contributes to its gate and
+constraint counts and all constraints are enforced.
 
 ### Wire Extraction {#wire-extraction}
 
@@ -80,8 +80,10 @@ testing or when feeding assignments into a downstream synthesis driver.
 The [`Simulator`] (provided by `ragu_primitives`) also executes circuit code
 natively, but unlike the emulator it **does enforce constraints**. Every
 gate and constraint is checked for correctness as it is
-created, and the simulator collects realistic metrics (allocation count,
-gate count, constraint count) in the process.
+created, and the simulator collects realistic metrics (gate count and
+constraint count) in the process. See the
+[Simulator](../primitives/simulator.md) page for usage examples and
+cost-measurement patterns.
 
 ## `PhantomData<F>` {#phantom-driver}
 

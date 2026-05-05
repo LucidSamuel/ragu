@@ -1,4 +1,20 @@
 //! Common abstraction for orchestrating revdot claims.
+//!
+//! # Revdot claims
+//!
+//! A **revdot claim** asserts that two polynomials $a(X)$ and $b(X)$ satisfy
+//! a reversed inner product on their coefficient vectors (see
+//! [`sparse::Polynomial::revdot`]). In the proof system, each circuit stage
+//! produces a claim of the form
+//!
+//! $$\operatorname{revdot}(a(X), b(X)) = k(Y),$$
+//!
+//! where $k(Y)$ is the public-input polynomial restricted at a verifier
+//! challenge. Verifiers check these claims, and the folding machinery reduces
+//! many such claims into a single claim plus a bounded set of error terms.
+//!
+//! This module provides helpers to build the $(a, b)$ pairs for each claim
+//! and to aggregate them across proof components.
 
 use alloc::{borrow::Cow, vec::Vec};
 use core::borrow::Borrow;
