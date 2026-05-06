@@ -241,6 +241,8 @@ For details on parameter selection (`Pasta`, `R<13>`, `4`), see
 
 - [Getting Started](getting_started.md) provides a complete walkthrough with
   a working Merkle tree example
+- [Merkle Path](primitives/merkle.md) documents the in-circuit path
+  verification primitive
 - [Configuration](configuration.md) explains the ApplicationBuilder
   parameter choices
 - [Gadgets](gadgets/index.md) documents the available building block operations

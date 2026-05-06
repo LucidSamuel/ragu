@@ -108,6 +108,24 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
         Ok(a.add(dr, &cond_times_diff))
     }
 
+    /// Swaps two elements based on this boolean's value.
+    /// When false, returns `(a, b)` unchanged.
+    /// When true, returns `(b, a)`.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn conditional_swap(
+        &self,
+        dr: &mut D,
+        a: &Element<'dr, D>,
+        b: &Element<'dr, D>,
+    ) -> Result<(Element<'dr, D>, Element<'dr, D>)> {
+        let diff = b.sub(dr, a);
+        let cond_diff = self.element().mul(dr, &diff)?;
+        let left = a.add(dr, &cond_diff);
+        let right = b.sub(dr, &cond_diff);
+        Ok((left, right))
+    }
+
     /// Conditionally enforces that two elements are equal.
     /// When this boolean is true, enforces `a == b`; when false, no constraint.
     ///
@@ -422,6 +440,45 @@ fn test_conditional_enforce_equal() -> Result<()> {
         let b = Element::alloc(dr, allocator, b)?;
 
         cond.conditional_enforce_equal(dr, allocator, &a, &b)?;
+        Ok(())
+    })?;
+
+    Ok(())
+}
+
+#[test]
+fn test_conditional_swap() -> Result<()> {
+    type F = ragu_pasta::Fp;
+    type Simulator = crate::Simulator<F>;
+
+    // swap = false: (a, b) unchanged
+    let sim = Simulator::simulate((false, F::from(10u64), F::from(20u64)), |dr, witness| {
+        let (cond, a, b) = witness.cast();
+        let allocator = &mut Standard::new();
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
+        let a = Element::alloc(dr, allocator, a)?;
+        let b = Element::alloc(dr, allocator, b)?;
+
+        dr.reset();
+        let (left, right) = cond.conditional_swap(dr, &a, &b)?;
+        assert_eq!(*left.value().take(), F::from(10u64));
+        assert_eq!(*right.value().take(), F::from(20u64));
+        Ok(())
+    })?;
+    assert_eq!(sim.num_gates(), 1);
+    assert_eq!(sim.num_constraints(), 2);
+
+    // swap = true: (a, b) becomes (b, a)
+    Simulator::simulate((true, F::from(10u64), F::from(20u64)), |dr, witness| {
+        let (cond, a, b) = witness.cast();
+        let allocator = &mut Standard::new();
+        let cond = Boolean::alloc(dr, &mut (), cond)?;
+        let a = Element::alloc(dr, allocator, a)?;
+        let b = Element::alloc(dr, allocator, b)?;
+
+        let (left, right) = cond.conditional_swap(dr, &a, &b)?;
+        assert_eq!(*left.value().take(), F::from(20u64));
+        assert_eq!(*right.value().take(), F::from(10u64));
         Ok(())
     })?;
 

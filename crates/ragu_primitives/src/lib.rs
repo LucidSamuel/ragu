@@ -24,6 +24,7 @@ mod element;
 mod endoscalar;
 mod foreign;
 pub mod io;
+pub mod merkle;
 mod point;
 pub mod poseidon;
 pub mod promotion;

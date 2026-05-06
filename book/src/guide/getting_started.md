@@ -2,7 +2,8 @@
 
 This guide demonstrates a complete proof-carrying data (PCD) application
 built with Ragu. The example constructs a simple Merkle tree where each node
-carries a proof of correctness.
+carries a proof of correctness. For the in-circuit Merkle path verification
+primitive, see [Merkle Path Verification](primitives/merkle.md).
 
 ## What This Example Demonstrates
 

@@ -22,6 +22,7 @@
   - [Primitives](guide/primitives/index.md) <!-- todo -->
     - [Allocation](guide/primitives/allocation.md) <!-- todo -->
     - [Simulator](guide/primitives/simulator.md) <!-- todo -->
+    - [Merkle Path](guide/primitives/merkle.md)
   - [Writing Circuits](guide/writing_circuits.md) <!-- todo -->
   - [Configuration](guide/configuration.md) <!-- todo -->
 - [Part II: Protocol Design]()
