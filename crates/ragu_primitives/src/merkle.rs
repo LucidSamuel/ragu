@@ -22,11 +22,7 @@
 //! giving **289 gates per level**.
 
 use ragu_arithmetic::PoseidonPermutation;
-use ragu_core::{
-    Result,
-    drivers::Driver,
-    gadgets::Gadget,
-};
+use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
 use crate::{Boolean, Element, poseidon::Sponge};
 
@@ -226,11 +222,7 @@ mod tests {
             let dir1 = Boolean::alloc(dr, allocator, Sim::just(|| true))?;
             let dir2 = Boolean::alloc(dr, allocator, Sim::just(|| false))?;
 
-            let path = MerklePath::new([
-                (sibling0, dir0),
-                (sibling1, dir1),
-                (sibling2, dir2),
-            ]);
+            let path = MerklePath::new([(sibling0, dir0), (sibling1, dir1), (sibling2, dir2)]);
             let root = compute_root(dr, params, &leaf, &path)?;
 
             assert_eq!(*root.value().take(), expected_root);
@@ -298,9 +290,7 @@ mod tests {
     // ---------------------------------------------------------------
 
     /// Build a valid depth-2 proof and return the components.
-    fn valid_depth_2(
-        params: &PoseidonParams,
-    ) -> (Fp, Fp, Fp, bool, bool, Fp) {
+    fn valid_depth_2(params: &PoseidonParams) -> (Fp, Fp, Fp, bool, bool, Fp) {
         let leaf = Fp::from(10u64);
         let sib0 = Fp::from(20u64);
         let sib1 = Fp::from(30u64);
@@ -354,7 +344,9 @@ mod tests {
 
         // Mutated leaf fails.
         let bad_leaf = leaf + Fp::ONE;
-        assert!(!try_inclusion(params, bad_leaf, sib0, sib1, dir0, dir1, root));
+        assert!(!try_inclusion(
+            params, bad_leaf, sib0, sib1, dir0, dir1, root
+        ));
     }
 
     #[test]
@@ -365,11 +357,15 @@ mod tests {
 
         // Corrupt sibling at level 0.
         let bad_sib0 = sib0 + Fp::ONE;
-        assert!(!try_inclusion(params, leaf, bad_sib0, sib1, dir0, dir1, root));
+        assert!(!try_inclusion(
+            params, leaf, bad_sib0, sib1, dir0, dir1, root
+        ));
 
         // Corrupt sibling at level 1.
         let bad_sib1 = sib1 + Fp::ONE;
-        assert!(!try_inclusion(params, leaf, sib0, bad_sib1, dir0, dir1, root));
+        assert!(!try_inclusion(
+            params, leaf, sib0, bad_sib1, dir0, dir1, root
+        ));
     }
 
     #[test]
@@ -392,6 +388,8 @@ mod tests {
         let (leaf, sib0, sib1, dir0, dir1, root) = valid_depth_2(params);
 
         let wrong_root = root + Fp::ONE;
-        assert!(!try_inclusion(params, leaf, sib0, sib1, dir0, dir1, wrong_root));
+        assert!(!try_inclusion(
+            params, leaf, sib0, sib1, dir0, dir1, wrong_root
+        ));
     }
 }
