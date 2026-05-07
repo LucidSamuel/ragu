@@ -46,6 +46,12 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// This method uses [`Element::alloc_square`] to allocate coordinates and
     /// then enforces the curve equation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if `p` is the point at infinity, or
+    /// any synthesis error encountered while allocating coordinates and
+    /// enforcing the curve equation.
     pub fn alloc(dr: &mut D, p: DriverValue<D, C>) -> Result<Self> {
         let coordinates = D::try_just(|| {
             let coordinates = p.take().coordinates().into_option();
@@ -70,6 +76,10 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
 
     /// Obtain a constant point in the circuit. Fails if the point is the
     /// identity.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if `p` is the identity.
     pub fn constant(dr: &mut D, p: C) -> Result<Self> {
         if let Some(coordinates) = p.coordinates().into_option() {
             let x = Element::constant(dr, *coordinates.x());
@@ -108,6 +118,10 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 
     /// Apply the endomorphism iff the provided condition is true.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the conditional element selection.
     pub fn conditional_endo(&self, dr: &mut D, condition: &Boolean<'dr, D>) -> Result<Self> {
         let endo_x = self.x.scale(dr, Coeff::Arbitrary(D::F::ZETA));
         let x = condition.conditional_select(dr, &self.x, &endo_x)?;
@@ -115,6 +129,10 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 
     /// Apply the negation map iff the provided condition is true.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the conditional element selection.
     pub fn conditional_negate(&self, dr: &mut D, condition: &Boolean<'dr, D>) -> Result<Self> {
         let neg_y = self.y.negate(dr);
         let y = condition.conditional_select(dr, &self.y, &neg_y)?;
@@ -123,6 +141,12 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
 
     /// Doubles this point. Ragu does not support curves with points of order
     /// two, and thus all affine points have affine doubles.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any synthesis error from the intermediate field operations,
+    /// including division-by-zero witness failures if the doubling formula's
+    /// denominator is witnessed as zero.
     pub fn double(&self, dr: &mut D) -> Result<Self> {
         // delta = 3x^2 / 2y
         let double_y = self.y.double(dr);
@@ -150,6 +174,12 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     /// processing a batch of additions, [invert](Element::invert) `*acc` once;
     /// inversion succeeds iff every `x_1 - x_0 != 0`, thereby certifying that
     /// all pairs had distinct x-coordinates.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any synthesis error from the intermediate field operations,
+    /// including division-by-zero witness failures if the points do not have
+    /// distinct x-coordinates.
     pub fn add_incomplete(
         &self,
         dr: &mut D,
@@ -179,6 +209,12 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
 
     /// Computes $\[2\] Q + P$. **The caller must ensure that $P$ and $Q$ do not
     /// have the same x-coordinate and that the result is not the identity.**
+    ///
+    /// # Errors
+    ///
+    /// Propagates any synthesis error from the intermediate field operations,
+    /// including division-by-zero witness failures if the caller's
+    /// preconditions are violated.
     pub fn double_and_add_incomplete(&self, dr: &mut D, other: &Self) -> Result<Self> {
         // See <https://github.com/zcash/zcash/issues/3924> for an explanation.
 

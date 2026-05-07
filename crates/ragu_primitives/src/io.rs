@@ -39,6 +39,10 @@ use crate::Element;
 pub trait Write<F: Field>: GadgetKind<F> {
     /// Write this gadget into wires that are written the provided buffer,
     /// using the driver to synthesize the elements if needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error encountered while writing this gadget into `buf`.
     fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
         this: &Bound<'dr, D, Self>,
         dr: &mut D,
@@ -50,6 +54,11 @@ pub trait Write<F: Field>: GadgetKind<F> {
 /// provided driver context.
 pub trait Buffer<'dr, D: Driver<'dr>> {
     /// Push an `Element` into this buffer using the provided driver `D`.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error encountered while accepting `value` into this
+    /// buffer.
     fn write(&mut self, dr: &mut D, value: &Element<'dr, D>) -> Result<()>;
 }
 

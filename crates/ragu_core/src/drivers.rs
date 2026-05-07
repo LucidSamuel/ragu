@@ -150,6 +150,11 @@ pub trait DriverTypes {
     /// [`Maybe`]/[`DriverValue`] system provides a
     /// stronger guarantee—those drivers never call this closure, and its body
     /// is dead-code-eliminated after monomorphization.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error produced by `values`, or any error from the driver
+    /// while allocating the gate.
     fn gate(
         &mut self,
         values: impl Fn() -> Result<(
@@ -166,6 +171,11 @@ pub trait DriverTypes {
     /// The provided closure follows the same purity contract as [`gate`](Self::gate):
     /// it may be called zero or more times, should be side-effect-free, and
     /// errors propagate to the caller.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error produced by `value`, or any error from the driver
+    /// while assigning the auxiliary wire.
     fn assign_extra(
         &mut self,
         extra: Self::Extra,
@@ -264,6 +274,11 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// [`Maybe`]/[`DriverValue`] system provides a stronger guarantee—those
     /// drivers never call this closure, and its body is dead-code-eliminated
     /// after monomorphization.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error produced by `values`, or any error from the
+    /// underlying [`DriverTypes::gate`] call.
     fn mul(
         &mut self,
         values: impl Fn() -> Result<(Coeff<Self::F>, Coeff<Self::F>, Coeff<Self::F>)>,
@@ -302,9 +317,17 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     /// [`LCenforce`](DriverTypes::LCenforce) argument may itself carry
     /// interior-mutable state (as a driver implementation detail), but circuit
     /// code should not introduce its own observable side effects.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the driver cannot record the constraint.
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()>;
 
     /// Enforces that two wires are equal.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Driver::enforce_zero`].
     fn enforce_equal(&mut self, a: &Self::Wire, b: &Self::Wire) -> Result<()> {
         self.enforce_zero(|lc| lc.add(a).sub(b))
     }
@@ -315,6 +338,10 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     }
 
     /// Proxy for the `Witness::try_just` method for this driver.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error produced by `f`.
     fn try_just<R: Send>(f: impl FnOnce() -> Result<R>) -> Result<DriverValue<Self, R>> {
         <DriverValue<Self, R> as Maybe<R>>::try_just(f)
     }
@@ -326,6 +353,10 @@ pub trait Driver<'dr>: DriverTypes<ImplWire = Self::Wire, ImplField = Self::F> +
     }
 
     /// Executes a routine with this driver.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from routine prediction or execution.
     fn routine<R: Routine<Self::F> + 'dr>(
         &mut self,
         routine: R,

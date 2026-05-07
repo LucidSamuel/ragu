@@ -28,6 +28,11 @@ use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 pub trait Consistent<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     /// Emit constraints that re-express `Self`'s invariants on the wires
     /// inside `self`, against the driver `dr`.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error encountered while enforcing the gadget's internal
+    /// constraints.
     fn enforce_consistent(&self, dr: &mut D) -> Result<()>;
 }
 

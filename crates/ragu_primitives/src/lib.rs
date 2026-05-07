@@ -49,6 +49,10 @@ pub use suffix::WithSuffix;
 pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     /// Write this gadget into a buffer, assuming the gadget's
     /// [`Kind`](Gadget::Kind) implements [`Write`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Write::write_gadget`].
     fn write<B: Buffer<'dr, D>>(&self, dr: &mut D, buf: &mut B) -> Result<()>
     where
         Self::Kind: Write<D::F>,
@@ -57,6 +61,10 @@ pub trait GadgetExt<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     }
 
     /// Demote this gadget by stripping its witness data.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Demoted::new`].
     fn demote(&self) -> Result<Demoted<'dr, D, Self>> {
         Demoted::new(self)
     }

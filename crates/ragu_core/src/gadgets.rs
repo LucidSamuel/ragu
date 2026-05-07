@@ -118,6 +118,10 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     type Kind: GadgetKind<D::F, Rebind<'dr, D> = Self>;
 
     /// Proxy for [`GadgetKind::map_gadget`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`GadgetKind::map_gadget`].
     fn map<'dst, WM: WireMap<D::F, Src = D, Dst: Driver<'dst, F = D::F>>>(
         &self,
         wm: &mut WM,
@@ -126,6 +130,10 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     }
 
     /// Proxy for [`GadgetKind::enforce_equal_gadget`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`GadgetKind::enforce_equal_gadget`].
     fn enforce_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
         &self,
         dr: &mut D2,
