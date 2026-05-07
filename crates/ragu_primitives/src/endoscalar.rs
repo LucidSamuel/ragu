@@ -44,6 +44,11 @@ pub struct Endoscalar<'dr, D: Driver<'dr>> {
 
 impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// Allocate an endoscalar with the provided `Uendo` value.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from allocating or demoting the constituent
+    /// boolean bits.
     pub fn alloc(dr: &mut D, value: DriverValue<D, Uendo>) -> Result<Self> {
         // Convert the provided Uendo into a little-endian representation of its
         // bits.
@@ -76,6 +81,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Extracts an endoscalar from a random element in the field.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from witness extraction, bit allocation,
+    /// intermediate field operations, or the final fixed-length collection.
     pub fn extract<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
@@ -152,6 +162,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Scale a point by the endoscalar.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the intermediate point additions, doublings,
+    /// or conditional transformations.
     pub fn group_scale<C: CurveAffine<Base = D::F>>(
         &self,
         dr: &mut D,
@@ -175,6 +190,11 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     }
 
     /// Lifts this endoscalar to a field element (scales $1$ by the endoscalar).
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the intermediate boolean and field-element
+    /// operations used during the lift.
     pub fn lift(&self, dr: &mut D) -> Result<Element<'dr, D>>
     where
         D::F: WithSmallOrderMulGroup<3>,

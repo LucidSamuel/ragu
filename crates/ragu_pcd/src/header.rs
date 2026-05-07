@@ -96,6 +96,11 @@ pub trait Header<F: Field>: Send + Sync + Any {
     ///
     /// Implementations should pass `allocator` through to all allocation
     /// calls rather than substituting a different allocator.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error encountered while allocating or constraining the
+    /// encoded header gadget.
     fn encode<'dr, D: Driver<'dr, F = F>, A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,

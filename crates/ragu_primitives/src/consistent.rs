@@ -20,6 +20,11 @@ use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 /// [`Element`]: crate::Element
 pub trait Consistent<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     /// Enforce internal consistency constraints on this gadget's wires.
+    ///
+    /// # Errors
+    ///
+    /// Returns any error encountered while enforcing the gadget's internal
+    /// constraints.
     fn enforce_consistent(&self, dr: &mut D) -> Result<()>;
 }
 

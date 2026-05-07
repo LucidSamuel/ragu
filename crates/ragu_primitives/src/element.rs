@@ -65,6 +65,10 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// supplied [`Allocator`] to create the underlying wire.
     ///
     /// This costs one allocation.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the provided [`Allocator`].
     pub fn alloc<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
@@ -82,6 +86,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// squares it in a single step. Returns $(a, a^2)$.
     ///
     /// This costs one gate.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the multiplication gate or the equality
+    /// constraint that ties its inputs together.
     pub fn alloc_square(dr: &mut D, assignment: DriverValue<D, D::F>) -> Result<(Self, Self)> {
         let square = D::just(|| assignment.snag().square());
         let (a, b, c) = dr.mul(|| {
@@ -150,6 +159,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Multiply two elements together.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the multiplication gate or the equality
+    /// constraints that bind its inputs.
     pub fn mul(&self, dr: &mut D, other: &Self) -> Result<Self> {
         let product = D::just(|| {
             let a = *self.value.snag();
@@ -174,11 +188,19 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Squares an element.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Element::mul`].
     pub fn square(&self, dr: &mut D) -> Result<Self> {
         self.mul(dr, self)
     }
 
     /// Enforces that this element equals zero.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Driver::enforce_zero`].
     pub fn enforce_zero(&self, dr: &mut D) -> Result<()> {
         dr.enforce_zero(|lc| lc.add(&self.wire))
     }
@@ -238,6 +260,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Invert this element if it is nonzero.
     ///
     /// This will fail to synthesize if the element is zero.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if the element is zero, or
+    /// propagates any error from [`Element::invert_with`].
     pub fn invert(&self, dr: &mut D) -> Result<Self> {
         let inverse = D::try_just(|| {
             self.value
@@ -252,6 +279,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
     /// Enforce that this element times the provided `inverse` (unallocated value) equals one.
     /// Returns the allocated `inverse` element.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the multiplication gate or the equality
+    /// constraints that bind the numerator and unit output.
     pub fn invert_with(&self, dr: &mut D, inverse: DriverValue<D, D::F>) -> Result<Self> {
         let (a, b, c) = dr.mul(|| {
             Ok((
@@ -278,6 +310,12 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// which enforces that `quotient` is equal to `self / by` if and only if
     /// `by` is nonzero.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if `by` is zero, or propagates any
+    /// error from the multiplication gate or equality constraints used to bind
+    /// the quotient.
     pub fn div_nonzero(&self, dr: &mut D, by: &Self) -> Result<Self> {
         let quotient_value = D::try_just(|| {
             Ok(*self.value().take()
@@ -309,6 +347,10 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Returns a boolean indicating whether this element is zero.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the underlying zero-check gadget.
     pub fn is_zero(
         &self,
         dr: &mut D,
@@ -318,6 +360,10 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Returns a boolean indicating whether this element equals another.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from [`Element::is_zero`].
     pub fn is_equal(
         &self,
         dr: &mut D,
@@ -334,6 +380,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// Horner's method is used to evaluate the weighted sum, effectively
     /// scaling the first element by the highest power of `scale_factor` and the
     /// last element by nothing at all.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the intermediate multiplications performed
+    /// while folding the iterator.
     pub fn fold<E: Borrow<Element<'dr, D>>>(
         dr: &mut D,
         elements: impl IntoIterator<Item = E>,
@@ -350,6 +401,11 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     }
 
     /// Constrains that `self` is a $2^k$-th root of unity, i.e., $\mathtt{self}^{2^k} = 1$.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the repeated squaring steps or the final
+    /// zero constraint.
     pub fn enforce_root_of_unity(&self, dr: &mut D, k: u32) -> Result<()> {
         let mut value = self.clone();
         for _ in 0..k {

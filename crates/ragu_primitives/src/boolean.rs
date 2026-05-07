@@ -42,6 +42,11 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Allocates a boolean with the provided witness value.
     ///
     /// This costs one gate and two constraints.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the underlying gate allocation or from the
+    /// boolean constraints enforced afterward.
     pub fn alloc<A: crate::allocator::Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
@@ -74,6 +79,11 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
 
     /// Computes the AND of two booleans. This costs one gate and two
     /// constraints.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the multiplication gate or equality
+    /// constraints used to bind the operands.
     pub fn and(&self, dr: &mut D, other: &Self) -> Result<Self> {
         let result = D::just(|| self.value.snag() & other.value.snag());
         let (a, b, c) = dr.mul(|| {
@@ -96,6 +106,11 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// Returns `a` when false, `b` when true.
     ///
     /// This costs one gate and two constraints.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the intermediate multiplication used to
+    /// apply the conditional difference.
     pub fn conditional_select(
         &self,
         dr: &mut D,
@@ -112,6 +127,11 @@ impl<'dr, D: Driver<'dr>> Boolean<'dr, D> {
     /// When this boolean is true, enforces `a == b`; when false, no constraint.
     ///
     /// This costs one gate and three constraints.
+    ///
+    /// # Errors
+    ///
+    /// Propagates any error from the gate allocation or equality and zero
+    /// constraints used to encode the conditional check.
     pub fn conditional_enforce_equal(
         &self,
         dr: &mut D,
@@ -242,6 +262,10 @@ impl<F: Field> Promotion<F> for Kind![F; @Boolean<'_, _>] {
 /// Packs boolean slices into field elements using little-endian bit order.
 ///
 /// The first bit in each chunk is the least significant bit.
+///
+/// # Errors
+///
+/// This function does not currently return an error.
 pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
     dr: &mut D,
     bits: &[Boolean<'dr, D>],
