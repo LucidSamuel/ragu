@@ -6,7 +6,7 @@
 //! lazily computed from [`bridge_alpha`](ProofBuilder::bridge_alpha) and the
 //! native commitments already on the builder.
 
-use alloc::vec::Vec;
+use alloc::{sync::Arc, vec::Vec};
 use core::cell::OnceCell;
 
 use ff::Field;
@@ -18,7 +18,7 @@ use ragu_circuits::{
 };
 use ragu_core::Result;
 
-use super::{Cached, Proof};
+use super::{Cached, Proof, SharedPolynomial};
 use crate::internal::nested;
 
 /// Produces `pub(crate) fn $name(&mut self, v: $ty)` that sets an `Option`
@@ -180,7 +180,7 @@ macro_rules! cached_bridge {
      $idx:expr, $stage:ident, { $($wit_field:ident : $getter:ident()),* }) => {
         pub(crate) fn $rx(&self) -> Result<&sparse::Polynomial<C::ScalarField, R>> {
             if let Some(rx) = self.$rx.get() {
-                return Ok(rx);
+                return Ok(rx.as_ref());
             }
             let rx = nested::stages::$stage::Stage::<C::HostCurve, R>::rx(
                 self.bridge_alpha_power($idx),
@@ -190,7 +190,7 @@ macro_rules! cached_bridge {
             )?;
             // The early return above guarantees the cell is empty, so
             // `get_or_init` will always run the closure and store `rx`.
-            Ok(self.$rx.get_or_init(|| rx))
+            Ok(self.$rx.get_or_init(|| Arc::new(rx)).as_ref())
         }
 
         pub(crate) fn $commitment(&self) -> Result<C::NestedCurve> {
@@ -238,9 +238,9 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     // Bridge rx polynomials + commitments (set together by caller)
     bridge_preamble_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
     bridge_preamble_commitment: Option<C::NestedCurve>,
-    bridge_s_prime_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_s_prime_rx: Option<SharedPolynomial<C::ScalarField, R>>,
     bridge_s_prime_commitment: Option<C::NestedCurve>,
-    bridge_inner_error_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_inner_error_rx: Option<SharedPolynomial<C::ScalarField, R>>,
     bridge_inner_error_commitment: Option<C::NestedCurve>,
     bridge_f_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
     bridge_f_commitment: Option<C::NestedCurve>,
@@ -249,15 +249,15 @@ pub(crate) struct ProofBuilder<'params, C: Cycle, R: Rank> {
     // native commitments). Parallels the native rx/commitment split: the rx
     // slot is populated on first access, and the commitment slot is derived
     // lazily from it.
-    bridge_outer_error_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_ab_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_query_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
-    bridge_eval_rx: OnceCell<sparse::Polynomial<C::ScalarField, R>>,
+    bridge_outer_error_rx: OnceCell<SharedPolynomial<C::ScalarField, R>>,
+    bridge_ab_rx: OnceCell<SharedPolynomial<C::ScalarField, R>>,
+    bridge_query_rx: OnceCell<SharedPolynomial<C::ScalarField, R>>,
+    bridge_eval_rx: OnceCell<SharedPolynomial<C::ScalarField, R>>,
 
     // Nested endoscaling data
     nested_endoscaling_step_rxs: Option<Vec<sparse::Polynomial<C::ScalarField, R>>>,
     nested_endoscalar_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
-    nested_points_rx: Option<sparse::Polynomial<C::ScalarField, R>>,
+    nested_points_rx: Option<SharedPolynomial<C::ScalarField, R>>,
 
     // Nested endoscaling commitment caches (lazily computed from polynomials)
     nested_endoscaling_step_commitments: OnceCell<Vec<C::NestedCurve>>,
@@ -416,9 +416,48 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
     ref_getter!(native_b_poly, native_b_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_registry_xy_poly, native_registry_xy_poly, sparse::Polynomial<C::CircuitField, R>);
     ref_getter!(native_p_poly, native_p_poly, sparse::Polynomial<C::CircuitField, R>);
-    ref_getter!(nested_points_rx, nested_points_rx, sparse::Polynomial<C::ScalarField, R>);
-    ref_getter!(bridge_s_prime_rx, bridge_s_prime_rx, sparse::Polynomial<C::ScalarField, R>);
-    ref_getter!(bridge_inner_error_rx, bridge_inner_error_rx, sparse::Polynomial<C::ScalarField, R>);
+
+    pub(crate) fn nested_points_rx(&self) -> &sparse::Polynomial<C::ScalarField, R> {
+        self.nested_points_rx
+            .as_deref()
+            .expect("nested_points_rx not set")
+    }
+
+    pub(crate) fn shared_nested_points_rx(&self) -> SharedPolynomial<C::ScalarField, R> {
+        Arc::clone(
+            self.nested_points_rx
+                .as_ref()
+                .expect("nested_points_rx not set"),
+        )
+    }
+
+    pub(crate) fn bridge_s_prime_rx(&self) -> &sparse::Polynomial<C::ScalarField, R> {
+        self.bridge_s_prime_rx
+            .as_deref()
+            .expect("bridge_s_prime_rx not set")
+    }
+
+    pub(crate) fn shared_bridge_s_prime_rx(&self) -> SharedPolynomial<C::ScalarField, R> {
+        Arc::clone(
+            self.bridge_s_prime_rx
+                .as_ref()
+                .expect("bridge_s_prime_rx not set"),
+        )
+    }
+
+    pub(crate) fn bridge_inner_error_rx(&self) -> &sparse::Polynomial<C::ScalarField, R> {
+        self.bridge_inner_error_rx
+            .as_deref()
+            .expect("bridge_inner_error_rx not set")
+    }
+
+    pub(crate) fn shared_bridge_inner_error_rx(&self) -> SharedPolynomial<C::ScalarField, R> {
+        Arc::clone(
+            self.bridge_inner_error_rx
+                .as_ref()
+                .expect("bridge_inner_error_rx not set"),
+        )
+    }
 
     lazy_commitment!(
         native,
@@ -504,23 +543,47 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         bridge_preamble_commitment
     );
     bridge_pair!(
-        set_bridge_s_prime_rx,
-        bridge_s_prime_commitment,
-        bridge_s_prime_rx,
-        bridge_s_prime_commitment
-    );
-    bridge_pair!(
-        set_bridge_inner_error_rx,
-        bridge_inner_error_commitment,
-        bridge_inner_error_rx,
-        bridge_inner_error_commitment
-    );
-    bridge_pair!(
         set_bridge_f_rx,
         bridge_f_commitment,
         bridge_f_rx,
         bridge_f_commitment
     );
+
+    pub(crate) fn set_bridge_s_prime_rx(
+        &mut self,
+        rx: sparse::Polynomial<C::ScalarField, R>,
+        commitment: C::NestedCurve,
+    ) {
+        assert!(
+            self.bridge_s_prime_rx.is_none(),
+            "double-set: bridge_s_prime_rx"
+        );
+        self.bridge_s_prime_rx = Some(Arc::new(rx));
+        self.bridge_s_prime_commitment = Some(commitment);
+    }
+
+    pub(crate) fn bridge_s_prime_commitment(&self) -> C::NestedCurve {
+        self.bridge_s_prime_commitment
+            .expect("bridge_s_prime_commitment not set")
+    }
+
+    pub(crate) fn set_bridge_inner_error_rx(
+        &mut self,
+        rx: sparse::Polynomial<C::ScalarField, R>,
+        commitment: C::NestedCurve,
+    ) {
+        assert!(
+            self.bridge_inner_error_rx.is_none(),
+            "double-set: bridge_inner_error_rx"
+        );
+        self.bridge_inner_error_rx = Some(Arc::new(rx));
+        self.bridge_inner_error_commitment = Some(commitment);
+    }
+
+    pub(crate) fn bridge_inner_error_commitment(&self) -> C::NestedCurve {
+        self.bridge_inner_error_commitment
+            .expect("bridge_inner_error_commitment not set")
+    }
 
     /// Returns the derived alpha for a cached bridge, as a distinct power of
     /// `bridge_alpha`.
@@ -573,7 +636,45 @@ impl<'params, C: Cycle, R: Rank> ProofBuilder<'params, C, R> {
         Vec<sparse::Polynomial<C::ScalarField, R>>
     );
     setter!(set_nested_endoscalar_rx, nested_endoscalar_rx, sparse::Polynomial<C::ScalarField, R>);
-    setter!(set_nested_points_rx, nested_points_rx, sparse::Polynomial<C::ScalarField, R>);
+    pub(crate) fn set_nested_points_rx(&mut self, v: sparse::Polynomial<C::ScalarField, R>) {
+        assert!(
+            self.nested_points_rx.is_none(),
+            "double-set: nested_points_rx"
+        );
+        self.nested_points_rx = Some(Arc::new(v));
+    }
+
+    pub(crate) fn shared_bridge_outer_error_rx(
+        &self,
+    ) -> Result<SharedPolynomial<C::ScalarField, R>> {
+        self.bridge_outer_error_rx()?;
+        Ok(Arc::clone(
+            self.bridge_outer_error_rx
+                .get()
+                .expect("bridge_outer_error_rx not set"),
+        ))
+    }
+
+    pub(crate) fn shared_bridge_ab_rx(&self) -> Result<SharedPolynomial<C::ScalarField, R>> {
+        self.bridge_ab_rx()?;
+        Ok(Arc::clone(
+            self.bridge_ab_rx.get().expect("bridge_ab_rx not set"),
+        ))
+    }
+
+    pub(crate) fn shared_bridge_query_rx(&self) -> Result<SharedPolynomial<C::ScalarField, R>> {
+        self.bridge_query_rx()?;
+        Ok(Arc::clone(
+            self.bridge_query_rx.get().expect("bridge_query_rx not set"),
+        ))
+    }
+
+    pub(crate) fn shared_bridge_eval_rx(&self) -> Result<SharedPolynomial<C::ScalarField, R>> {
+        self.bridge_eval_rx()?;
+        Ok(Arc::clone(
+            self.bridge_eval_rx.get().expect("bridge_eval_rx not set"),
+        ))
+    }
 
     /// Lazily computes and caches commitments for all endoscaling step rx
     /// polynomials. Returns the cached slice.
