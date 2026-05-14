@@ -34,10 +34,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
             left: native::stages::eval::ChildEvaluationsWitness::from_proof(left, u),
             right: native::stages::eval::ChildEvaluationsWitness::from_proof(right, u),
             current: native::stages::eval::CurrentStepWitness {
-                // TODO: the registry evaluations here could _theoretically_ be more
-                // efficient if they're computed simultaneously with assistance
-                // from the registry itself, rather than individually evaluated for
-                // each of these restrictions.
+                // These restriction polynomials already exist for commitments and
+                // later accumulation. Evaluating them directly is faster than
+                // recomputing the same values through the registry here; see the
+                // `registry::restriction_eval3` criterion benchmark.
                 registry_wx0: s_prime.registry_wx0_poly.eval(u),
                 registry_wx1: s_prime.registry_wx1_poly.eval(u),
                 registry_wy: registry_wy.poly.eval(u),
