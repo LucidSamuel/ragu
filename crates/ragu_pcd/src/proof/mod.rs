@@ -112,7 +112,6 @@ impl<F: ff::PrimeField, R: Rank> ChildStageRx<F, R> {
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Extract stage rx polynomials from this proof for storage as child
     /// data in a parent proof.
-    //
     pub(crate) fn as_child_stage_rx(&self) -> ChildStageRx<C::ScalarField, R> {
         ChildStageRx {
             points_stage: Arc::clone(&self.nested_points_rx),
