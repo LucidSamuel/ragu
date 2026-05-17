@@ -125,7 +125,7 @@ macro_rules! bridge_pair {
 
 /// Produces `pub(crate) fn $name(&mut self, poly, commitment)` that stores a
 /// native polynomial in an `Option` field and its pre-computed commitment in a
-/// `Cell` cache. Used for a/b/p whose commitments are computed via non-standard
+/// `OnceCell` cache. Used for a/b/p whose commitments are computed via non-standard
 /// techniques rather than lazy evaluation.
 macro_rules! native_poly_with_commitment_setter {
     ($name:ident, $poly:ident, $cache:ident) => {
@@ -148,7 +148,7 @@ macro_rules! native_poly_with_commitment_setter {
 }
 
 /// Produces `pub(crate) fn $getter(&self) -> C::HostCurve` that reads a
-/// pre-computed native commitment from a `Cell`. Used for a/b/p whose
+/// pre-computed native commitment from a `OnceCell`. Used for a/b/p whose
 /// commitments are set explicitly via a special setter rather than lazily.
 macro_rules! explicit_commitment_getter {
     ($getter:ident, $cache:ident, $setter:ident) => {
