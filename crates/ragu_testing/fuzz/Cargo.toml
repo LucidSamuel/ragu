@@ -158,3 +158,22 @@ path = "fuzz_targets/fuzz_algebraic_identities.rs"
 test = false
 doc = false
 bench = false
+
+# Element assertion-gadget tests: enforce_zero, enforce_root_of_unity,
+# invert_with — positive cases must succeed in Simulator, negative cases
+# must fail. Closes the assertion-gadget coverage gap.
+[[bin]]
+name = "fuzz_element_assertions"
+path = "fuzz_targets/fuzz_element_assertions.rs"
+test = false
+doc = false
+bench = false
+
+# Bit-packing gadget: multipack(bits) returns Vec<Element> chunks. Each
+# chunk's value is hand-computed and compared to the gadget's witness.
+[[bin]]
+name = "fuzz_multipack"
+path = "fuzz_targets/fuzz_multipack.rs"
+test = false
+doc = false
+bench = false

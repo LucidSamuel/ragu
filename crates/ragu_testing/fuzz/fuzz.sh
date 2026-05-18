@@ -40,6 +40,8 @@ TARGETS=(
   fuzz_driver_metamorphic
   fuzz_witness_coverage
   fuzz_algebraic_identities
+  fuzz_element_assertions
+  fuzz_multipack
 )
 
 run_target() {
