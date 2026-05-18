@@ -119,3 +119,13 @@ path = "fuzz_targets/fuzz_soundness_cheat.rs"
 test = false
 doc = false
 bench = false
+
+# Driver-vs-driver metamorphic: same Vec<Op> through Simulator and
+# Emulator<Wired>. Both should produce identical wire values; disagreement is
+# a model-vs-real driver divergence.
+[[bin]]
+name = "fuzz_driver_metamorphic"
+path = "fuzz_targets/fuzz_driver_metamorphic.rs"
+test = false
+doc = false
+bench = false

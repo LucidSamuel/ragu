@@ -22,6 +22,7 @@ TARGETS=(
   fuzz_poseidon_differential
   fuzz_verify_reject
   fuzz_soundness_cheat
+  fuzz_driver_metamorphic
 )
 
 run_target() {
