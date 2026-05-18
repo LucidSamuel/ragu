@@ -40,23 +40,42 @@ fn main() {
     println!("# Regenerate via: cargo run --release --bin extract_dict > dict.txt");
     println!();
 
-    // Special Fp values.
+    // Special Fp values. Mirrors the 16-entry `special_value` tables in
+    // each fuzz target — keep both lists in sync.
     emit_fp("fp_special", 0, Fp::ZERO);
     emit_fp("fp_special", 1, Fp::ONE);
     emit_fp("fp_special", 2, -Fp::ONE);
-    emit_fp("fp_special", 3, Fp::TWO_INV);
-    emit_fp("fp_special", 4, Fp::ROOT_OF_UNITY);
-    emit_fp("fp_special", 5, Fp::MULTIPLICATIVE_GENERATOR);
-    emit_fp("fp_special", 6, Fp::ROOT_OF_UNITY.square());
+    emit_fp("fp_special", 3, -Fp::from(2));
+    emit_fp("fp_special", 4, Fp::TWO_INV);
+    emit_fp("fp_special", 5, Fp::from(2));
+    emit_fp("fp_special", 6, Fp::from(3));
+    emit_fp("fp_special", 7, Fp::from(7));
+    emit_fp("fp_special", 8, Fp::ROOT_OF_UNITY);
+    emit_fp("fp_special", 9, Fp::ROOT_OF_UNITY.square());
+    emit_fp("fp_special", 10, Fp::ROOT_OF_UNITY.pow_vartime([4u64]));
+    emit_fp("fp_special", 11, Fp::MULTIPLICATIVE_GENERATOR);
+    emit_fp("fp_special", 12, Fp::MULTIPLICATIVE_GENERATOR.square());
+    emit_fp("fp_special", 13, Fp::from(1u64 << 32));
+    emit_fp("fp_special", 14, Fp::from(1u64 << 48));
+    emit_fp("fp_special", 15, Fp::from(u64::MAX));
 
-    // Special Fq values.
+    // Special Fq values. Same table on the Vesta side.
     emit_fq("fq_special", 0, Fq::ZERO);
     emit_fq("fq_special", 1, Fq::ONE);
     emit_fq("fq_special", 2, -Fq::ONE);
-    emit_fq("fq_special", 3, Fq::TWO_INV);
-    emit_fq("fq_special", 4, Fq::ROOT_OF_UNITY);
-    emit_fq("fq_special", 5, Fq::MULTIPLICATIVE_GENERATOR);
-    emit_fq("fq_special", 6, Fq::ROOT_OF_UNITY.square());
+    emit_fq("fq_special", 3, -Fq::from(2));
+    emit_fq("fq_special", 4, Fq::TWO_INV);
+    emit_fq("fq_special", 5, Fq::from(2));
+    emit_fq("fq_special", 6, Fq::from(3));
+    emit_fq("fq_special", 7, Fq::from(7));
+    emit_fq("fq_special", 8, Fq::ROOT_OF_UNITY);
+    emit_fq("fq_special", 9, Fq::ROOT_OF_UNITY.square());
+    emit_fq("fq_special", 10, Fq::ROOT_OF_UNITY.pow_vartime([4u64]));
+    emit_fq("fq_special", 11, Fq::MULTIPLICATIVE_GENERATOR);
+    emit_fq("fq_special", 12, Fq::MULTIPLICATIVE_GENERATOR.square());
+    emit_fq("fq_special", 13, Fq::from(1u64 << 32));
+    emit_fq("fq_special", 14, Fq::from(1u64 << 48));
+    emit_fq("fq_special", 15, Fq::from(u64::MAX));
 
     // Poseidon Fp round constants.
     let pfp = PoseidonFp;

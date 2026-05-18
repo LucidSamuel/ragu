@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run all fuzz targets. Defaults to 5 minutes each, sequential.
+# Run all fuzz targets. Defaults to 30 seconds each, sequential.
 #
 # Usage:
 #   ./fuzz.sh              # 30s each, sequential
