@@ -1,9 +1,9 @@
 import Ragu.Circuits.Element.EnforceRootOfUnity
-import Ragu.Instances.Autogen.Element.EnforceRootOfUnity
+import Ragu.Instances.Autogen.Element.EnforceRootOfUnityK5
 import Ragu.Core
 
-namespace Ragu.Instances.Element.EnforceRootOfUnity
-open Ragu.Instances.Autogen.Element.EnforceRootOfUnity
+namespace Ragu.Instances.Element.EnforceRootOfUnityK5
+open Ragu.Instances.Autogen.Element.EnforceRootOfUnityK5
 
 def deserializeInput (input : Vector (Expression (F p)) inputLen) : Var field (F p) :=
   input[0]
@@ -19,7 +19,7 @@ def formal_instance : Core.Statements.FormalInstance where
   deserializeInput
   serializeOutput
 
-  reimplementation := Circuits.Element.EnforceRootOfUnity.circuit.isGeneralFormalCircuit.toWithHint
+  reimplementation := (Circuits.Element.EnforceRootOfUnity.circuit 5).isGeneralFormalCircuit.toWithHint
 
   same_constraints := by
     intro input
@@ -32,10 +32,11 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.EnforceRootOfUnity.circuit,
       Circuits.Element.EnforceRootOfUnity.elaborated,
       Circuits.Element.EnforceRootOfUnity.main,
+      Circuits.Element.EnforceRootOfUnity.squareIter,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     constructor
   same_output := by
     intro input
     rfl
 
-end Ragu.Instances.Element.EnforceRootOfUnity
+end Ragu.Instances.Element.EnforceRootOfUnityK5

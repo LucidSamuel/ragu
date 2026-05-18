@@ -1,6 +1,6 @@
 import Ragu.Core
 
-namespace Ragu.Instances.Autogen.Element.EnforceRootOfUnity
+namespace Ragu.Instances.Autogen.Element.EnforceRootOfUnityK2
 open Core.Primes
 
 @[reducible]
@@ -30,4 +30,4 @@ set_option linter.unusedVariables false in
 def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Expression (F p)) outputLen := #v[
 ]
 
-end Ragu.Instances.Autogen.Element.EnforceRootOfUnity
+end Ragu.Instances.Autogen.Element.EnforceRootOfUnityK2

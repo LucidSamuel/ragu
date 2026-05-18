@@ -23,7 +23,9 @@ use crate::instances::{
     element_alloc::ElementAllocInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
-    element_enforce_root_of_unity::ElementEnforceRootOfUnityInstance,
+    element_enforce_root_of_unity::{
+        ElementEnforceRootOfUnityInstanceK2, ElementEnforceRootOfUnityInstanceK5,
+    },
     element_enforce_zero::ElementEnforceZeroInstance,
     element_fold::ElementFoldInstance,
     element_invert::ElementInvertInstance,
@@ -114,9 +116,14 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         generated_file: generated_file_instance::<ElementFoldInstance>,
     },
     ExportTarget {
-        name: "Ragu.Instances.Autogen.Element.EnforceRootOfUnity",
-        export: export_instance::<ElementEnforceRootOfUnityInstance>,
-        generated_file: generated_file_instance::<ElementEnforceRootOfUnityInstance>,
+        name: "Ragu.Instances.Autogen.Element.EnforceRootOfUnityK2",
+        export: export_instance::<ElementEnforceRootOfUnityInstanceK2>,
+        generated_file: generated_file_instance::<ElementEnforceRootOfUnityInstanceK2>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.EnforceRootOfUnityK5",
+        export: export_instance::<ElementEnforceRootOfUnityInstanceK5>,
+        generated_file: generated_file_instance::<ElementEnforceRootOfUnityInstanceK5>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Element.EnforceZero",
