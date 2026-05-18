@@ -2,21 +2,44 @@
 # Run all fuzz targets. Defaults to 30 seconds each, sequential.
 #
 # Usage:
-#   ./fuzz.sh              # 30s each, sequential
-#   ./fuzz.sh 60           # 1 min each, sequential
-#   ./fuzz.sh 300 -j       # 5 min each, parallel
-#   DICT=1 ./fuzz.sh       # Load dict.txt of Ragu field-element constants
+#   ./fuzz.sh                                 # 30s each, sequential
+#   ./fuzz.sh 60                              # 1 min each, sequential
+#   ./fuzz.sh 300 -j                          # 5 min each, parallel
+#   DICT=1 ./fuzz.sh                          # Load dict.txt
+#   ./fuzz.sh summarize <target> <file>       # Decode a corpus/crash input
 #
 # The DICT=1 path passes -dict=dict.txt to libFuzzer. Empirical comparison
 # (60s on fuzz_element_ops): roughly flat coverage with a small features
 # decrease; on fuzz_poseidon_sponge: small features and corpus increase.
 # Worth trying for Poseidon-heavy targets in longer runs.
 #
+# The `summarize` subcommand runs the target binary on a single corpus or
+# crash file with the DEBUG_INPUT env var set, which each fuzz target
+# respects: instead of running the fuzz body, the target parses the input
+# via Arbitrary, prints it via Debug, and exits. Useful for triaging
+# crash artifacts without manually decoding bytes.
+#
 # Regenerate dict.txt via:
 #   cargo +nightly run --release --bin extract_dict > dict.txt
 
 set -euo pipefail
 cd "$(dirname "$0")"
+
+# `summarize` subcommand: decode a single corpus/crash input via DEBUG_INPUT.
+if [[ "${1:-}" == "summarize" ]]; then
+  if [[ -z "${2:-}" || -z "${3:-}" ]]; then
+    echo "Usage: ./fuzz.sh summarize <target> <corpus-or-crash-file>" >&2
+    exit 1
+  fi
+  TARGET="$2"
+  INPUT_FILE="$3"
+  if [[ ! -f "$INPUT_FILE" ]]; then
+    echo "Input file not found: $INPUT_FILE" >&2
+    exit 1
+  fi
+  DEBUG_INPUT=1 cargo +nightly fuzz run "$TARGET" "$INPUT_FILE"
+  exit
+fi
 
 DURATION="${1:-30}"
 PARALLEL="${2:-}"

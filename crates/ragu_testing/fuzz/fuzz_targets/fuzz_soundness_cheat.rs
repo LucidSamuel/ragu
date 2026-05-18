@@ -350,7 +350,122 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
     snapshot.into_inner()
 }
 
+/// How many elements an Op pushes onto the `elems` stack.
+///
+/// Used by the TRIAGE_CHEAT path to walk the op stream without actually
+/// running the Simulator. Assumes Result-returning ops succeed (worst
+/// case for "did the cheat propagate" — gives an upper bound).
+fn op_pushes(op: &Op) -> usize {
+    match op {
+        Op::AllocSquare(_) => 2,
+        Op::IsZero(_) | Op::BoolAlloc(_) | Op::BoolNot(_) | Op::BoolAnd(_, _) => 0,
+        _ => 1,
+    }
+}
+
+/// Whether an Op reads `elems[target]` (given the current elem stack length).
+fn op_reads_target(op: &Op, target: usize, elens: usize) -> bool {
+    if elens == 0 {
+        return false;
+    }
+    let resolves = |a: u8| (a as usize) % elens == target;
+    match op {
+        Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::DivNonzero(a, b)
+        | Op::Fold(a, b, _) => resolves(*a) || resolves(*b),
+        Op::ConditionalSelect(_, a, b) => resolves(*a) || resolves(*b),
+        Op::Scale(a, _) | Op::Square(a) | Op::Double(a) | Op::Negate(a)
+        | Op::Invert(a) | Op::IsZero(a) => resolves(*a),
+        _ => false,
+    }
+}
+
+/// Triage helper: simulate stack growth through the op stream without
+/// invoking the Simulator. Returns `(target_at_cheat, downstream_reads,
+/// downstream_ops)` describing how many downstream ops actually reference
+/// the cheated slot. A `downstream_reads = 0` result indicates a "dead
+/// cheat" — the soundness signal is a false positive.
+fn triage_cheat(input: &Input) -> (usize, usize, usize) {
+    let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
+    let cheat_at_idx = (input.cheat_at as usize).min(input.ops.len());
+
+    // Walk pre-cheat ops to compute elens at cheat time.
+    for op in &input.ops[..cheat_at_idx] {
+        if elens == 0 {
+            return (0, 0, 0);
+        }
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    if elens == 0 {
+        return (0, 0, 0);
+    }
+
+    let target_at_cheat = (input.target_idx as usize) % elens.min(64);
+
+    let mut downstream_reads = 0usize;
+    let mut downstream_ops = 0usize;
+    for op in &input.ops[cheat_at_idx..] {
+        if elens == 0 {
+            break;
+        }
+        downstream_ops += 1;
+        if op_reads_target(op, target_at_cheat, elens) {
+            downstream_reads += 1;
+        }
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    (target_at_cheat, downstream_reads, downstream_ops)
+}
+
 fuzz_target!(|input: Input| {
+    // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful for
+    // triaging crash artifacts. See README.md "DEBUG_INPUT env var" section.
+    if std::env::var("DEBUG_INPUT").is_ok() {
+        eprintln!("{:#?}", input);
+        return;
+    }
+    // TRIAGE_CHEAT=1 walks the op stream tracking the cheated slot and
+    // reports how many downstream ops reference it. A 0 count means
+    // "dead cheat" — the soundness signal is a false positive.
+    if std::env::var("TRIAGE_CHEAT").is_ok() {
+        let (target_at_cheat, downstream_reads, downstream_ops) = triage_cheat(&input);
+        eprintln!(
+            "cheat_at = {}\n\
+             target_idx = {} → target_at_cheat = {}\n\
+             cheat flavor = {:?}\n\
+             downstream ops = {}\n\
+             downstream reads of cheated slot = {}",
+            input.cheat_at,
+            input.target_idx,
+            target_at_cheat,
+            input.cheat,
+            downstream_ops,
+            downstream_reads,
+        );
+        if downstream_reads == 0 {
+            eprintln!(
+                "\nVERDICT: DEAD CHEAT — cheated slot was never read after the \
+                 cheat fired. The fingerprint match is structurally trivial; \
+                 this is almost certainly a false-positive soundness signal."
+            );
+        } else {
+            eprintln!(
+                "\nVERDICT: LIVE CHEAT — cheated slot was read {} times \
+                 downstream. If `cargo +nightly fuzz run fuzz_soundness_cheat \
+                 <file>` confirms the panic, the gadget on that read path \
+                 is plausibly under-constrained.",
+                downstream_reads,
+            );
+        }
+        return;
+    }
     // Bound program length to keep iterations fast and avoid the truncation
     // path dominating coverage.
     if input.ops.is_empty() || input.ops.len() > 48 {

@@ -148,6 +148,12 @@ fn feed_witness_coverage(fingerprint: u64) {
 }
 
 fuzz_target!(|input: Input| {
+    // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful for
+    // triaging crash artifacts. See README.md "DEBUG_INPUT env var" section.
+    if std::env::var("DEBUG_INPUT").is_ok() {
+        eprintln!("{:#?}", input);
+        return;
+    }
     if input.ops.is_empty() || input.ops.len() > 48 {
         return;
     }

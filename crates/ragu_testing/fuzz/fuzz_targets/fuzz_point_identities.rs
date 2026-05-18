@@ -82,6 +82,12 @@ struct Input {
 }
 
 fuzz_target!(|input: Input| {
+    // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful for
+    // triaging crash artifacts. See README.md "DEBUG_INPUT env var" section.
+    if std::env::var("DEBUG_INPUT").is_ok() {
+        eprintln!("{:#?}", input);
+        return;
+    }
     // Skip degenerate cases. point_from_seed(0) returns the generator (not
     // the identity), so seed 0 is fine, but equal seeds put P and Q at the
     // same affine coordinates, which trips add_incomplete's distinctness

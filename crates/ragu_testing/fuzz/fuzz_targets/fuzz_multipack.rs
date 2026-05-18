@@ -52,6 +52,12 @@ fn expected_chunks(bits: &[bool], capacity: usize) -> Vec<Fp> {
 }
 
 fuzz_target!(|input: Input| {
+    // DEBUG_INPUT=1 prints the parsed Arbitrary input and exits — useful for
+    // triaging crash artifacts. See README.md "DEBUG_INPUT env var" section.
+    if std::env::var("DEBUG_INPUT").is_ok() {
+        eprintln!("{:#?}", input);
+        return;
+    }
     // Bound bit-vector length so iterations stay fast and we don't blow
     // through libFuzzer's `-max_len` budget.
     if input.bits.len() > 512 {
