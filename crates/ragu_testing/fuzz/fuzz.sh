@@ -7,6 +7,7 @@
 #   ./fuzz.sh 300 -j                          # 5 min each, parallel
 #   DICT=1 ./fuzz.sh                          # Load dict.txt
 #   ./fuzz.sh summarize <target> <file>       # Decode a corpus/crash input
+#   ./fuzz.sh triage <file>                   # Triage a fuzz_soundness_cheat crash
 #
 # The DICT=1 path passes -dict=dict.txt to libFuzzer. Empirical comparison
 # (60s on fuzz_element_ops): roughly flat coverage with a small features
@@ -18,6 +19,11 @@
 # respects: instead of running the fuzz body, the target parses the input
 # via Arbitrary, prints it via Debug, and exits. Useful for triaging
 # crash artifacts without manually decoding bytes.
+#
+# The `triage` subcommand runs fuzz_soundness_cheat with TRIAGE_CHEAT=1,
+# which walks the op stream tracking the cheated slot and reports how
+# many downstream ops actually read it. A 0 count means the soundness
+# signal is a "dead cheat" false positive.
 #
 # Regenerate dict.txt via:
 #   cargo +nightly run --release --bin extract_dict > dict.txt
@@ -38,6 +44,22 @@ if [[ "${1:-}" == "summarize" ]]; then
     exit 1
   fi
   DEBUG_INPUT=1 cargo +nightly fuzz run "$TARGET" "$INPUT_FILE"
+  exit
+fi
+
+# `triage` subcommand: walk the op stream of a fuzz_soundness_cheat crash
+# input, report whether the cheated slot was read downstream.
+if [[ "${1:-}" == "triage" ]]; then
+  if [[ -z "${2:-}" ]]; then
+    echo "Usage: ./fuzz.sh triage <crash-file>" >&2
+    exit 1
+  fi
+  INPUT_FILE="$2"
+  if [[ ! -f "$INPUT_FILE" ]]; then
+    echo "Input file not found: $INPUT_FILE" >&2
+    exit 1
+  fi
+  TRIAGE_CHEAT=1 cargo +nightly fuzz run fuzz_soundness_cheat "$INPUT_FILE"
   exit
 fi
 
