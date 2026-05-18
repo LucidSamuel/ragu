@@ -19,14 +19,22 @@ use ragu_primitives::poseidon::Sponge;
 use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 fn special_value(idx: u8) -> Fp {
-    match idx % 8 {
+    match idx % 16 {
         0 => Fp::ZERO,
         1 => Fp::ONE,
         2 => -Fp::ONE,
-        3 => Fp::TWO_INV,
-        4 => Fp::ROOT_OF_UNITY,
-        5 => Fp::MULTIPLICATIVE_GENERATOR,
-        6 => Fp::ROOT_OF_UNITY.square(),
+        3 => -Fp::from(2),
+        4 => Fp::TWO_INV,
+        5 => Fp::from(2),
+        6 => Fp::from(3),
+        7 => Fp::from(7),
+        8 => Fp::ROOT_OF_UNITY,
+        9 => Fp::ROOT_OF_UNITY.square(),
+        10 => Fp::ROOT_OF_UNITY.pow_vartime([4u64]),
+        11 => Fp::MULTIPLICATIVE_GENERATOR,
+        12 => Fp::MULTIPLICATIVE_GENERATOR.square(),
+        13 => Fp::from(1u64 << 32),
+        14 => Fp::from(1u64 << 48),
         _ => Fp::from(u64::MAX),
     }
 }

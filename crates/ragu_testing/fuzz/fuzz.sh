@@ -44,8 +44,11 @@ TARGETS=(
 run_target() {
   local target="$1"
   echo "=== $target (${DURATION}s) ==="
-  cargo +nightly fuzz run "$target" -- $DICT_FLAG -max_total_time="$DURATION" 2>&1 \
-    | tail -5
+  cargo +nightly fuzz run "$target" -- \
+    $DICT_FLAG \
+    -max_len=1024 \
+    -max_total_time="$DURATION" \
+    2>&1 | tail -5
   echo
 }
 
