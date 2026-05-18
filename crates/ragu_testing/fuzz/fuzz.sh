@@ -23,6 +23,7 @@ TARGETS=(
   fuzz_verify_reject
   fuzz_soundness_cheat
   fuzz_driver_metamorphic
+  fuzz_witness_coverage
 )
 
 run_target() {
