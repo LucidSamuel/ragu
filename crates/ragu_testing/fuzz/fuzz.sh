@@ -21,6 +21,7 @@ TARGETS=(
   fuzz_sxy_agreement
   fuzz_poseidon_differential
   fuzz_verify_reject
+  fuzz_soundness_cheat
 )
 
 run_target() {

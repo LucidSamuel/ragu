@@ -110,3 +110,12 @@ path = "fuzz_targets/fuzz_verify_reject.rs"
 test = false
 doc = false
 bench = false
+
+# Soundness via mid-stream witness cheating: honest vs cheat paths through the
+# Simulator. Matching final fingerprints under a cheat is a soundness signal.
+[[bin]]
+name = "fuzz_soundness_cheat"
+path = "fuzz_targets/fuzz_soundness_cheat.rs"
+test = false
+doc = false
+bench = false
