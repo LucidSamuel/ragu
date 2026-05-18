@@ -111,10 +111,60 @@ jobs:
             cargo +${{ steps.toolchain.outputs.name }} run --release --bin extract_dict > dict.txt
             DICT_FLAG="-dict=dict.txt"
           fi
+          # Tee output so we can extract stats after the run regardless
+          # of whether the fuzz target crashed.
           cargo +${{ steps.toolchain.outputs.name }} fuzz run --fuzz-dir . "${{ matrix.target }}" -- \
             $DICT_FLAG \
             -max_len=1024 \
-            -max_total_time="$DURATION"
+            -max_total_time="$DURATION" 2>&1 | tee fuzz-run.log
+
+      - name: Extract run stats
+        # Run even if the fuzz step crashed — we want stats artifacts
+        # uploaded for every scheduled run, success or failure.
+        if: always()
+        working-directory: qa/fuzz
+        env:
+          DURATION: ${{ github.event.inputs.duration || '18000' }}
+          USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
+        run: |
+          STATS="fuzz-stats-${{ matrix.target }}.txt"
+          {
+            echo "Target:   ${{ matrix.target }}"
+            echo "Run:      ${{ github.run_id }} (${{ github.event_name }})"
+            echo "Duration: ${DURATION}s"
+            echo "Dict:     ${USE_DICT}"
+            echo ""
+            echo "=== Early NEW coverage events (up to 20) ==="
+            grep -E "^#[0-9]+\s+NEW" fuzz-run.log | head -20 || true
+            echo ""
+            echo "=== Early REDUCE / corpus-shrink events (up to 10) ==="
+            # REDUCE dominates when the corpus is already well-explored.
+            grep -E "^#[0-9]+\s+REDUCE" fuzz-run.log | head -10 || true
+            echo ""
+            echo "=== Final state (last 20 lines) ==="
+            tail -20 fuzz-run.log
+          } > "$STATS" 2>/dev/null || true
+
+          # Mirror the summary to the GitHub Actions job summary panel so
+          # it's visible without downloading the artifact.
+          {
+            echo "## fuzz_${{ matrix.target }}"
+            echo ""
+            echo '```'
+            tail -10 fuzz-run.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload run stats
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stats-${{ matrix.target }}
+          path: qa/fuzz/fuzz-stats-${{ matrix.target }}.txt
+          # Stats are tiny; keep them longer than crashes so we have a
+          # historical record across the 30-day crash-artifact window.
+          retention-days: 90
+          if-no-files-found: warn
 
       - name: Upload crash artifacts on failure
         if: failure()
