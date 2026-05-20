@@ -36,21 +36,13 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.Fold.circuit,
       Circuits.Element.Fold.elaborated,
       Circuits.Element.Fold.main,
-      Circuits.Element.Fold.hornerStep,
-      Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
-    rfl
+      Circuit.foldl, Vector.foldlM_toList,
+      Vector.finRange, Vector.ofFn, Vector.toList, Vector.cast,
+      List.foldlM, List.foldlM_cons, List.foldlM_nil,
+      Circuits.Element.Mul.circuit, Circuits.Element.Mul.main]
+    constructor
   same_output := by
     intro input
-    simp [circuit_norm,
-      FormalCircuit.isGeneralFormalCircuit,
-      GeneralFormalCircuit.toWithHint,
-      GeneralFormalCircuit.WithHint.toSubcircuit, FormalCircuit.toSubcircuit,
-      deserializeInput, serializeOutput,
-      Circuits.Element.Fold.circuit,
-      Circuits.Element.Fold.elaborated,
-      Circuits.Element.Fold.main,
-      Circuits.Element.Fold.hornerStep,
-      Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
     rfl
 
 end Ragu.Instances.Element.FoldN7
