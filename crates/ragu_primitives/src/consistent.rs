@@ -1,23 +1,30 @@
-//! The [`Consistent`] trait — implemented for gadgets that are capable of
-//! emitting constraints to re-express all of their invariants.
+//! The [`Consistent`] trait — for gadgets that can restore their own wire
+//! invariants by re-emitting constraints.
 
 use alloc::boxed::Box;
 
 use ragu_core::{Result, drivers::Driver, gadgets::Gadget};
 
-/// Implemented for gadgets that are capable of emitting constraints to
-/// re-express all of their invariants on the wires inside `self`.
+/// Gadgets that can restore their own wire invariants by re-emitting
+/// constraints.
 ///
-/// Not every gadget can implement this.
+/// From a gadget's perspective, the wires it creates and the constraints over
+/// them persist forever. Some internal Ragu operations break that expectation
+/// by stripping constraints and substituting wires, leaving the gadget without
+/// the invariants it expects to hold for every instance.
 ///
-/// [`Point`] re-enforces its curve equation; [`Boolean`] re-enforces 0/1;
-/// [`Element`] is a no-op. Composite gadgets derived with the
-/// [`Consistent`](derive@Consistent) macro delegate to their
-/// `#[ragu(gadget)]` fields.
+/// This trait is used to ask the gadget to re-express those invariants via new
+/// constraints. The gadget's own witness data is often required to do so;
+/// gadgets without witness data cannot implement the trait.
 ///
-/// [`Point`]: crate::Point
-/// [`Boolean`]: crate::Boolean
-/// [`Element`]: crate::Element
+/// Most impls allocate a fresh `Self` and constrain it equal to the existing
+/// wires. There is no blanket impl, since gadgets do not share a uniform
+/// constructor signature.
+///
+/// The [`Consistent`](derive@Consistent) macro can derive composites by
+/// delegating to each `#[ragu(gadget)]` field, but it only re-emits each
+/// field's own invariants. Composites that expect constraints between their
+/// subgadgets' wires must instead implement the trait by hand.
 pub trait Consistent<'dr, D: Driver<'dr>>: Gadget<'dr, D> {
     /// Emit constraints that re-express `Self`'s invariants on the wires
     /// inside `self`, against the driver `dr`.
