@@ -32,8 +32,10 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.EnforceRootOfUnity.circuit,
       Circuits.Element.EnforceRootOfUnity.elaborated,
       Circuits.Element.EnforceRootOfUnity.main,
-      Circuits.Element.EnforceRootOfUnity.squareIter,
-      Circuits.Element.Mul.circuit, Circuits.Element.Mul.elaborated, Circuits.Element.Mul.main]
+      Circuit.foldl, Vector.foldlM_toList,
+      Vector.finRange, Vector.ofFn, Vector.toList, Vector.cast,
+      List.foldlM, List.foldlM_cons, List.foldlM_nil,
+      Circuits.Element.Mul.circuit, Circuits.Element.Mul.main]
     constructor
   same_output := by
     intro input
