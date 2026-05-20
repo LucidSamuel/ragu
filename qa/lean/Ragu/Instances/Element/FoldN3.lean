@@ -36,8 +36,8 @@ def formal_instance : Core.Statements.FormalInstance where
       Circuits.Element.Fold.elaborated,
       Circuits.Element.Fold.main,
       Circuit.foldl, Vector.foldlM_toList,
-      Vector.finRange, Vector.ofFn, Vector.toList, Vector.cast,
-      List.foldlM, List.foldlM_cons, List.foldlM_nil,
+      Vector.finRange, Vector.ofFn, Vector.toList,
+      List.foldlM, List.foldlM_cons,
       Circuits.Element.Mul.circuit, Circuits.Element.Mul.main]
     constructor
   same_output := by

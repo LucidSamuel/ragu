@@ -64,12 +64,13 @@ instance elaborated (n : ℕ) : ElaboratedCircuit (F p) (Input n) field where
     · simp +arith [main, circuit_norm, Mul.circuit]
     · simp +arith [main, circuit_norm, Mul.circuit]
 
-/-- For n+3 elements, each foldl Mul wire `wire(k) = env.get (i₀+3+k*3+2)`
-holds `horner(k+1) * s`, where `horner` is the value-level Horner partial.
-Sidesteps the `field (F p) = F p` HPow snag the same way as
-`EnforceRootOfUnity.wire_value_eq_pow`: parameterize by `xs_val : Vector
-(F p) _` and `s_val : F p`. -/
-private lemma wire_value_eq_horner (n : ℕ) (env : Environment (F p))
+-- For n+3 elements, each foldl Mul wire `wire(k) = env.get (i₀+3+k*3+2)`
+-- holds `horner(k+1) * s`, where `horner` is the value-level Horner partial.
+-- Sidesteps the `field (F p) = F p` HPow snag the same way as
+-- `EnforceRootOfUnity.wire_value_eq_pow`: parameterize by `xs_val : Vector
+-- (F p) _` and `s_val : F p`.
+omit [Fact p.Prime] in
+private theorem wire_value_eq_horner (n : ℕ) (env : Environment (F p))
     (xs_val : Vector (F p) (n+3)) (s_val : F p) (i₀ : ℕ)
     (h0 : env.get (i₀ + 2) = xs_val[0] * s_val)
     (h_iter0 : env.get (i₀ + 3 + 2) =
@@ -86,9 +87,8 @@ private lemma wire_value_eq_horner (n : ℕ) (env : Environment (F p))
   induction k with
   | zero =>
     simp only [zero_mul, add_zero]
-    rw [h_iter0, h0]
-    rw [Fin.foldl_succ_last, Fin.foldl_zero]
-    simp [Fin.val_last]
+    rw [h_iter0, h0, Fin.foldl_succ_last, Fin.foldl_zero]
+    simp
   | succ k ih =>
     have ih' := ih (by omega)
     have hstep := h_iterk k (by omega)
