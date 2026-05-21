@@ -548,6 +548,17 @@ mod proptests {
         arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero()))
     }
 
+    /// Draws two vectors of independently random field elements with a
+    /// common random length in `1..=32`.
+    fn arb_equal_length_pair() -> impl Strategy<Value = (Vec<F>, Vec<F>)> {
+        (1usize..=32).prop_flat_map(|n| {
+            (
+                proptest::collection::vec(arb_fe(), n..=n),
+                proptest::collection::vec(arb_fe(), n..=n),
+            )
+        })
+    }
+
     /// Checks the [`decomp_product_poly`] identity
     /// $a(x) \cdot b(x) = x^{n-1} p(x^{-1}) + x^n q(x)$ from precomputed
     /// evaluations at $x$. Centralizes the exponents so future tests of a
@@ -624,14 +635,10 @@ mod proptests {
 
         #[test]
         fn decomp_product_poly_identity(
-            n in 1usize..=32,
+            (a, b) in arb_equal_length_pair(),
             x in arb_fe_nonzero(),
-            seed_a in any::<u64>(),
-            seed_b in any::<u64>(),
         ) {
-            let a: Vec<F> = (0..n).map(|i| F::from(seed_a.wrapping_add(i as u64 * 13 + 2))).collect();
-            let b: Vec<F> = (0..n).map(|i| F::from(seed_b.wrapping_add(i as u64 * 17 + 5))).collect();
-
+            let n = a.len();
             let (p, q) = decomp_product_poly(&a, &b);
             prop_assert_eq!(p.len(), n);
             prop_assert_eq!(q.len(), n - 1);
