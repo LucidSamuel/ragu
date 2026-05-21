@@ -740,7 +740,7 @@ mod proptests {
 
 #[test]
 fn test_mul() {
-    use pasta_curves::group::{Curve, prime::PrimeCurveAffine};
+    use pasta_curves::group::{Curve, CurveAffine};
 
     let mut coeffs = vec![];
     for i in 0..1000 {

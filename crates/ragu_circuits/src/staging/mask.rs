@@ -238,7 +238,7 @@ mod tests {
     use core::marker::PhantomData;
 
     use ff::Field;
-    use group::{Curve, prime::PrimeCurveAffine};
+    use group::{Curve, CurveAffine as _};
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, Uendo};
     use ragu_core::{

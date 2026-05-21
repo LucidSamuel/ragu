@@ -15,7 +15,7 @@ use ff::Field;
 use ff::PrimeField;
 use ff::WithSmallOrderMulGroup;
 use group::{Curve, Group};
-use group::prime::PrimeCurveAffine;
+use group::CurveAffine as _;
 use pasta_curves::arithmetic::CurveAffine;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;

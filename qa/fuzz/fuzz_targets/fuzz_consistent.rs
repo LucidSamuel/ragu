@@ -29,7 +29,7 @@
 use arbitrary::Arbitrary;
 use ff::PrimeField;
 use group::Curve;
-use group::prime::PrimeCurveAffine;
+use group::CurveAffine;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
 use ragu_core::maybe::Maybe;

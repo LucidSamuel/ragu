@@ -85,27 +85,16 @@ criterion = { version = "0.5", default-features = false }
 # than the rest of the workspace.
 [patch.crates-io]
 # `zkcrypto/ff` branch `release-0.14.0` HEAD as of 2026-05-21.
-# Speculative release branch for ff 0.14.0; merges PR #150 (bump
-# `num-bigint`/`syn` and `addchain` to `0.3`), PR #151 (rename
-# `try_from_rng` → `try_random`), and PR #149 (`rand_core 0.10`,
-# MSRV 1.85). Pinned by rev since the branch is still moving.
+# Speculative release branch for ff 0.14.0
 ff = { git = "https://github.com/zkcrypto/ff", rev = "bdd74a3f75c4c378d69e954944a61bb0930532a0" }
 
-# `ebfull/group` branch `release-0.14.0-with-rand-0.10-modulo-curveaffine`
-# HEAD as of 2026-05-21. Forked from upstream `zkcrypto/group`
-# `release-0.14.0` before the `CurveAffine` trait refactor (PR #48),
-# so `pasta_curves` still compiles against the old
-# `PrimeCurveAffine`/`CofactorCurveAffine` shape. Bumps `rand_core`
-# to `0.10` and renames `Group::try_from_rng` → `Group::try_random`
-# to match upstream ff PR #151.
-group = { git = "https://github.com/ebfull/group", rev = "3a5c728f27700cf8767e926e2566d6c5cf1879ef" }
+# `zkcrypto/group` branch `release-0.14.0` HEAD as of 2026-05-21.
+# Speculative release branch for group 0.14.0
+group = { git = "https://github.com/zkcrypto/group", rev = "326b36b0c43dcb1507b89017323f43a57c3bffd8" }
 
-# `ebfull/pasta_curves` branch `ff-0.14-with-rand-0.10-and-deferred-redux`
-# HEAD as of 2026-05-21. On top of upstream `zcash/pasta_curves`
-# branch `ff-0.14` (which migrates to `ff`/`group` `0.14.0-pre.0`),
-# adds a `rand 0.10` bump, deferred-reduction support (`DeferredField`
-# trait + lazy Montgomery reduction via `Product` accumulator, PR #87
-# from `alxiong/lazy-mont-red`), and renames `try_from_rng` →
-# `try_random` to match upstream ff PR #151 and the corresponding
-# rename on the `ebfull/group` fork.
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "10fbf911b176854d8eafb58da1184f56f1b10944" }
+# `ebfull/pasta_curves` branch `ff-0.14-for-ragu` HEAD as of 2026-05-21.
+# Stacks on the prior `ff-0.14-with-rand-0.10-and-deferred-redux` work
+# (ff/group 0.14.0-pre.0, rand 0.10, deferred reduction, try_random rename)
+# and adds adaptation for the new `CurveAffine` API from upstream `group`
+# release-0.14.0 (PR #48).
+pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "4f9da85aeebc650a57610501d50d036454dcdc48" }
