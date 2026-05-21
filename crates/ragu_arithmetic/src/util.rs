@@ -544,17 +544,35 @@ mod proptests {
             .prop_map(|(a, b)| F::from(a) + F::from(b) * F::MULTIPLICATIVE_GENERATOR)
     }
 
+    /// Random nonzero field element, occasionally hitting `1` or `-1` to
+    /// exercise boundary points that uniformly random elements would
+    /// essentially never reach.
     fn arb_fe_nonzero() -> impl Strategy<Value = F> {
-        arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero()))
+        prop_oneof![
+            8 => arb_fe().prop_filter("nonzero", |x| !bool::from(x.is_zero())),
+            1 => Just(F::ONE),
+            1 => Just(-F::ONE),
+        ]
+    }
+
+    /// Like `arb_fe`, but with a ~10% probability of returning `F::ZERO`,
+    /// so vectors built from this strategy exercise sparse polynomials
+    /// and the leading-zero-coefficient case.
+    fn arb_fe_with_zeros() -> impl Strategy<Value = F> {
+        prop_oneof![
+            9 => arb_fe(),
+            1 => Just(F::ZERO),
+        ]
     }
 
     /// Draws two vectors of independently random field elements with a
-    /// common random length in `1..=32`.
+    /// common random length in `1..=32`. Coefficients occasionally land
+    /// on zero, exercising sparse and leading-zero inputs.
     fn arb_equal_length_pair() -> impl Strategy<Value = (Vec<F>, Vec<F>)> {
         (1usize..=32).prop_flat_map(|n| {
             (
-                proptest::collection::vec(arb_fe(), n..=n),
-                proptest::collection::vec(arb_fe(), n..=n),
+                proptest::collection::vec(arb_fe_with_zeros(), n..=n),
+                proptest::collection::vec(arb_fe_with_zeros(), n..=n),
             )
         })
     }
