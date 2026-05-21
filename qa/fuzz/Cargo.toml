@@ -42,10 +42,9 @@ rand = "0.10"
 # nested workspaces, so the same overrides must be repeated here to keep
 # fuzz builds resolving the same forks the rest of the workspace uses.
 [patch.crates-io]
-addchain = { git = "https://github.com/ebfull/addchain", rev = "da4099a81bc29c895f3ca0ebcaae21c860494c12" }
-ff = { git = "https://github.com/ebfull/ff", branch = "release-0.14.0-with-rand-0.10" }
-group = { git = "https://github.com/ebfull/group", branch = "release-0.14.0-with-rand-0.10" }
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", branch = "ff-0.14-with-rand-0.10-and-deferred" }
+ff = { git = "https://github.com/zkcrypto/ff", rev = "bdd74a3f75c4c378d69e954944a61bb0930532a0" }
+group = { git = "https://github.com/ebfull/group", rev = "3a5c728f27700cf8767e926e2566d6c5cf1879ef" }
+pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "10fbf911b176854d8eafb58da1184f56f1b10944" }
 
 # Poseidon sponge: absorb/squeeze mode transitions + save/resume consistency
 [[bin]]
