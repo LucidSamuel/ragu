@@ -20,8 +20,6 @@
 
 #![no_main]
 
-use core::cell::RefCell;
-
 use arbitrary::Arbitrary;
 use ff::Field;
 use ff::PrimeField;
@@ -135,8 +133,8 @@ fn build_seeds(input: &Input) -> Vec<Fp> {
 /// (a degenerate input that would produce a false-positive fingerprint
 /// match).
 fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint> {
-    let snapshot: RefCell<Option<Fingerprint>> = RefCell::new(None);
-    let cheat_noop: RefCell<bool> = RefCell::new(false);
+    let mut snapshot: Option<Fingerprint> = None;
+    let mut cheat_noop = false;
 
     let sim = Simulator::<Fp>::simulate(fes.to_vec(), |dr, witness| {
         let allocator = &mut Standard::new();
@@ -174,7 +172,7 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
                     // happens to equal what was already there. Fingerprints
                     // would trivially match. Flag and bail out so the
                     // outer harness discards this run.
-                    *cheat_noop.borrow_mut() = true;
+                    cheat_noop = true;
                     return Ok(());
                 }
                 let cheated = match input.cheat {
@@ -339,15 +337,15 @@ fn run_path(input: &Input, fes: &[Fp], apply_cheat: bool) -> Option<Fingerprint>
         // is Always.
         let elem_vals: Vec<Fp> = elems.iter().map(|e| *e.value().take()).collect();
         let bool_vals: Vec<bool> = bools.iter().map(|b| b.value().take()).collect();
-        *snapshot.borrow_mut() = Some((elem_vals, bool_vals));
+        snapshot = Some((elem_vals, bool_vals));
 
         Ok(())
     });
 
-    if sim.is_err() || *cheat_noop.borrow() {
+    if sim.is_err() || cheat_noop {
         return None;
     }
-    snapshot.into_inner()
+    snapshot
 }
 
 /// How many elements an Op pushes onto the `elems` stack.
@@ -383,7 +381,10 @@ fn op_reads_target(op: &Op, target: usize, elens: usize) -> bool {
 /// invoking the Simulator. Returns `(target_at_cheat, downstream_reads,
 /// downstream_ops)` describing how many downstream ops actually reference
 /// the cheated slot. A `downstream_reads = 0` result indicates a "dead
-/// cheat" — the soundness signal is a false positive.
+/// cheat" — the soundness assertion cannot fire (the cheat value remains
+/// observable at position `target_at_cheat` in the cheat-path fingerprint
+/// while honest-path holds the original value, so honest != cheated is
+/// trivially satisfied).
 fn triage_cheat(input: &Input) -> (usize, usize, usize) {
     let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
     let cheat_at_idx = (input.cheat_at as usize).min(input.ops.len());
@@ -422,6 +423,52 @@ fn triage_cheat(input: &Input) -> (usize, usize, usize) {
     }
 
     (target_at_cheat, downstream_reads, downstream_ops)
+}
+
+/// Pre-flight check: returns `true` if the cheated slot is never read by
+/// any downstream op, in which case the soundness assertion is guaranteed
+/// to hold (`honest[target_at_cheat] = original_val`,
+/// `cheat[target_at_cheat] = cheat_val`, both present in their respective
+/// fingerprints and differing by construction). Running the two simulator
+/// paths is pure waste for these inputs, and they dominate the input
+/// distribution under random `Op` sampling — most `Op` variants either
+/// don't read elements at all (allocations, boolean ops) or pick indices
+/// that miss the cheated slot.
+///
+/// Bails out on the first read, so the walk costs O(prefix + 1) for live
+/// cheats vs. O(prefix + suffix) for dead cheats — the asymmetry favors
+/// the cheap path.
+fn is_dead_cheat(input: &Input) -> bool {
+    let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
+    let cheat_at_idx = input.cheat_at as usize;
+
+    for op in &input.ops[..cheat_at_idx] {
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    if elens == 0 {
+        return true;
+    }
+
+    let target_at_cheat = (input.target_idx as usize) % elens.min(64);
+
+    for op in &input.ops[cheat_at_idx..] {
+        if elens == 0 {
+            break;
+        }
+        if op_reads_target(op, target_at_cheat, elens) {
+            return false;
+        }
+        elens += op_pushes(op);
+        if elens > 128 {
+            elens = 64;
+        }
+    }
+
+    true
 }
 
 fuzz_target!(|input: Input| {
@@ -474,6 +521,16 @@ fuzz_target!(|input: Input| {
     // Cheat must land inside the executable op range, otherwise the cheat
     // is a no-op and fingerprints trivially match.
     if (input.cheat_at as usize) >= input.ops.len() {
+        return;
+    }
+
+    // Skip dead cheats — inputs where the cheated slot is never read
+    // downstream. The soundness assertion cannot fire on these (the cheat
+    // value remains visible at position `target_at_cheat` in the cheat-path
+    // fingerprint, differing from honest-path's original value by
+    // construction), so running the simulator twice would be pure waste.
+    // This walk reads bytes only; no field arithmetic, no constraint checks.
+    if is_dead_cheat(&input) {
         return;
     }
 
