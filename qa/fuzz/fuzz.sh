@@ -96,6 +96,7 @@ TARGETS=(
   fuzz_poseidon_sponge
   fuzz_endoscalar
   fuzz_element_ops
+  fuzz_circuit_witness
   fuzz_revdot
   fuzz_fold_revdot
   fuzz_sxy_agreement
