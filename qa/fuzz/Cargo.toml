@@ -91,6 +91,18 @@ test = false
 doc = false
 bench = false
 
+# Staging pipeline (issue #709 Layer 4): the same revdot identity as
+# fuzz_circuit_revdot_identity, but applied to MultiStage-as-Circuit
+# instances. Exercises StageBuilder wire reservation, StageGuard wire
+# injection, MultiStage::witness adapter, and skip_gates recursion that
+# the non-staged targets bypass.
+[[bin]]
+name = "fuzz_staging"
+path = "fuzz_targets/fuzz_staging.rs"
+test = false
+doc = false
+bench = false
+
 # Structured polynomial revdot vs unstructured dot product
 [[bin]]
 name = "fuzz_revdot"

@@ -98,6 +98,7 @@ TARGETS=(
   fuzz_element_ops
   fuzz_circuit_witness
   fuzz_circuit_revdot_identity
+  fuzz_staging
   fuzz_revdot
   fuzz_fold_revdot
   fuzz_sxy_agreement
