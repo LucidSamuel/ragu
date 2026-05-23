@@ -43,7 +43,7 @@
 //! - Bugs in the trace-polynomial assembly, constraint polynomial emission
 //!   (`WiringObject`), or downstream prover/verifier components.
 //! - Soundness gaps in the constraint system itself
-//!   (`fuzz_soundness_cheat`'s lane).
+//!   (`fuzz_witness_cheat`'s lane).
 
 #![no_main]
 
@@ -142,7 +142,7 @@ fn build_seeds(input: &Input) -> Vec<Fp> {
 ///
 /// Runs the input's `Vec<Op>` against the supplied driver and witness,
 /// returning the final stack snapshot. Identical dispatch logic to
-/// `fuzz_element_ops` and `fuzz_soundness_cheat`, so the same gadget
+/// `fuzz_element_ops` and `fuzz_witness_cheat`, so the same gadget
 /// API surface is exercised in all three targets.
 fn run_ops<'dr, D>(
     dr: &mut D,

@@ -41,7 +41,7 @@ All four share an essentially identical `Op` enum and dispatch — see the
 |---|---|
 | `fuzz_element_ops` | Completeness — random gadget compositions must not crash and must produce internally-consistent witnesses. The substrate. |
 | `fuzz_witness_coverage` | Same as `fuzz_element_ops` plus a post-run witness-state hash spread across coverage branches. Biases the fuzzer toward distinct internal witness states. Opt-in POC (~28% throughput cost). |
-| `fuzz_soundness_cheat` | Soundness — mid-stream replaces an element on the stack with a fresh allocation of a different value; matching final fingerprints under a cheat is a signal of an under-constrained gadget. |
+| `fuzz_witness_cheat` | Mid-stream replaces an element on the stack with a fresh allocation of a different value, then compares fingerprints against the honest run. Currently functions as a Simulator-robustness fuzzer (the soundness assertion is structurally tautological today); becomes a true under-constrained-gadget oracle once the patcher technique lands. The mutation scaffolding is in place. |
 | `fuzz_driver_metamorphic` | Differential — runs the same `Vec<Op>` through both `Simulator` and `Emulator<Wired<Fp>>`; wire values must match. Tests the model-vs-real-driver invariant. |
 
 ### Gadget-API property and identity targets
@@ -120,7 +120,7 @@ Or via the helper:
 ./fuzz.sh summarize fuzz_element_ops artifacts/fuzz_element_ops/crash-abc123
 ```
 
-### `TRIAGE_CHEAT` env var (`fuzz_soundness_cheat` only)
+### `TRIAGE_CHEAT` env var (`fuzz_witness_cheat` only)
 
 When a soundness signal fires, distinguishing a real signal from a "dead
 cheat" (cheated slot never read downstream) is important. Set
@@ -129,8 +129,8 @@ the op stream, track the cheated index, and report how many downstream
 ops actually read it:
 
 ```bash
-TRIAGE_CHEAT=1 cargo +nightly fuzz run fuzz_soundness_cheat \
-  artifacts/fuzz_soundness_cheat/crash-abc123
+TRIAGE_CHEAT=1 cargo +nightly fuzz run fuzz_witness_cheat \
+  artifacts/fuzz_witness_cheat/crash-abc123
 ```
 
 If the count is 0, the soundness signal is probably a dead-cheat false
@@ -155,7 +155,7 @@ Two workflows in `.github/workflows/`:
 ## Why several targets duplicate the same `Op` enum
 
 The four `Vec<Op>`-style targets (`fuzz_element_ops`,
-`fuzz_witness_coverage`, `fuzz_soundness_cheat`,
+`fuzz_witness_coverage`, `fuzz_witness_cheat`,
 `fuzz_driver_metamorphic`) each have a copy of the same `Op` enum and
 dispatch — roughly 200 lines of mechanical duplication per file.
 
@@ -163,7 +163,7 @@ This is deliberate. cargo-fuzz expects `[[bin]]`-style fuzz targets, and
 sharing a `src/lib.rs` between fuzz targets adds friction with the
 cargo-fuzz workflow and the patch-table mirroring this crate already
 needs. The duplication is annotated in each file (`Identical dispatch
-logic to fuzz_element_ops and fuzz_soundness_cheat`) so future edits
+logic to fuzz_element_ops and fuzz_witness_cheat`) so future edits
 propagate the same change everywhere.
 
 ## Patch table

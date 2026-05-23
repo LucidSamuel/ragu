@@ -143,11 +143,12 @@ test = false
 doc = false
 bench = false
 
-# Soundness via mid-stream witness cheating: honest vs cheat paths through the
-# Simulator. Matching final fingerprints under a cheat is a soundness signal.
+# Mid-stream witness cheating: honest vs cheat paths through the Simulator.
+# Currently a Simulator-robustness fuzzer; intended as a soundness oracle once
+# the patcher work lands (see issue tracking the patcher technique).
 [[bin]]
-name = "fuzz_soundness_cheat"
-path = "fuzz_targets/fuzz_soundness_cheat.rs"
+name = "fuzz_witness_cheat"
+path = "fuzz_targets/fuzz_witness_cheat.rs"
 test = false
 doc = false
 bench = false
