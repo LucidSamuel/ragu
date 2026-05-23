@@ -45,27 +45,24 @@
 //! two-element output. Together they cover most of `Element`'s arithmetic
 //! surface.
 //!
-//! TODO(issue #709): broaden circuit coverage by adding purpose-built
-//! reference circuits and another `CircuitChoice` arm for each:
-//! - **Boolean**: `Boolean::alloc`, `Boolean::not`, `Boolean::and`,
-//!   `conditional_select`. A reference circuit could allocate `n`
-//!   booleans from witness bits and assert a target value reconstructed
-//!   from them.
-//! - **Point**: `Point::alloc`, `endo`, `negate`, `double`,
-//!   `conditional_endo`, `conditional_negate`, `add_incomplete`. A
-//!   reference circuit could compute a Pasta scalar multiplication of a
-//!   fuzzer-chosen base by a fuzzer-chosen scalar and compare to native.
-//!   (`fuzz_endoscalar` already does the gadget-level differential; the
-//!   gap is exercising it through `Circuit::witness` end-to-end.)
-//! - **Routines / sub-circuits**: `Driver::routine`, the
-//!   `Routine::predict`/`Routine::execute` split. A reference circuit
-//!   could invoke a non-trivial `Routine` impl from
-//!   `ragu_testing::routines` and assert its `Aux<'_>` matches the
-//!   prediction.
-//! - **Multi-stage circuits**: `StageBuilder`, `MultiStage`,
-//!   `MultiStageCircuit`. This is the Tier-3B Layer 4 work flagged in
-//!   `fuzzing-follow-up-work.md`; needs an `Arbitrary` impl that builds
-//!   a stage chain with varying wire counts per stage.
+//! Circuit menu (each is a `CircuitChoice` arm exercising one gadget
+//! family end-to-end through `Circuit::witness`):
+//!
+//! - **`SquareCircuit`** — `Element::square` loop.
+//! - **`MySimpleCircuit`** — `Element::{square, mul, add, sub}` plus an
+//!   explicit `Driver::enforce_zero` constraint.
+//! - **`BoolCircuit`** — `Boolean::{alloc, and, not, conditional_select}`.
+//! - **`PointCircuit`** — `Point::{alloc, endo, negate}` over `EpAffine`,
+//!   complementing `fuzz_endoscalar`'s gadget-level coverage with an
+//!   end-to-end Circuit-pipeline path.
+//! - **`RoutineCircuit`** — `Driver::routine` plus an inline
+//!   `Routine::{predict, execute}` split (the `ScaleByThree` routine).
+//!
+//! Multi-stage circuits (`StageBuilder`, `MultiStage`, `MultiStageCircuit`)
+//! are covered by the sibling `fuzz_staging` target, not here. The
+//! remaining gaps (exotic point ops `double_and_add_incomplete`, longer
+//! routine chains, multi-routine compositions) can be added as further
+//! `CircuitChoice` arms when warranted.
 //!
 //! ## What this does not catch (deferred — issue #709)
 //!
@@ -85,15 +82,27 @@ use arbitrary::Arbitrary;
 use core::cell::OnceCell;
 use ff::Field;
 use ff::PrimeField;
+use ff::WithSmallOrderMulGroup;
+use group::Curve;
+use group::prime::PrimeCurveAffine;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
+use pasta_curves::arithmetic::CurveAffine;
+use ragu_arithmetic::Coeff;
 use ragu_circuits::{
-    Circuit, CircuitExt,
+    Circuit, CircuitExt, WithAux,
     polynomials::TestRank,
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
-use ragu_core::maybe::Maybe;
-use ragu_primitives::Simulator;
+use ragu_core::{
+    Result,
+    drivers::{Driver, DriverValue, LinearExpression},
+    gadgets::{Bound, Kind},
+    maybe::Maybe,
+    routines::{Prediction, Routine},
+};
+use ragu_pasta::{EpAffine, Fq};
+use ragu_primitives::{Boolean, Element, Point, Simulator, allocator::Standard};
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
 use std::sync::LazyLock;
 
@@ -114,6 +123,27 @@ enum CircuitChoice {
         b_seed: u64,
         use_special_a: Option<u8>,
         derive_b_from_a: bool,
+    },
+    /// `BoolCircuit` over a `(bool, bool, Fp, Fp)` witness. Exercises
+    /// `Boolean::{alloc, and, not, conditional_select}`.
+    Bool {
+        b0: bool,
+        b1: bool,
+        x_seed: u64,
+        y_seed: u64,
+        use_special_x: Option<u8>,
+    },
+    /// `PointCircuit` over an `EpAffine` witness derived from a fuzzer-chosen
+    /// Fq scalar. Exercises `Point::{alloc, endo, negate}` end-to-end through
+    /// `Circuit::witness`.
+    Point {
+        scalar_seed: u64,
+    },
+    /// `RoutineCircuit` over a single Fp witness. Exercises
+    /// `Driver::routine` and the `Routine::{predict, execute}` split.
+    Routine {
+        witness_seed: u64,
+        use_special: Option<u8>,
     },
 }
 
@@ -144,7 +174,7 @@ fn special_value(idx: u8) -> Fp {
 /// the hot path into trace + assemble after each distinct `times` is
 /// observed once. Mirrors the cache in `fuzz_sxy_agreement.rs:42-69`.
 struct SquareRegistryCache {
-    slots: [OnceCell<Result<Registry<'static, Fp, TestRank>, ()>>; 120],
+    slots: [OnceCell<core::result::Result<Registry<'static, Fp, TestRank>, ()>>; 120],
 }
 
 // SAFETY: libfuzzer runs the fuzz target on a single thread, so the
@@ -180,6 +210,27 @@ static SIMPLE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = Lazy
         .ok()
 });
 
+static BOOL_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    RegistryBuilder::<Fp, TestRank>::new()
+        .register_circuit(BoolCircuit)
+        .and_then(|b| b.finalize())
+        .ok()
+});
+
+static POINT_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    RegistryBuilder::<Fp, TestRank>::new()
+        .register_circuit(PointCircuit)
+        .and_then(|b| b.finalize())
+        .ok()
+});
+
+static ROUTINE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
+    RegistryBuilder::<Fp, TestRank>::new()
+        .register_circuit(RoutineCircuit)
+        .and_then(|b| b.finalize())
+        .ok()
+});
+
 /// Native spec for `SquareCircuit`: compute `w^(2^times)` by repeated
 /// squaring directly in the field.
 fn square_native(witness: Fp, times: usize) -> Fp {
@@ -208,6 +259,180 @@ fn simple_native(a: Fp, b: Fp) -> Option<(Fp, Fp)> {
 /// for `MySimpleCircuit`. Returns `None` if `a^5` is a non-residue.
 fn derive_satisfying_b(a: Fp) -> Option<Fp> {
     Option::<Fp>::from(a.pow_vartime([5u64]).sqrt())
+}
+
+// ---------------------------------------------------------------------------
+// BoolCircuit — exercises `Boolean::alloc`, `Boolean::and`, `Boolean::not`,
+// and `Boolean::conditional_select`. Output is the conditional-selected
+// element value.
+// ---------------------------------------------------------------------------
+
+struct BoolCircuit;
+
+impl Circuit<Fp> for BoolCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = (bool, bool, Fp, Fp);
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let allocator = &mut Standard::new();
+        let b0 = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+        let b1 = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?;
+        let x = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?;
+        let y = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.3))?;
+        let and_b = b0.and(dr, &b1)?;
+        // `not(b0)` constraint already pinned to `b0` by the alloc; we
+        // invoke it for its synthesis side-effect (exercises the
+        // linear-combination path that produces a new wire) and drop
+        // the result. The Bound is dropped without being written.
+        let _not_b = b0.not(dr);
+        let sel = and_b.conditional_select(dr, &x, &y)?;
+        Ok(WithAux::new(sel, D::unit()))
+    }
+}
+
+/// Native spec for `BoolCircuit`: matches the
+/// `and_b.conditional_select(x, y)` invocation in `witness`. Per
+/// `Boolean::conditional_select(a, b)` — returns `a` when the boolean
+/// is false, `b` when true — so the result is `y` iff `b0 && b1`.
+fn bool_native(b0: bool, b1: bool, x: Fp, y: Fp) -> Fp {
+    if b0 && b1 { y } else { x }
+}
+
+// ---------------------------------------------------------------------------
+// PointCircuit — exercises the `Point<EpAffine>` gadget end-to-end through
+// `Circuit::witness`. `fuzz_endoscalar` exercises the same gadgets at the
+// Vec<Op> dispatch level but never through the higher-layer Circuit
+// pipeline, so this closes a gap.
+// ---------------------------------------------------------------------------
+
+struct PointCircuit;
+
+impl Circuit<Fp> for PointCircuit {
+    type Instance<'instance> = EpAffine;
+    type Output = Kind![Fp; Point<'_, _, EpAffine>];
+    type Witness<'witness> = EpAffine;
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        Point::alloc(dr, instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>> {
+        let p = Point::alloc(dr, witness)?;
+        let endo_p = p.endo(dr);
+        let negated = endo_p.negate(dr);
+        Ok(WithAux::new(negated, D::unit()))
+    }
+}
+
+/// Native spec for `PointCircuit`: apply endo then negate, on the base
+/// `EpAffine` value. Returns `None` if the witness or any intermediate
+/// would be the point at infinity (which `Point::alloc` rejects).
+fn point_native(base: EpAffine) -> Option<EpAffine> {
+    let coords = base.coordinates().into_option()?;
+    let endo_x = *coords.x() * Fp::ZETA;
+    let endo_p = EpAffine::from_xy(endo_x, *coords.y()).into_option()?;
+    Some((-endo_p.to_curve()).to_affine())
+}
+
+// ---------------------------------------------------------------------------
+// RoutineCircuit — exercises `Driver::routine` and the
+// `Routine::predict` / `Routine::execute` split. The routine triples its
+// input; the circuit invokes it once and returns the tripled element.
+// ---------------------------------------------------------------------------
+
+/// Routine that triples its input: `output = 3 * input`. Designed to
+/// exercise the full `predict` (native aux computation on a wireless
+/// emulator) + `execute` (driver-side constraint emission) split.
+#[derive(Clone)]
+struct ScaleByThree;
+
+impl Routine<Fp> for ScaleByThree {
+    type Input = Kind![Fp; Element<'_, _>];
+    type Output = Kind![Fp; Element<'_, _>];
+    type Aux<'dr> = Fp;
+
+    fn execute<'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        input: Bound<'dr, D, Self::Input>,
+        aux: DriverValue<D, Self::Aux<'dr>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        let output = Element::alloc(dr, allocator, aux)?;
+        let three_input = input.scale(dr, Coeff::Arbitrary(Fp::from(3u64)));
+        dr.enforce_zero(|lc| lc.add(three_input.wire()).sub(output.wire()))?;
+        Ok(output)
+    }
+
+    fn predict<'dr, D: Driver<'dr, F = Fp, Wire = ()>>(
+        &self,
+        _dr: &mut D,
+        input: &Bound<'dr, D, Self::Input>,
+    ) -> Result<Prediction<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'dr>>>> {
+        let aux = input.value().map(|v| *v * Fp::from(3u64));
+        Ok(Prediction::Unknown(aux))
+    }
+}
+
+struct RoutineCircuit;
+
+impl Circuit<Fp> for RoutineCircuit {
+    type Instance<'instance> = Fp;
+    type Output = Kind![Fp; Element<'_, _>];
+    type Witness<'witness> = Fp;
+    type Aux<'witness> = ();
+
+    fn instance<'dr, 'instance: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        instance: DriverValue<D, Self::Instance<'instance>>,
+    ) -> Result<Bound<'dr, D, Self::Output>> {
+        let allocator = &mut Standard::new();
+        Element::alloc(dr, allocator, instance)
+    }
+
+    fn witness<'dr, 'witness: 'dr, D: Driver<'dr, F = Fp>>(
+        &self,
+        dr: &mut D,
+        witness: DriverValue<D, Self::Witness<'witness>>,
+    ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'witness>>>>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        let x = Element::alloc(dr, allocator, witness)?;
+        let result = dr.routine(ScaleByThree, x)?;
+        Ok(WithAux::new(result, D::unit()))
+    }
+}
+
+/// Native spec for `RoutineCircuit`: `output = 3 * witness`.
+fn routine_native(witness: Fp) -> Fp {
+    witness * Fp::from(3u64)
 }
 
 /// Run the differential alpha-injection check on an assembled trace.
@@ -404,6 +629,166 @@ fuzz_target!(|input: Input| {
                 if alphas_distinct {
                     check_alpha_injection(registry, &trace, alpha_a, alpha_b);
                 }
+            }
+        }
+
+        CircuitChoice::Bool {
+            b0,
+            b1,
+            x_seed,
+            y_seed,
+            use_special_x,
+        } => {
+            let registry = match BOOL_REGISTRY.as_ref() {
+                Some(r) => r,
+                None => return,
+            };
+            let x: Fp = match use_special_x {
+                Some(idx) => special_value(idx),
+                None => Fp::from(x_seed),
+            };
+            let y = Fp::from(y_seed);
+            let witness = (b0, b1, x, y);
+            let circuit = BoolCircuit;
+            let expected = bool_native(b0, b1, x, y);
+
+            let mut sim_value: Option<Fp> = None;
+            let sim_result = Simulator::<Fp>::simulate(witness, |dr, w_just| {
+                let cw = circuit.witness(dr, w_just)?;
+                let elem = cw.into_output();
+                sim_value = Some(*elem.value().take());
+                Ok(())
+            });
+
+            if sim_result.is_err() {
+                panic!(
+                    "Simulator rejected BoolCircuit witness={witness:?} \
+                     — BoolCircuit has no constraints that should fail for bool inputs"
+                );
+            }
+
+            let sim_value = sim_value.expect("Simulator Ok without writing value");
+            assert_eq!(
+                sim_value, expected,
+                "BoolCircuit: synthesis output != native conditional_select: \
+                 witness={witness:?}, sim={sim_value:?}, expected={expected:?}"
+            );
+
+            let trace = match circuit.trace(witness) {
+                Ok(t) => t.into_output(),
+                Err(_) => panic!(
+                    "trace::eval rejected BoolCircuit witness={witness:?} \
+                     but Simulator accepted — driver disagreement"
+                ),
+            };
+
+            if alphas_distinct {
+                check_alpha_injection(registry, &trace, alpha_a, alpha_b);
+            }
+        }
+
+        CircuitChoice::Point { scalar_seed } => {
+            // scalar=0 gives the identity; Point::alloc rejects it. Skip.
+            if scalar_seed == 0 {
+                return;
+            }
+            let base = (EpAffine::generator() * Fq::from(scalar_seed)).to_affine();
+            let registry = match POINT_REGISTRY.as_ref() {
+                Some(r) => r,
+                None => return,
+            };
+            let circuit = PointCircuit;
+            let expected: EpAffine = match point_native(base) {
+                Some(p) => p,
+                None => return, // intermediate hit identity; skip
+            };
+
+            let mut sim_value: Option<EpAffine> = None;
+            let sim_result = Simulator::<Fp>::simulate(base, |dr, w_just| {
+                let cw = circuit.witness(dr, w_just)?;
+                let point = cw.into_output();
+                sim_value = Some(point.value().take());
+                Ok(())
+            });
+
+            if sim_result.is_err() {
+                // PointCircuit's only failure mode is Point::alloc on
+                // identity, which we filtered above. Anything else is a
+                // plumbing bug.
+                panic!(
+                    "Simulator rejected PointCircuit on a non-identity base \
+                     (scalar={scalar_seed}): {:?}",
+                    sim_result.err()
+                );
+            }
+
+            let sim_value = sim_value.expect("Simulator Ok without writing value");
+            assert_eq!(
+                sim_value, expected,
+                "PointCircuit: synthesis output != native endo→negate: \
+                 scalar={scalar_seed}, sim={sim_value:?}, expected={expected:?}"
+            );
+
+            let trace = match circuit.trace(base) {
+                Ok(t) => t.into_output(),
+                Err(_) => panic!(
+                    "trace::eval rejected PointCircuit scalar={scalar_seed} \
+                     but Simulator accepted — driver disagreement"
+                ),
+            };
+
+            if alphas_distinct {
+                check_alpha_injection(registry, &trace, alpha_a, alpha_b);
+            }
+        }
+
+        CircuitChoice::Routine {
+            witness_seed,
+            use_special,
+        } => {
+            let registry = match ROUTINE_REGISTRY.as_ref() {
+                Some(r) => r,
+                None => return,
+            };
+            let witness: Fp = match use_special {
+                Some(idx) => special_value(idx),
+                None => Fp::from(witness_seed),
+            };
+            let circuit = RoutineCircuit;
+            let expected = routine_native(witness);
+
+            let mut sim_value: Option<Fp> = None;
+            let sim_result = Simulator::<Fp>::simulate(witness, |dr, w_just| {
+                let cw = circuit.witness(dr, w_just)?;
+                let elem = cw.into_output();
+                sim_value = Some(*elem.value().take());
+                Ok(())
+            });
+
+            if sim_result.is_err() {
+                panic!(
+                    "Simulator rejected RoutineCircuit witness={witness:?} \
+                     — RoutineCircuit's ScaleByThree should accept any Fp witness"
+                );
+            }
+
+            let sim_value = sim_value.expect("Simulator Ok without writing value");
+            assert_eq!(
+                sim_value, expected,
+                "RoutineCircuit: synthesis output != native 3 * witness: \
+                 witness={witness:?}, sim={sim_value:?}, expected={expected:?}"
+            );
+
+            let trace = match circuit.trace(witness) {
+                Ok(t) => t.into_output(),
+                Err(_) => panic!(
+                    "trace::eval rejected RoutineCircuit witness={witness:?} \
+                     but Simulator accepted — driver disagreement"
+                ),
+            };
+
+            if alphas_distinct {
+                check_alpha_injection(registry, &trace, alpha_a, alpha_b);
             }
         }
     }
