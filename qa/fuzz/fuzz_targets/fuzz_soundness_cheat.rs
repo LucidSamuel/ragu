@@ -365,6 +365,16 @@ fn op_pushes(op: &Op) -> usize {
 /// (`if let Ok(_)` in `run_path`). `op_pushes` is an upper bound for these
 /// — actual `run_path` execution may push zero. Used by `is_dead_cheat` to
 /// refuse predicting through unpredictable stack growth.
+///
+/// Note: ops that use `?` to propagate errors (e.g., `Op::AllocSpecial`,
+/// `Op::BoolAlloc`, the `Element::alloc` inside `Op::Fold`) are
+/// intentionally excluded here. They fail *symmetrically* in the honest
+/// and cheat paths because pre-cheat ops execute identically through
+/// both invocations of `run_path`, so a `?`-propagated failure causes
+/// both paths to return `None` and the harness exits before the
+/// soundness assertion — there is no false-positive surface to guard
+/// against. Only `if let Ok(_)`-style fallible pushes can shift the
+/// effective stack length between paths and need conservative bail-out.
 fn op_can_fail_push(op: &Op) -> bool {
     matches!(
         op,

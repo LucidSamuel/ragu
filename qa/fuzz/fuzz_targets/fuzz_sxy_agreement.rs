@@ -67,8 +67,10 @@ fuzz_target!(|input: Input| {
         eprintln!("{:#?}", input);
         return;
     }
-    // Clamp times to stay within TestRank bounds.
-    let times = ((input.times as usize) % 120).max(1);
+    // Map u8 to `times ∈ [1, 120]` so every slot in the 120-entry cache is
+    // reachable. `% 120` alone would yield `[0, 119]` (and the `.max(1)`
+    // floor used previously left slot 119 unreachable).
+    let times = ((input.times as usize) % 120) + 1;
 
     let registry = match registry_for(times) {
         Some(r) => r,
