@@ -68,6 +68,28 @@ jobs:
       - name: Run benchmarks
         run: cargo bench --workspace --all-features --locked --bench arithmetic --bench circuits --bench pcd --bench primitives -- --save-summary=json
 
+      - name: Summarize benchmark regressions
+        if: github.event_name == 'pull_request'
+        env:
+          ALERT_THRESHOLD: '1.5'
+        run: |
+          set -euo pipefail
+          REGRESSIONS=$(find target/gungraun -name 'summary.json' -exec cat {} + \
+            | jq --slurp --from-file .github/scripts/extract-regressions.jq \
+                --argjson threshold "$ALERT_THRESHOLD")
+          if [ "$(jq 'length' <<< "$REGRESSIONS")" -gt 0 ]; then
+            {
+              echo "## ⚠️ Performance Regression Detected"
+              echo
+              echo "Benchmarks exceeding **${ALERT_THRESHOLD}x** baseline:"
+              echo
+              jq --raw-output --from-file .github/scripts/format-regressions.jq <<< "$REGRESSIONS"
+            } >> "$GITHUB_STEP_SUMMARY"
+            jq --raw-output \
+              '.[] | "::warning title=Benchmark Regression::\(.name) regressed \(.ratio * 100 | round / 100)x baseline (current \(.current), baseline \(.baseline))"' \
+              <<< "$REGRESSIONS"
+          fi
+
       - name: Upload benchmark results artifact
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v5
