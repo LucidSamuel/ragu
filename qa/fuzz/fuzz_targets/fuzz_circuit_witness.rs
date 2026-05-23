@@ -85,9 +85,9 @@ use ff::PrimeField;
 use ff::WithSmallOrderMulGroup;
 use group::Curve;
 use group::prime::PrimeCurveAffine;
+use pasta_curves::arithmetic::CurveAffine;
 use libfuzzer_sys::fuzz_target;
 use pasta_curves::Fp;
-use pasta_curves::arithmetic::CurveAffine;
 use ragu_arithmetic::Coeff;
 use ragu_circuits::{
     Circuit, CircuitExt, WithAux,
@@ -355,7 +355,7 @@ fn point_native(base: EpAffine) -> Option<EpAffine> {
     let coords = base.coordinates().into_option()?;
     let endo_x = *coords.x() * Fp::ZETA;
     let endo_p = EpAffine::from_xy(endo_x, *coords.y()).into_option()?;
-    Some((-endo_p.to_curve()).to_affine())
+    Some((-PrimeCurveAffine::to_curve(&endo_p)).to_affine())
 }
 
 // ---------------------------------------------------------------------------
@@ -692,7 +692,8 @@ fuzz_target!(|input: Input| {
             if scalar_seed == 0 {
                 return;
             }
-            let base = (EpAffine::generator() * Fq::from(scalar_seed)).to_affine();
+            let base = (<EpAffine as PrimeCurveAffine>::generator() * Fq::from(scalar_seed))
+                .to_affine();
             let registry = match POINT_REGISTRY.as_ref() {
                 Some(r) => r,
                 None => return,
