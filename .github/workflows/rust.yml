@@ -189,7 +189,7 @@ jobs:
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
       - name: Install mdbook and plugins
-        uses: taiki-e/install-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9 # v2.79.5
+        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
         with:
           tool: mdbook@0.4.52,mdbook-katex@0.9.4,mdbook-mermaid@0.16.2,mdbook-admonish@1.20.0
       - name: Build book
