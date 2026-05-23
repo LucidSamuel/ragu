@@ -19,8 +19,7 @@ use ragu_circuits::{
 };
 use ragu_testing::circuits::SquareCircuit;
 
-use core::cell::OnceCell;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -38,21 +37,13 @@ struct Input {
 /// `RegistryBuilder::register_circuit` failure and
 /// `RegistryBuilder::finalize` `GateBoundExceeded` failures — those are
 /// "skip" outcomes for the fuzz body).
-///
-/// `OnceCell` (not `OnceLock`) is fine because libfuzzer is single-threaded.
 struct RegistryCache {
     /// Slot for `times = i + 1`, indexed 0..119.
-    slots: [OnceCell<Result<Registry<'static, Fp, TestRank>, ()>>; 120],
+    slots: [OnceLock<Result<Registry<'static, Fp, TestRank>, ()>>; 120],
 }
 
-// SAFETY: libfuzzer runs the fuzz target on a single thread, so the
-// interior-mutable OnceCell slots are never accessed concurrently. The
-// `LazyLock` machinery requires `Sync`, but the access pattern never
-// actually crosses thread boundaries.
-unsafe impl Sync for RegistryCache {}
-
 static REGISTRY_CACHE: LazyLock<RegistryCache> = LazyLock::new(|| RegistryCache {
-    slots: [const { OnceCell::new() }; 120],
+    slots: [const { OnceLock::new() }; 120],
 });
 
 fn registry_for(times: usize) -> Option<&'static Registry<'static, Fp, TestRank>> {

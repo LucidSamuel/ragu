@@ -361,6 +361,24 @@ fn op_pushes(op: &Op) -> usize {
     }
 }
 
+/// Whether an Op's element-push is conditional on a runtime `Result`
+/// (`if let Ok(_)` in `run_path`). `op_pushes` is an upper bound for these
+/// — actual `run_path` execution may push zero. Used by `is_dead_cheat` to
+/// refuse predicting through unpredictable stack growth.
+fn op_can_fail_push(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::Mul(_, _)
+            | Op::Square(_)
+            | Op::Invert(_)
+            | Op::DivNonzero(_, _)
+            | Op::Fold(_, _, _)
+            | Op::AllocRaw(_)
+            | Op::AllocSquare(_)
+            | Op::ConditionalSelect(_, _, _)
+    )
+}
+
 /// Whether an Op reads `elems[target]` (given the current elem stack length).
 fn op_reads_target(op: &Op, target: usize, elens: usize) -> bool {
     if elens == 0 {
@@ -425,24 +443,42 @@ fn triage_cheat(input: &Input) -> (usize, usize, usize) {
     (target_at_cheat, downstream_reads, downstream_ops)
 }
 
-/// Pre-flight check: returns `true` if the cheated slot is never read by
-/// any downstream op, in which case the soundness assertion is guaranteed
-/// to hold (`honest[target_at_cheat] = original_val`,
-/// `cheat[target_at_cheat] = cheat_val`, both present in their respective
-/// fingerprints and differing by construction). Running the two simulator
-/// paths is pure waste for these inputs, and they dominate the input
-/// distribution under random `Op` sampling — most `Op` variants either
-/// don't read elements at all (allocations, boolean ops) or pick indices
-/// that miss the cheated slot.
+/// Pre-flight check: returns `true` if the static op walk can prove the
+/// cheated slot is never read by any downstream op. Inputs classified as
+/// dead are skipped — running the two simulator paths on them is pure
+/// waste, and they dominate the input distribution under random `Op`
+/// sampling (most variants either don't read elements at all or pick
+/// indices that miss the cheated slot).
+///
+/// **Soundness bound.** `op_pushes` is an upper-bound estimator (it
+/// assumes Result-returning ops succeed). To match `run_path`'s
+/// `target_at_cheat` computation exactly, we refuse to predict when any
+/// pre-cheat op has a fallible push: in those cases the predicted `elens`
+/// at the cheat point would exceed the real `elens`, drifting
+/// `target_at_cheat = target_idx % elens.min(64)` to a different slot than
+/// `run_path` actually cheats on. We conservatively return `false` (not
+/// dead) and run the full path.
+///
+/// Residual suffix drift: when a *suffix* op fails to push, the prediction
+/// can still miss a real read (`(a % elens_real) == target` while
+/// `(a % elens_pred) != target`). This is a coverage shave, not a
+/// soundness break — it requires both a suffix failure and a specific
+/// modular near-miss on the read index. Inputs with multiple real reads
+/// almost always trip the live-cheat check on a non-drifting read first.
 ///
 /// Bails out on the first read, so the walk costs O(prefix + 1) for live
 /// cheats vs. O(prefix + suffix) for dead cheats — the asymmetry favors
 /// the cheap path.
 fn is_dead_cheat(input: &Input) -> bool {
     let mut elens: usize = input.seeds.len() + input.large_seeds.len() + input.special_seeds.len();
-    let cheat_at_idx = input.cheat_at as usize;
+    let cheat_at_idx = (input.cheat_at as usize).min(input.ops.len());
 
     for op in &input.ops[..cheat_at_idx] {
+        // Pre-cheat fallible push → `elens` prediction may exceed reality,
+        // breaking `target_at_cheat` agreement with `run_path`. Bail.
+        if op_can_fail_push(op) {
+            return false;
+        }
         elens += op_pushes(op);
         if elens > 128 {
             elens = 64;
@@ -453,7 +489,11 @@ fn is_dead_cheat(input: &Input) -> bool {
         return true;
     }
 
-    let target_at_cheat = (input.target_idx as usize) % elens.min(64);
+    // Mirror `run_path` line 163: `target_idx % elems.len().min(64)`. The
+    // `.max(1)` guards `% 0` if `elens` is ever zero here (currently
+    // unreachable given the seed shape, but defends against future input
+    // schema changes).
+    let target_at_cheat = (input.target_idx as usize) % elens.min(64).max(1);
 
     for op in &input.ops[cheat_at_idx..] {
         if elens == 0 {
