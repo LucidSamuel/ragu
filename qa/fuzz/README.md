@@ -1,6 +1,6 @@
 # `ragu_testing-fuzz`
 
-cargo-fuzz harness for the Ragu project. 17 fuzz targets + 1 auxiliary
+cargo-fuzz harness for the Ragu project. 20 fuzz targets + 1 auxiliary
 dictionary-extractor tool. Standalone workspace (the `[workspace]` table in
 `Cargo.toml` makes this crate its own root) so nightly + libfuzzer flags
 don't leak into the rest of the repo.
@@ -71,6 +71,19 @@ All four share an essentially identical `Op` enum and dispatch — see the
 | Target | What it catches |
 |---|---|
 | `fuzz_verify_reject` | Corrupt proof bytes via `fuzz_utils::Corruption`, assert verifier rejects. Uses `test_trivial_proof()` — tests verifier hardening, not soundness in the paper's sense. |
+
+### Circuit-pipeline targets
+
+Higher-layer targets that drive full `Circuit::witness` → `trace::eval` →
+`Registry::assemble_with_alpha` pipelines rather than calling gadgets
+directly through `Simulator`. These close issue #709's Layer 1, 2, and 4
+gaps.
+
+| Target | What it catches |
+|---|---|
+| `fuzz_circuit_witness` | `Circuit::witness` pipeline correctness across six reference circuits — `SquareCircuit`, `MySimpleCircuit`, `BoolCircuit`, `PointCircuit`, `RoutineCircuit` (Routine via `Prediction::Unknown`), `KnownRoutineCircuit` (Routine via `Prediction::Known`). Asserts Simulator output matches a native Rust spec, that `trace::eval` agrees with `Simulator` on accept/reject, and the `assemble_with_alpha` α-injection contract. |
+| `fuzz_circuit_revdot_identity` | The canonical algebraic identity from `tests/mod.rs:158-187` — `r.revdot(r + r.dilate(z) + s(X,y) + t(X,z)) == circuit.ky(instance, y)` — for satisfying witnesses. Bridges the witness-driver side and the wiring/constraint side. Uses only pub APIs by deriving `s(X, y)` from `Registry::wy(omega_0, y)` minus the registry key term. |
+| `fuzz_staging` | Full staging-system coverage: **Invariant A** (`rx.revdot(own_mask) == 0` per stage), **Invariant B** (combined revdot identity through `MultiStage::witness`), **final_mask** check on the bare assembled trace, plus structural **cross-mask** (rx coefficient positions stay within the stage's declared range — robust against adversarial witness/y) and `skip_gates`/`num_gates` hand-coded pins. Three variants exercise `Single2W`, `Single4W`, and `Chain2x4` (parent → child, exercising `skip_gates` recursion). |
 
 ## Auxiliary tooling
 
