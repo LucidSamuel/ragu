@@ -21,10 +21,18 @@ type C = Pasta;
 type R = ProductionRank;
 const HEADER_SIZE: usize = 4;
 
-/// Wrapper to satisfy `Sync` for `Application` (which contains `OnceCell`).
-/// Safe because libfuzzer is single-threaded.
+/// Wrapper to satisfy `Sync` for `Application` (which contains a
+/// `OnceCell` field — `seeded_trivial` — for memoizing the trivial-proof
+/// fixture, breaking auto-`Sync`).
 struct SyncApp(ragu_pcd::Application<'static, C, R, HEADER_SIZE>);
-// SAFETY: libfuzzer runs the fuzz target on a single thread.
+// SAFETY: this fuzz body invokes `Application` exclusively through
+// `app.test_trivial_proof()` (which only reads from the application,
+// initializing `seeded_trivial` on the first call and reading it
+// thereafter) and `verify(&proof)` (which takes `&Application` and never
+// touches `seeded_trivial`). libfuzzer drives `fuzz_target!` on a single
+// thread, so even the `OnceCell` initialization on the very first call
+// is uncontended. If this target ever grows to spawn worker threads or
+// to mutate `Application` state, the assumption must be revisited.
 unsafe impl Sync for SyncApp {}
 
 static APP: LazyLock<SyncApp> = LazyLock::new(|| {

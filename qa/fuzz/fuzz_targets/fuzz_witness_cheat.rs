@@ -1,10 +1,42 @@
-//! Soundness fuzz target via mid-stream witness cheating.
+//! Mid-stream witness cheating fuzz target.
 //!
 //! Runs the same instruction stream twice through the `Simulator`: an
 //! honest path and a cheat path that, at a fuzzer-chosen point, replaces
 //! one element on the stack with a fresh allocation whose value differs
 //! from the honest one. After both runs complete, the final element and
 //! boolean values are compared.
+//!
+//! # Current effective behavior
+//!
+//! As implemented, this target functions primarily as a Simulator
+//! robustness fuzzer rather than a soundness oracle. The cheated slot is
+//! included in the comparison fingerprint, and the cheat value is filtered
+//! to differ from the original, so `honest != cheat` is tautologically
+//! true regardless of whether downstream constraints actually catch the
+//! cheat. The signals the target reliably surfaces today are panics, OOB
+//! indexing, and arithmetic faults in the gadget API when fed adversarial
+//! inputs — not under-constrained gadgets.
+//!
+//! # Intended behavior (post-patcher)
+//!
+//! Becoming a true under-constrained-gadget oracle requires two changes,
+//! both tracked in the patcher follow-up issue:
+//!
+//! 1. A patcher pass that, after the cheat is injected, walks the
+//!    recorded constraint graph forward from the cheated slot and adjusts
+//!    other downstream witness slots so the constraint system stays
+//!    satisfied. Without this, the cheat is either rejected by the first
+//!    downstream constraint that compares it against a honest-derived
+//!    value, or it propagates only through gates that self-satisfy
+//!    (`c = a*b` recomputed from the cheat).
+//!
+//! 2. Excluding the cheated slot from the comparison fingerprint, so the
+//!    `honest != cheat` check reflects downstream observable behavior
+//!    rather than the cheat injection itself.
+//!
+//! With both in place, the assertion becomes: "the Simulator accepted two
+//! genuinely different witnesses producing the same observable behavior"
+//! — the canonical under-constrained-gadget signal.
 //!
 //! # Why this is the witness-mutation pattern, adapted to Ragu
 //!
@@ -365,6 +397,16 @@ fn op_pushes(op: &Op) -> usize {
 /// (`if let Ok(_)` in `run_path`). `op_pushes` is an upper bound for these
 /// — actual `run_path` execution may push zero. Used by `is_dead_cheat` to
 /// refuse predicting through unpredictable stack growth.
+///
+/// Note: ops that use `?` to propagate errors (e.g., `Op::AllocSpecial`,
+/// `Op::BoolAlloc`, the `Element::alloc` inside `Op::Fold`) are
+/// intentionally excluded here. They fail *symmetrically* in the honest
+/// and cheat paths because pre-cheat ops execute identically through
+/// both invocations of `run_path`, so a `?`-propagated failure causes
+/// both paths to return `None` and the harness exits before the
+/// soundness assertion — there is no false-positive surface to guard
+/// against. Only `if let Ok(_)`-style fallible pushes can shift the
+/// effective stack length between paths and need conservative bail-out.
 fn op_can_fail_push(op: &Op) -> bool {
     matches!(
         op,
@@ -545,7 +587,7 @@ fuzz_target!(|input: Input| {
         } else {
             eprintln!(
                 "\nVERDICT: LIVE CHEAT — cheated slot was read {} times \
-                 downstream. If `cargo +nightly fuzz run fuzz_soundness_cheat \
+                 downstream. If `cargo +nightly fuzz run fuzz_witness_cheat \
                  <file>` confirms the panic, the gadget on that read path \
                  is plausibly under-constrained.",
                 downstream_reads,

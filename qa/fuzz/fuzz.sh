@@ -8,7 +8,7 @@
 #   DICT=1 ./fuzz.sh                          # Load dict.txt
 #   ASAN=1 ./fuzz.sh                          # Re-enable AddressSanitizer
 #   ./fuzz.sh summarize <target> <file>       # Decode a corpus/crash input
-#   ./fuzz.sh triage <file>                   # Triage a fuzz_soundness_cheat crash
+#   ./fuzz.sh triage <file>                   # Triage a fuzz_witness_cheat crash
 #
 # The DICT=1 path passes -dict=dict.txt to libFuzzer. Empirical comparison
 # (60s on fuzz_element_ops): roughly flat coverage with a small features
@@ -17,7 +17,7 @@
 #
 # By default this script passes `-s none` to cargo-fuzz, skipping
 # AddressSanitizer for a large throughput win on simulator-heavy targets
-# — measured ~70% on fuzz_soundness_cheat (50k → 84k exec/s), ~30% on
+# — measured ~70% on fuzz_witness_cheat (50k → 84k exec/s), ~30% on
 # fuzz_poseidon_sponge, ~10% on fuzz_element_ops. ASAN catches memory
 # bugs (UAF, OOB on unwise unsafe, leaks across `Simulator::simulate`
 # closures); to opt back in, set ASAN=1. The weekly cron in
@@ -32,10 +32,10 @@
 # via Arbitrary, prints it via Debug, and exits. Useful for triaging
 # crash artifacts without manually decoding bytes.
 #
-# The `triage` subcommand runs fuzz_soundness_cheat with TRIAGE_CHEAT=1,
+# The `triage` subcommand runs fuzz_witness_cheat with TRIAGE_CHEAT=1,
 # which walks the op stream tracking the cheated slot and reports how
-# many downstream ops actually read it. A 0 count means the soundness
-# signal is a "dead cheat" false positive.
+# many downstream ops actually read it. A 0 count means the signal is a
+# "dead cheat" false positive.
 #
 # Regenerate dict.txt via:
 #   cargo +nightly run --release --bin extract_dict > dict.txt
@@ -59,7 +59,7 @@ if [[ "${1:-}" == "summarize" ]]; then
   exit
 fi
 
-# `triage` subcommand: walk the op stream of a fuzz_soundness_cheat crash
+# `triage` subcommand: walk the op stream of a fuzz_witness_cheat crash
 # input, report whether the cheated slot was read downstream.
 if [[ "${1:-}" == "triage" ]]; then
   if [[ -z "${2:-}" ]]; then
@@ -71,7 +71,7 @@ if [[ "${1:-}" == "triage" ]]; then
     echo "Input file not found: $INPUT_FILE" >&2
     exit 1
   fi
-  TRIAGE_CHEAT=1 cargo +nightly fuzz run --fuzz-dir . fuzz_soundness_cheat "$INPUT_FILE"
+  TRIAGE_CHEAT=1 cargo +nightly fuzz run --fuzz-dir . fuzz_witness_cheat "$INPUT_FILE"
   exit
 fi
 
@@ -96,12 +96,15 @@ TARGETS=(
   fuzz_poseidon_sponge
   fuzz_endoscalar
   fuzz_element_ops
+  fuzz_circuit_witness
+  fuzz_circuit_revdot_identity
+  fuzz_staging
   fuzz_revdot
   fuzz_fold_revdot
   fuzz_sxy_agreement
   fuzz_poseidon_differential
   fuzz_verify_reject
-  fuzz_soundness_cheat
+  fuzz_witness_cheat
   fuzz_driver_metamorphic
   fuzz_witness_coverage
   fuzz_algebraic_identities
