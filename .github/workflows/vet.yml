@@ -23,29 +23,27 @@ jobs:
   vet:
     name: cargo vet
     runs-on: ubuntu-latest
+    # cargo-vet only reads manifests; it doesn't compile our crates. Bypass
+    # the workspace's rust-toolchain.toml (which pins 1.90.0 + clippy) so we
+    # use the runner's preinstalled stable and avoid rustup component-install
+    # conflicts when cargo runs inside the workspace.
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
-      - name: Install Rust toolchain (from rust-toolchain.toml)
-        uses: dtolnay/rust-toolchain@b18f7037bce1ea84c086f4d5e9493f853c0ce412 # 1.90.0 branch HEAD @ 2026-05-23
-
-      - name: Cache cargo registry
+      - name: Cache cargo-vet binary
+        id: cache-vet
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-          key: ${{ runner.os }}-cargo-vet-${{ hashFiles('Cargo.lock', 'qa/supply-chain/**') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-vet-
+          path: ~/.cargo/bin/cargo-vet
+          key: ${{ runner.os }}-cargo-vet-bin-0.10.2
 
       - name: Install cargo-vet
-        uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
-        with:
-          tool: cargo-vet@0.10.0
+        if: steps.cache-vet.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-vet@0.10.2
 
       - name: Run cargo vet
         run: cargo vet --locked --store-path ./qa/supply-chain/
