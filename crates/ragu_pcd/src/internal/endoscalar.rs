@@ -20,7 +20,7 @@ use alloc::vec;
 
 use ff::{Field, WithSmallOrderMulGroup};
 use pasta_curves::group::{Curve, WnafBase, WnafScalar};
-use ragu_arithmetic::{CurveAffine, Uendo};
+use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
@@ -78,10 +78,10 @@ impl<F: Field, R: Rank> Stage<F, R> for EndoscalarStage {
     type Parent = ();
 
     fn values() -> usize {
-        Uendo::BITS as usize
+        u128::BITS as usize
     }
 
-    type Witness<'source> = Uendo;
+    type Witness<'source> = u128;
     type OutputKind = Kind![F; Endoscalar<'_, _>];
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
@@ -119,7 +119,7 @@ where
     /// # Panics
     ///
     /// Panics if `points.len() != NUM_POINTS`.
-    pub fn new(endoscalar: Uendo, points: &[C]) -> Self {
+    pub fn new(endoscalar: u128, points: &[C]) -> Self {
         assert_eq!(points.len(), NUM_POINTS, "expected {NUM_POINTS} points");
 
         let initial = points[0];
@@ -252,7 +252,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> EndoscalingStep<C, R, NUM
 /// Witness for an endoscaling step.
 pub struct EndoscalingStepWitness<'source, C: CurveAffine, const NUM_POINTS: usize> {
     /// The endoscalar value.
-    pub endoscalar: Uendo,
+    pub endoscalar: u128,
     /// Point witnesses (inputs and interstitials).
     pub points: &'source PointsWitness<C, NUM_POINTS>,
 }
@@ -329,7 +329,6 @@ mod tests {
 
     use ff::Field;
     use pasta_curves::group::{Curve, CurveAffine as _, Group};
-    use ragu_arithmetic::Uendo;
     use ragu_circuits::{
         CircuitExt,
         polynomials::{self},
@@ -353,7 +352,7 @@ mod tests {
     type R = polynomials::ProductionRank;
 
     /// Computes the effective scalar for an endoscalar via emulated `lift`.
-    fn compute_effective_scalar(endo: Uendo) -> Fq {
+    fn compute_effective_scalar(endo: u128) -> Fq {
         Emulator::<Wired<Fq>>::emulate_wired(endo, |dr, witness| {
             let e = Endoscalar::alloc(dr, witness)?;
             let scalar = e.lift(dr)?;
@@ -367,7 +366,7 @@ mod tests {
     /// For inputs $[s_0, s_1, \ldots, s_N]$ and effective scalar $e$:
     ///
     /// $$\text{result} = e^N \cdot s_0 + e^{N-1} \cdot s_1 + \cdots + e \cdot s_{N-1} + s_N$$
-    fn compute_horner_native(endo: Uendo, inputs: &[EpAffine]) -> EpAffine {
+    fn compute_horner_native(endo: u128, inputs: &[EpAffine]) -> EpAffine {
         assert!(!inputs.is_empty());
         let e: Fq = compute_effective_scalar(endo);
 
@@ -383,7 +382,7 @@ mod tests {
     /// Takes the initial point and a separate inputs array (length NUM_POINTS - 1),
     /// mirroring the new uniform step structure.
     fn compute_interstitials<const NUM_POINTS: usize>(
-        endoscalar: Uendo,
+        endoscalar: u128,
         initial: EpAffine,
         inputs: &[EpAffine],
     ) -> Vec<EpAffine> {
@@ -424,7 +423,7 @@ mod tests {
         let num_steps = NumStepsLen::<NUM_POINTS>::len();
 
         // Generate random endoscalar and base input points.
-        let endoscalar: Uendo = rand::rng().random();
+        let endoscalar: u128 = rand::rng().random();
         let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
             (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
         });
@@ -495,7 +494,7 @@ mod tests {
         assert_eq!(InputsLen::<NUM_POINTS>::len(), 10);
 
         // Generate random endoscalar and base input points.
-        let endoscalar: Uendo = rand::rng().random();
+        let endoscalar: u128 = rand::rng().random();
         let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
             (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
         });
@@ -637,7 +636,7 @@ mod tests {
     fn test_points_witness_new() {
         /// Verifies PointsWitness::new produces identical results to manual construction.
         fn check<const NUM_POINTS: usize>() {
-            let endoscalar: Uendo = rand::rng().random();
+            let endoscalar: u128 = rand::rng().random();
             let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
                 (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
             });
