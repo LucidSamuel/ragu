@@ -2,15 +2,7 @@ name: Supply chain
 on:
   push:
     branches: [main]
-    paths:
-      - '**/Cargo.lock'
-      - 'qa/supply-chain/**'
-      - '.github/workflows/vet.yml'
   pull_request:
-    paths:
-      - '**/Cargo.lock'
-      - 'qa/supply-chain/**'
-      - '.github/workflows/vet.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -20,8 +12,36 @@ permissions:
   contents: read
 
 jobs:
+  # Detect whether anything that could affect the vet result changed. The vet
+  # job always runs (so branch-protection required-check semantics work) but
+  # short-circuits when nothing relevant changed.
+  changes:
+    name: detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      vet: ${{ steps.filter.outputs.vet }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        id: filter
+        with:
+          filters: |
+            vet:
+              - '**/Cargo.lock'
+              - '**/Cargo.toml'
+              - 'qa/supply-chain/**'
+              - '.github/workflows/vet.yml'
+
   vet:
     name: cargo vet
+    needs: changes
+    if: needs.changes.outputs.vet == 'true' || github.event_name == 'push'
     runs-on: ubuntu-latest
     # cargo-vet only reads manifests; it doesn't compile our crates. Bypass
     # the workspace's rust-toolchain.toml (which pins 1.90.0 + clippy) so we
@@ -46,4 +66,4 @@ jobs:
         run: cargo install --locked cargo-vet@0.10.2
 
       - name: Run cargo vet
-        run: cargo vet --locked --store-path ./qa/supply-chain/
+        run: cargo vet --frozen --locked --store-path ./qa/supply-chain/
