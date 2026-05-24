@@ -45,12 +45,7 @@ jobs:
       - name: Install cargo-vet
         uses: taiki-e/install-action@6c1f7cf125e42770ff087ea443901b487cc5471a # v2.79.5
         with:
-          tool: cargo-vet@0.10.3
-
-      # cargo-vet expects `supply-chain/` adjacent to the workspace Cargo.toml.
-      # Our config lives at `qa/supply-chain/`, so stage a symlink for CI.
-      - name: Stage supply-chain symlink
-        run: ln -s qa/supply-chain supply-chain
+          tool: cargo-vet@0.10.0
 
       - name: Run cargo vet
-        run: cargo vet --locked
+        run: cargo vet --locked --store-path ./qa/supply-chain/
