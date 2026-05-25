@@ -1,13 +1,17 @@
-use ff::Field;
+use ff::{Field, PrimeField};
 use ragu_arithmetic::Coeff;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
-    gadgets::Gadget,
+    gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
 
-use crate::{Element, consistent::Consistent};
+use crate::{
+    Element,
+    consistent::Consistent,
+    io::{Buffer, Write},
+};
 
 /// An [`Element`] that has been constrained nonzero in the constraint system.
 ///
@@ -32,6 +36,68 @@ impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
     /// Consumes `self` and returns the underlying [`Element`].
     pub fn into_inner(self) -> Element<'dr, D> {
         self.element
+    }
+
+    /// Negates this element. The result is nonzero since
+    /// $-a = 0 \implies a = 0$.
+    pub fn negate(&self, dr: &mut D) -> Self {
+        Self::new_unchecked(self.element.negate(dr))
+    }
+
+    /// Squares this element. The result is nonzero since `F` is an integral
+    /// domain.
+    ///
+    /// This costs one gate.
+    pub fn square(&self, dr: &mut D) -> Result<Self> {
+        Ok(Self::new_unchecked(self.element.square(dr)?))
+    }
+
+    /// Multiplies this element by another nonzero element. The result is
+    /// nonzero since `F` is an integral domain.
+    ///
+    /// This costs one gate.
+    pub fn mul(&self, dr: &mut D, other: &Self) -> Result<Self> {
+        Ok(Self::new_unchecked(self.element.mul(dr, &other.element)?))
+    }
+
+    /// Divides this element by `divisor` and returns the quotient. The result
+    /// is nonzero since `F` is an integral domain.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn divide(&self, dr: &mut D, divisor: &Self) -> Result<Self> {
+        Ok(Self::new_unchecked(self.element.divide(dr, divisor)?))
+    }
+}
+
+impl<'dr, D: Driver<'dr, F: PrimeField>> Nonzero<'dr, D> {
+    /// Monomorphization-time guard that `D::F` has odd characteristic, which
+    /// is what makes [`double`](Self::double) preserve nonzeroness: $2x = 0$
+    /// has no nonzero solution iff $\mathrm{char}(F) \neq 2$.
+    ///
+    /// $S$ is the 2-adicity of $p - 1$ where $p = \mathrm{char}(D::F)$. For
+    /// any odd prime $p$, $p - 1$ is even, so $S \geq 1$. The only prime
+    /// field where $S = 0$ is $\mathbb{F}_2$; bounding on [`PrimeField`]
+    /// already rules out extension fields, so together this excludes every
+    /// char-2 field.
+    pub const ASSERT_ODD_CHAR: () = assert!(
+        <D::F as PrimeField>::S >= 1,
+        "Nonzero::double requires a field of odd characteristic",
+    );
+
+    /// Doubles this element. The result is nonzero since `char(F) > 2`.
+    pub fn double(&self, dr: &mut D) -> Self {
+        let () = Self::ASSERT_ODD_CHAR;
+        Self::new_unchecked(self.element.double(dr))
+    }
+}
+
+impl<F: Field> Write<F> for Kind![F; @Nonzero<'_, _>] {
+    fn write_gadget<'dr, D: Driver<'dr, F = F>, B: Buffer<'dr, D>>(
+        this: &Nonzero<'dr, D>,
+        dr: &mut D,
+        buf: &mut B,
+    ) -> Result<()> {
+        buf.write(dr, this)
     }
 }
 
@@ -147,6 +213,83 @@ impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Invertible<'dr, D> {
     }
 }
 
+/// Batches deferred nonzero proofs so a chain of divisions can share one
+/// inversion at the end of a [`scope`](NonzeroBank::scope).
+///
+/// Folding an element into the bank multiplies it into a running product and
+/// trusts it nonzero; when the scope closes, the product is constrained
+/// nonzero, retroactively validating every factor.
+///
+/// A `NonzeroBank` is only constructible by [`NonzeroBank::scope`] (which
+/// always discharges the proof) or by internal callers that assert every
+/// fold is nonzero by structural argument.
+pub struct NonzeroBank<'dr, D: Driver<'dr>> {
+    // `None` is unchecked mode: `fold` emits no constraint and the bank
+    // discharges to a no-op when dropped. `Some(p)` is discharging mode:
+    // `fold` multiplies the new factor into `p` and the closing scope
+    // constrains `p != 0`.
+    product: Option<Element<'dr, D>>,
+}
+
+impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
+    /// Constructs a discharging bank. Only callable inside the crate; users
+    /// reach this via [`scope`](Self::scope).
+    pub(crate) fn new() -> Self {
+        Self {
+            product: Some(Element::one()),
+        }
+    }
+
+    /// Constructs a bank that asserts every fold is nonzero by external
+    /// argument. No constraints are emitted by `fold` or by dropping the
+    /// bank. Internal use only.
+    pub(crate) fn new_unchecked() -> Self {
+        Self { product: None }
+    }
+
+    /// Folds `elem` into the running product and returns it typed as
+    /// [`Nonzero`]. In discharging mode the returned [`Nonzero`] is sound
+    /// iff the enclosing scope reaches its end; in unchecked mode the
+    /// caller is asserting `elem != 0` by external argument.
+    ///
+    /// This costs one gate in discharging mode and zero gates in unchecked
+    /// mode.
+    pub fn fold(&mut self, dr: &mut D, elem: Element<'dr, D>) -> Result<Nonzero<'dr, D>> {
+        if let Some(product) = &mut self.product {
+            *product = product.mul(dr, &elem)?;
+        }
+        Ok(Nonzero::new_unchecked(elem))
+    }
+
+    /// Discharges a discharging bank by constraining its product nonzero.
+    /// In unchecked mode this is a no-op. Only callable inside the crate;
+    /// users reach this via [`scope`](Self::scope).
+    pub(crate) fn enforce(self, dr: &mut D) -> Result<()> {
+        if let Some(product) = self.product {
+            product.enforce_nonzero(dr)?;
+        }
+        Ok(())
+    }
+
+    /// Opens a scope in which nonzero proofs can be batched. The discharge
+    /// runs on the success path of `body`; on any `Err` the scope
+    /// short-circuits without discharging — but no [`Nonzero`] minted inside
+    /// the body can outlive the `Err` return, so soundness is preserved.
+    ///
+    /// This costs one gate and two constraints for the final discharge,
+    /// plus one gate per [`fold`](Self::fold) in discharging mode, on top
+    /// of whatever the body itself emits.
+    pub fn scope<T>(
+        dr: &mut D,
+        body: impl FnOnce(&mut D, &mut NonzeroBank<'dr, D>) -> Result<T>,
+    ) -> Result<T> {
+        let mut bank = Self::new();
+        let result = body(dr, &mut bank)?;
+        bank.enforce(dr)?;
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ff::Field;
@@ -250,6 +393,35 @@ mod tests {
             let element = Element::alloc(dr, allocator, witness.clone())?;
             element.enforce_nonzero(dr)?;
             Ok(())
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nonzero_bank_scope_discharges() -> Result<()> {
+        let sim = Sim::simulate(F::from(7u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            dr.reset();
+            NonzeroBank::scope(dr, |dr, bank| {
+                let _ = bank.fold(dr, element.clone())?;
+                Ok(())
+            })
+        })?;
+        assert_eq!(sim.num_gates(), 2);
+        assert_eq!(sim.num_constraints(), 4);
+        Ok(())
+    }
+
+    #[test]
+    fn test_nonzero_bank_scope_rejects_zero_fold() {
+        let result = Sim::simulate(F::ZERO, |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            NonzeroBank::scope(dr, |dr, bank| {
+                let _ = bank.fold(dr, element.clone())?;
+                Ok(())
+            })
         });
         assert!(result.is_err());
     }

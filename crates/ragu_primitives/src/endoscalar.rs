@@ -25,7 +25,7 @@ use ragu_core::{
 };
 
 use crate::{
-    Boolean, Element, Point,
+    Boolean, Element, NonzeroBank, Point,
     promotion::Demoted,
     vec::{CollectFixed, ConstLen, FixedVec},
 };
@@ -153,7 +153,19 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
         dr: &mut D,
         p: &Point<'dr, D, C>,
     ) -> Result<Point<'dr, D, C>> {
-        let mut acc = p.endo(dr).add_incomplete(dr, p, None)?.double(dr)?;
+        // Soundness: every `add_incomplete` and `double_and_add_incomplete`
+        // call below requires `x_1 != x_0`. Appendix C of the Halo paper
+        // (<https://eprint.iacr.org/2019/1021>) proves no such collision occurs
+        // for endoscalars well beyond 128 bits on the Pasta curves Ragu uses,
+        // so the bank is created in unchecked mode.
+        //
+        // TODO(ebfull): The no-collision argument above is a property of the
+        // curve / endoscalar interaction that the `Cycle` API should attest to
+        // at compile time, so callers can verify it holds for their choice of
+        // curve rather than relying on this ad-hoc local justification.
+        let mut bank = NonzeroBank::new_unchecked();
+
+        let mut acc = p.endo(dr).add_incomplete(dr, p, &mut bank)?.double(dr)?;
         let mut bits = self.bits();
 
         // Each iteration consumes a pair of bits; u128::BITS is even.
@@ -164,7 +176,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             let q = p
                 .conditional_negate(dr, &negate_bit)?
                 .conditional_endo(dr, &endo_bit)?;
-            acc = acc.double_and_add_incomplete(dr, &q)?;
+            acc = acc.double_and_add_incomplete(dr, &q, &mut bank)?;
         }
 
         Ok(acc)

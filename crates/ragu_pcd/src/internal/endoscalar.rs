@@ -33,7 +33,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Element, Endoscalar, Point,
+    Endoscalar, NonzeroBank, Point,
     vec::{FixedVec, Len},
 };
 
@@ -291,7 +291,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         let points = points_guard.unenforced(dr, witness.as_ref().map(|w| w.points))?;
 
         // acc = initial or previous interstitial, depending on step index
-        let mut acc = self
+        let initial = self
             .step
             .checked_sub(1)
             .map(|i| &points.interstitials[i])
@@ -305,16 +305,15 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         // constraining the output to equal the previous value.
         assert!(!input_range.is_empty());
 
-        let mut nonzero_acc = Element::one();
-
         // Horner's rule: scale and add each input
-        for idx in input_range {
-            let scaled = endoscalar.group_scale(dr, &acc)?;
-            acc = scaled.add_incomplete(dr, &points.inputs[idx], Some(&mut nonzero_acc))?;
-        }
-
-        // Ensure that coincident x-coordinates did not occur during point additions.
-        nonzero_acc.enforce_nonzero(dr)?;
+        let acc = NonzeroBank::scope(dr, |dr, bank| {
+            let mut acc = initial;
+            for idx in input_range {
+                let scaled = endoscalar.group_scale(dr, &acc)?;
+                acc = scaled.add_incomplete(dr, &points.inputs[idx], bank)?;
+            }
+            Ok(acc)
+        })?;
 
         // Constrain output
         acc.enforce_equal(dr, &points.interstitials[self.step])?;

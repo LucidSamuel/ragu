@@ -271,8 +271,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     ///
     /// This costs one gate and two constraints.
     pub fn enforce_nonzero(self, dr: &mut D) -> Result<Nonzero<'dr, D>> {
-        self.enforce_invertible(dr)?;
-        Ok(Nonzero::new_unchecked(self))
+        Ok(self.enforce_invertible(dr)?.into_element())
     }
 
     /// Returns the multiplicative inverse of this element.
@@ -304,19 +303,14 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
             .map(|inv| inv.into_inverse().into_inner())
     }
 
-    /// Divides this element by the provided element `by` and returns the
-    /// quotient. If `by` is zero, the result may be unconstrained.
+    /// Divides this element by `divisor` and returns the quotient.
     ///
-    /// Essentially, the prover witnesses `quotient` such that
-    ///
-    /// `quotient * by = self`
-    ///
-    /// which enforces that `quotient` is equal to `self / by` if and only if
-    /// `by` is nonzero.
-    pub fn div_nonzero(&self, dr: &mut D, by: &Self) -> Result<Self> {
+    /// This costs one gate and two constraints.
+    pub fn divide(&self, dr: &mut D, divisor: &Nonzero<'dr, D>) -> Result<Self> {
         let quotient_value = D::try_just(|| {
             Ok(*self.value().take()
-                * by.value()
+                * divisor
+                    .value()
                     .take()
                     .invert()
                     .into_option()
@@ -325,7 +319,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
 
         let (quotient, denominator, numerator) = dr.mul(|| {
             let c = *self.value().take();
-            let b = *by.value().take();
+            let b = *divisor.value().take();
             let a = *quotient_value.snag();
 
             Ok((
@@ -335,7 +329,7 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
             ))
         })?;
         dr.enforce_equal(self.wire(), &numerator)?;
-        dr.enforce_equal(by.wire(), &denominator)?;
+        dr.enforce_equal(divisor.wire(), &denominator)?;
 
         Ok(Element {
             value: quotient_value,
@@ -622,7 +616,7 @@ mod tests {
     use crate::allocator::Standard;
 
     #[test]
-    fn test_div_nonzero() -> Result<()> {
+    fn test_divide() -> Result<()> {
         type F = ragu_pasta::Fp;
         type Simulator = crate::Simulator<F>;
 
@@ -632,8 +626,10 @@ mod tests {
                 let allocator = &mut Standard::new();
                 let a = Element::alloc(dr, allocator, a.clone())?;
                 let b = Element::alloc(dr, allocator, b.clone())?;
+                let b = b.enforce_nonzero(dr)?;
+                dr.reset();
 
-                let quotient = a.div_nonzero(dr, &b)?;
+                let quotient = a.divide(dr, &b)?;
 
                 assert_eq!(
                     *quotient.value().take(),
@@ -642,7 +638,7 @@ mod tests {
 
                 Ok(())
             })?;
-            assert_eq!(sim.num_gates(), 2);
+            assert_eq!(sim.num_gates(), 1);
             assert_eq!(sim.num_constraints(), 2);
             Ok(())
         };
