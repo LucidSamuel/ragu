@@ -9,6 +9,47 @@ use ragu_core::{
 
 use crate::{Element, consistent::Consistent};
 
+/// An [`Element`] that has been constrained nonzero in the constraint system.
+///
+/// See [`Element::enforce_nonzero`].
+///
+/// [`Nonzero`] dereferences to the underlying [`Element`], so all of
+/// [`Element`]'s methods are available directly on a [`Nonzero`].
+#[derive(Gadget)]
+pub struct Nonzero<'dr, D: Driver<'dr>> {
+    element: Element<'dr, D>,
+}
+
+impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
+    /// Wraps `element` without checking the nonzero invariant.
+    ///
+    /// The caller is responsible for having emitted constraints that prove
+    /// `element` is nonzero.
+    pub(crate) fn new_unchecked(element: Element<'dr, D>) -> Self {
+        Self { element }
+    }
+
+    /// Consumes `self` and returns the underlying [`Element`].
+    pub fn into_inner(self) -> Element<'dr, D> {
+        self.element
+    }
+}
+
+impl<'dr, D: Driver<'dr>> core::ops::Deref for Nonzero<'dr, D> {
+    type Target = Element<'dr, D>;
+
+    fn deref(&self) -> &Element<'dr, D> {
+        &self.element
+    }
+}
+
+impl<'dr, D: Driver<'dr>> Consistent<'dr, D> for Nonzero<'dr, D> {
+    fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
+        self.enforce_invertible(dr)?;
+        Ok(())
+    }
+}
+
 /// An invertible [`Element`].
 ///
 /// This gadget represents a nonzero [`Element`] with a known multiplicative
@@ -18,8 +59,8 @@ use crate::{Element, consistent::Consistent};
 /// Inversion is free, since the inverse is located within the gadget.
 #[derive(Gadget)]
 pub struct Invertible<'dr, D: Driver<'dr>> {
-    element: Element<'dr, D>,
-    inverse: Element<'dr, D>,
+    element: Nonzero<'dr, D>,
+    inverse: Nonzero<'dr, D>,
 }
 
 impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
@@ -64,8 +105,8 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
         dr.enforce_equal(&c, &D::ONE)?;
 
         Ok(Self {
-            element: Element::promote(a, value),
-            inverse: Element::promote(b, inverse_value),
+            element: Nonzero::new_unchecked(Element::promote(a, value)),
+            inverse: Nonzero::new_unchecked(Element::promote(b, inverse_value)),
         })
     }
 
@@ -77,25 +118,23 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
         }
     }
 
-    /// Returns the underlying [`Element`].
-    pub fn element(&self) -> &Element<'dr, D> {
+    /// Returns the underlying [`Nonzero`] element.
+    pub fn element(&self) -> &Nonzero<'dr, D> {
         &self.element
     }
 
-    /// Returns the inverse of the underlying [`Element`].
-    pub fn inverse(&self) -> &Element<'dr, D> {
+    /// Returns the inverse of the underlying element, also as a [`Nonzero`].
+    pub fn inverse(&self) -> &Nonzero<'dr, D> {
         &self.inverse
     }
 
-    /// Consumes the [`Invertible`] and returns the underlying [`Element`],
-    /// discarding the inverse.
-    pub fn into_element(self) -> Element<'dr, D> {
+    /// Consumes `self` and returns the underlying [`Nonzero`] element.
+    pub fn into_element(self) -> Nonzero<'dr, D> {
         self.element
     }
 
-    /// Consumes the [`Invertible`] and returns the inverse [`Element`],
-    /// discarding the original.
-    pub fn into_inverse(self) -> Element<'dr, D> {
+    /// Consumes `self` and returns the inverse as a [`Nonzero`].
+    pub fn into_inverse(self) -> Nonzero<'dr, D> {
         self.inverse
     }
 }
@@ -113,7 +152,7 @@ mod tests {
     use ff::Field;
 
     use super::*;
-    use crate::Simulator;
+    use crate::{Simulator, allocator::Standard};
 
     type F = ragu_pasta::Fp;
     type Sim = Simulator<F>;
@@ -186,6 +225,47 @@ mod tests {
         })?;
         assert_eq!(sim.num_gates(), 1);
         assert_eq!(sim.num_constraints(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn test_enforce_nonzero_succeeds() -> Result<()> {
+        let sim = Sim::simulate(F::from(7u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            dr.reset();
+            let nonzero = element.enforce_nonzero(dr)?;
+            assert_eq!(*nonzero.value().take(), *witness.snag());
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_enforce_nonzero_fails_for_zero() {
+        let result = Sim::simulate(F::ZERO, |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            element.enforce_nonzero(dr)?;
+            Ok(())
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_nonzero_enforce_consistent() -> Result<()> {
+        let sim = Sim::simulate(F::from(5u64), |dr, witness| {
+            let allocator = &mut Standard::new();
+            let element = Element::alloc(dr, allocator, witness.clone())?;
+            let nonzero = element.enforce_nonzero(dr)?;
+            dr.reset();
+            nonzero.enforce_consistent(dr)?;
+            Ok(())
+        })?;
+        assert_eq!(sim.num_gates(), 1);
+        assert_eq!(sim.num_constraints(), 2);
         Ok(())
     }
 }

@@ -314,7 +314,7 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
         }
 
         // Ensure that coincident x-coordinates did not occur during point additions.
-        nonzero_acc.invert(dr)?;
+        nonzero_acc.enforce_nonzero(dr)?;
 
         // Constrain output
         acc.enforce_equal(dr, &points.interstitials[self.step])?;

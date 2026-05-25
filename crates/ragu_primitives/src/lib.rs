@@ -37,7 +37,7 @@ pub mod vec;
 pub use boolean::{Boolean, multipack};
 pub use element::{Element, multiadd};
 pub use endoscalar::{Endoscalar, extract_endoscalar, lift_endoscalar};
-pub use invertible::Invertible;
+pub use invertible::{Invertible, Nonzero};
 use io::{Buffer, Write};
 pub use point::Point;
 use promotion::Demoted;

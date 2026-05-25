@@ -16,7 +16,7 @@ use ragu_core::{
 };
 
 use crate::{
-    Boolean, Invertible,
+    Boolean, Invertible, Nonzero,
     allocator::Allocator,
     consistent::Consistent,
     io::{Buffer, Write},
@@ -241,9 +241,9 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// zero.
     ///
     /// This costs one gate and two constraints.
-    pub fn invertible(&self, dr: &mut D) -> Result<Invertible<'dr, D>> {
+    pub fn enforce_invertible(&self, dr: &mut D) -> Result<Invertible<'dr, D>> {
         let invertible = Invertible::alloc(dr, self.value.clone())?;
-        invertible.element().enforce_equal(dr, self)?;
+        self.enforce_equal(dr, invertible.element())?;
         Ok(invertible)
     }
 
@@ -254,42 +254,54 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
     /// `inverse_value` is not really its multiplicative inverse.
     ///
     /// This costs one gate and two constraints.
-    pub fn invertible_with(
+    pub fn enforce_invertible_with(
         &self,
         dr: &mut D,
         inverse_value: DriverValue<D, D::F>,
     ) -> Result<Invertible<'dr, D>> {
         let invertible = Invertible::alloc_with_advice(dr, self.value.clone(), inverse_value)?;
-        invertible.element().enforce_equal(dr, self)?;
+        self.enforce_equal(dr, invertible.element())?;
         Ok(invertible)
+    }
+
+    /// Constrains this element to be nonzero and returns it as a [`Nonzero`].
+    ///
+    /// This will be unsatisfied (and fail to synthesize) if this element is
+    /// zero.
+    ///
+    /// This costs one gate and two constraints.
+    pub fn enforce_nonzero(self, dr: &mut D) -> Result<Nonzero<'dr, D>> {
+        self.enforce_invertible(dr)?;
+        Ok(Nonzero::new_unchecked(self))
     }
 
     /// Returns the multiplicative inverse of this element.
     ///
-    /// Convenience over [`Self::invertible`] for callers that only need the
-    /// inverse [`Element`].
+    /// Convenience over [`Self::enforce_invertible`] for callers that only
+    /// need the inverse [`Element`].
     ///
     /// This will be unsatisfied (and fail to synthesize) if this element is
     /// zero.
     ///
     /// This costs one gate and two constraints.
     pub fn invert(&self, dr: &mut D) -> Result<Self> {
-        self.invertible(dr).map(Invertible::into_inverse)
+        self.enforce_invertible(dr)
+            .map(|inv| inv.into_inverse().into_inner())
     }
 
     /// Returns the multiplicative inverse of this element, using the supplied
     /// `inverse_value` as advice about what this element's inverse is.
     ///
-    /// Convenience over [`Self::invertible_with`] for callers that only need
-    /// the inverse [`Element`].
+    /// Convenience over [`Self::enforce_invertible_with`] for callers that
+    /// only need the inverse [`Element`].
     ///
     /// This will be unsatisfied if this element is zero or if the provided
     /// `inverse_value` is not really its multiplicative inverse.
     ///
     /// This costs one gate and two constraints.
     pub fn invert_with(&self, dr: &mut D, inverse_value: DriverValue<D, D::F>) -> Result<Self> {
-        self.invertible_with(dr, inverse_value)
-            .map(Invertible::into_inverse)
+        self.enforce_invertible_with(dr, inverse_value)
+            .map(|inv| inv.into_inverse().into_inner())
     }
 
     /// Divides this element by the provided element `by` and returns the
