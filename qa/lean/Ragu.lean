@@ -26,3 +26,6 @@ import Ragu.Instances.Boolean.Alloc
 import Ragu.Instances.Boolean.And
 import Ragu.Instances.Boolean.ConditionalSelect
 import Ragu.Instances.Boolean.ConditionalEnforceEqual
+
+-- Injectivity theorem for endoscaling
+import Ragu.EndoscalarProof
