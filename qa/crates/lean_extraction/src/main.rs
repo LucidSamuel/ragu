@@ -23,6 +23,7 @@ use crate::instances::{
     element_alloc::ElementAllocInstance,
     element_alloc_square::ElementAllocSquareInstance,
     element_div_nonzero::ElementDivNonzeroInstance,
+    element_enforce_nonzero::ElementEnforceNonzeroInstance,
     element_enforce_root_of_unity::{
         ElementEnforceRootOfUnityInstanceK2, ElementEnforceRootOfUnityInstanceK5,
     },
@@ -34,6 +35,7 @@ use crate::instances::{
     element_is_zero::ElementIsZeroInstance,
     element_mul::ElementMulInstance,
     element_square::ElementSquareInstance,
+    nonzero_bank_scope::NonzeroBankScopeInstanceK2,
     point_add_incomplete::PointAddIncompleteInstance,
     point_alloc::{PointAllocInstanceFp, PointAllocInstanceFq},
     point_conditional_endo::PointConditionalEndoInstance,
@@ -144,6 +146,16 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
         name: "Ragu.Instances.Autogen.Element.InvertWith",
         export: export_instance::<ElementInvertWithInstance>,
         generated_file: generated_file_instance::<ElementInvertWithInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.Element.EnforceNonzero",
+        export: export_instance::<ElementEnforceNonzeroInstance>,
+        generated_file: generated_file_instance::<ElementEnforceNonzeroInstance>,
+    },
+    ExportTarget {
+        name: "Ragu.Instances.Autogen.NonzeroBank.ScopeK2",
+        export: export_instance::<NonzeroBankScopeInstanceK2>,
+        generated_file: generated_file_instance::<NonzeroBankScopeInstanceK2>,
     },
     ExportTarget {
         name: "Ragu.Instances.Autogen.Element.IsEqual",

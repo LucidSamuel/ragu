@@ -17,6 +17,8 @@ import Ragu.Instances.Element.EnforceRootOfUnityK5
 import Ragu.Instances.Element.EnforceZero
 import Ragu.Instances.Element.Invert
 import Ragu.Instances.Element.InvertWith
+import Ragu.Instances.Element.EnforceNonzero
+import Ragu.Instances.NonzeroBank.ScopeK2
 import Ragu.Instances.Element.IsEqual
 import Ragu.Instances.Element.IsZero
 import Ragu.Instances.Core.Mul
