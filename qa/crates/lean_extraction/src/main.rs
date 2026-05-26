@@ -194,6 +194,11 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     },
 ];
 
+/// Hand-written Lean modules that are not extracted from Rust but must still be
+/// imported by the top-level `Ragu.lean`, so that the Lean build (and its
+/// `--wfail` `sorry` check) covers them.
+static EXTRA_IMPORTS: &[&str] = &["Ragu.EndoscalarProof"];
+
 impl ExportTarget {
     fn root_import_name(&self) -> String {
         // Drop only the first namespace marker
@@ -245,7 +250,9 @@ fn generated_ragu_root(autogen_root: &Path) -> (PathBuf, String) {
     let path = autogen_root.join("Ragu.lean");
     let mut contents = EXPORT_TARGETS
         .iter()
-        .map(|target| format!("import {}", target.root_import_name()))
+        .map(|target| target.root_import_name())
+        .chain(EXTRA_IMPORTS.iter().map(|name| (*name).to_string()))
+        .map(|name| format!("import {name}"))
         .collect::<Vec<_>>()
         .join("\n");
     contents.push('\n');
