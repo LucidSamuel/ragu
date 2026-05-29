@@ -9,8 +9,8 @@ def deserializeInput (input : Vector (Expression (F p)) inputLen) :
     Var Circuits.Element.EnforceNonzero.Input (F p) :=
   { input := input[0], inverse := fun _ => 0 }
 
-def serializeOutput (_output : Var unit (F p)) : Vector (Expression (F p)) 0 :=
-  #v[]
+def serializeOutput (output : Var field (F p)) : Vector (Expression (F p)) 1 :=
+  #v[output]
 
 def formal_instance : Core.Statements.FormalInstance where
   p

@@ -60,7 +60,7 @@ def main (input : Var Inputs (F p)) : Circuit (F p) (Var Spec.Point (F p)) := do
   let y_s := y_term - y_p
 
   -- scope-end discharge: bank_prod_2 ≠ 0
-  Element.EnforceNonzero.circuit { input := bank_prod_2, inverse }
+  let _ ← Element.EnforceNonzero.circuit { input := bank_prod_2, inverse }
 
   return ⟨x_s, y_s⟩
 
@@ -109,15 +109,13 @@ instance elaborated :
 theorem soundness (curveParams : Spec.CurveParams p) :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated
       (Assumptions curveParams) (Spec curveParams) := by
-  circuit_proof_start
-  simp only [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec,
+  circuit_proof_start [Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec,
     Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
     Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
-    Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec,
-    circuit_norm] at h_holds ⊢
+    Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec]
   obtain ⟨h_P1_eq, h_P2_eq, _⟩ := h_input
   obtain ⟨h_curve1, h_curve2⟩ := h_assumptions
-  obtain ⟨h_bank1, h_div1, h_sq1, h_bank2, h_div2, h_sq2, h_yterm, h_nz⟩ := h_holds
+  obtain ⟨h_bank1, h_div1, h_sq1, h_bank2, h_div2, h_sq2, h_yterm, _, h_nz⟩ := h_holds
   rw [← h_P1_eq] at h_curve1
   rw [← h_P2_eq] at h_curve2
   rw [← h_P1_eq, ← h_P2_eq]

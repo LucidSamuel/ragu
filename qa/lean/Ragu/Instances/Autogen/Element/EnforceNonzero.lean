@@ -10,7 +10,7 @@ def p := Core.Primes.p
 def inputLen := 1
 
 @[reducible]
-def outputLen := 0
+def outputLen := 1
 
 set_option linter.unusedVariables false in
 def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operations (F p) := [
@@ -23,6 +23,7 @@ def exportedOperations (input_var : Vector (Expression (F p)) inputLen) : Operat
 set_option linter.unusedVariables false in
 @[reducible]
 def exportedOutput (input_var : Vector (Expression (F p)) inputLen) : Vector (Expression (F p)) outputLen := #v[
+  (var ⟨0⟩)
 ]
 
 end Ragu.Instances.Autogen.Element.EnforceNonzero

@@ -1,6 +1,7 @@
 import Clean.Circuit
 import Ragu.Core
-import Ragu.Circuits.Core.Mul
+import Ragu.Circuits.Element.Divide
+import Ragu.Circuits.Element.EnforceNonzero
 
 namespace Ragu.Circuits.Element.DivNonzero
 variable {p : ℕ} [Fact p.Prime]
@@ -13,32 +14,18 @@ structure Input (F : Type) where
   inverse : UnconstrainedDep field F
 deriving CircuitType
 
-/-- `Element::divide(&y_nonzero)` after `y.enforce_nonzero(...)`.
+/-- `Element::div_nonzero(&y)` is `y.enforce_nonzero(...)` followed by
+`x.divide(&y_nonzero)`. The Lean reimpl composes the two sub-gadgets the
+same way Rust does, rather than inlining their `Core.mul` rows:
 
-  This reimpl inlines both halves so the new wire `a` allocated by
-  `Invertible::alloc` is in scope when the divide step links its
-  denominator. Step by step:
-
-  1. **Discharge** — `Invertible::alloc(y)` allocates `(a, b, c)` with
-     `a · b = c`, then enforces `c = 1` and `y = a`. After this `a` is
-     constrained equal to `y` and is provably nonzero.
-  2. **Divide** — allocates `(quotient, denominator, numerator)` with
-     `quotient · denominator = numerator`, then enforces
-     `x = numerator` and `a = denominator` (using the discharged wire
-     `a`, mirroring `Rust::divide` which uses `y_nonzero.wire()`). -/
+  1. `EnforceNonzero.circuit ⟨y, inverse⟩` discharges `y ≠ 0` and returns
+     the `Nonzero` wire (constrained `= y`).
+  2. `Divide.circuit ⟨x, y_nonzero⟩` links its denominator against that
+     wire — mirroring `Rust::divide`'s use of `y_nonzero.wire()`. -/
 def main (input : Var Input (F p)) : Circuit (F p) (Var field (F p)) := do
   let ⟨x, y, inverse⟩ := input
-  -- enforce_nonzero(y)
-  let ⟨a, _b, c⟩ ← Core.mul fun env =>
-    ⟨env y, inverse env, 1⟩
-  assertZero (c - 1)
-  assertZero (y - a)
-  -- divide(x, &y_nonzero)
-  let ⟨quotient, denominator, numerator⟩ ← Core.mul fun env =>
-    ⟨(env x) / (env y), env y, env x⟩
-  assertZero (x - numerator)
-  assertZero (a - denominator)
-  return quotient
+  let y_nonzero ← Element.EnforceNonzero.circuit ⟨y, inverse⟩
+  Element.Divide.circuit ⟨x, y_nonzero⟩
 
 /-- Verifier side: the circuit *itself* discharges `y ≠ 0` via the
 `Invertible::alloc` half, so no precondition is required for soundness.
@@ -62,30 +49,24 @@ instance elaborated : ElaboratedCircuit (F p) Input field where
 
 theorem soundness :
     GeneralFormalCircuit.WithHint.Soundness (F p) elaborated (fun _ _ => True) Spec := by
-  circuit_proof_start
-  obtain ⟨h_mul1, h_c, h_lin1, h_mul2, h_lin2, h_lin3⟩ := h_holds
-  -- h_mul1 : a · b = c
-  -- h_c    : c - 1 = 0
-  -- h_lin1 : y - a = 0
-  -- h_mul2 : quotient · denominator = numerator
-  -- h_lin2 : x - numerator = 0
-  -- h_lin3 : a - denominator = 0
-  rw [add_neg_eq_zero] at h_c h_lin1 h_lin2 h_lin3
-  rw [← h_lin1, h_c] at h_mul1
-  -- h_mul1 : y · b = 1
-  rw [← h_lin2, ← h_lin3, ← h_lin1] at h_mul2
-  -- h_mul2 : quotient · y = x
-  have hy : (input_y : F p) ≠ 0 := by
-    intro h0
-    rw [h0, zero_mul] at h_mul1
-    exact zero_ne_one h_mul1
-  exact (eq_div_iff hy).mpr h_mul2
+  -- Compose: EnforceNonzero.Spec gives `y_nonzero = y ∧ y ≠ 0`; Divide.Spec
+  -- gives `out = x / y_nonzero`; discharge Divide.Assumptions via `y ≠ 0`.
+  circuit_proof_start [Element.EnforceNonzero.circuit, Element.EnforceNonzero.Spec,
+    Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec]
+  obtain ⟨⟨h_en, h_ne⟩, h_div⟩ := h_holds
+  have h_ne' : env.get i₀ ≠ 0 := h_en ▸ h_ne
+  rw [h_div (Or.inl h_ne'), h_en]
 
 theorem completeness :
     GeneralFormalCircuit.WithHint.Completeness (F p) elaborated ProverAssumptions
       (fun _ _ _ => True) := by
-  circuit_proof_start
-  grind
+  -- ProverAssumptions `y * inverse = 1` discharges EnforceNonzero's prover
+  -- assumption; the returned wire `= y ≠ 0` discharges Divide's.
+  circuit_proof_start [Element.EnforceNonzero.circuit, Element.EnforceNonzero.ProverAssumptions,
+    Element.EnforceNonzero.Spec, Element.Divide.circuit, Element.Divide.ProverAssumptions]
+  obtain ⟨h_en_spec, _⟩ := h_env
+  obtain ⟨h_eq, h_ne⟩ := h_en_spec h_assumptions
+  exact ⟨h_assumptions, h_eq ▸ h_ne⟩
 
 def circuit : GeneralFormalCircuit.WithHint (F p) Input field where
   elaborated

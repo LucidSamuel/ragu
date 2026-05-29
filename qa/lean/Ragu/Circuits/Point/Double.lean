@@ -46,11 +46,9 @@ instance elaborated :
 
 theorem soundness (curveParams : Spec.CurveParams p) :
     Soundness (F p) elaborated (Assumptions curveParams) (Spec curveParams) := by
-  circuit_proof_start
-  simp only [Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
+  circuit_proof_start [Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Divide.circuit, Element.Divide.Assumptions, Element.Divide.Spec,
-    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec,
-    circuit_norm] at h_holds ⊢
+    Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec]
   obtain ⟨h_curve, h_no_order2⟩ := h_assumptions
   have hy_ne : input_y ≠ 0 := h_no_order2 ⟨input_x, input_y⟩ h_curve
   have h_2y_eq : input_y + input_y = 2 * input_y := (two_mul _).symm

@@ -26,11 +26,19 @@ def formal_instance : Core.Statements.FormalInstance where
     intro input
     simp [Core.Statements.FlatOperation.eraseCompute, List.map,
       Operations.toFlat, circuit_norm,
+      GeneralFormalCircuit.toWithHint,
       GeneralFormalCircuit.WithHint.toSubcircuit,
+      GeneralFormalCircuit.toSubcircuit,
       deserializeInput, exportedOperations,
       Circuits.Element.DivNonzero.circuit,
       Circuits.Element.DivNonzero.elaborated,
       Circuits.Element.DivNonzero.main,
+      Circuits.Element.EnforceNonzero.circuit,
+      Circuits.Element.EnforceNonzero.elaborated,
+      Circuits.Element.EnforceNonzero.main,
+      Circuits.Element.Divide.circuit,
+      Circuits.Element.Divide.elaborated,
+      Circuits.Element.Divide.main,
       Circuits.Core.Mul.main]
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩ <;> rfl
   same_output := by
