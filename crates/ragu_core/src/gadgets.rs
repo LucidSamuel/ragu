@@ -156,13 +156,34 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
         Self::Kind::map_gadget(self, wm)
     }
 
-    /// Proxy for [`GadgetKind::enforce_conservative_equal_gadget`].
+    /// Enforce that `self` and `other` are equal by constraining every
+    /// corresponding wire pair.
+    ///
+    /// This is the conservative equality used by consistency re-establishment
+    /// and wire-substitution paths; it relies on no gadget invariants. It builds
+    /// a restricted [`WireEqualizer`] over `dr` and delegates to
+    /// [`GadgetKind::enforce_conservative_equal_gadget`].
     fn enforce_conservative_equal<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
         &self,
         dr: &mut D2,
         other: &Self,
     ) -> Result<()> {
-        Self::Kind::enforce_conservative_equal_gadget::<D2, D>(dr, self, other)
+        let mut eq = WireEqualizer {
+            dr,
+            _marker: core::marker::PhantomData,
+        };
+        self.enforce_conservative_equal_with(&mut eq, other)
+    }
+
+    /// Like [`enforce_conservative_equal`](Gadget::enforce_conservative_equal)
+    /// but threads an existing [`WireEqualizer`]. Used by gadget-kind
+    /// implementations to recurse into subgadgets without rebuilding the adapter.
+    fn enforce_conservative_equal_with<D2: Driver<'dr, F = D::F, Wire = D::Wire>>(
+        &self,
+        eq: &mut WireEqualizer<'_, 'dr, D2>,
+        other: &Self,
+    ) -> Result<()> {
+        Self::Kind::enforce_conservative_equal_gadget::<D2, D>(eq, self, other)
     }
 
     /// Returns how many wires are in this gadget.
@@ -257,7 +278,9 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
     ///
     /// This method is deliberately conservative: it must constrain each pair of
     /// corresponding wires to be equal, rather than using gadget-specific
-    /// shortcuts.
+    /// shortcuts. To make that contract enforceable, implementations receive a
+    /// restricted [`WireEqualizer`] rather than a full [`Driver`], so the only
+    /// possible action is enforcing wire-pair equality.
     ///
     /// The wire correspondence is defined by
     /// [`map_gadget`](GadgetKind::map_gadget). The provided gadgets can be for
@@ -268,7 +291,7 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
-        dr: &mut D1,
+        eq: &mut WireEqualizer<'_, 'dr, D1>,
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
     ) -> Result<()>;

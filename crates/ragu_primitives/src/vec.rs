@@ -24,7 +24,7 @@ use ragu_core::{
     Error, Result,
     convert::WireMap,
     drivers::Driver,
-    gadgets::{Bound, Gadget, GadgetKind},
+    gadgets::{Bound, Gadget, GadgetKind, WireEqualizer},
 };
 
 use crate::{
@@ -277,12 +277,12 @@ unsafe impl<F: Field, G: GadgetKind<F>, L: Len> GadgetKind<F> for FixedVec<Phant
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
-        dr: &mut D1,
+        eq: &mut WireEqualizer<'_, 'dr, D1>,
         a: &Bound<'dr, D2, Self>,
         b: &Bound<'dr, D2, Self>,
     ) -> Result<()> {
         for (a, b) in a.iter().zip(b.iter()) {
-            G::enforce_conservative_equal_gadget(dr, a, b)?;
+            G::enforce_conservative_equal_gadget(eq, a, b)?;
         }
         Ok(())
     }
