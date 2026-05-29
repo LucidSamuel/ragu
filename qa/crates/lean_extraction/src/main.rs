@@ -194,11 +194,6 @@ static EXPORT_TARGETS: &[ExportTarget] = &[
     },
 ];
 
-/// Hand-written Lean modules that are not extracted from Rust but must still be
-/// imported by the top-level `Ragu.lean`, so that the Lean build (and its
-/// `--wfail` `sorry` check) covers them.
-static EXTRA_IMPORTS: &[&str] = &["Ragu.EndoscalarProof"];
-
 impl ExportTarget {
     fn root_import_name(&self) -> String {
         // Drop only the first namespace marker
@@ -246,12 +241,11 @@ fn generated_file_instance<I: CircuitInstance>(
     I::generated_file(module_name, autogen_root)
 }
 
-fn generated_ragu_root(autogen_root: &Path) -> (PathBuf, String) {
-    let path = autogen_root.join("Ragu.lean");
+fn generated_instances_root(autogen_root: &Path) -> (PathBuf, String) {
+    let path = autogen_root.join("Ragu/Instances.lean");
     let mut contents = EXPORT_TARGETS
         .iter()
         .map(|target| target.root_import_name())
-        .chain(EXTRA_IMPORTS.iter().map(|name| (*name).to_string()))
         .map(|name| format!("import {name}"))
         .collect::<Vec<_>>()
         .join("\n");
@@ -265,9 +259,9 @@ fn export_all(autogen_root: &Path) -> std::io::Result<()> {
         println!("wrote {} to {}", target.name, path.display());
     }
 
-    let (path, contents) = generated_ragu_root(autogen_root);
+    let (path, contents) = generated_instances_root(autogen_root);
     fs::write(&path, contents)?;
-    println!("wrote Ragu to {}", path.display());
+    println!("wrote Ragu.Instances to {}", path.display());
 
     Ok(())
 }
@@ -304,8 +298,8 @@ fn check_all(autogen_root: &Path) -> std::io::Result<bool> {
         check_file(target.name, path, expected, &mut mismatches)?;
     }
 
-    let (path, expected) = generated_ragu_root(autogen_root);
-    check_file("Ragu", path, expected, &mut mismatches)?;
+    let (path, expected) = generated_instances_root(autogen_root);
+    check_file("Ragu.Instances", path, expected, &mut mismatches)?;
 
     if mismatches > 0 {
         eprintln!(

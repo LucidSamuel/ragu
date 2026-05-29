@@ -14,7 +14,7 @@ import Mathlib.Tactic.Ring
   `endoscaleCharacteristicBound n`, then `endoscaleN ζ` is injective.
 -/
 
-namespace EndoscalarProof
+namespace Ragu.Contrib.EndoscalarProof
 
 /-- An endoscaling input with exactly `n` two-bit pairs. -/
 def EndoscaleInput (n : ℕ) :=
@@ -595,4 +595,4 @@ theorem endoscaleN_injective_of_characteristicBound_lt
   endoscaleN_injective_of_eisensteinNorm_bound hζ hp
     (fun _ _ hne => endoscale_eisensteinNorm_bound hne)
 
-end EndoscalarProof
+end Ragu.Contrib.EndoscalarProof
