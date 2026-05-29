@@ -95,17 +95,12 @@ use super::{
 /// the common pattern of accessing `<K as GadgetKind<F>>::Rebind<'dr, D>`.
 pub type Bound<'dr, D, K> = <K as GadgetKind<<D as Driver<'dr>>::F>>::Rebind<'dr, D>;
 
-/// A restricted view over a [`Driver`] that exposes *only* the ability to
-/// enforce equality between corresponding wire pairs.
-///
-/// Conservative gadget equality (see
-/// [`GadgetKind::enforce_conservative_equal_gadget`]) must constrain each pair
-/// of corresponding wires and do nothing else — it must not allocate gates, add
-/// arbitrary constraints, or take gadget-specific shortcuts. Handing
-/// implementations this adapter instead of a full [`Driver`] enforces that
-/// contract at the type level rather than by documentation alone: the only
-/// operation it exposes is
+/// A restricted view over a [`Driver`] whose only operation is to enforce
+/// equality between corresponding wire pairs, via
 /// [`enforce_conservative_equal`](Self::enforce_conservative_equal).
+///
+/// This is the adapter through which conservative gadget equality (see
+/// [`GadgetKind::enforce_conservative_equal_gadget`]) is performed.
 pub struct WireEqualizer<'a, 'dr, D: Driver<'dr>> {
     dr: &'a mut D,
     _marker: core::marker::PhantomData<&'dr ()>,
@@ -155,7 +150,7 @@ pub trait Gadget<'dr, D: Driver<'dr>>: Clone {
     }
 
     /// Enforce that `self` and `other` are equal by constraining every
-    /// corresponding wire pair, taking no gadget-specific shortcuts.
+    /// corresponding wire pair.
     ///
     /// This builds a restricted [`WireEqualizer`] over `dr` and delegates to
     /// [`GadgetKind::enforce_conservative_equal_gadget`].
@@ -270,18 +265,16 @@ pub unsafe trait GadgetKind<F: Field>: core::any::Any {
         wm: &mut WM,
     ) -> Result<Bound<'dst, WM::Dst, Self>>;
 
-    /// Enforces equality between two instances of the same gadget.
-    ///
-    /// This method is deliberately conservative: it must constrain each pair of
-    /// corresponding wires to be equal, rather than using gadget-specific
-    /// shortcuts. To make that contract enforceable, implementations receive a
-    /// restricted [`WireEqualizer`] rather than a full [`Driver`], so the only
-    /// possible action is enforcing wire-pair equality.
+    /// Enforces equality between two instances of the same gadget by checking
+    /// equality between each pair of corresponding wires.
     ///
     /// The wire correspondence is defined by
-    /// [`map_gadget`](GadgetKind::map_gadget). The provided gadgets can be for
-    /// another driver, since the emitted constraints only require corresponding
-    /// wire assignments to be equal.
+    /// [`map_gadget`](GadgetKind::map_gadget). Implementations receive a
+    /// [`WireEqualizer`], so enforcing wire-pair equality is the only available
+    /// operation.
+    ///
+    /// The provided gadgets can be for another driver, since the emitted
+    /// constraints only require corresponding wire assignments to be equal.
     fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,

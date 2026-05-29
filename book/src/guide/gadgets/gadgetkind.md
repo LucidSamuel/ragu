@@ -47,28 +47,6 @@ which wires correspond between instances. [Fungibility](index.md#fungibility)
 is stated in terms of this correspondence, and drivers and internal Ragu code
 use it to count, substitute, or extract wires.
 
-## `enforce_conservative_equal_gadget`
-
-Gadgets implement the
-[`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
-specify conservative equality constraints by pairing corresponding wires in the
-gadget's canonical traversal. The contract is strict: it must constrain each
-pair of corresponding wires and do nothing else — no extra gates, no arbitrary
-constraints, and no gadget-specific shortcuts.
-
-To make that contract enforceable at the type level rather than by convention,
-the method does not receive a full [`Driver`][driver-trait]. Instead it is
-handed a [`WireEqualizer`][wire-equalizer] — a restricted view over the driver
-whose only operation is
-[`enforce_conservative_equal`][wire-equalizer-method] over a wire pair.
-Composite gadgets thread the same `WireEqualizer` into their subgadgets via
-[`Gadget::enforce_conservative_equal_with`][enforce-equal-with], and the derive
-macro generates exactly these calls.
-
-Most circuit code should avoid this path directly. Prefer
-[`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
-[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons.
-
 ## Safety
 
 Notice that the [`Gadget`][gadget-trait] trait is safe to implement, but the
@@ -98,9 +76,3 @@ see it.
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
 [bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
-[enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_conservative_equal_gadget
-[enforce-equal-with]: ragu_core::gadgets::Gadget::enforce_conservative_equal_with
-[wire-equalizer]: ragu_core::gadgets::WireEqualizer
-[wire-equalizer-method]: ragu_core::gadgets::WireEqualizer::enforce_conservative_equal
-[gadgetext-enforce-equal]: ragu_primitives::GadgetExt::enforce_equal
-[gadget-equals]: ragu_primitives::comparison::GadgetEquals
