@@ -181,12 +181,8 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     };
 
     let equality_calls = fields.iter().filter_map(|(id, ty)| match ty {
-        FieldType::Wire => {
-            Some(quote! { eq.enforce_conservative_equal(&a.#id, &b.#id)? })
-        }
-        FieldType::Gadget => {
-            Some(quote! { eq.enforce_conservative_equal_gadget(&a.#id, &b.#id)? })
-        }
+        FieldType::Wire => Some(quote! { eq.enforce_conservative_equal(&a.#id, &b.#id)? }),
+        FieldType::Gadget => Some(quote! { eq.enforce_conservative_equal_gadget(&a.#id, &b.#id)? }),
         _ => None,
     });
 
