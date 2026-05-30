@@ -47,19 +47,6 @@ which wires correspond between instances. [Fungibility](index.md#fungibility)
 is stated in terms of this correspondence, and drivers and internal Ragu code
 use it to count, substitute, or extract wires.
 
-## `enforce_conservative_equal_gadget`
-
-Gadgets offer the
-[`GadgetKind::enforce_conservative_equal_gadget`][enforce-equal] method to
-specify conservative equality constraints by pairing corresponding wires in the
-gadget's canonical traversal.
-
-Most circuit code should avoid using this method directly. Prefer
-[`GadgetExt::enforce_equal`][gadgetext-enforce-equal], backed by
-[`GadgetEquals`][gadget-equals], for ordinary gadget comparisons. Conservative
-equality is mainly useful for infrastructure such as consistency checks and
-wire-substitution paths that need canonical pairwise constraints.
-
 ## Safety
 
 Notice that the [`Gadget`][gadget-trait] trait is safe to implement, but the
@@ -89,6 +76,3 @@ see it.
 [gadgetkind-trait]: ragu_core::gadgets::GadgetKind
 [bound-alias]: ragu_core::gadgets::Bound
 [driver-trait]: ragu_core::drivers::Driver
-[enforce-equal]: ragu_core::gadgets::GadgetKind::enforce_conservative_equal_gadget
-[gadgetext-enforce-equal]: ragu_primitives::GadgetExt::enforce_equal
-[gadget-equals]: ragu_primitives::comparison::GadgetEquals

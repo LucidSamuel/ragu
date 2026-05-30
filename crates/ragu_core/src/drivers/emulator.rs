@@ -432,12 +432,12 @@ mod tests {
             D1: Driver<'dr, F = FieldType>,
             D2: Driver<'dr, F = FieldType, Wire = <D1 as Driver<'dr>>::Wire>,
         >(
-            dr: &mut D1,
+            eq: &mut crate::gadgets::WireEqualizer<'_, 'dr, D1>,
             a: &Bound<'dr, D2, Self>,
             b: &Bound<'dr, D2, Self>,
         ) -> Result<()> {
-            dr.enforce_equal(&a.a, &b.a)?;
-            dr.enforce_equal(&a.b, &b.b)?;
+            eq.enforce_conservative_equal(&a.a, &b.a)?;
+            eq.enforce_conservative_equal(&a.b, &b.b)?;
             Ok(())
         }
     }

@@ -181,12 +181,8 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
     };
 
     let equality_calls = fields.iter().filter_map(|(id, ty)| match ty {
-        FieldType::Wire => {
-            Some(quote! { #ragu_core_path::drivers::Driver::enforce_equal(dr, &a.#id, &b.#id)? })
-        }
-        FieldType::Gadget => {
-            Some(quote! { #ragu_core_path::gadgets::Gadget::enforce_conservative_equal(&a.#id, dr, &b.#id)? })
-        }
+        FieldType::Wire => Some(quote! { eq.enforce_conservative_equal(&a.#id, &b.#id)? }),
+        FieldType::Gadget => Some(quote! { eq.enforce_conservative_equal_gadget(&a.#id, &b.#id)? }),
         _ => None,
     });
 
@@ -270,7 +266,7 @@ pub fn derive(input: DeriveInput, ragu_core_path: RaguCorePath) -> Result<TokenS
                 }
 
                 fn enforce_conservative_equal_gadget<#driver_lifetime, D1: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident>, D2: #ragu_core_path::drivers::Driver<#driver_lifetime, F = #driverfield_ident, Wire = <D1 as #ragu_core_path::drivers::Driver<#driver_lifetime>>::Wire>>(
-                    dr: &mut D1,
+                    eq: &mut #ragu_core_path::gadgets::WireEqualizer<'_, #driver_lifetime, D1>,
                     a: &#ragu_core_path::gadgets::Bound<#driver_lifetime, D2, Self>,
                     b: &#ragu_core_path::gadgets::Bound<#driver_lifetime, D2, Self>,
                 ) -> #ragu_core_path::Result<()> {
@@ -437,11 +433,11 @@ fn test_gadget_derive_boolean_customdriver() {
                             F = DriverField,
                             Wire = <D1 as ::ragu_core::drivers::Driver<'my_dr>>::Wire>>
                 (
-                    dr: &mut D1,
+                    eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'my_dr, D1>,
                     a: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
                     b: &::ragu_core::gadgets::Bound<'my_dr, D2, Self>,
                 ) -> ::ragu_core::Result<()> {
-                    ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire, &b.wire)?;
+                    eq.enforce_conservative_equal(&a.wire, &b.wire)?;
                     Ok(())
                 }
             }
@@ -530,12 +526,12 @@ fn test_gadget_derive() {
                             F = DriverField,
                             Wire = <D1 as ::ragu_core::drivers::Driver<'mydr>>::Wire>>
                 (
-                    dr: &mut D1,
+                    eq: &mut ::ragu_core::gadgets::WireEqualizer<'_, 'mydr, D1>,
                     a: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
                     b: &::ragu_core::gadgets::Bound<'mydr, D2, Self>,
                 ) -> ::ragu_core::Result<()> {
-                    ::ragu_core::drivers::Driver::enforce_equal(dr, &a.wire_field, &b.wire_field)?;
-                    ::ragu_core::gadgets::Gadget::enforce_conservative_equal(&a.map_field, dr, &b.map_field)?;
+                    eq.enforce_conservative_equal(&a.wire_field, &b.wire_field)?;
+                    eq.enforce_conservative_equal_gadget(&a.map_field, &b.map_field)?;
                     Ok(())
                 }
             }
@@ -575,18 +571,18 @@ fn test_gadget_derive_default_gadget() {
     assert!(result_str.contains("Gadget :: map (& this . field_a"), "missing Gadget::map for field_a");
     assert!(result_str.contains("Gadget :: map (& this . field_b"), "missing Gadget::map for field_b");
 
-    // Both should call Gadget::enforce_conservative_equal
+    // Both should recurse via WireEqualizer::enforce_conservative_equal_gadget
     assert!(
-        result_str.contains("Gadget :: enforce_conservative_equal (& a . field_a"),
-        "missing enforce_conservative_equal for field_a"
+        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_a"),
+        "missing enforce_conservative_equal_gadget for field_a"
     );
     assert!(
-        result_str.contains("Gadget :: enforce_conservative_equal (& a . field_b"),
-        "missing enforce_conservative_equal for field_b"
+        result_str.contains("eq . enforce_conservative_equal_gadget (& a . field_b"),
+        "missing enforce_conservative_equal_gadget for field_b"
     );
 
-    // Wire should use Driver::enforce_equal
-    assert!(result_str.contains("Driver :: enforce_equal (dr , & a . wire_field"), "missing Driver::enforce_equal for wire_field");
+    // Wire should use the WireEqualizer adapter
+    assert!(result_str.contains("eq . enforce_conservative_equal (& a . wire_field"), "missing eq.enforce_conservative_equal for wire_field");
 
     // Wire should use WireMap::convert_wire
     assert!(result_str.contains("WireMap :: convert_wire (wm , & this . wire_field"), "missing WireMap::convert_wire");
