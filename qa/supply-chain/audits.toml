@@ -312,6 +312,12 @@ user-id = 189 # Andrew Gallant (BurntSushi)
 start = "2019-06-09"
 end = "2027-04-07"
 
+[[trusted.wasi]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2020-06-03"
+end = "2027-06-01"
+
 [[trusted.windows-sys]]
 criteria = "safe-to-deploy"
 user-id = 64539 # Kenny Kerr (kennykerr)
