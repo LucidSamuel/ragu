@@ -25,7 +25,7 @@ use ragu_circuits::{
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
-    gadgets::{Bound, Gadget, Kind},
+    gadgets::{Bound, Gadget, Kind, WireEqualizer},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, allocator::Allocator};
@@ -125,17 +125,17 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         InternalCircuitValues::try_from_fn(|id| this.get(id).map(wm))
     }
 
-    fn enforce_equal_gadget<
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
-        dr: &mut D1,
+        eq: &mut WireEqualizer<'_, 'dr, D1>,
         a: &InternalCircuitValues<Element<'dr, D2>>,
         b: &InternalCircuitValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &InternalCircuitIndex::ALL {
-            a.get(id).enforce_equal(dr, b.get(id))?;
+            eq.enforce_conservative_equal_gadget(a.get(id), b.get(id))?;
         }
         Ok(())
     }
@@ -163,17 +163,17 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
         RxValues::try_from_fn(|id| this.get(id).map(wm))
     }
 
-    fn enforce_equal_gadget<
+    fn enforce_conservative_equal_gadget<
         'dr,
         D1: Driver<'dr, F = F>,
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
-        dr: &mut D1,
+        eq: &mut WireEqualizer<'_, 'dr, D1>,
         a: &RxValues<Element<'dr, D2>>,
         b: &RxValues<Element<'dr, D2>>,
     ) -> Result<()> {
         for &id in &RxIndex::ALL {
-            a.get(id).enforce_equal(dr, b.get(id))?;
+            eq.enforce_conservative_equal_gadget(a.get(id), b.get(id))?;
         }
         Ok(())
     }
