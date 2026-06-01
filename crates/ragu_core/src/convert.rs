@@ -25,7 +25,7 @@
 
 use core::marker::PhantomData;
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 
 use crate::{
     Result,
@@ -148,8 +148,7 @@ impl<F: Field, D: DriverTypes<ImplField = F>> WireMap<F> for StripWires<D> {
 
 #[cfg(test)]
 mod tests {
-    use ff::Field;
-    use ragu_arithmetic::Coeff;
+    use ragu_arithmetic::{Coeff, ff::Field};
     use ragu_pasta::Fp;
 
     use crate::{

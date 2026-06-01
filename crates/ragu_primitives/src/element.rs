@@ -6,8 +6,7 @@
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 
-use ff::Field;
-use ragu_arithmetic::Coeff;
+use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -490,7 +489,7 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 mod root_of_unity_tests {
     use alloc::{vec, vec::Vec};
 
-    use ff::Field;
+    use ragu_arithmetic::ff::Field;
     use ragu_pasta::{Fp, fp};
 
     use super::*;

@@ -1,6 +1,6 @@
 //! Compositional gadget that appends an extra element during serialization.
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,

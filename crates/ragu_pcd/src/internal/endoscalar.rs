@@ -18,9 +18,11 @@
 
 use alloc::vec;
 
-use ff::{Field, WithSmallOrderMulGroup};
-use pasta_curves::group::{Curve, WnafBase, WnafScalar};
-use ragu_arithmetic::CurveAffine;
+use ragu_arithmetic::{
+    CurveAffine,
+    ff::{Field, WithSmallOrderMulGroup},
+    pasta_curves::group::{Curve, WnafBase, WnafScalar},
+};
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
@@ -326,8 +328,11 @@ impl<C: CurveAffine, R: Rank, const NUM_POINTS: usize> MultiStageCircuit<C::Base
 mod tests {
     use alloc::vec::Vec;
 
-    use ff::Field;
-    use pasta_curves::group::{Curve, CurveAffine as _, Group};
+    use ragu_arithmetic::{
+        ff::Field,
+        pasta_curves::group::{Curve, CurveAffine as _, Group},
+        rand::RngExt,
+    };
     use ragu_circuits::{
         CircuitExt,
         polynomials::{self},
@@ -341,7 +346,6 @@ mod tests {
     use ragu_pasta::{Ep, EpAffine, Fp, Fq};
     use ragu_primitives::{Endoscalar, vec::Len};
     use ragu_testing::registry::TestRegistryBuilder;
-    use rand::RngExt;
 
     use super::{
         ENDOSCALINGS_PER_STEP, EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, InputsLen,
@@ -422,9 +426,10 @@ mod tests {
         let num_steps = NumStepsLen::<NUM_POINTS>::len();
 
         // Generate random endoscalar and base input points.
-        let endoscalar: u128 = rand::rng().random();
+        let endoscalar: u128 = ragu_arithmetic::rand::rng().random();
         let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
-            (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
+            (Ep::generator() * <Ep as Group>::Scalar::random(&mut ragu_arithmetic::rand::rng()))
+                .to_affine()
         });
 
         // Compute expected final result via Horner over all base inputs.
@@ -460,7 +465,7 @@ mod tests {
                 .into_output();
             let final_rx = registry.assemble(&final_trace, staged_h, Fp::ZERO)?;
 
-            let y = Fp::random(&mut rand::rng());
+            let y = Fp::random(&mut ragu_arithmetic::rand::rng());
 
             // Verify revdot identities for each stage.
             assert_eq!(endoscalar_rx.revdot(&registry.y(endo_mask_h, y)), Fp::ZERO);
@@ -493,9 +498,10 @@ mod tests {
         assert_eq!(InputsLen::<NUM_POINTS>::len(), 10);
 
         // Generate random endoscalar and base input points.
-        let endoscalar: u128 = rand::rng().random();
+        let endoscalar: u128 = ragu_arithmetic::rand::rng().random();
         let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
-            (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
+            (Ep::generator() * <Ep as Group>::Scalar::random(&mut ragu_arithmetic::rand::rng()))
+                .to_affine()
         });
 
         // Compute expected final result via Horner over all base inputs.
@@ -527,7 +533,7 @@ mod tests {
                 .into_output();
             let final_rx = registry.assemble(&final_trace, staged_h, Fp::ZERO)?;
 
-            let y = Fp::random(&mut rand::rng());
+            let y = Fp::random(&mut ragu_arithmetic::rand::rng());
 
             let endoscalar_rx = <EndoscalarStage as StageExt<Fp, R>>::rx(Fp::ZERO, endoscalar)?;
             let points_rx =
@@ -635,9 +641,10 @@ mod tests {
     fn test_points_witness_new() {
         /// Verifies PointsWitness::new produces identical results to manual construction.
         fn check<const NUM_POINTS: usize>() {
-            let endoscalar: u128 = rand::rng().random();
+            let endoscalar: u128 = ragu_arithmetic::rand::rng().random();
             let base_inputs: [EpAffine; NUM_POINTS] = core::array::from_fn(|_| {
-                (Ep::generator() * <Ep as Group>::Scalar::random(&mut rand::rng())).to_affine()
+                (Ep::generator() * <Ep as Group>::Scalar::random(&mut ragu_arithmetic::rand::rng()))
+                    .to_affine()
             });
 
             // Compute via PointsWitness::new

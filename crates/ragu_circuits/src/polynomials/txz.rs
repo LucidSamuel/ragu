@@ -4,8 +4,7 @@
 
 use core::marker::PhantomData;
 
-use ff::Field;
-use ragu_arithmetic::geosum;
+use ragu_arithmetic::{ff::Field, geosum};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -129,8 +128,8 @@ mod tests {
         // ProductionRank (R<13>) has log2_n = 11
         type TestRank = ProductionRank;
 
-        let x = Fp::random(&mut rand::rng());
-        let z = Fp::random(&mut rand::rng());
+        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
         let evaluator = Evaluate::<TestRank>::new();
 
         Simulator::simulate((x, z), |dr, witness| {

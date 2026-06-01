@@ -1,5 +1,7 @@
-use ff::{Field, PrimeField};
-use ragu_arithmetic::Coeff;
+use ragu_arithmetic::{
+    Coeff,
+    ff::{Field, PrimeField},
+};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
@@ -313,7 +315,7 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
 
 #[cfg(test)]
 mod tests {
-    use ff::Field;
+    use ragu_arithmetic::ff::Field;
 
     use super::*;
     use crate::{Simulator, allocator::Standard};
