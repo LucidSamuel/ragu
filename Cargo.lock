@@ -393,9 +393,9 @@ dependencies = [
 
 [[package]]
 name = "ff"
-version = "0.14.0-pre.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d1fa20678d31fcd57b1e146f5ca2c24282428601f45a1002a0d2a54136ef681"
+checksum = "a1f686ab92a9fb0eaf188f6c6c87b89490baa6fdb0db4544ba4dc47f7942489f"
 dependencies = [
  "bitvec",
  "ff_derive",
@@ -405,9 +405,9 @@ dependencies = [
 
 [[package]]
 name = "ff_derive"
-version = "0.14.0-pre.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc58d7ca5bc500948e3ef5837fbbe707a4a9475e24346121ab8f793a14fd0eaf"
+checksum = "241afe8c15ffa21933eaefe8a563af36fd9fc98a3e8a044e8f7db52eb1fae3d8"
 dependencies = [
  "addchain",
  "num-bigint",
@@ -486,11 +486,11 @@ dependencies = [
 
 [[package]]
 name = "group"
-version = "0.14.0-pre.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d2d58f7caba35039967de2de47857f38cba03e6b173d32fef14412282d49ac9"
+checksum = "7fd1a1c7a5206c5b7a3f5a0d7ccd3ff85d0c8f5133d62a02680255b0004af5f4"
 dependencies = [
- "ff 0.14.0-pre.1",
+ "ff 0.14.0",
  "rand_core 0.10.0",
  "subtle",
 ]
@@ -634,8 +634,8 @@ name = "lean_extraction"
 version = "0.0.0"
 dependencies = [
  "clap",
- "ff 0.14.0-pre.1",
- "group 0.14.0-pre.1",
+ "ff 0.14.0",
+ "group 0.14.0",
  "ragu_arithmetic",
  "ragu_core",
  "ragu_pasta",
@@ -746,11 +746,11 @@ dependencies = [
 [[package]]
 name = "pasta_curves"
 version = "0.5.1"
-source = "git+https://github.com/ebfull/pasta_curves?rev=4b2c768ec4b14b2c7fa0f6e527e453cde97805aa#4b2c768ec4b14b2c7fa0f6e527e453cde97805aa"
+source = "git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5#5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5"
 dependencies = [
  "blake2b_simd",
- "ff 0.14.0-pre.1",
- "group 0.14.0-pre.1",
+ "ff 0.14.0",
+ "group 0.14.0",
  "lazy_static",
  "rand 0.10.0",
  "static_assertions",
@@ -879,13 +879,13 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "ff 0.13.1",
- "ff 0.14.0-pre.1",
+ "ff 0.14.0",
  "group 0.13.0",
- "group 0.14.0-pre.1",
+ "group 0.14.0",
  "gungraun",
  "maybe-rayon",
  "pasta_curves 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=4b2c768ec4b14b2c7fa0f6e527e453cde97805aa)",
+ "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5)",
  "proptest",
  "ragu_macros",
  "ragu_testing",
@@ -899,11 +899,11 @@ version = "0.0.0"
 dependencies = [
  "blake2b_simd",
  "criterion",
- "ff 0.14.0-pre.1",
- "group 0.14.0-pre.1",
+ "ff 0.14.0",
+ "group 0.14.0",
  "gungraun",
  "maybe-rayon",
- "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=4b2c768ec4b14b2c7fa0f6e527e453cde97805aa)",
+ "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5)",
  "proptest",
  "ragu_arithmetic",
  "ragu_core",
@@ -917,8 +917,8 @@ dependencies = [
 name = "ragu_core"
 version = "0.0.0"
 dependencies = [
- "ff 0.14.0-pre.1",
- "group 0.14.0-pre.1",
+ "ff 0.14.0",
+ "group 0.14.0",
  "proptest",
  "ragu_arithmetic",
  "ragu_macros",
@@ -960,10 +960,10 @@ name = "ragu_pcd"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "ff 0.14.0-pre.1",
+ "ff 0.14.0",
  "gungraun",
  "maybe-rayon",
- "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=4b2c768ec4b14b2c7fa0f6e527e453cde97805aa)",
+ "pasta_curves 0.5.1 (git+https://github.com/ebfull/pasta_curves?rev=5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5)",
  "proptest",
  "ragu_arithmetic",
  "ragu_circuits",
@@ -978,8 +978,8 @@ dependencies = [
 name = "ragu_primitives"
 version = "0.0.0"
 dependencies = [
- "ff 0.14.0-pre.1",
- "group 0.14.0-pre.1",
+ "ff 0.14.0",
+ "group 0.14.0",
  "gungraun",
  "proptest",
  "ragu_arithmetic",
@@ -995,7 +995,7 @@ dependencies = [
 name = "ragu_testing"
 version = "0.0.0"
 dependencies = [
- "ff 0.14.0-pre.1",
+ "ff 0.14.0",
  "proptest",
  "ragu_arithmetic",
  "ragu_circuits",
