@@ -19,7 +19,7 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Error, Result,
     convert::WireMap,

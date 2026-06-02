@@ -5,8 +5,10 @@
 
 use alloc::vec::Vec;
 
-use ff::{Field, PrimeField};
-use ragu_arithmetic::Coeff;
+use ragu_arithmetic::{
+    Coeff,
+    ff::{Field, PrimeField},
+};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -243,7 +245,7 @@ impl<F: Field> Promotion<F> for Kind![F; @Boolean<'_, _>] {
 /// Packs boolean slices into field elements using little-endian bit order.
 ///
 /// The first bit in each chunk is the least significant bit.
-pub fn multipack<'dr, D: Driver<'dr, F: ff::PrimeField>>(
+pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
     dr: &mut D,
     bits: &[Boolean<'dr, D>],
 ) -> Result<Vec<Element<'dr, D>>> {

@@ -46,8 +46,7 @@
 use alloc::{vec, vec::Vec};
 use core::marker::PhantomData;
 
-use ff::Field;
-use ragu_arithmetic::Cycle;
+use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
     WithAux,
     horner::Horner,
@@ -294,7 +293,7 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         preamble: &native_preamble::Output<'dr, D, C, HEADER_SIZE>,
     ) -> Result<Self>
     where
-        D::F: ff::PrimeField,
+        D::F: ragu_arithmetic::ff::PrimeField,
     {
         let xz = x.mul(dr, z)?;
 
@@ -638,7 +637,7 @@ struct Inverter<'dr, D: Driver<'dr>> {
     differences: Vec<Element<'dr, D>>,
 }
 
-impl<'dr, D: Driver<'dr, F: ff::PrimeField>> Inverter<'dr, D> {
+impl<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>> Inverter<'dr, D> {
     /// Creates a batch inverter with the provided base [`Element`].
     ///
     /// The base represents a fixed evaluation point (e.g., $u$ or $y$
@@ -707,7 +706,10 @@ impl<'dr, D: Driver<'dr, F: ff::PrimeField>> Inverter<'dr, D> {
                 .collect::<Vec<_>>();
 
             let mut scratch = vec![D::F::ZERO; differences.len()];
-            ff::BatchInverter::invert_with_external_scratch(&mut differences, &mut scratch);
+            ragu_arithmetic::ff::BatchInverter::invert_with_external_scratch(
+                &mut differences,
+                &mut scratch,
+            );
 
             differences.into_iter()
         });

@@ -9,7 +9,7 @@ delta = "0.4.1 -> 0.3.4"
 [[audits.pasta_curves]]
 who = "Sean Bowe <ewillbefull@gmail.com>"
 criteria = "safe-to-deploy"
-delta = "0.5.1 -> 0.5.1@git:4b2c768ec4b14b2c7fa0f6e527e453cde97805aa"
+delta = "0.5.1 -> 0.5.1@git:5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5"
 importable = false
 
 [[trusted.addchain]]
@@ -311,6 +311,12 @@ criteria = "safe-to-deploy"
 user-id = 189 # Andrew Gallant (BurntSushi)
 start = "2019-06-09"
 end = "2027-04-07"
+
+[[trusted.wasi]]
+criteria = "safe-to-deploy"
+user-id = 1 # Alex Crichton (alexcrichton)
+start = "2020-06-03"
+end = "2027-06-01"
 
 [[trusted.windows-sys]]
 criteria = "safe-to-deploy"

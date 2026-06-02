@@ -56,8 +56,9 @@ use ragu_core::gadgets::Gadget as _;
 pub fn derive_gadget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
+        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
-        derive::gadget::derive(input, ragu_core_path)
+        derive::gadget::derive(input, ragu_arithmetic_path, ragu_core_path)
     })
 }
 
@@ -71,9 +72,15 @@ use ragu_primitives::io::Write as _;
 pub fn derive_write(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
+        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
         let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::gadgetwrite::derive(input, ragu_core_path, ragu_primitives_path)
+        derive::gadgetwrite::derive(
+            input,
+            ragu_arithmetic_path,
+            ragu_core_path,
+            ragu_primitives_path,
+        )
     })
 }
 
@@ -103,9 +110,15 @@ use ragu_primitives::comparison::GadgetEquals as _;
 pub fn derive_gadget_equals(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
+        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
         let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::gadgetequals::derive(input, ragu_core_path, ragu_primitives_path)
+        derive::gadgetequals::derive(
+            input,
+            ragu_arithmetic_path,
+            ragu_core_path,
+            ragu_primitives_path,
+        )
     })
 }
 

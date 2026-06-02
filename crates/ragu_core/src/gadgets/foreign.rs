@@ -3,7 +3,7 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::marker::PhantomData;
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 
 use crate::{
     Result,

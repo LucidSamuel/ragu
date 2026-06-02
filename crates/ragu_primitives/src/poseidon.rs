@@ -7,8 +7,7 @@
 use alloc::{vec, vec::Vec};
 use core::{marker::PhantomData, panic};
 
-use ff::Field;
-use ragu_arithmetic::Coeff;
+use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},

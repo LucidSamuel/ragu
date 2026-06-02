@@ -65,7 +65,7 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 
 use crate::{
     Result,
@@ -370,7 +370,7 @@ fn short_circuit_routine<'dr, D: Driver<'dr, Wire = ()>, R: Routine<D::F> + 'dr>
 
 #[cfg(test)]
 mod tests {
-    use ff::Field;
+    use ragu_arithmetic::ff::Field;
     use ragu_pasta::Fp;
 
     use super::*;

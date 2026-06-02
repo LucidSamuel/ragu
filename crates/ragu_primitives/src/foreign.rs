@@ -7,7 +7,7 @@
 use alloc::boxed::Box;
 use core::marker::PhantomData;
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 use ragu_core::{Result, drivers::Driver, gadgets::Bound};
 
 use crate::{

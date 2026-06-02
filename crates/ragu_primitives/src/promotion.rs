@@ -3,8 +3,7 @@
 
 use core::ops::Deref;
 
-use ff::Field;
-use ragu_arithmetic::Coeff;
+use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
     Result,
     convert::{CloneWires, WireMap},

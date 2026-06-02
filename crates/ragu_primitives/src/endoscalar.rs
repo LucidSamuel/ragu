@@ -15,8 +15,10 @@
 
 use alloc::vec::Vec;
 
-use ff::{Field, PrimeField, WithSmallOrderMulGroup};
-use ragu_arithmetic::{Coeff, CurveAffine};
+use ragu_arithmetic::{
+    Coeff, CurveAffine,
+    ff::{Field, PrimeField, WithSmallOrderMulGroup},
+};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
@@ -265,12 +267,14 @@ pub fn extract_endoscalar<F: PrimeField + WithSmallOrderMulGroup<3>>(value: F) -
 
 #[cfg(test)]
 mod tests {
-    use ff::{Field, PrimeField, WithSmallOrderMulGroup};
-    use group::{CurveAffine as _, Group};
-    use ragu_arithmetic::{CurveAffine, CurveExt};
+    use ragu_arithmetic::{
+        CurveAffine, CurveExt,
+        ff::{Field, PrimeField, WithSmallOrderMulGroup},
+        group::{CurveAffine as _, Group},
+        rand::RngExt,
+    };
     use ragu_core::Result;
     use ragu_pasta::{EpAffine, Fp};
-    use rand::RngExt;
 
     use super::{Element, Endoscalar, Maybe, Point};
     use crate::{Simulator, allocator::Standard};
@@ -313,7 +317,7 @@ mod tests {
     #[test]
     #[allow(clippy::useless_conversion)]
     fn test_endoscaling_consistency() {
-        use group::CurveAffine as _;
+        use ragu_arithmetic::group::CurveAffine as _;
         use ragu_pasta::{EpAffine, Fq};
 
         let p = EpAffine::generator();
@@ -329,7 +333,7 @@ mod tests {
     #[test]
     fn test_extract() -> Result<()> {
         let p = EpAffine::generator();
-        let r = Fp::random(&mut rand::rng());
+        let r = Fp::random(&mut ragu_arithmetic::rand::rng());
         let extracted = extract(r).value;
 
         Simulator::<Fp>::simulate((r, extracted, p), |dr, witness| {
@@ -355,7 +359,7 @@ mod tests {
     #[test]
     fn test_endoscaling() -> Result<()> {
         let p = EpAffine::generator();
-        let r: u128 = rand::rng().random();
+        let r: u128 = ragu_arithmetic::rand::rng().random();
         let expected = EndoscalarTest { value: r }.scale(&p);
 
         Simulator::simulate((p, r), |dr, witness| {
@@ -375,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_endoscalar_lift() -> Result<()> {
-        let r: u128 = rand::rng().random();
+        let r: u128 = ragu_arithmetic::rand::rng().random();
         let expected: Fp = EndoscalarTest { value: r }.lift();
 
         Simulator::<Fp>::simulate(r, |dr, witness| {

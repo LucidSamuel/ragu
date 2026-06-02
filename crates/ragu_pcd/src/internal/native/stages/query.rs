@@ -16,8 +16,7 @@
 
 use core::marker::PhantomData;
 
-use ff::PrimeField;
-use ragu_arithmetic::Cycle;
+use ragu_arithmetic::{Cycle, ff::PrimeField};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging,
@@ -109,7 +108,7 @@ impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for InternalCircuitValues<Element<'dr, 
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `InternalCircuitValues`
 // is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
+unsafe impl<F: ragu_arithmetic::ff::Field> ragu_core::gadgets::GadgetKind<F>
     for InternalCircuitValues<Element<'static, PhantomData<F>>>
 {
     type Rebind<'dr, D: Driver<'dr, F = F>> = InternalCircuitValues<Element<'dr, D>>;
@@ -147,7 +146,7 @@ impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for RxValues<Element<'dr, D>> {
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `RxValues`
 // is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
+unsafe impl<F: ragu_arithmetic::ff::Field> ragu_core::gadgets::GadgetKind<F>
     for RxValues<Element<'static, PhantomData<F>>>
 {
     type Rebind<'dr, D: Driver<'dr, F = F>> = RxValues<Element<'dr, D>>;
@@ -179,7 +178,9 @@ unsafe impl<F: ff::Field> ragu_core::gadgets::GadgetKind<F>
     }
 }
 
-impl<F: ff::Field> ragu_primitives::io::Write<F> for RxValues<Element<'static, PhantomData<F>>> {
+impl<F: ragu_arithmetic::ff::Field> ragu_primitives::io::Write<F>
+    for RxValues<Element<'static, PhantomData<F>>>
+{
     fn write_gadget<'dr, D: Driver<'dr, F = F>, B: ragu_primitives::io::Buffer<'dr, D>>(
         this: &Bound<'dr, D, Self>,
         dr: &mut D,

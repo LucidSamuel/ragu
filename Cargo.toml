@@ -17,10 +17,25 @@ keywords = []
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", "katex-header.html"]
-all-features = true
+no-default-features = true
+features = ["modern-deps", "multicore"]
 
 [features]
-default = ["multicore"]
+default = ["modern-deps", "multicore"]
+modern-deps = [
+  "ragu_arithmetic/modern-deps",
+  "ragu_circuits/modern-deps",
+  "ragu_core/modern-deps",
+  "ragu_primitives/modern-deps",
+  "ragu_pcd/modern-deps",
+]
+legacy-deps = [
+  "ragu_arithmetic/legacy-deps",
+  "ragu_circuits/legacy-deps",
+  "ragu_core/legacy-deps",
+  "ragu_primitives/legacy-deps",
+  "ragu_pcd/legacy-deps",
+]
 multicore = [
   "ragu_arithmetic/multicore",
   "ragu_circuits/multicore",
@@ -32,11 +47,11 @@ std = []
 bench = false
 
 [dependencies]
-ragu_core = { path = "crates/ragu_core", version = "0.0.0" }
-ragu_circuits = { path = "crates/ragu_circuits", version = "0.0.0" }
-ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0" }
-ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0" }
-ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0" }
+ragu_core = { path = "crates/ragu_core", version = "0.0.0", default-features = false, features = ["alloc"] }
+ragu_circuits = { path = "crates/ragu_circuits", version = "0.0.0", default-features = false, features = ["alloc"] }
+ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
+ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
+ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"] }
 
 [workspace]
 members = [
@@ -67,26 +82,24 @@ rust-version = "1.90"
 repository = "https://github.com/tachyon-zcash/ragu"
 
 [workspace.dependencies]
-ff = { version = "0.14.0-pre.1", default-features = false }
-group = { version = "0.14.0-pre.1", default-features = false }
-pasta_curves = { version = "0.5.1", features = ["deferred"] }
+# Keep the unaliased modern ff/group/pasta_curves/rand entries in sync with
+# qa/fuzz/Cargo.toml. The cargo-fuzz workspace is intentionally isolated and
+# cannot inherit these workspace dependencies.
+ff = { version = "0.14", default-features = false }
+group = { version = "0.14", default-features = false }
+pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
 rand = "0.10"
+ff_modern = { package = "ff", version = "0.14", default-features = false }
+group_modern = { package = "group", version = "0.14", default-features = false }
+pasta_curves_modern = { package = "pasta_curves", git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
+rand_modern = { package = "rand", version = "0.10" }
+ff_legacy = { package = "ff", version = "0.13", default-features = false }
+group_legacy = { package = "group", version = "0.13", default-features = false }
+pasta_curves_legacy = { package = "pasta_curves", version = "0.5.1" }
+rand_legacy = { package = "rand", version = "0.8" }
 lazy_static = "1.5.0"
 proptest = "1.11.0"
 gungraun = "0.17.0"
 blake2b_simd = "1.0"
 maybe-rayon = { version = "0.1.1", default-features = false }
 criterion = { version = "0.5", default-features = false }
-
-# NOTE: `qa/fuzz/Cargo.toml` is its own workspace root
-# (cargo-fuzz convention) and `[patch.crates-io]` does not propagate into
-# nested workspaces. If you add, remove, or change any patch below, mirror
-# the change in that file or fuzz builds will resolve different versions
-# than the rest of the workspace.
-[patch.crates-io]
-# `ebfull/pasta_curves` branch `ff-0.14-for-ragu` HEAD as of 2026-05-21.
-# Stacks on the prior `ff-0.14-with-rand-0.10-and-deferred-redux` work
-# (ff/group 0.14.0-pre.0, rand 0.10, deferred reduction, try_random rename)
-# and adds adaptation for the new `CurveAffine` API from upstream `group`
-# release-0.14.0 (PR #48).
-pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "4b2c768ec4b14b2c7fa0f6e527e453cde97805aa" }

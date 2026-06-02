@@ -9,7 +9,7 @@ use super::*;
 use crate::*;
 pub type R = ragu_circuits::polynomials::ProductionRank;
 
-use ff::PrimeField;
+use ragu_arithmetic::ff::PrimeField;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     drivers::emulator::{Emulator, Wireless},
@@ -237,7 +237,7 @@ fn print_registry_digests() {
     use alloc::{format, string::String, vec::Vec};
     use std::println;
 
-    use ff::PrimeField;
+    use ragu_arithmetic::ff::PrimeField;
 
     let pasta = Pasta::baked();
 

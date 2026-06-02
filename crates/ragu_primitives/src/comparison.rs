@@ -1,6 +1,6 @@
 //! Invariant-aware gadget equality.
 
-use ff::Field;
+use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,

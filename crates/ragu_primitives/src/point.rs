@@ -6,8 +6,7 @@
 
 use core::marker::PhantomData;
 
-use ff::WithSmallOrderMulGroup;
-use ragu_arithmetic::{Coeff, CurveAffine};
+use ragu_arithmetic::{Coeff, CurveAffine, ff::WithSmallOrderMulGroup};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
@@ -248,7 +247,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Consistent<'dr, D> for Po
 
 #[test]
 fn test_point_alloc() -> Result<()> {
-    use group::CurveAffine;
+    use ragu_arithmetic::group::CurveAffine;
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
@@ -270,7 +269,7 @@ fn test_point_alloc() -> Result<()> {
 
 #[test]
 fn test_point_double() -> Result<()> {
-    use group::{CurveAffine, Group};
+    use ragu_arithmetic::group::{CurveAffine, Group};
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
@@ -304,8 +303,10 @@ fn test_point_double() -> Result<()> {
 fn test_add_incomplete() -> Result<()> {
     use alloc::vec;
 
-    use group::{CurveAffine, Group};
-    use ragu_arithmetic::CurveExt;
+    use ragu_arithmetic::{
+        CurveExt,
+        group::{CurveAffine, Group},
+    };
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
@@ -356,8 +357,10 @@ fn test_add_incomplete() -> Result<()> {
 fn test_double_and_add_incomplete() -> Result<()> {
     use alloc::{vec, vec::Vec};
 
-    use group::{CurveAffine, Group};
-    use ragu_arithmetic::CurveExt;
+    use ragu_arithmetic::{
+        CurveExt,
+        group::{CurveAffine, Group},
+    };
 
     type F = ragu_pasta::Fp;
     type C = ragu_pasta::EpAffine;
