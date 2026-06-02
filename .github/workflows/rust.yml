@@ -241,7 +241,11 @@ jobs:
     steps:
       - name: Fail if any required job failed or was cancelled
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        # Pass the expansion through `env` rather than interpolating `${{ }}`
+        # directly into `run:`, which zizmor's template-injection audit flags.
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           echo "A required job failed or was cancelled:"
-          echo '${{ toJSON(needs) }}'
+          echo "$NEEDS_JSON"
           exit 1
