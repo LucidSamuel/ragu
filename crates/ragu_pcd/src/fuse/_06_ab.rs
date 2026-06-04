@@ -27,7 +27,7 @@
 //! evaluations that $B(x)$ already needs, eliminating separate
 //! $r\_i(x)$ queries.
 
-use alloc::vec::Vec;
+use alloc::{collections::BTreeMap, vec::Vec};
 
 use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
@@ -93,15 +93,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> Application<'_, C, R, HEADER_S
         // full polynomial-degree MSM.
         let a_commitment_proj = {
             // Deduplicate terms by key, summing coefficients.
-            // TODO: O(n²) linear scan; switch to HashMap or sort-based dedup
-            // if the number of terms grows beyond current M×N ≈ 108.
-            let mut entries: Vec<(FoldKey, C::CircuitField)> = Vec::new();
+            let mut entries = BTreeMap::<FoldKey, C::CircuitField>::new();
             for &(key, coeff) in &a_decomp.terms {
-                if let Some(entry) = entries.iter_mut().find(|(k, _)| *k == key) {
-                    entry.1 += coeff;
-                } else {
-                    entries.push((key, coeff));
-                }
+                *entries.entry(key).or_insert(C::CircuitField::ZERO) += coeff;
             }
 
             let mut msm: Vec<(C::CircuitField, C::HostCurve)> = Vec::with_capacity(entries.len());

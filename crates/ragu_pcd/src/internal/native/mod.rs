@@ -191,7 +191,7 @@ impl<T> InternalCircuitValues<T> {
 }
 
 /// Enum identifying which rx polynomial component to index within [`RxValues`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RxIndex {
     // Circuits
     Application,
@@ -312,7 +312,7 @@ impl<T> RxValues<T> {
 /// Identifies a native-field polynomial within a proof — either one of the
 /// two AB polynomials (which are not rx polynomials) or one of the 11 rx
 /// polynomials addressed by [`RxIndex`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RxComponent {
     /// The `a` polynomial from the AB proof (revdot claim).
     AbA,
