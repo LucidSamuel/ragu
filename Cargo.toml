@@ -58,11 +58,11 @@ ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = fal
 
 # mock_ragu API-mock dependencies (BLAKE2b-based mock of the PCD proof system)
 blake2b_simd = { version = "1.0", default-features = false }
-ff = "0.13"
+ff = { workspace = true }
 lazy_static = { version = "1", default-features = false, features = [
     "spin_no_std",
 ] }
-pasta_curves = "0.5.1"
+pasta_curves = { workspace = true }
 rand_core = { version = "0.6", default-features = false }
 
 [dev-dependencies]

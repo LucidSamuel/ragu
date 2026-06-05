@@ -2,6 +2,10 @@
 // Lints that don't apply to a mock crate mirroring an external API.
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![allow(clippy::type_complexity, clippy::too_many_arguments)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![doc(html_favicon_url = "https://tachyon.z.cash/assets/ragu/v1/favicon-32x32.png")]
+#![doc(html_logo_url = "https://tachyon.z.cash/assets/ragu/v1/rustdoc-128x128.png")]
 #![expect(clippy::pub_use, reason = "crate public API re-exports")]
 #![expect(clippy::module_name_repetitions, reason = "names mirror real ragu API")]
 #![expect(clippy::missing_const_for_fn, reason = "mirrors non-const ragu API")]
