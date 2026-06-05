@@ -3,7 +3,7 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::any::TypeId;
 
-use rand_core::CryptoRng;
+use rand_core::CryptoRngCore;
 
 use crate::{
     ctx::StepCtx,
@@ -22,7 +22,7 @@ pub struct ApplicationBuilder {
 }
 
 /// Mocks `ragu_pcd::Application`.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Application {
     num_application_steps: usize,
 }
@@ -74,25 +74,25 @@ impl ApplicationBuilder {
 
 impl Application {
     /// Delegates to [`fuse`](Self::fuse) with trivial PCDs.
-    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
+    pub fn seed<'source, RNG: CryptoRngCore, S: Step<Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
-    ) -> Result<(Pcd<'source, S::Output>, S::Aux<'source>)> {
+    ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
         let left = Proof::trivial().carry::<()>(());
         let right = Proof::trivial().carry::<()>(());
         self.fuse(rng, step, witness, left, right)
     }
 
-    pub fn fuse<'source, RNG: CryptoRng, S: Step>(
+    pub fn fuse<'source, RNG: CryptoRngCore, S: Step>(
         &self,
         _rng: &mut RNG,
         step: S,
         witness: S::Witness<'source>,
-        left: Pcd<'source, S::Left>,
-        right: Pcd<'source, S::Right>,
-    ) -> Result<(Pcd<'source, S::Output>, S::Aux<'source>)> {
+        left: Pcd<S::Left>,
+        right: Pcd<S::Right>,
+    ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
         let left_proof = left.proof;
         let right_proof = right.proof;
 
@@ -115,7 +115,7 @@ impl Application {
         Ok((proof_value.carry::<S::Output>(output_data), aux))
     }
 
-    pub fn verify<RNG: CryptoRng, H: Header>(&self, pcd: &Pcd<'_, H>, _rng: RNG) -> Result<bool> {
+    pub fn verify<RNG: CryptoRngCore, H: Header>(&self, pcd: &Pcd<H>, _rng: RNG) -> Result<bool> {
         match pcd.proof.step_index.application() {
             Some(application_index) if application_index < self.num_application_steps => {}
             _ => return Ok(false),
@@ -135,11 +135,11 @@ impl Application {
         Ok(expected_binding == pcd.proof.binding)
     }
 
-    pub fn rerandomize<'source, RNG: CryptoRng, H: Header>(
+    pub fn rerandomize<RNG: CryptoRngCore, H: Header>(
         &self,
-        pcd: Pcd<'source, H>,
+        pcd: Pcd<H>,
         _rng: &mut RNG,
-    ) -> Result<Pcd<'source, H>> {
+    ) -> Result<Pcd<H>> {
         Ok(Pcd {
             proof: pcd.proof.rerandomize(),
             data: pcd.data,
