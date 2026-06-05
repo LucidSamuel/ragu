@@ -38,6 +38,30 @@ fn commitment_serialization_roundtrip() {
 }
 
 #[test]
+fn trailing_zeros_preserve_commitment_and_equality() {
+    let a = Fp::from(3u64);
+    let b = Fp::from(7u64);
+
+    // A coefficient vector and the same vector padded with trailing zeros denote
+    // the same fixed-rank polynomial: a zero coefficient contributes the
+    // identity point, so the Pedersen commit is unchanged.
+    let short = Polynomial::from_coeffs(&[a, b]);
+    let padded_tail = Polynomial::from_coeffs(&[a, b, Fp::ZERO]);
+    assert_eq!(short, padded_tail, "tail zero preserves commitment");
+
+    // Head position is still binding: a zero in front moves everything to a
+    // different generator, so the commitment differs.
+    let short = Polynomial::from_coeffs(&[a, b]);
+    let head_padded = Polynomial::from_coeffs(&[Fp::ZERO, a, b]);
+    assert_ne!(short, head_padded, "head zero changes commitment");
+
+    // Interior position is still binding: a zero in the middle moves `b` onto a
+    // different generator, so the commitment differs.
+    let interior = Polynomial::from_coeffs(&[a, Fp::ZERO, b]);
+    assert_ne!(short, interior, "interior zero changes commitment");
+}
+
+#[test]
 fn blinding_changes_commitment() {
     let poly = Polynomial::from_roots(&[Fp::from(42u64)]);
     let unblinded = poly.commit(Fp::ZERO);

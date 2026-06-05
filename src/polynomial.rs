@@ -3,7 +3,7 @@
 //! Real Pedersen crypto on Vesta. Only the proof system is mocked.
 
 use alloc::vec::Vec;
-use core::ops::Neg;
+use core::ops::{Add, Mul, Neg};
 
 use ff::Field;
 use lazy_static::lazy_static;
@@ -47,13 +47,19 @@ pub fn poly_with_roots(roots: &[Fp]) -> Vec<Fp> {
 }
 
 /// Mirrors `ragu_circuits::polynomials::unstructured::Polynomial`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct Polynomial(Vec<Fp>);
+
+impl PartialEq for Polynomial {
+    fn eq(&self, other: &Self) -> bool {
+        self.commit(Fp::ZERO) == other.commit(Fp::ZERO)
+    }
+}
 
 impl Polynomial {
     #[must_use]
-    pub fn from_coeffs(coeffs: Vec<Fp>) -> Self {
-        Self(coeffs)
+    pub fn from_coeffs(coeffs: &[Fp]) -> Self {
+        Self(coeffs.to_vec())
     }
 
     #[must_use]
@@ -114,13 +120,76 @@ impl Default for Polynomial {
 }
 
 /// A Pedersen vector commitment (EC point on Vesta).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq)]
 pub struct Commitment(EqAffine);
 
+impl PartialEq for Commitment {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
 impl Commitment {
+    /// The identity (zero) point — the commit of the empty polynomial with
+    /// zero blinding.
+    #[must_use]
+    pub fn identity() -> Self {
+        use pasta_curves::group::{Curve as _, Group as _};
+        Self(Eq::identity().to_affine())
+    }
+
+    /// `Σ_{i<len} G_i` — the commit of the all-ones polynomial of length `len`
+    /// with zero blinding.
+    ///
+    /// A public constant for a fixed `len` (it has no secret input). It is the
+    /// coefficient-side basis of the homomorphic shift `+ s·Σ G_i`, where the
+    /// scalar `s` (e.g. a note commitment) is a private witness; the shift
+    /// never makes `s` public.
+    #[must_use]
+    pub fn generators_sum(len: usize) -> Self {
+        use pasta_curves::group::{Curve as _, Group as _};
+        let generators = &*GENERATORS;
+        assert!(
+            len <= generators.len(),
+            "length {len} exceeds max generators {}",
+            generators.len(),
+        );
+        let mut acc = Eq::identity();
+        for &point in generators.iter().take(len) {
+            acc += Eq::from(point);
+        }
+        Self(acc.to_affine())
+    }
+
+    /// The blinding generator `H` — the commit of the empty polynomial with
+    /// blinding `1`. This is the other half of the homomorphic cm-shift
+    /// basis (the H-side).
+    #[must_use]
+    pub fn blinding_generator() -> Self {
+        Self(*BLINDING_GENERATOR)
+    }
+
     #[must_use]
     pub fn inner(&self) -> &EqAffine {
         &self.0
+    }
+}
+
+impl Add for Commitment {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        use pasta_curves::group::Curve as _;
+        Self((Eq::from(self.0) + Eq::from(rhs.0)).to_affine())
+    }
+}
+
+impl Mul<Fp> for Commitment {
+    type Output = Self;
+
+    fn mul(self, rhs: Fp) -> Self {
+        use pasta_curves::group::Curve as _;
+        Self((Eq::from(self.0) * rhs).to_affine())
     }
 }
 

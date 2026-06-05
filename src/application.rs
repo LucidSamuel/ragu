@@ -6,8 +6,10 @@ use core::any::TypeId;
 use rand_core::CryptoRng;
 
 use crate::{
+    ctx::StepCtx,
     error::{Error, Result},
     header::{Header, Suffix},
+    hooks::FrameworkHooks,
     proof::{self, PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::Step,
 };
@@ -95,7 +97,13 @@ impl Application {
     ) -> Result<(Pcd<'source, S::Output>, S::Aux<'source>)> {
         let left_proof = left.proof;
         let right_proof = right.proof;
-        let (output_data, aux) = step.witness(witness, left.data, right.data)?;
+
+        let mut hooks = FrameworkHooks::new();
+        let mut ctx = StepCtx::new(&mut hooks);
+        let (output_data, aux) = step.witness(&mut ctx, witness, left.data, right.data)?;
+
+        // TODO just like the real crate :D
+        let _claims = hooks.into_outputs();
 
         let encoded = S::Output::encode(&output_data);
 

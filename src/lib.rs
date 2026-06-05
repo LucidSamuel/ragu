@@ -16,19 +16,23 @@ extern crate std;
 extern crate alloc;
 
 pub use application::{Application, ApplicationBuilder};
+pub use ctx::StepCtx;
 pub use error::{Error, Result};
-pub use gadgets::Multiset;
 pub use header::{Header, Suffix};
+pub use hooks::FrameworkHooks;
 pub use polynomial::{Commitment, Polynomial, poly_with_roots};
 pub use proof::{Pcd, Proof};
+pub use relations::{enforce_poly_product, enforce_poly_shifted_sum};
 pub use step::{Index, Step};
 
 pub mod application;
+pub mod ctx;
 pub mod error;
-pub mod gadgets;
 pub mod header;
+pub mod hooks;
 pub mod polynomial;
 pub mod proof;
+pub mod relations;
 pub mod step;
 
 #[cfg(test)]

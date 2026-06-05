@@ -4,6 +4,7 @@ use rand::thread_rng;
 
 use crate::{
     application::*,
+    ctx::StepCtx,
     error::Result,
     header::{Header, Suffix},
     proof::{PROOF_SIZE_COMPRESSED, Pcd, Proof},
@@ -41,6 +42,7 @@ impl Step for SeedStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data<'source>,
         _right: <Self::Right as Header>::Data<'source>,
@@ -62,6 +64,7 @@ impl Step for MergeStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
         left: <Self::Left as Header>::Data<'source>,
         right: <Self::Right as Header>::Data<'source>,
@@ -265,6 +268,7 @@ impl Step for AuxSeedStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data<'source>,
         _right: <Self::Right as Header>::Data<'source>,
@@ -287,6 +291,7 @@ impl Step for AuxMergeStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         witness: Self::Witness<'source>,
         left: <Self::Left as Header>::Data<'source>,
         right: <Self::Right as Header>::Data<'source>,
@@ -459,6 +464,7 @@ impl Step for DuplicateIndexStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data<'source>,
         _right: <Self::Right as Header>::Data<'source>,
@@ -482,6 +488,7 @@ impl Step for SuffixCollisionStep {
 
     fn witness<'source>(
         &self,
+        _ctx: &mut StepCtx<'_>,
         _witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data<'source>,
         _right: <Self::Right as Header>::Data<'source>,
@@ -546,6 +553,7 @@ fn internal_step_index_rejects_registration() {
 
         fn witness<'source>(
             &self,
+            _ctx: &mut StepCtx<'_>,
             _witness: Self::Witness<'source>,
             _left: <Self::Left as Header>::Data<'source>,
             _right: <Self::Right as Header>::Data<'source>,
