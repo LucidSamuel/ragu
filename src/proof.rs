@@ -35,22 +35,22 @@ pub struct Proof {
 }
 
 /// Mocks `ragu_pcd::Pcd`.
-pub struct Pcd<'source, H: Header> {
+pub struct Pcd<H: Header> {
     pub(crate) proof: Proof,
-    pub(crate) data: H::Data<'source>,
+    pub(crate) data: H::Data,
 }
 
-impl<'source, H: Header> Pcd<'source, H> {
+impl<H: Header> Pcd<H> {
     /// Returns a reference to the data that the proof accompanies.
     ///
     /// Mirrors `ragu_pcd::Pcd::data`.
     #[must_use]
-    pub fn data(&self) -> &H::Data<'source> {
+    pub fn data(&self) -> &H::Data {
         &self.data
     }
 }
 
-impl<'source, H: Header> Clone for Pcd<'source, H> {
+impl<H: Header> Clone for Pcd<H> {
     fn clone(&self) -> Self {
         Self {
             proof: self.proof.clone(),
@@ -86,7 +86,7 @@ impl Proof {
 
     /// Mirrors `ragu_pcd::Proof::carry`.
     #[must_use]
-    pub fn carry<H: Header>(self, data: H::Data<'_>) -> Pcd<'_, H> {
+    pub fn carry<H: Header>(self, data: H::Data) -> Pcd<H> {
         Pcd { proof: self, data }
     }
 
