@@ -52,8 +52,8 @@ impl Suffix {
     )]
     pub(crate) fn get(self) -> u64 {
         let value_usize = match self.suffix {
-            | HeaderSuffix::Internal(value) => value,
-            | HeaderSuffix::Application(value) => value + NUM_INTERNAL_SUFFIXES,
+            HeaderSuffix::Internal(value) => value,
+            HeaderSuffix::Application(value) => value + NUM_INTERNAL_SUFFIXES,
         };
         u64::try_from(value_usize).expect("suffix value fits in u64")
     }

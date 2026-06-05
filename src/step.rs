@@ -53,8 +53,8 @@ impl Index {
     )]
     pub(crate) fn get(self) -> u64 {
         let value_usize = match self.index {
-            | StepIndex::Internal(value) => value,
-            | StepIndex::Application(value) => value + NUM_INTERNAL_STEPS,
+            StepIndex::Internal(value) => value,
+            StepIndex::Application(value) => value + NUM_INTERNAL_STEPS,
         };
         u64::try_from(value_usize).expect("step index fits in u64")
     }
@@ -63,8 +63,8 @@ impl Index {
     /// step, or `None` if it is internal.
     pub(crate) fn application(self) -> Option<usize> {
         match self.index {
-            | StepIndex::Application(value) => Some(value),
-            | StepIndex::Internal(_) => None,
+            StepIndex::Application(value) => Some(value),
+            StepIndex::Internal(_) => None,
         }
     }
 
@@ -89,11 +89,9 @@ impl Index {
     /// registration to require sequential application indexes.
     pub(crate) fn assert_sequential(self, expected: usize) -> Result<()> {
         match self.index {
-            | StepIndex::Application(value) if value == expected => Ok(()),
-            | StepIndex::Application(_) => {
-                Err(Error("steps must be registered in sequential order"))
-            },
-            | StepIndex::Internal(_) => Err(Error("step INDEX must be application-defined")),
+            StepIndex::Application(value) if value == expected => Ok(()),
+            StepIndex::Application(_) => Err(Error("steps must be registered in sequential order")),
+            StepIndex::Internal(_) => Err(Error("step INDEX must be application-defined")),
         }
     }
 }

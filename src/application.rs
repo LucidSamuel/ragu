@@ -60,16 +60,14 @@ impl ApplicationBuilder {
         let suffix = H::SUFFIX;
         let type_id = TypeId::of::<H>();
         match self.header_map.get(&suffix) {
-            | Some(registered) if *registered != type_id => {
-                Err(Error(
-                    "two distinct Header implementations declared the same suffix",
-                ))
-            },
-            | Some(_) => Ok(()),
-            | None => {
+            Some(registered) if *registered != type_id => Err(Error(
+                "two distinct Header implementations declared the same suffix",
+            )),
+            Some(_) => Ok(()),
+            None => {
                 self.header_map.insert(suffix, type_id);
                 Ok(())
-            },
+            }
         }
     }
 }
@@ -119,8 +117,8 @@ impl Application {
 
     pub fn verify<RNG: CryptoRng, H: Header>(&self, pcd: &Pcd<'_, H>, _rng: RNG) -> Result<bool> {
         match pcd.proof.step_index.application() {
-            | Some(application_index) if application_index < self.num_application_steps => {},
-            | _ => return Ok(false),
+            Some(application_index) if application_index < self.num_application_steps => {}
+            _ => return Ok(false),
         }
 
         let encoded = H::encode(&pcd.data);
