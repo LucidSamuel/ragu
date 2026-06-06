@@ -22,16 +22,16 @@ fn from_roots_and_multiply() {
 
 #[test]
 fn commitment_deterministic_and_distinct() {
-    let c1 = Polynomial::from_roots(&[Fp::from(1u64)]).commit(Fp::ZERO);
-    let c2 = Polynomial::from_roots(&[Fp::from(2u64)]).commit(Fp::ZERO);
-    let c1_again = Polynomial::from_roots(&[Fp::from(1u64)]).commit(Fp::ZERO);
+    let c1 = Polynomial::from_roots(&[Fp::from(1u64)]).commit();
+    let c2 = Polynomial::from_roots(&[Fp::from(2u64)]).commit();
+    let c1_again = Polynomial::from_roots(&[Fp::from(1u64)]).commit();
     assert_eq!(c1, c1_again);
     assert_ne!(c1, c2);
 }
 
 #[test]
 fn commitment_serialization_roundtrip() {
-    let commitment = Polynomial::from_roots(&[Fp::from(99u64)]).commit(Fp::ZERO);
+    let commitment = Polynomial::from_roots(&[Fp::from(99u64)]).commit();
     let bytes: [u8; 32] = commitment.into();
     let recovered = Commitment::try_from(&bytes).expect("valid point");
     assert_eq!(commitment, recovered);
@@ -63,8 +63,20 @@ fn trailing_zeros_preserve_commitment_and_equality() {
 
 #[test]
 fn blinding_changes_commitment() {
-    let poly = Polynomial::from_roots(&[Fp::from(42u64)]);
-    let unblinded = poly.commit(Fp::ZERO);
-    let blinded = poly.commit(Fp::ONE);
+    // `commit` is unblinded; blinding is a separate homomorphic `+ blind·h`
+    // against the blinding generator.
+    let unblinded = Polynomial::from_roots(&[Fp::from(42u64)]).commit();
+    let blinded = unblinded + generators::h() * Fp::ONE;
     assert_ne!(unblinded, blinded);
+}
+
+#[test]
+fn short_commit_blind_changes_commitment() {
+    // `short_commit` mirrors ragu's `FixedGenerators::short_commit`
+    // (`g(0)·value + h·blind`); varying the blind changes the commitment.
+    let value = Fp::from(7u64);
+    assert_ne!(
+        generators::short_commit(value, Fp::ZERO),
+        generators::short_commit(value, Fp::ONE),
+    );
 }
