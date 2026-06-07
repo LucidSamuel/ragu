@@ -875,8 +875,8 @@ dependencies = [
  "ragu_core",
  "ragu_pcd",
  "ragu_primitives",
- "rand 0.8.6",
- "rand_core 0.6.4",
+ "rand 0.10.1",
+ "rand_core 0.10.0",
 ]
 
 [[package]]

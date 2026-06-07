@@ -41,10 +41,7 @@ multicore = [
   "ragu_circuits/multicore",
   "ragu_pcd/multicore",
 ]
-std = [
-  "blake2b_simd/std",
-  "rand_core/std",
-]
+std = []
 
 [lib]
 bench = false
@@ -56,17 +53,15 @@ ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-
 ragu_primitives = { path = "crates/ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
 ragu_pcd = { path = "crates/ragu_pcd", version = "0.0.0", default-features = false, features = ["alloc"] }
 
-# mock_ragu API-mock dependencies (BLAKE2b-based mock of the PCD proof system)
-blake2b_simd = { version = "1.0", default-features = false }
+# mock dependencies
+blake2b_simd = { workspace = true }
 ff = { workspace = true }
-lazy_static = { version = "1", default-features = false, features = [
-    "spin_no_std",
-] }
+lazy_static = { workspace = true }
 pasta_curves = { workspace = true }
-rand_core = { version = "0.6", default-features = false }
+rand_core = { workspace = true }
 
 [dev-dependencies]
-rand = "0.8"
+rand = { workspace = true }
 
 [workspace]
 members = [
@@ -104,6 +99,7 @@ ff = { version = "0.14", default-features = false }
 group = { version = "0.14", default-features = false }
 pasta_curves = { git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
 rand = "0.10"
+rand_core = { version = "0.10", default-features = false }
 ff_modern = { package = "ff", version = "0.14", default-features = false }
 group_modern = { package = "group", version = "0.14", default-features = false }
 pasta_curves_modern = { package = "pasta_curves", git = "https://github.com/ebfull/pasta_curves", rev = "5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5", features = ["deferred"] }
