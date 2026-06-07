@@ -32,21 +32,21 @@ impl Header for TestHeader {
 struct SeedStep;
 
 impl Step for SeedStep {
-    type Aux = ();
+    type Aux<'source> = ();
     type Left = ();
     type Output = TestHeader;
     type Right = ();
-    type Witness = u64;
+    type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        witness: Self::Witness,
+        witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data,
         _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: witness }, ()))
     }
 }
@@ -54,21 +54,21 @@ impl Step for SeedStep {
 struct MergeStep;
 
 impl Step for MergeStep {
-    type Aux = ();
+    type Aux<'source> = ();
     type Left = TestHeader;
     type Output = TestHeader;
     type Right = TestHeader;
-    type Witness = ();
+    type Witness<'source> = ();
 
     const INDEX: Index = Index::new(1);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        _witness: Self::Witness,
+        _witness: Self::Witness<'source>,
         left: <Self::Left as Header>::Data,
         right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         Ok((
             TestHeaderData {
                 value: left.value + right.value,
@@ -247,21 +247,21 @@ fn different_merge_trees_same_header() {
 struct AuxSeedStep;
 
 impl Step for AuxSeedStep {
-    type Aux = Vec<u64>;
+    type Aux<'source> = Vec<u64>;
     type Left = ();
     type Output = TestHeader;
     type Right = ();
-    type Witness = u64;
+    type Witness<'source> = u64;
 
     const INDEX: Index = Index::new(0);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        witness: Self::Witness,
+        witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data,
         _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         let squared = witness * witness;
         Ok((TestHeaderData { value: squared }, alloc::vec![squared]))
     }
@@ -270,21 +270,21 @@ impl Step for AuxSeedStep {
 struct AuxMergeStep;
 
 impl Step for AuxMergeStep {
-    type Aux = Vec<u64>;
+    type Aux<'source> = Vec<u64>;
     type Left = TestHeader;
     type Output = TestHeader;
     type Right = TestHeader;
-    type Witness = (Vec<u64>, Vec<u64>);
+    type Witness<'source> = (Vec<u64>, Vec<u64>);
 
     const INDEX: Index = Index::new(1);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        witness: Self::Witness,
+        witness: Self::Witness<'source>,
         left: <Self::Left as Header>::Data,
         right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         let (left_aux, right_aux) = witness;
         let mut combined = left_aux;
         combined.extend(right_aux);
@@ -434,21 +434,21 @@ impl Header for ConflictingHeader {
 struct DuplicateIndexStep;
 
 impl Step for DuplicateIndexStep {
-    type Aux = ();
+    type Aux<'source> = ();
     type Left = ();
     type Output = TestHeader;
     type Right = ();
-    type Witness = ();
+    type Witness<'source> = ();
 
     const INDEX: Index = Index::new(0);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        _witness: Self::Witness,
+        _witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data,
         _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: 0 }, ()))
     }
 }
@@ -458,21 +458,21 @@ impl Step for DuplicateIndexStep {
 struct SuffixCollisionStep;
 
 impl Step for SuffixCollisionStep {
-    type Aux = ();
+    type Aux<'source> = ();
     type Left = ();
     type Output = ConflictingHeader;
     type Right = ();
-    type Witness = ();
+    type Witness<'source> = ();
 
     const INDEX: Index = Index::new(1);
 
-    fn witness(
+    fn witness<'source>(
         &self,
         _ctx: &mut StepCtx<'_>,
-        _witness: Self::Witness,
+        _witness: Self::Witness<'source>,
         _left: <Self::Left as Header>::Data,
         _right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
         Ok((TestHeaderData { value: 0 }, ()))
     }
 }
@@ -523,21 +523,21 @@ fn same_suffix_same_type_succeeds_registration() {
 fn internal_step_index_rejects_registration() {
     struct InternalIndexStep;
     impl Step for InternalIndexStep {
-        type Aux = ();
+        type Aux<'source> = ();
         type Left = ();
         type Output = TestHeader;
         type Right = ();
-        type Witness = ();
+        type Witness<'source> = ();
 
         const INDEX: Index = Index::internal(0);
 
-        fn witness(
+        fn witness<'source>(
             &self,
             _ctx: &mut StepCtx<'_>,
-            _witness: Self::Witness,
+            _witness: Self::Witness<'source>,
             _left: <Self::Left as Header>::Data,
             _right: <Self::Right as Header>::Data,
-        ) -> Result<(<Self::Output as Header>::Data, Self::Aux)> {
+        ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)> {
             Ok((TestHeaderData { value: 0 }, ()))
         }
     }

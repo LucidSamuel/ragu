@@ -99,17 +99,17 @@ impl Index {
 /// Mirrors `ragu_pcd::Step`.
 pub trait Step: Sized + Send + Sync {
     const INDEX: Index;
-    type Witness: Send;
-    type Aux: Send;
+    type Witness<'source>: Send;
+    type Aux<'source>: Send;
     type Left: Header;
     type Right: Header;
     type Output: Header;
 
-    fn witness(
+    fn witness<'source>(
         &self,
-        ctx: &mut StepCtx,
-        witness: Self::Witness,
+        ctx: &mut StepCtx<'_>,
+        witness: Self::Witness<'source>,
         left: <Self::Left as Header>::Data,
         right: <Self::Right as Header>::Data,
-    ) -> Result<(<Self::Output as Header>::Data, Self::Aux)>;
+    ) -> Result<(<Self::Output as Header>::Data, Self::Aux<'source>)>;
 }

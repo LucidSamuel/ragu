@@ -74,25 +74,25 @@ impl ApplicationBuilder {
 
 impl Application {
     /// Delegates to [`fuse`](Self::fuse) with trivial PCDs.
-    pub fn seed<RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
+    pub fn seed<'source, RNG: CryptoRng, S: Step<Left = (), Right = ()>>(
         &self,
         rng: &mut RNG,
         step: S,
-        witness: S::Witness,
-    ) -> Result<(Pcd<S::Output>, S::Aux)> {
+        witness: S::Witness<'source>,
+    ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
         let left = Proof::trivial().carry::<()>(());
         let right = Proof::trivial().carry::<()>(());
         self.fuse(rng, step, witness, left, right)
     }
 
-    pub fn fuse<RNG: CryptoRng, S: Step>(
+    pub fn fuse<'source, RNG: CryptoRng, S: Step>(
         &self,
         _rng: &mut RNG,
         step: S,
-        witness: S::Witness,
+        witness: S::Witness<'source>,
         left: Pcd<S::Left>,
         right: Pcd<S::Right>,
-    ) -> Result<(Pcd<S::Output>, S::Aux)> {
+    ) -> Result<(Pcd<S::Output>, S::Aux<'source>)> {
         let left_proof = left.proof;
         let right_proof = right.proof;
 
