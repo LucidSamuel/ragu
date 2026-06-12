@@ -2,14 +2,15 @@
 //!
 //! The existing integration tests exercise fuse with fixed witness values
 //! (`Fp::from(42)`). These proptests verify that seed, fuse, and rerandomize
-//! work correctly for arbitrary field-element witnesses.
+//! work correctly for arbitrary field-element witnesses and RNG seeds.
 
-use proptest::prelude::*;
-use proptest::test_runner::TestRunner;
+use proptest::{prelude::*, test_runner::TestRunner};
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
+use ragu_core::{drivers::emulator::Emulator, maybe::Maybe};
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
+use ragu_primitives::{Element, allocator::Standard, poseidon::Sponge};
 use ragu_testing::{
     pcd::nontrivial::{Hash2, HashInternal2, InternalNode, LeafNode, WitnessLeaf},
     strategies::prime_field_element,
@@ -46,6 +47,29 @@ fn pp() -> &'static <Pasta as Cycle>::CircuitPoseidon {
 
 fn fail(e: impl core::fmt::Display) -> TestCaseError {
     TestCaseError::fail(e.to_string())
+}
+
+fn hash_leaf(witness: Fp) -> Result<Fp, TestCaseError> {
+    Emulator::emulate_wireless(witness, |dr, witness| {
+        let witness = Element::alloc(dr, &mut Standard::new(), witness)?;
+        let mut sponge = Sponge::new(dr, pp());
+        sponge.absorb(dr, &witness)?;
+        Ok(*sponge.squeeze(dr)?.value().take())
+    })
+    .map_err(fail)
+}
+
+fn hash_pair(left: Fp, right: Fp) -> Result<Fp, TestCaseError> {
+    Emulator::emulate_wireless((left, right), |dr, witness| {
+        let (left, right) = witness.cast();
+        let left = Element::alloc(dr, &mut Standard::new(), left)?;
+        let right = Element::alloc(dr, &mut Standard::new(), right)?;
+        let mut sponge = Sponge::new(dr, pp());
+        sponge.absorb(dr, &left)?;
+        sponge.absorb(dr, &right)?;
+        Ok(*sponge.squeeze(dr)?.value().take())
+    })
+    .map_err(fail)
 }
 
 fn runner(cases: u32) -> TestRunner {
@@ -107,13 +131,21 @@ fn seed_with_random_witness_verifies() {
     let mut runner = runner(5);
 
     runner
-        .run(&prime_field_element::<Fp>(), |witness| {
-            let mut rng = StdRng::seed_from_u64(0xDEAD);
-            let leaf = seed(&app, &mut rng, witness)?;
-            let ok = app.verify(&leaf, &mut rng).map_err(fail)?;
-            prop_assert!(ok, "leaf proof must verify");
-            Ok(())
-        })
+        .run(
+            &(prime_field_element::<Fp>(), any::<u64>()),
+            |(witness, rng_seed)| {
+                let mut rng = StdRng::seed_from_u64(rng_seed);
+                let leaf = seed(&app, &mut rng, witness)?;
+                prop_assert_eq!(
+                    *leaf.data(),
+                    hash_leaf(witness)?,
+                    "leaf data must equal the Poseidon hash of its witness"
+                );
+                let ok = app.verify(&leaf, &mut rng).map_err(fail)?;
+                prop_assert!(ok, "leaf proof must verify");
+                Ok(())
+            },
+        )
         .unwrap();
 }
 
@@ -126,12 +158,26 @@ fn fuse_with_random_witnesses_verifies() {
 
     runner
         .run(
-            &(prime_field_element::<Fp>(), prime_field_element::<Fp>()),
-            |(w1, w2)| {
-                let mut rng = StdRng::seed_from_u64(0xBEEF);
+            &(
+                prime_field_element::<Fp>(),
+                prime_field_element::<Fp>(),
+                any::<u64>(),
+            ),
+            |(w1, w2, rng_seed)| {
+                let mut rng = StdRng::seed_from_u64(rng_seed);
                 let leaf1 = seed(&app, &mut rng, w1)?;
                 let leaf2 = seed(&app, &mut rng, w2)?;
+                let expected_leaf1 = hash_leaf(w1)?;
+                let expected_leaf2 = hash_leaf(w2)?;
+                prop_assert_eq!(*leaf1.data(), expected_leaf1);
+                prop_assert_eq!(*leaf2.data(), expected_leaf2);
+
                 let node = fuse_leaves(&app, &mut rng, leaf1, leaf2)?;
+                prop_assert_eq!(
+                    *node.data(),
+                    hash_pair(expected_leaf1, expected_leaf2)?,
+                    "fused node data must hash its child data"
+                );
 
                 let ok = app.verify(&node, &mut rng).map_err(fail)?;
                 prop_assert!(ok, "fused proof must verify");
@@ -149,12 +195,22 @@ fn fuse_then_rerandomize_preserves_data() {
 
     runner
         .run(
-            &(prime_field_element::<Fp>(), prime_field_element::<Fp>()),
-            |(w1, w2)| {
-                let mut rng = StdRng::seed_from_u64(0xCAFE);
+            &(
+                prime_field_element::<Fp>(),
+                prime_field_element::<Fp>(),
+                any::<u64>(),
+            ),
+            |(w1, w2, rng_seed)| {
+                let mut rng = StdRng::seed_from_u64(rng_seed);
                 let leaf1 = seed(&app, &mut rng, w1)?;
                 let leaf2 = seed(&app, &mut rng, w2)?;
+                let expected_data = hash_pair(hash_leaf(w1)?, hash_leaf(w2)?)?;
                 let node = fuse_leaves(&app, &mut rng, leaf1, leaf2)?;
+                prop_assert_eq!(
+                    *node.data(),
+                    expected_data,
+                    "fused node data must hash its child data"
+                );
 
                 let original_data = *node.data();
                 let rerandomized = app.rerandomize(node, &mut rng).map_err(fail)?;
@@ -183,19 +239,39 @@ fn multi_step_fuse_chain_verifies() {
         prime_field_element::<Fp>(),
         prime_field_element::<Fp>(),
         prime_field_element::<Fp>(),
+        any::<u64>(),
     );
 
     runner
-        .run(&witnesses, |(w1, w2, w3, w4)| {
-            let mut rng = StdRng::seed_from_u64(0xF00D);
+        .run(&witnesses, |(w1, w2, w3, w4, rng_seed)| {
+            let mut rng = StdRng::seed_from_u64(rng_seed);
             let leaf1 = seed(&app, &mut rng, w1)?;
             let leaf2 = seed(&app, &mut rng, w2)?;
             let leaf3 = seed(&app, &mut rng, w3)?;
             let leaf4 = seed(&app, &mut rng, w4)?;
 
+            let expected_leaf1 = hash_leaf(w1)?;
+            let expected_leaf2 = hash_leaf(w2)?;
+            let expected_leaf3 = hash_leaf(w3)?;
+            let expected_leaf4 = hash_leaf(w4)?;
+            prop_assert_eq!(*leaf1.data(), expected_leaf1);
+            prop_assert_eq!(*leaf2.data(), expected_leaf2);
+            prop_assert_eq!(*leaf3.data(), expected_leaf3);
+            prop_assert_eq!(*leaf4.data(), expected_leaf4);
+
             let left = fuse_leaves(&app, &mut rng, leaf1, leaf2)?;
             let right = fuse_leaves(&app, &mut rng, leaf3, leaf4)?;
+            let expected_left = hash_pair(expected_leaf1, expected_leaf2)?;
+            let expected_right = hash_pair(expected_leaf3, expected_leaf4)?;
+            prop_assert_eq!(*left.data(), expected_left);
+            prop_assert_eq!(*right.data(), expected_right);
+
             let root = fuse_nodes(&app, &mut rng, left, right)?;
+            prop_assert_eq!(
+                *root.data(),
+                hash_pair(expected_left, expected_right)?,
+                "root data must equal the nested Poseidon hash"
+            );
 
             let ok = app.verify(&root, &mut rng).map_err(fail)?;
             prop_assert!(ok, "multi-step fused proof must verify");
