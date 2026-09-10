@@ -292,6 +292,10 @@ mod native {
             once(self.unified_ky)
         }
 
+        fn ones(&self) -> impl Iterator<Item = F> + Clone {
+            once(F::ONE)
+        }
+
         fn zero(&self) -> F {
             F::ZERO
         }

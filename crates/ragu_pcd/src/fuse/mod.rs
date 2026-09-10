@@ -374,6 +374,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &builder,
         )?;
 
+        // The nested batch's commitments, into the native points inputs stage
+        // before beta is squeezed; the eval bridge carries its commitment.
+        let native_points = self.prepare_native_points(
+            rng,
+            &nested_f,
+            &nested_s_prime,
+            &nested_registry_wy,
+            &left,
+            &right,
+            &mut builder,
+        )?;
+        let native_points_inputs_commitment = builder.native_points_inputs_commitment();
+
         // Rejection-sample the eval-stage blinding until the squeezed `pre_beta`
         // lands in range as an endoscalar challenge. Unlike the single-shot
         // challenges above, `pre_beta` must be ground: each attempt re-blinds the
@@ -390,8 +403,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 // Fresh eval-stage blindings each attempt: re-deriving the eval
                 // commitment is what makes `pre_beta` independent across
                 // retries.
-                let (eval_rx, bridge_eval_rx, bridge_eval_commitment) =
-                    self.sample_eval_commitment(rng, &eval_witness, &nested_eval)?;
+                let (eval_rx, bridge_eval_rx, bridge_eval_commitment) = self
+                    .sample_eval_commitment(
+                        rng,
+                        &eval_witness,
+                        &nested_eval,
+                        native_points_inputs_commitment,
+                    )?;
 
                 let mut transcript = transcript.clone();
                 let bridge_eval_commitment_point = Point::constant(dr, bridge_eval_commitment)?;
@@ -412,7 +430,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &mut builder,
         )?;
 
-        let points = self.compute_p(
+        let (points, _native_interstitials) = self.compute_p(
             rng,
             &pre_beta,
             &left,
@@ -423,6 +441,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &nested_s_prime,
             &nested_registry_wy,
             &nested_f,
+            &native_points,
             &mut builder,
         )?;
 
@@ -467,6 +486,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         let nested_eval_witness = nested::stages::eval::Witness {
             native_eval: builder.native_eval_commitment(),
+            native_points_inputs: native_points_inputs_commitment,
             nested: nested_eval,
         };
 

@@ -337,6 +337,21 @@ fn nested_accumulator_is_the_fold_of_the_children() -> Result<()> {
 }
 
 #[test]
+fn trivial_nested_batch_commitment_matches_polynomial() {
+    let app = app();
+    let proof = app.trivial_proof();
+
+    assert_eq!(
+        ReferenceBackend::sparse_commit_to_affine(
+            proof.nested_p_poly(),
+            C::nested_generators(app.params),
+        ),
+        proof.nested_p_commitment(),
+        "a trivial child's nested batch polynomial must match its walked commitment"
+    );
+}
+
+#[test]
 fn nested_batch_opens_what_it_claims() -> Result<()> {
     let app = app();
     let (parent, left, right) = fused(&app);
