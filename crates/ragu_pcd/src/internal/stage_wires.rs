@@ -202,10 +202,7 @@ mod tests {
         for (i, lift) in lifts.iter().enumerate() {
             assert_eq!(reader.read(indices[i]), *lift, "lift {i}");
         }
-        assert_eq!(
-            reader.read(indices[challenges::NUM]),
-            -F::ONE
-        );
+        assert_eq!(reader.read(indices[challenges::NUM]), -F::ONE);
         Ok(())
     }
 }

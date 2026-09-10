@@ -112,7 +112,7 @@ pub enum InternalCircuitIndex {
     InnerErrorFinalStaged,
     OuterErrorFinalStaged,
     EvalFinalStaged,
-    EndoscalarFinalStaged,
+    PointsInputsFinalStaged,
     PointsInterstitialsFinalStaged,
 }
 
@@ -175,7 +175,7 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::InnerErrorFinalStaged);
         push(&mut slots, &mut c, Self::OuterErrorFinalStaged);
         push(&mut slots, &mut c, Self::EvalFinalStaged);
-        push(&mut slots, &mut c, Self::EndoscalarFinalStaged);
+        push(&mut slots, &mut c, Self::PointsInputsFinalStaged);
         push(&mut slots, &mut c, Self::PointsInterstitialsFinalStaged);
         assert!(c == Self::NUM);
         slots
@@ -218,7 +218,7 @@ pub struct InternalCircuitValues<T> {
     pub inner_error_final_staged: T,
     pub outer_error_final_staged: T,
     pub eval_final_staged: T,
-    pub endoscalar_final_staged: T,
+    pub points_inputs_final_staged: T,
     pub points_interstitials_final_staged: T,
 }
 
@@ -247,7 +247,7 @@ impl<T> InternalCircuitValues<T> {
             InnerErrorFinalStaged => &self.inner_error_final_staged,
             OuterErrorFinalStaged => &self.outer_error_final_staged,
             EvalFinalStaged => &self.eval_final_staged,
-            EndoscalarFinalStaged => &self.endoscalar_final_staged,
+            PointsInputsFinalStaged => &self.points_inputs_final_staged,
             PointsInterstitialsFinalStaged => &self.points_interstitials_final_staged,
         }
     }
@@ -301,7 +301,7 @@ impl<T> InternalCircuitValues<T> {
             inner_error_final_staged: f(InnerErrorFinalStaged)?,
             outer_error_final_staged: f(OuterErrorFinalStaged)?,
             eval_final_staged: f(EvalFinalStaged)?,
-            endoscalar_final_staged: f(EndoscalarFinalStaged)?,
+            points_inputs_final_staged: f(PointsInputsFinalStaged)?,
             points_interstitials_final_staged: f(PointsInterstitialsFinalStaged)?,
         })
     }
@@ -643,12 +643,11 @@ pub fn register_all<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize>(
                 NUM_ENDOSCALING_POINTS,
             > as StageExt<C::CircuitField, R>>::mask(
             )?),
-            EndoscalarFinalStaged => {
-                registry.register_bonding(<endoscalar::EndoscalarStage as StageExt<
-                    C::CircuitField,
-                    R,
-                >>::final_mask()?)
-            }
+            PointsInputsFinalStaged => registry.register_bonding(<stages::points::InputsStage<
+                C::NestedCurve,
+                NUM_ENDOSCALING_POINTS,
+            > as StageExt<C::CircuitField, R>>::final_mask(
+            )?),
             PointsInterstitialsFinalStaged => {
                 registry.register_bonding(<stages::points::InterstitialsStage<
                     C::NestedCurve,

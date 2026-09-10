@@ -5,8 +5,9 @@
 //! stage, and the [`export`](super::export), [`collapse`](super::collapse)
 //! and [`compute_v`](super::compute_v) circuits all end on its last stage,
 //! so each reserves the whole chain and loads it here. Every stage is loaded
-//! unenforced: output contracts are not emitted here. The circuits consuming
-//! these stages must enforce the contracts they rely on.
+//! unenforced: output contracts are not emitted here. The export circuit
+//! enforces curve membership of the points stage and booleanity of the
+//! endoscalar stage once for all consuming circuits.
 
 use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{polynomials::Rank, staging::StageBuilder};

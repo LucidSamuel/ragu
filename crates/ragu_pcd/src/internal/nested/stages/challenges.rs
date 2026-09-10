@@ -88,9 +88,8 @@ impl<F: PrimeField> Witness<F> {
         left_header: &[N],
         right_header: &[N],
     ) -> Self {
-        let is_trivial = |header: &[N]| {
-            header.len() == HEADER_SIZE && header[HEADER_SIZE - 1] == N::ONE
-        };
+        let is_trivial =
+            |header: &[N]| header.len() == HEADER_SIZE && header[HEADER_SIZE - 1] == N::ONE;
         Self {
             lifts: FixedVec::new(lifts.into()).expect("NUM lifts"),
             base_case_sign: if is_trivial(left_header) && is_trivial(right_header) {

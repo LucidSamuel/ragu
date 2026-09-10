@@ -511,10 +511,8 @@ fn nested_challenge_stages_are_bound_by_their_commitments() -> Result<()> {
         parent.right_header(),
     );
     assert_eq!(challenges.base_case_sign, base_case_sign);
-    let expected = nested::stages::challenges::Stage::<ragu_pasta::EqAffine, R>::rx(
-        Fq::ZERO,
-        &challenges,
-    )?;
+    let expected =
+        nested::stages::challenges::Stage::<ragu_pasta::EqAffine, R>::rx(Fq::ZERO, &challenges)?;
     assert!(
         parent
             .nested_challenges_rx()
