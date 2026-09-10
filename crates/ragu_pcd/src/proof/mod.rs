@@ -115,14 +115,26 @@ fn beta_fold<F: Field, R: Rank>(
     })
 }
 
+/// The blinding of a cached bridge polynomial, as a distinct power of the
+/// proof's `bridge_alpha`; shared by the builder that derives the bridge and
+/// the verifier that rederives it.
+pub(crate) fn bridge_alpha_power<F: Field>(bridge_alpha: F, idx: nested::RxIndex) -> F {
+    let n = match idx {
+        nested::RxIndex::BridgeAB => 2,
+        _ => panic!("not a cached bridge: {idx:?}"),
+    };
+    bridge_alpha.pow_vartime([n])
+}
+
 /// Represents a recursive proof for the correctness of some computation.
 ///
 /// All fields are flat (no nested component structs). Polynomial fields are
 /// primary data; commitment fields are `Cached` values derivable from
-/// polynomials. The `ab` bridge polynomial is also `Cached`, derivable from
-/// `bridge_alpha` and native commitments; the other seven carry prover-chosen
-/// data (the nested fold's error terms and the nested batch's values among
-/// them) and are primary.
+/// polynomials, which [`verify`](crate::Application::verify) rederives
+/// rather than trusts. The `ab` bridge polynomial is also `Cached`,
+/// derivable from `bridge_alpha` and native commitments; the other seven
+/// carry prover-chosen data (the nested fold's error terms and the nested
+/// batch's values among them) and are primary.
 #[derive(Clone)]
 pub struct Proof<C: Cycle, R: Rank> {
     /// Shared alpha source for deriving cached bridge polynomial alphas.
@@ -1099,49 +1111,60 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         // Build dummy PointsStage inputs in `_10_p` accumulation order
         // and delegate to `compute_endoscaling` so this trivial setup
         // cannot silently drift from the real prover path.
-        let p_commitment = {
+        // As on the nested side: every placeholder is the commitment of a
+        // polynomial this proof holds, p is their beta-fold, and P is the
+        // walk's result, which is then p's commitment.
+        let (p_poly, p_commitment) = {
             let mut points = Vec::with_capacity(NUM_ENDOSCALING_POINTS);
+            let mut polys: Vec<&sparse::Polynomial<C::CircuitField, R>> =
+                Vec::with_capacity(NUM_ENDOSCALING_POINTS);
+            let mut push = |point, poly| {
+                points.push(point);
+                polys.push(poly);
+            };
+            let registry_xy_commitment = builder.native_registry_xy_commitment();
+            let registry_xy = builder.native_registry_xy_poly();
 
             // Initial: native_f commitment.
-            points.push(host_commitment);
-
-            let registry_xy_commitment = builder.native_registry_xy_commitment();
+            push(host_commitment, &ones_host);
 
             // Per-child block: all per-child commitments are
             // `host_commitment` (ones_host), except registry_xy which
             // has its own commitment.
             for _ in 0..2 {
                 for _ in &RxIndex::ALL {
-                    points.push(host_commitment);
+                    push(host_commitment, &ones_host);
                 }
-                points.push(host_commitment); // AbA
-                points.push(host_commitment); // AbB
-                points.push(registry_xy_commitment); // RegistryXY
-                points.push(host_commitment); // P placeholder
+                push(host_commitment, &ones_host); // AbA
+                push(host_commitment, &ones_host); // AbB
+                push(registry_xy_commitment, registry_xy); // RegistryXY
+                push(host_commitment, &ones_host); // P placeholder
             }
 
             // Current-step bridge inputs.
-            points.push(host_commitment); // registry_wx0
-            points.push(host_commitment); // registry_wx1
-            points.push(host_commitment); // registry_wy
-            points.push(host_commitment); // a
-            points.push(host_commitment); // b
-            points.push(registry_xy_commitment); // native_registry_xy
+            push(host_commitment, &ones_host); // registry_wx0
+            push(host_commitment, &ones_host); // registry_wx1
+            push(host_commitment, &ones_host); // registry_wy
+            push(host_commitment, &ones_host); // a
+            push(host_commitment, &ones_host); // b
+            push(registry_xy_commitment, registry_xy); // native_registry_xy
 
-            self.compute_endoscaling(
-                &mut trivial_rng,
-                beta_endo,
-                &points,
-                C::ScalarField::ONE,
-                C::ScalarField::ONE,
-                &mut builder,
-            )
-            .expect("trivial endoscaling")
-            .0
+            let poly = beta_fold(&polys, lift_endoscalar(beta_endo));
+            let (commitment, _) = self
+                .compute_endoscaling(
+                    &mut trivial_rng,
+                    beta_endo,
+                    &points,
+                    C::ScalarField::ONE,
+                    C::ScalarField::ONE,
+                    &mut builder,
+                )
+                .expect("trivial endoscaling");
+            (poly, commitment)
         };
 
         // Set native_p_poly with the real accumulated commitment.
-        builder.set_native_p_poly(ones_host, p_commitment);
+        builder.set_native_p_poly(p_poly, p_commitment);
 
         // Preamble bridge: computed last because ChildWitness.p needs
         // the real p_commitment from endoscaling.
