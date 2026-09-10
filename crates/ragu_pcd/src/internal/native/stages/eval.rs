@@ -55,34 +55,44 @@ pub type PartialsLen = ConstLen<NUM_BINDERS>;
 
 /// The running sums of the nested challenge binding: partial $k$ is the sum
 /// of the first $2(k+1)$ terms of the nested challenge stage's commitment,
-/// $\sum_{i < 2(k+1)} \mathrm{lift}(\mathrm{ch}_i) \cdot G_{\mathrm{idx}(i)}$.
+/// $\sum_{i < 2(k+1)} \mathrm{lift}(\mathrm{ch}_i) \cdot G_{\mathrm{idx}(i)}$,
+/// and the last partial also carries the base-case sign's term, so that it
+/// is the stage's commitment.
 #[derive(Clone)]
 pub struct BindingPartials<P> {
     pub partials: FixedVec<P, PartialsLen>,
 }
 
 impl<P: ragu_arithmetic::CurveAffine> BindingPartials<P> {
-    /// Computes the partials of the given lifts (the first ten challenges,
-    /// `w` through `u`, in stage order) over the nested-curve generators the
-    /// challenge stage commits them with.
+    /// Computes the partial sums of the nested challenge stage's commitment
+    /// from its witness. The last partial includes the base-case sign's
+    /// term, using the same value that will be committed in that stage.
     pub fn compute<C: Cycle<NestedCurve = P, ScalarField = P::ScalarExt>, R: Rank, B>(
         params: &C::Params,
-        lifts: &[C::ScalarField],
+        challenges: &nested::stages::challenges::Witness<C::ScalarField>,
     ) -> Self
     where
         B: ragu_backend::Backend,
     {
         use ragu_arithmetic::FixedGenerators;
 
-        assert_eq!(lifts.len(), 2 * NUM_BINDERS);
+        assert_eq!(challenges.lifts.len(), 2 * NUM_BINDERS);
         let generators = C::nested_generators(params);
-        let bases: alloc::vec::Vec<P> = (0..lifts.len())
+        // The stage's values: the lifts, then the base-case sign.
+        let mut scalars: alloc::vec::Vec<C::ScalarField> = challenges.lifts.to_vec();
+        scalars.push(challenges.base_case_sign);
+        let bases: alloc::vec::Vec<P> = (0..scalars.len())
             .map(|i| generators.g()[generator_index::<C, R>(i)])
             .collect();
         let partials =
             ragu_arithmetic::batch_to_affine(core::array::from_fn::<_, NUM_BINDERS, _>(|k| {
-                let n = 2 * (k + 1);
-                B::msm(lifts[..n].iter(), bases[..n].iter())
+                // The last partial includes the sign term.
+                let n = if k + 1 == NUM_BINDERS {
+                    scalars.len()
+                } else {
+                    2 * (k + 1)
+                };
+                B::msm(scalars[..n].iter(), bases[..n].iter())
             }));
         Self {
             partials: FixedVec::new(partials.into()).expect("NUM_BINDERS partials"),

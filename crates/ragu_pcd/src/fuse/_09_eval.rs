@@ -10,7 +10,8 @@
 //!
 //! The native `eval` stage also carries the running partial sums of the
 //! nested challenge binding (see `bind_challenges`), computed here from the
-//! lifts of the ten challenges squeezed so far.
+//! same witness that will be committed in the nested challenge stage: the
+//! ten lifts and the base-case sign derived from the child headers.
 
 use ragu_arithmetic::{Cycle, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{
@@ -42,6 +43,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     ) -> Result<(
         native::stages::eval::Witness<C>,
         nested::stages::eval::Evaluations<C::ScalarField>,
+        nested::stages::challenges::Witness<C::ScalarField>,
     )> {
         // The binding partials over the lifts of the challenges squeezed so
         // far, in challenge-stage order; `u` is the last of them.
@@ -49,8 +51,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         for (lift, challenge) in lifts.iter_mut().zip(bound_challenges) {
             *lift = nested::challenge::<C>(*challenge)?;
         }
-        let partials =
-            native::stages::eval::BindingPartials::compute::<C, R, B>(self.params, &lifts);
+        let nested_challenges = nested::stages::challenges::Witness::new::<_, HEADER_SIZE>(
+            lifts,
+            builder.left_header(),
+            builder.right_header(),
+        );
+        let partials = native::stages::eval::BindingPartials::compute::<C, R, B>(
+            self.params,
+            &nested_challenges,
+        );
 
         let u = bound_challenges[native::circuits::bind_challenges::NUM_BOUND - 1];
         let u_nested = nested::challenge::<C>(u)?;
@@ -109,7 +118,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             current: current_nested,
         };
 
-        Ok((native, nested))
+        Ok((native, nested, nested_challenges))
     }
 
     /// Samples fresh eval-stage blindings and returns the native eval rx

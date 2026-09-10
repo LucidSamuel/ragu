@@ -113,7 +113,7 @@ impl KySource for ChildValues {
         [Fq::ONE, Fq::ONE].into_iter()
     }
 
-    fn unified_ky(&self) -> impl Iterator<Item = Fq> {
+    fn unified_ky(&self) -> impl Iterator<Item = Fq> + Clone {
         [self.left_unified, self.right_unified].into_iter()
     }
 
@@ -160,11 +160,11 @@ fn nested_accumulator_is_the_fold_of_the_children() -> Result<()> {
         right_unified: unified_ky(&right)?,
     };
 
-    // Two raw claims, one circuit claim per endoscaling step per child, one
-    // export claim per child, and one bonding claim per bonding kind folded
-    // across both children.
+    // Two raw claims, one circuit claim per endoscaling step and per
+    // instance circuit per child, and one bonding claim per bonding kind
+    // folded across both children.
     let steps = crate::internal::endoscalar::num_steps(nested::NUM_ENDOSCALING_POINTS);
-    let circuits = steps + 1;
+    let circuits = steps + nested::NUM_INSTANCE_CIRCUITS;
     let bonding_kinds = nested::InternalCircuitIndex::NUM - circuits;
     assert_eq!(nested_claims.a.len(), 2 + 2 * circuits + bonding_kinds);
 
@@ -484,12 +484,21 @@ fn nested_challenge_stages_are_bound_by_their_commitments() -> Result<()> {
     let (parent, _, _) = fused(&app);
     let pasta = Pasta::baked();
 
+    // Both child headers are trivial in this fixture, even after seeding.
+    let base_case_sign = Fq::ONE;
+
     // 1. The stored stages are the unblinded stages of the lifts.
     let lifts = parent.challenges().lifts::<C>()?;
     let (challenge_lifts, beta_lift) = lifts.split_at(NUM_BOUND);
+    let challenges = nested::stages::challenges::Witness::new::<_, HEADER_SIZE>(
+        challenge_lifts.try_into().unwrap(),
+        parent.left_header(),
+        parent.right_header(),
+    );
+    assert_eq!(challenges.base_case_sign, base_case_sign);
     let expected = nested::stages::challenges::Stage::<ragu_pasta::EqAffine, R>::rx(
         Fq::ZERO,
-        &nested::stages::challenges::Witness::new(challenge_lifts.try_into().unwrap()),
+        &challenges,
     )?;
     assert!(
         parent
@@ -517,6 +526,7 @@ fn nested_challenge_stages_are_bound_by_their_commitments() -> Result<()> {
     for (i, lift) in challenge_lifts.iter().enumerate() {
         acc += generators.g()[generator_index::<C, R>(i)] * *lift;
     }
+    acc += generators.g()[generator_index::<C, R>(NUM_BOUND)] * base_case_sign;
     assert_eq!(
         parent.nested_challenges_commitment(),
         acc.to_affine(),
@@ -530,7 +540,7 @@ fn nested_challenge_stages_are_bound_by_their_commitments() -> Result<()> {
 
     // 3. The eval stage's partials are the running sums the binders check;
     //    the last is the challenge commitment.
-    let partials = BindingPartials::compute::<C, R, ReferenceBackend>(pasta, challenge_lifts);
+    let partials = BindingPartials::compute::<C, R, ReferenceBackend>(pasta, &challenges);
     let mut acc = ragu_pasta::Ep::identity();
     for k in 0..NUM_BINDERS {
         for (i, lift) in challenge_lifts
@@ -540,6 +550,9 @@ fn nested_challenge_stages_are_bound_by_their_commitments() -> Result<()> {
             .skip(2 * k)
         {
             acc += generators.g()[generator_index::<C, R>(i)] * *lift;
+        }
+        if k + 1 == NUM_BINDERS {
+            acc += generators.g()[generator_index::<C, R>(NUM_BOUND)] * base_case_sign;
         }
         assert_eq!(partials.partials[k], acc.to_affine(), "partial {k}");
     }

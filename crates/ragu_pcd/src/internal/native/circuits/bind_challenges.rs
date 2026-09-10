@@ -12,8 +12,11 @@
 //! ([`Endoscalar::group_scale`]), which yields exactly the lifted scalar
 //! times the generator. The sum so far is checked against the running
 //! partial the [`eval`] stage witnessed; circuit $k$ continues from partial
-//! $k - 1$, and the last partial is $C_s$ itself. $\beta$, squeezed after
-//! the eval stage is committed, is bound by [`bind_beta`](super::bind_beta).
+//! $k - 1$. The last circuit also adds the base-case sign's term, reading the
+//! base case off the [`preamble`] as the native circuits do, so that the last
+//! partial is $C_s$ itself and the nested side reads the base case from a
+//! wire the native side vouches for. $\beta$, squeezed after the eval stage
+//! is committed, is bound by [`bind_beta`](super::bind_beta).
 //!
 //! These checks fix the claimed commitment to the expected generator sum.
 //! Connecting that point to the stage polynomial consumed by nested claims
@@ -21,8 +24,8 @@
 //!
 //! ## Staging
 //!
-//! Chained through [`eval`] for its partials: [`preamble`] and [`query`]
-//! are reserved but unused.
+//! Chained through [`eval`] for its partials. The last binding circuit reads
+//! [`preamble`] for base-case detection; [`query`] is reserved but unused.
 //!
 //! ## Instance
 //!
@@ -120,7 +123,8 @@ pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
     /// The unified instance containing the challenges and accumulated
     /// coverage.
     pub unified: unified::Instance<C>,
-    /// Witness for the preamble stage (reserved, unused).
+    /// Witness for the preamble stage, used by the last binding circuit to
+    /// derive the base-case condition from the child headers.
     pub preamble_witness: &'a native_preamble::Witness<'a, C, R, HEADER_SIZE>,
     /// Witness for the query stage (reserved, unused).
     pub query_witness: &'a native_query::Witness<C>,
@@ -163,7 +167,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, const K: usize>
         let (eval, builder) = builder.add_stage::<native_eval::Stage<C, R, HEADER_SIZE>>()?;
         let dr = builder.finish();
 
-        let _ = preamble.unenforced(dr, witness.as_ref().map(|w| w.preamble_witness))?;
+        let preamble = preamble.unenforced(dr, witness.as_ref().map(|w| w.preamble_witness))?;
         let _ = query.unenforced(dr, witness.as_ref().map(|w| w.query_witness))?;
         let eval = eval.unenforced(dr, witness.as_ref().map(|w| w.eval_witness))?;
 
@@ -193,8 +197,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, const K: usize>
             });
         }
 
-        acc.expect("two terms were added")
-            .enforce_equal(dr, &eval.partials[K])?;
+        let mut acc = acc.expect("two terms were added");
+
+        // The last circuit adds the base-case sign's term: plus or minus the
+        // generator of the challenge stage's last value.
+        if K + 1 == NUM_BINDERS {
+            let is_base_case = preamble.is_base_case(dr, allocator)?;
+            let generator = generators.g()[native_eval::generator_index::<C, R>(NUM_BOUND)];
+            let generator = Point::constant(dr, generator)?;
+            let negate = is_base_case.not(dr);
+            let term = generator.conditional_negate(dr, &negate)?;
+            acc = NonzeroBank::scope(dr, |dr, bank| acc.add_incomplete(dr, &term, bank))?;
+        }
+
+        acc.enforce_equal(dr, &eval.partials[K])?;
 
         let (output, aux) = unified_output.finish(dr, allocator)?;
         Ok(WithAux::new(output, aux))

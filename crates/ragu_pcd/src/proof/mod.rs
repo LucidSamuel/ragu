@@ -169,9 +169,13 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) nested_challenges_rx: sparse::Polynomial<C::ScalarField, R>,
     pub(crate) nested_beta_rx: sparse::Polynomial<C::ScalarField, R>,
 
-    // Nested export circuit (ScalarField, NestedCurve commitment): pins the
-    // nested unified instance to the stages.
+    // Nested instance circuits (ScalarField, NestedCurve commitments): the
+    // export circuit pins the nested unified instance to the stages, the
+    // collapse circuit verifies the nested fold, and the compute-v circuit
+    // the nested batch evaluation.
     pub(crate) nested_export_rx: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) nested_collapse_rx: sparse::Polynomial<C::ScalarField, R>,
+    pub(crate) nested_compute_v_rx: sparse::Polynomial<C::ScalarField, R>,
 
     // Nested endoscaling commitment caches
     nested_endoscaling_step_commitments: Vec<Cached<C::NestedCurve>>,
@@ -190,8 +194,10 @@ pub struct Proof<C: Cycle, R: Rank> {
     nested_challenges_commitment: Cached<C::NestedCurve>,
     nested_beta_commitment: Cached<C::NestedCurve>,
 
-    // Nested export circuit commitment cache
+    // Nested instance circuit commitment caches
     nested_export_commitment: Cached<C::NestedCurve>,
+    nested_collapse_commitment: Cached<C::NestedCurve>,
+    nested_compute_v_commitment: Cached<C::NestedCurve>,
 
     // Challenges
     pub(crate) w: C::CircuitField,
@@ -278,6 +284,8 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxIndex> for Proof<C, R> {
         match idx {
             EndoscalingStep(step) => &self.nested_endoscaling_step_rxs[step as usize],
             Export => &self.nested_export_rx,
+            Collapse => &self.nested_collapse_rx,
+            ComputeV => &self.nested_compute_v_rx,
             EndoscalarStage => &self.nested_endoscalar_rx,
             PointsStage => self.nested_points_rx.as_ref(),
             BridgePreamble => self.bridge_preamble_rx.as_ref(),
@@ -379,6 +387,14 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         self.nested_export_commitment.0
     }
 
+    pub(crate) fn nested_collapse_commitment(&self) -> C::NestedCurve {
+        self.nested_collapse_commitment.0
+    }
+
+    pub(crate) fn nested_compute_v_commitment(&self) -> C::NestedCurve {
+        self.nested_compute_v_commitment.0
+    }
+
     /// This proof's nested unified instance, as its export circuit
     /// serialized it: the accumulator value, the batch evaluation, the lifts
     /// of $x$, $y$ and $u$, and the exported host-curve commitments.
@@ -400,6 +416,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 self.native_registry_xy_commitment(),
                 self.native_p_commitment(),
             ],
+            coverage: Default::default(),
         })
     }
 
@@ -600,6 +617,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
             ChallengeStage => self.nested_challenges_commitment.0,
             BetaStage => self.nested_beta_commitment.0,
             Export => self.nested_export_commitment.0,
+            Collapse => self.nested_collapse_commitment.0,
+            ComputeV => self.nested_compute_v_commitment.0,
         }
     }
 }
@@ -724,6 +743,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let lifts = challenges
             .lifts::<C>()
             .expect("one is in the endoscalar challenge range");
+        let (challenge_lifts, beta_lift) = lifts.split_at(nested::stages::challenges::NUM);
+        // A trivial proof has synthetic traces and a fixed +1 sign. Use the
+        // same witness for its binding partials and challenge stage.
+        let nested_challenges = nested::stages::challenges::Witness {
+            lifts: FixedVec::new(challenge_lifts.to_vec()).expect("NUM challenge lifts"),
+            base_case_sign: C::ScalarField::ONE,
+        };
 
         let mut builder = ProofBuilder::<C, R, B>::new(self.params, C::ScalarField::ONE);
 
@@ -748,7 +774,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 &native::stages::eval::Witness::<C>::trivial(
                     native::stages::eval::BindingPartials::compute::<C, R, B>(
                         self.params,
-                        &lifts[..native::circuits::bind_challenges::NUM_BOUND],
+                        &nested_challenges,
                     ),
                 ),
             )
@@ -776,17 +802,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
         // The challenge and beta stages hold the lifts of the all-one
         // challenges, unblinded, exactly as a real fuse would commit them.
-        let (challenge_lifts, beta_lift) = lifts.split_at(nested::stages::challenges::NUM);
         builder.set_nested_challenges_rx(
             nested::stages::challenges::Stage::<C::HostCurve, R>::rx(
                 C::ScalarField::ZERO,
-                &nested::stages::challenges::Witness::new(
-                    challenge_lifts.try_into().expect("NUM challenge lifts"),
-                ),
+                &nested_challenges,
             )
             .expect("trivial challenge stage rx"),
         );
-        builder.set_nested_export_rx(ones_nested);
+        builder.set_nested_export_rx(ones_nested.clone());
+        builder.set_nested_collapse_rx(ones_nested.clone());
+        builder.set_nested_compute_v_rx(ones_nested);
         builder.set_nested_beta_rx(
             nested::stages::beta::Stage::<C::HostCurve, R>::rx(
                 C::ScalarField::ZERO,

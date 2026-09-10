@@ -218,10 +218,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Traces this step's nested internal instance circuits, assembles their
     /// Rx polynomials, and stores them in the proof builder.
     ///
-    /// Currently traces the export circuit, relating the instance's
-    /// challenges and commitments to the saved nested stages. The nested
-    /// fold and batch evaluation circuits follow separately; the endoscaling
-    /// traces are produced earlier by [`Self::compute_p`].
+    /// Traces export, collapse, and batch evaluation with the saved nested
+    /// stage witnesses. Their shared instance accumulates coverage, which
+    /// must be complete after all three circuits. The endoscaling traces
+    /// are produced earlier by [`Self::compute_p`].
     pub(super) fn compute_nested_internal_circuits<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
@@ -256,32 +256,60 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 builder.native_registry_xy_commitment(),
                 builder.native_p_commitment(),
             ],
+            coverage: Default::default(),
+        };
+        let witness = |instance| nested::circuits::common::Witness {
+            instance,
+            endoscalar: nested_endoscalar,
+            points: nested_points,
+            preamble: nested_preamble_witness,
+            s_prime: nested_s_prime_witness,
+            inner_error: nested_inner_error_witness,
+            outer_error: nested_outer_error_witness,
+            ab: nested_ab_witness,
+            query: nested_query_witness,
+            f: nested_f_witness,
+            eval: nested_eval_witness,
+            challenges: nested_challenges_witness,
+            beta: *nested_beta_witness,
         };
 
-        let export_trace =
+        let (export_trace, instance) =
             MultiStage::new(nested::circuits::export::Circuit::<C::HostCurve, R>::new())
-                .trace(nested::circuits::export::Witness {
-                    instance,
-                    endoscalar: nested_endoscalar,
-                    points: nested_points,
-                    preamble: nested_preamble_witness,
-                    s_prime: nested_s_prime_witness,
-                    inner_error: nested_inner_error_witness,
-                    outer_error: nested_outer_error_witness,
-                    ab: nested_ab_witness,
-                    query: nested_query_witness,
-                    f: nested_f_witness,
-                    eval: nested_eval_witness,
-                    challenges: nested_challenges_witness,
-                    beta: *nested_beta_witness,
-                })?
-                .into_output();
+                .trace(witness(instance))?
+                .into_parts();
         let export_rx = self.nested_registry.assemble(
             &export_trace,
             nested::InternalCircuitIndex::Export.circuit_index(),
             &mut *rng,
         )?;
+
+        let (collapse_trace, instance) =
+            MultiStage::new(nested::circuits::collapse::Circuit::<C::HostCurve, R>::new())
+                .trace(witness(instance))?
+                .into_parts();
+        let collapse_rx = self.nested_registry.assemble(
+            &collapse_trace,
+            nested::InternalCircuitIndex::Collapse.circuit_index(),
+            &mut *rng,
+        )?;
+
+        let (compute_v_trace, instance) =
+            MultiStage::new(nested::circuits::compute_v::Circuit::<C::HostCurve, R>::new())
+                .trace(witness(instance))?
+                .into_parts();
+        let compute_v_rx = self.nested_registry.assemble(
+            &compute_v_trace,
+            nested::InternalCircuitIndex::ComputeV.circuit_index(),
+            &mut *rng,
+        )?;
+
+        // As for the native instance: every slot covered exactly once.
+        instance.assert_complete();
+
         builder.set_nested_export_rx(export_rx);
+        builder.set_nested_collapse_rx(collapse_rx);
+        builder.set_nested_compute_v_rx(compute_v_rx);
 
         Ok(())
     }
