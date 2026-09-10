@@ -94,13 +94,6 @@ struct NestedSPrime<C: Cycle, R: Rank> {
     registry_wx1_commitment: C::NestedCurve,
 }
 
-/// Witnesses of the nested challenge and beta stages, kept for the nested
-/// circuits that load them.
-pub(super) struct NestedChallengeWitnesses<F> {
-    pub(super) challenges: nested::stages::challenges::Witness<F>,
-    pub(super) beta: nested::stages::beta::Witness<F>,
-}
-
 type NativeFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::CircuitField>>;
 type NestedFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::ScalarField>>;
 
@@ -129,30 +122,24 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         }
     }
 
-    /// Commits the nested challenge and beta stages: the lifts of this
-    /// step's challenges (and the base-case sign), unblinded, so that their
-    /// nested-curve commitments are the fixed linear combinations of
-    /// generators the binding circuits recompute. Reuses the challenge
-    /// witness that determined the eval stage's binding partials and returns
-    /// both stage witnesses for the nested circuits that load them.
+    /// Commits the nested challenge stage: the lifts of this step's
+    /// challenges, the base-case sign and the lift of `pre_beta`, unblinded,
+    /// so that its nested-curve commitment is the fixed linear combination
+    /// of generators the binding circuits recompute. Completes the witness
+    /// used for the eval stage's binding partials with beta's lift and returns
+    /// it for the nested circuits that load the stage.
     fn commit_nested_challenges(
         &self,
-        challenges: nested::stages::challenges::Witness<C::ScalarField>,
+        mut challenges: nested::stages::challenges::Witness<C::ScalarField>,
         pre_beta: C::CircuitField,
         builder: &mut ProofBuilder<'_, C, R, B>,
-    ) -> Result<NestedChallengeWitnesses<C::ScalarField>> {
-        let beta = nested::stages::beta::Witness {
-            lift: nested::challenge::<C>(pre_beta)?,
-        };
+    ) -> Result<nested::stages::challenges::Witness<C::ScalarField>> {
+        challenges.beta = nested::challenge::<C>(pre_beta)?;
         builder.set_nested_challenges_rx(nested::stages::challenges::Stage::<C::HostCurve, R>::rx(
             C::ScalarField::ZERO,
             &challenges,
         )?);
-        builder.set_nested_beta_rx(nested::stages::beta::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::ZERO,
-            beta,
-        )?);
-        Ok(NestedChallengeWitnesses { challenges, beta })
+        Ok(challenges)
     }
 
     /// The nested challenges this step's openings are at, derived from the
@@ -314,10 +301,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let nu_prime = transcript.challenge(&mut dr)?;
 
         self.compute_ab(
+            rng,
             native_a,
             native_b,
             nested_a,
             nested_b,
+            &nested_registry_wy,
             &native_source,
             &mu_prime,
             &nu_prime,
@@ -374,19 +363,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &nested_registry_wy,
             &builder,
         )?;
-
-        // The nested batch's commitments, into the native points inputs stage
-        // before beta is squeezed; the eval bridge carries its commitment.
-        let native_points = self.prepare_native_points(
-            rng,
-            &nested_f,
-            &nested_s_prime,
-            &nested_registry_wy,
-            &left,
-            &right,
-            &mut builder,
-        )?;
-        let native_points_inputs_commitment = builder.native_points_inputs_commitment();
+        builder.set_nested_challenges_partial(eval_witness.partials.binding);
 
         // Rejection-sample the eval-stage blinding until the squeezed `pre_beta`
         // lands in range as an endoscalar challenge. Unlike the single-shot
@@ -404,13 +381,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 // Fresh eval-stage blindings each attempt: re-deriving the eval
                 // commitment is what makes `pre_beta` independent across
                 // retries.
-                let (eval_rx, bridge_eval_rx, bridge_eval_commitment) = self
-                    .sample_eval_commitment(
-                        rng,
-                        &eval_witness,
-                        &nested_eval,
-                        native_points_inputs_commitment,
-                    )?;
+                let (eval_rx, bridge_eval_rx, bridge_eval_commitment) =
+                    self.sample_eval_commitment(rng, &eval_witness, &nested_eval)?;
 
                 let mut transcript = transcript.clone();
                 let bridge_eval_commitment_point = Point::constant(dr, bridge_eval_commitment)?;
@@ -423,15 +395,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder.set_bridge_eval_rx(bridge_eval_rx, bridge_eval_commitment);
 
         // Every nested challenge is now known: commit the nested challenge
-        // and beta stages, unblinded. The native binding circuits compute
-        // their expected commitments (the beta stage by the parent's).
+        // stage, unblinded. Its expected commitment is computed by this
+        // step's native binders and completed with beta by the parent's.
         let nested_challenges = self.commit_nested_challenges(
             nested_challenges_witness,
             *pre_beta.element().value().take(),
             &mut builder,
         )?;
 
-        let (points, _native_interstitials) = self.compute_p(
+        let (points, native_points, native_walk) = self.compute_p(
             rng,
             &pre_beta,
             &left,
@@ -442,7 +414,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &nested_s_prime,
             &nested_registry_wy,
             &nested_f,
-            &native_points,
             &mut builder,
         )?;
 
@@ -467,16 +438,19 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &query_witness,
             &eval_witness,
             &native_points,
+            &native_walk,
             &mut builder,
         )?;
 
         let nested_s_prime_witness = nested::stages::s_prime::Witness {
             registry_wx0: native_s_prime.registry_wx0_commitment,
             registry_wx1: native_s_prime.registry_wx1_commitment,
+            native_points_registry_wx: builder.native_points_registry_wx_commitment(),
         };
         let nested_ab_witness = nested::stages::ab::Witness {
             a: builder.native_a_commitment(),
             b: builder.native_b_commitment(),
+            native_points_ab: builder.native_points_ab_commitment(),
         };
         let nested_query_witness = nested::stages::query::Witness {
             native_query: builder.native_query_commitment(),
@@ -485,10 +459,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         let nested_f_witness = nested::stages::f::Witness {
             native_f: native_f.commitment,
+            native_points_f: builder.native_points_f_commitment(),
         };
         let nested_eval_witness = nested::stages::eval::Witness {
             native_eval: builder.native_eval_commitment(),
-            native_points_inputs: native_points_inputs_commitment,
             nested: nested_eval,
         };
 
@@ -504,8 +478,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             &nested_query_witness,
             &nested_f_witness,
             &nested_eval_witness,
-            &nested_challenges.challenges,
-            &nested_challenges.beta,
+            &nested_challenges,
             &mut builder,
         )?;
 

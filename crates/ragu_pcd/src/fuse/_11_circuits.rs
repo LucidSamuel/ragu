@@ -3,16 +3,10 @@ use alloc::vec::Vec;
 use ragu_arithmetic::{Cycle, rand::CryptoRng};
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::MultiStage};
 use ragu_core::Result;
-use ragu_primitives::extract_endoscalar;
 
 use crate::{
     Application,
-    internal::{
-        endoscalar::PointsWitness,
-        native,
-        native::total_circuit_counts,
-        nested::{self, NUM_ENDOSCALING_POINTS},
-    },
+    internal::{native, native::total_circuit_counts, nested},
     proof::ProofBuilder,
 };
 
@@ -41,6 +35,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         query_witness: &native::stages::query::Witness<C>,
         eval_witness: &native::stages::eval::Witness<C>,
         native_points: &super::NativeInputs<C>,
+        native_walk: &super::_10_p::NativeWalk<C>,
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let unified = native::unified::Instance {
@@ -65,6 +60,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             bridge_eval_commitment: builder.bridge_eval_commitment(),
             pre_beta: builder.pre_beta(),
             v: builder.v(),
+            nested_challenges_partial: builder.nested_challenges_partial(),
             coverage: Default::default(),
         };
 
@@ -195,6 +191,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         >::new(self.params)
         .trace(native::circuits::bind_beta::Witness {
             unified,
+            binding: &native_points.binding,
             preamble_witness,
             outer_error_witness: native_outer_error_witness,
         })?
@@ -211,8 +208,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             native::circuits::bind_endoscalar::Circuit::<C, R>::new()
                 .trace(native::circuits::bind_endoscalar::Witness {
                     unified,
-                    endoscalar: extract_endoscalar(builder.pre_beta())?,
                     inputs: native_points,
+                    walk: native_walk,
                 })?
                 .into_parts();
         let bind_endoscalar_rx = self.native_registry.assemble(
@@ -246,7 +243,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         &self,
         rng: &mut RNG,
         nested_endoscalar: u128,
-        nested_points: &PointsWitness<C::HostCurve, NUM_ENDOSCALING_POINTS>,
+        nested_points: &nested::PointsWitness<C::HostCurve>,
         nested_preamble_witness: &nested::stages::preamble::Witness<C::HostCurve>,
         nested_s_prime_witness: &nested::stages::s_prime::Witness<C::HostCurve>,
         nested_inner_error_witness: &nested::stages::inner_error::Witness<C::HostCurve>,
@@ -256,7 +253,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         nested_f_witness: &nested::stages::f::Witness<C::HostCurve>,
         nested_eval_witness: &nested::stages::eval::Witness<C::HostCurve>,
         nested_challenges_witness: &nested::stages::challenges::Witness<C::ScalarField>,
-        nested_beta_witness: &nested::stages::beta::Witness<C::ScalarField>,
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let instance = nested::unified::Instance {
@@ -275,7 +271,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 builder.native_b_commitment(),
                 builder.native_registry_xy_commitment(),
                 builder.native_p_commitment(),
-                builder.native_points_inputs_commitment(),
+                builder.native_points_binding_commitment(),
+                builder.native_points_children_commitment(),
+                builder.native_points_registry_wx_commitment(),
+                builder.native_points_ab_commitment(),
+                builder.native_points_f_commitment(),
             ],
             coverage: Default::default(),
         };
@@ -292,7 +292,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             f: nested_f_witness,
             eval: nested_eval_witness,
             challenges: nested_challenges_witness,
-            beta: *nested_beta_witness,
         };
 
         let (export_trace, instance) =

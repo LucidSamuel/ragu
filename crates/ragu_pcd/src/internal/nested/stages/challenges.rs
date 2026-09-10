@@ -3,20 +3,24 @@
 //!
 //! The nested side squeezes nothing; every challenge it uses is the lift
 //! ([`challenge`]) of a native one. This stage holds those lifts, one per
-//! native challenge, at the $a$-wire of consecutive gates with the $d$-wire
-//! zero, and is committed **unblinded** (alpha zero). Its commitment is then
-//! a fixed linear combination of the nested-curve generators,
+//! native challenge, then the base-case sign and the lift of `pre_beta`, at
+//! the $a$-wire of consecutive gates with the $d$-wire zero, and is committed
+//! **unblinded** (alpha zero). Its commitment is then a fixed linear
+//! combination of the nested-curve generators,
 //!
 //! $$C_s = \sum_i \mathrm{lift}(\mathrm{ch}_i) \cdot G_{\mathrm{idx}(i)},$$
 //!
 //! with `idx` given by [`StageExt::generator_index_for_a`]. A native circuit
 //! can recompute exactly that point from the transcript challenges by
-//! endoscaling each generator by the challenge's bits. The `bind_challenges`
-//! circuits check a claimed commitment against this expected point. Connecting
-//! it to the stage polynomial consumed by nested claims requires separate
-//! recursive constraints. The stage holds the ten challenges squeezed before
-//! `pre_beta`, allowing the native `eval` stage to carry the expected
-//! commitment; $\beta$ has its own [`beta`](super::beta) stage.
+//! endoscaling each generator by the challenge's bits.
+//! That recomputation is split between the proof's own `bind_challenges`
+//! circuits, which cover the ten challenges squeezed before `pre_beta` and
+//! the sign and export their sum through the unified instance, and the
+//! parent's `bind_beta`, which adds `pre_beta`'s term and holds the result
+//! against the commitment it walks: `pre_beta` is squeezed after the native
+//! `eval` stage carrying the binders' partials is committed. Connecting the
+//! walked point to the stage polynomial consumed by nested claims also
+//! requires the PCS and recursive constraints.
 //!
 //! [`challenge`]: crate::internal::nested::challenge
 //! [`StageExt::generator_index_for_a`]: ragu_circuits::staging::StageExt::generator_index_for_a
@@ -40,8 +44,8 @@ use ragu_primitives::{
     vec::{ConstLen, FixedVec},
 };
 
-/// The native challenges this stage holds the lifts of, in order: `w, y, z,
-/// mu, nu, mu_prime, nu_prime, x, alpha, u`.
+/// The native challenges this stage holds the lifts of before the sign and
+/// $\beta$, in order: `w, y, z, mu, nu, mu_prime, nu_prime, x, alpha, u`.
 pub const NUM: usize = 10;
 
 /// The position of the lift of $w$.
@@ -64,11 +68,15 @@ pub const X: usize = 7;
 pub const ALPHA: usize = 8;
 /// The position of the lift of $u$.
 pub const U: usize = 9;
+/// The position of the base-case sign.
+pub const SIGN_INDEX: usize = NUM;
+/// The position of the lift of `pre_beta`, $\beta$.
+pub const BETA_INDEX: usize = NUM + 1;
 
-/// Length type for the challenge lifts.
+/// Length type for the challenge lifts before the sign and $\beta$.
 pub type Len = ConstLen<NUM>;
 
-/// The lifts, in stage order, and the base-case sign.
+/// The lifts, in stage order, the base-case sign and the lift of `pre_beta`.
 #[derive(Clone)]
 pub struct Witness<F> {
     pub lifts: FixedVec<F, Len>,
@@ -76,17 +84,20 @@ pub struct Witness<F> {
     /// otherwise: the native side's base-case verdict, carried as a sign so
     /// the last binding circuit can add or subtract one generator.
     pub base_case_sign: F,
+    /// The lift of `pre_beta`.
+    pub beta: F,
 }
 
 impl<F: PrimeField> Witness<F> {
     /// Creates the witness from the lifts and the children's native output
     /// headers. The sign mirrors the native preamble's base-case predicate;
     /// the last native binding circuit derives that predicate independently
-    /// from its header wires.
+    /// from its header wires. The beta lift is filled once `pre_beta` is known.
     pub fn new<N: PrimeField, const HEADER_SIZE: usize>(
         lifts: [F; NUM],
         left_header: &[N],
         right_header: &[N],
+        beta: F,
     ) -> Self {
         let is_trivial =
             |header: &[N]| header.len() == HEADER_SIZE && header[HEADER_SIZE - 1] == N::ONE;
@@ -97,13 +108,14 @@ impl<F: PrimeField> Witness<F> {
             } else {
                 -F::ONE
             },
+            beta,
         }
     }
 }
 
 /// Prover-internal output gadget for this stage: each lift followed by the
-/// zero that keeps the next lift at an $a$-wire, then the base-case sign
-/// and its zero.
+/// zero that keeps the next lift at an $a$-wire, then the base-case sign and
+/// $\beta$ with theirs.
 ///
 /// This is stage communication data, not part of any circuit's public
 /// instance.
@@ -113,6 +125,8 @@ pub struct Output<'dr, D: Driver<'dr>> {
     pub pairs: FixedVec<Pair<'dr, D>, Len>,
     #[ragu(gadget)]
     pub base_case: Pair<'dr, D>,
+    #[ragu(gadget)]
+    pub beta: Pair<'dr, D>,
 }
 
 /// One lift and its trailing zero.
@@ -136,8 +150,8 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
     fn values() -> usize {
         // One lift and one zero per challenge, then the base-case sign and
-        // its zero: every value at an a-wire.
-        (NUM + 1) * 2
+        // beta with theirs: every value at an a-wire.
+        (NUM + 2) * 2
     }
 
     fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = C::Base>>(
@@ -149,17 +163,20 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
         Self: 'dr,
     {
         let allocator = &mut ();
-        let pairs = FixedVec::try_from_fn(|i| {
-            Ok(Pair {
-                lift: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.lifts[i]))?,
+        let mut pair = |dr: &mut D, value: DriverValue<D, C::Base>| {
+            Ok::<_, ragu_core::Error>(Pair {
+                lift: Element::alloc(dr, allocator, value)?,
                 zero: Element::alloc(dr, allocator, witness.as_ref().map(|_| C::Base::ZERO))?,
             })
-        })?;
-        let base_case = Pair {
-            lift: Element::alloc(dr, allocator, witness.as_ref().map(|w| w.base_case_sign))?,
-            zero: Element::alloc(dr, allocator, witness.as_ref().map(|_| C::Base::ZERO))?,
         };
-        Ok(Output { pairs, base_case })
+        let pairs = FixedVec::try_from_fn(|i| pair(dr, witness.as_ref().map(|w| w.lifts[i])))?;
+        let base_case = pair(dr, witness.as_ref().map(|w| w.base_case_sign))?;
+        let beta = pair(dr, witness.as_ref().map(|w| w.beta))?;
+        Ok(Output {
+            pairs,
+            base_case,
+            beta,
+        })
     }
 }
 

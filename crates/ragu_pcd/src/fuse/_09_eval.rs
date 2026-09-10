@@ -11,7 +11,8 @@
 //! The native `eval` stage also carries the running partial sums of the
 //! nested challenge binding (see `bind_challenges`), computed here from the
 //! same witness that will be committed in the nested challenge stage: the
-//! ten lifts and the base-case sign derived from the child headers.
+//! ten lifts and the base-case sign derived from the child headers. Their
+//! binding sum goes to the unified instance.
 
 use ragu_arithmetic::{Cycle, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{
@@ -51,10 +52,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         for (lift, challenge) in lifts.iter_mut().zip(bound_challenges) {
             *lift = nested::challenge::<C>(*challenge)?;
         }
+        // The binding partials use only the ten lifts and the sign. Beta
+        // is filled after `pre_beta` is squeezed, before this witness is committed.
         let nested_challenges = nested::stages::challenges::Witness::new::<_, HEADER_SIZE>(
             lifts,
             builder.left_header(),
             builder.right_header(),
+            C::ScalarField::ZERO,
         );
         let partials = native::stages::eval::BindingPartials::compute::<C, R, B>(
             self.params,
@@ -133,7 +137,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         rng: &mut RNG,
         eval_witness: &native::stages::eval::Witness<C>,
         nested_eval: &nested::stages::eval::Evaluations<C::ScalarField>,
-        native_points_inputs: C::HostCurve,
     ) -> Result<(
         sparse::Polynomial<C::CircuitField, R>,
         sparse::Polynomial<C::ScalarField, R>,
@@ -150,7 +153,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             C::ScalarField::random(&mut *rng),
             &nested::stages::eval::Witness {
                 native_eval: native_eval_commitment,
-                native_points_inputs,
                 nested: nested_eval.clone(),
             },
         )?;

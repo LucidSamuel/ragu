@@ -72,8 +72,12 @@
 //!   counterpart, so any change to it is caught.
 //! * **A nested `p` coefficient** is caught on the same grounds: the
 //!   derived $v_n = p_n(u_n)$ is a wire of the export circuit's instance.
-//! * **A nested challenge or beta stage coefficient** is caught at any
-//!   index: the verifier recomputes both stages from the proof's challenges.
+//! * **A nested challenge stage coefficient** is caught at any index: the
+//!   verifier recomputes the stage from the proof's challenges.
+//! * **The exported challenge binding** — the challenge stage's commitment
+//!   without its $\beta$ term, a point of the unified instance — is caught
+//!   as any instance edit is: the last `bind_challenges` circuit recomputes
+//!   it from the transcript challenges.
 //!
 //! `bridge_alpha` has no dedicated corruption variant yet, although the
 //! verifier uses it to reconstruct and check the cached `ab` bridge
@@ -171,12 +175,18 @@ pub enum NativeRx {
     Query,
     /// The `eval` stage's rx polynomial.
     Eval,
-    /// The native endoscalar stage's rx polynomial.
-    EndoscalarStage,
-    /// The native points inputs stage's rx polynomial.
-    PointsInputs,
-    /// The native points interstitials stage's rx polynomial.
-    PointsInterstitials,
+    /// The native points binding stage's rx polynomial.
+    PointsBinding,
+    /// The native points children stage's rx polynomial.
+    PointsChildren,
+    /// The native `registry_wx` points stage's rx polynomial.
+    PointsRegistryWx,
+    /// The native `ab` points stage's rx polynomial.
+    PointsAb,
+    /// The native `f` points stage's rx polynomial.
+    PointsF,
+    /// The native walk stage's rx polynomial.
+    PointsWalk,
 }
 
 impl NativeRx {
@@ -221,9 +231,12 @@ impl NativeRx {
             I::OuterError => Self::OuterError,
             I::Query => Self::Query,
             I::Eval => Self::Eval,
-            I::EndoscalarStage => Self::EndoscalarStage,
-            I::PointsInputs => Self::PointsInputs,
-            I::PointsInterstitials => Self::PointsInterstitials,
+            I::PointsBinding => Self::PointsBinding,
+            I::PointsChildren => Self::PointsChildren,
+            I::PointsRegistryWx => Self::PointsRegistryWx,
+            I::PointsAb => Self::PointsAb,
+            I::PointsF => Self::PointsF,
+            I::PointsWalk => Self::PointsWalk,
         }
     }
 }
@@ -263,8 +276,6 @@ pub enum NestedRx {
     BridgeEval,
     /// Nested challenge stage rx polynomial.
     ChallengeStage,
-    /// Nested beta stage rx polynomial.
-    BetaStage,
 }
 
 /// One of the two nested accumulator polynomials.
@@ -493,6 +504,9 @@ pub enum Corruption<C: Cycle> {
     Challenge(Challenge, C::CircuitField),
     /// Negate a bridge commitment, moving its $y$ coordinate in the instance.
     NegateBridgeCommitment(BridgeCommitment),
+    /// Negate the exported challenge binding, moving its $y$ coordinate in
+    /// the instance.
+    NegateChallengesPartial,
     /// Negate a cached native commitment, which the verifier recomputes.
     NegateNativeCommitment(NativeCommitment),
     /// Negate a cached nested commitment, which the verifier recomputes.
@@ -576,6 +590,7 @@ impl<C: Cycle> core::fmt::Debug for Corruption<C> {
             Corruption::NegateBridgeCommitment(which) => {
                 write!(f, "NegateBridgeCommitment({which:?})")
             }
+            Corruption::NegateChallengesPartial => write!(f, "NegateChallengesPartial"),
             Corruption::NegateNativeCommitment(which) => {
                 write!(f, "NegateNativeCommitment({which:?})")
             }
@@ -714,6 +729,16 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 Binding::MustReject
             }
 
+            Corruption::NegateChallengesPartial => {
+                let point = self.nested_challenges_partial_mut();
+                let negated = -*point;
+                if negated == *point {
+                    return Binding::Unbound;
+                }
+                *point = negated;
+                Binding::MustReject
+            }
+
             Corruption::NegateNativeCommitment(which) => {
                 let point = self.native_commitment_cache_mut(which);
                 let negated = -*point;
@@ -837,9 +862,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 // Every nested component enters a circuit claim: the
                 // instance circuits reserve every stage.
                 self.nested_rx_mut(index).add_assign(&delta);
-                if matches!(index, NestedRx::ChallengeStage | NestedRx::BetaStage)
-                    || in_tz_reach::<R>(coeff)
-                {
+                if matches!(index, NestedRx::ChallengeStage) || in_tz_reach::<R>(coeff) {
                     Binding::MustReject
                 } else {
                     Binding::Unbound
@@ -975,7 +998,6 @@ impl NestedRx {
             I::BridgeF => Self::BridgeF,
             I::BridgeEval => Self::BridgeEval,
             I::ChallengeStage => Self::ChallengeStage,
-            I::BetaStage => Self::BetaStage,
         }
     }
 }

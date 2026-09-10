@@ -186,8 +186,9 @@ mod tests {
         type R = ProductionRank;
         type F = ragu_pasta::Fq;
         let lifts: [F; challenges::NUM] = core::array::from_fn(|i| F::from(3 + i as u64));
+        let beta = F::from(99);
         let header = [ragu_pasta::Fp::from(2); 4];
-        let witness = challenges::Witness::new::<_, 4>(lifts, &header, &header);
+        let witness = challenges::Witness::new::<_, 4>(lifts, &header, &header, beta);
         let rx = <Challenges<EqAffine, R> as StageExt<F, R>>::rx(F::from(11), &witness)?;
         let reader = StageReader::<F, R>::new(&rx);
 
@@ -197,12 +198,14 @@ mod tests {
                 wires.extend(wires_of(&pair.lift)?);
             }
             wires.extend(wires_of(&out.base_case.lift)?);
+            wires.extend(wires_of(&out.beta.lift)?);
             Ok(wires)
         })?;
         for (i, lift) in lifts.iter().enumerate() {
             assert_eq!(reader.read(indices[i]), *lift, "lift {i}");
         }
-        assert_eq!(reader.read(indices[challenges::NUM]), -F::ONE);
+        assert_eq!(reader.read(indices[challenges::SIGN_INDEX]), -F::ONE);
+        assert_eq!(reader.read(indices[challenges::BETA_INDEX]), beta);
         Ok(())
     }
 }
