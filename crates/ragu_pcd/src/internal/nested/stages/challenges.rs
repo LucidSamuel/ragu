@@ -44,6 +44,13 @@ use ragu_primitives::{
 /// mu, nu, mu_prime, nu_prime, x, alpha, u`.
 pub const NUM: usize = 10;
 
+/// The position of the lift of $y$.
+pub const Y: usize = 1;
+/// The position of the lift of $x$.
+pub const X: usize = 7;
+/// The position of the lift of $u$.
+pub const U: usize = 9;
+
 /// Length type for the challenge lifts.
 pub type Len = ConstLen<NUM>;
 

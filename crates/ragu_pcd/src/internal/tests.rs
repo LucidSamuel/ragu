@@ -329,7 +329,7 @@ fn test_native_registry_digest() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x26aed5da747fd6dc30fed01f0b764bd0cc21c8b62cabd480f6860467d5d14c52);
+    let expected = fp!(0x17b30b52551a0596ba27a3a15a84ab29bd3ff79793c087ddbec7fbdc724ea5f3);
 
     assert_eq!(
         app.native_registry.digest(),
@@ -353,7 +353,7 @@ fn test_nested_registry_digest() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fq!(0x323a2a97a3679117f1a52efafcf3ae1089a31e8a4da76676545fcf23cd059fa7);
+    let expected = fq!(0x3d42fc22c48561012dc4dbd0bc9b59a12272b1cdaccb3689a9e426ed2fdcc5ee);
 
     assert_eq!(
         app.nested_registry.digest(),

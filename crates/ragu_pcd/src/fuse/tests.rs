@@ -1,13 +1,17 @@
 //! The nested fold and batch, checked against the children they cover.
 //!
-//! Nothing in-circuit verifies the nested side yet, and the decider's raw
-//! nested claim is tautological, so this is where the prover-side work is
-//! held to its definition: the children's nested claims all hold at the
-//! derived nested challenges, the accumulator is their two-layer fold, its
-//! revdot value is what a nested collapse circuit would compute from the
+//! The decider's raw nested claim derives its value from the accumulator
+//! polynomials, so it alone does not verify their construction. These tests
+//! hold the prover-side work to its definition: the children's nested claims
+//! hold at the derived challenges, the accumulator is their two-layer fold,
+//! its revdot value is what a nested collapse circuit would compute from the
 //! committed error terms and the children's `c` values, and the nested batch
 //! evaluation $v_n$ is what a nested `compute_v` circuit would compute from
 //! the openings the batch claims.
+//!
+//! The export circuit relates a proof's own instance to its stages. Recursive
+//! binding also requires verifying the parent's nested fold with the expected
+//! export claim values computed from its copies of the children's instances.
 
 use alloc::vec::Vec;
 
@@ -94,6 +98,8 @@ fn stage_values<S: Stage<Fq, R>>(rx: &sparse::Polynomial<Fq, R>) -> Vec<Fq> {
 struct ChildValues {
     left_c: Fq,
     right_c: Fq,
+    left_unified: Fq,
+    right_unified: Fq,
 }
 
 impl KySource for ChildValues {
@@ -105,6 +111,10 @@ impl KySource for ChildValues {
 
     fn ones(&self) -> impl Iterator<Item = Fq> + Clone {
         [Fq::ONE, Fq::ONE].into_iter()
+    }
+
+    fn unified_ky(&self) -> impl Iterator<Item = Fq> {
+        [self.left_unified, self.right_unified].into_iter()
     }
 
     fn zero(&self) -> Fq {
@@ -131,16 +141,32 @@ fn nested_accumulator_is_the_fold_of_the_children() -> Result<()> {
     let mut nested_claims =
         claims::Builder::<_, Fq, R, ReferenceBackend>::new(&app.nested_registry, y, z);
     nested::claims::build(&nested_source, &mut nested_claims)?;
+    let unified_ky = |proof: &Proof<C, R>| -> Result<Fq> {
+        NestedFuseEmulator::<C>::emulate_wireless((proof.nested_instance()?, y), |dr, witness| {
+            let (instance, y) = witness.cast();
+            let y = Element::alloc(dr, &mut (), y)?;
+            let output = nested::unified::Output::<_, ragu_pasta::EqAffine>::alloc(
+                dr,
+                &mut (),
+                instance.as_ref(),
+            )?;
+            Ok(*output.ky(dr, &y)?.value().take())
+        })
+    };
     let children = ChildValues {
         left_c: left.nested_c(),
         right_c: right.nested_c(),
+        left_unified: unified_ky(&left)?,
+        right_unified: unified_ky(&right)?,
     };
 
-    // Two raw claims, one circuit claim per endoscaling step per child, and
-    // one bonding claim per bonding kind folded across both children.
+    // Two raw claims, one circuit claim per endoscaling step per child, one
+    // export claim per child, and one bonding claim per bonding kind folded
+    // across both children.
     let steps = crate::internal::endoscalar::num_steps(nested::NUM_ENDOSCALING_POINTS);
-    let bonding_kinds = nested::InternalCircuitIndex::NUM - steps;
-    assert_eq!(nested_claims.a.len(), 2 + 2 * steps + bonding_kinds);
+    let circuits = steps + 1;
+    let bonding_kinds = nested::InternalCircuitIndex::NUM - circuits;
+    assert_eq!(nested_claims.a.len(), 2 + 2 * circuits + bonding_kinds);
 
     // 1. Every nested claim of the children holds at the derived challenges.
     for (i, (ky, (a, b))) in nested::claims::ky_values(&children)
@@ -251,14 +277,19 @@ fn nested_accumulator_is_the_fold_of_the_children() -> Result<()> {
             (&inner_errors, &outer_errors),
             (mu, nu),
             (mu_prime, nu_prime),
-            (children.left_c, children.right_c),
+            (
+                (children.left_c, children.right_c),
+                (children.left_unified, children.right_unified),
+            ),
         ),
         |dr, witness| {
-            let (errors, layer1, layer2, cs) = witness.cast();
+            let (errors, layer1, layer2, kys) = witness.cast();
             let (inner_errors, outer_errors) = errors.cast();
             let (mu, nu) = layer1.cast();
             let (mu_prime, nu_prime) = layer2.cast();
+            let (cs, unifieds) = kys.cast();
             let (left_c, right_c) = cs.cast();
+            let (left_unified, right_unified) = unifieds.cast();
             let allocator = &mut ();
 
             let mu = Element::alloc(dr, allocator, mu)?;
@@ -268,7 +299,15 @@ fn nested_accumulator_is_the_fold_of_the_children() -> Result<()> {
             let left_c = Element::alloc(dr, allocator, left_c)?;
             let right_c = Element::alloc(dr, allocator, right_c)?;
 
-            let ky_source = nested::claims::TwoProofKySource::new(dr, left_c, right_c);
+            let left_unified = Element::alloc(dr, allocator, left_unified)?;
+            let right_unified = Element::alloc(dr, allocator, right_unified)?;
+            let ky_source = nested::claims::TwoProofKySource::new(
+                dr,
+                left_c,
+                right_c,
+                left_unified,
+                right_unified,
+            );
             let mut ky = nested::claims::ky_values(&ky_source);
 
             let layer1 = ClaimFolder::new(dr, &mu, &nu)?;

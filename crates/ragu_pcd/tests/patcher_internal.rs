@@ -338,9 +338,9 @@ fn expected(name: &str, point: &str) -> Census {
         ("compute_v", _) => (13, 346),
         (bind, _) if bind.starts_with("bind_challenges_") => (13, 599),
         ("bind_beta", _) => (181, 555),
-        (_, "seeded") => (39, 85),
-        (_, "leaves") => (50, 74),
-        (_, "nodes") => (55, 69),
+        (_, "seeded") => (43, 81),
+        (_, "leaves") => (56, 68),
+        (_, "nodes") => (53, 71),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {
