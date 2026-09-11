@@ -17,11 +17,10 @@
 //!   polynomials and held against the registry and the polynomials;
 //! - $c$, $v$, $c_n$ and $v_n$ are derived from the polynomials, never read.
 //!
-//! The recursive walks also need bindings between these checked commitments
-//! and their staged inputs and endpoints. The binding of $P_n$ to the native
-//! walk's endpoint is added later, in the change that pins $P_n$ to the
-//! unified instance. Checking the cache against $p_n$ alone does not
-//! establish that equality.
+//! Checking a cached commitment against its polynomial is separate from
+//! binding it to a walk's staged inputs or endpoint. For $P_n$, the
+//! native `bind_endoscalar` circuit supplies the endpoint equality via
+//! the unified instance.
 
 use alloc::vec::Vec;
 use core::iter::once;
