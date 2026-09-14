@@ -20,6 +20,17 @@ use helpers::macro_body;
 use proc_macro::TokenStream;
 use syn::{DeriveInput, LitInt, parse_macro_input};
 
+// Documentation lives on the public re-export in ragu_primitives::wire.
+#[allow(missing_docs)]
+#[proc_macro_derive(Compress, attributes(ragu))]
+pub fn derive_compress(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    macro_body(|| {
+        let path = path_resolution::RaguPrimitivesPath::resolve()?;
+        derive::compress::derive(input, path)
+    })
+}
+
 /// Converts a 256-bit integer literal into its little-endian `[u64; 4]` limb
 /// representation, the raw form a field constant is built from. This makes
 /// constants more readable, but is not intended for use in other contexts.
