@@ -2,7 +2,8 @@
 //! and wiring/constraint sides of the synthesis pipeline.
 //!
 //! For a satisfying witness `w` of a registered `Circuit`, with assembled
-//! trace polynomial `r`, the identity from `tests/mod.rs:158-187` is:
+//! trace polynomial `r`, the identity from
+//! `ragu_circuits::tests::test_simple_circuit` is:
 //!
 //! ```text
 //! r.revdot(b) == circuit.ky(instance, y)
@@ -10,10 +11,10 @@
 //! ```
 //!
 //! `r` is the witness-side polynomial (assembled trace); `s(X, y)` is the
-//! wiring polynomial restricted at `y`; `t(X, z)` is the registry tag
-//! constraint polynomial restricted at `z`; `circuit.ky(instance, y)` is
-//! the instance polynomial evaluated at `y`. The equality is what actually
-//! proves "this witness satisfies this circuit's constraints" at the
+//! wiring polynomial restricted at `y`; `t(X, z)` is the gate polynomial
+//! restricted at `z`; `circuit.ky(instance, y)` is the instance polynomial
+//! evaluated at `y`. The equality is what actually proves
+//! "this witness satisfies this circuit's constraints" at the
 //! algebraic layer; under random `(y, z)` it holds with overwhelming
 //! probability iff the witness is satisfying.
 //!

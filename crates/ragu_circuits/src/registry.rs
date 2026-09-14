@@ -294,9 +294,10 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 ///
 /// Polynomials of bounded degree are overdetermined by their evaluation at a
 /// sufficient number of distinct points. Starting from public constants, we
-/// iteratively evaluate $e_i = m(w_i, x_i, y_i)$ where each evaluation point
-/// $(w_{i+1}, x_{i+1}, y_{i+1})$ is seeded by hashing the prior evaluation $e_i$.
-/// The final evaluation serves as the binding tag.
+/// iteratively evaluate $e_i = m(w_i, x_i, y_i)$ and absorb each evaluation into
+/// a running hash state. Each updated hash state seeds the next evaluation
+/// point $(w_{i+1}, x_{i+1}, y_{i+1})$. The registry tag is a field element
+/// derived from the final hash state.
 ///
 /// The number of iterations must exceed the degrees of freedom an adversary
 /// could exploit to adaptively modify circuits.
@@ -304,9 +305,8 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 ///
 /// # Break self-reference without preprocessing
 ///
-/// Now with a binding evaluation `e_d`, which is the registry [`Tag`], we can
-/// break the self-reference more elegantly without preprocessing or reliance on
-/// public inputs.
+/// With the resulting registry [`Tag`], we can break the self-reference without
+/// preprocessing or reliance on public inputs.
 ///
 /// Concretely, the registry tag $k$ is injected as the monomial
 /// $k \cdot (XY)^{4n-1}$ at the registry level, binding each circuit's wiring

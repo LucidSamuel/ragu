@@ -1,10 +1,7 @@
 //! Registry construction beyond one circuit at index zero.
 //!
-//! Every other registry-touching target in this harness builds the same
-//! shape: `RegistryBuilder::<Fp, TestRank>::new().register_circuit(c)`, one
-//! application circuit, landing at index zero, at test rank. That shape
-//! never exercises the parts of `Registry` that only exist because there can
-//! be more than one circuit — the four-category concatenation order, the
+//! A single-circuit registry at index zero leaves several parts of `Registry`
+//! unexercised: the four-category concatenation order, the
 //! `CircuitIndex`-to-`omega_j` mapping at a non-zero index, the domain
 //! padding when the count is not a power of two, or the rank's circuit
 //! ceiling.
@@ -28,11 +25,11 @@
 //!
 //! ## Path agreement on the registry polynomial
 //!
-//! `Registry` exposes the same polynomial through routes that share no
-//! arithmetic:
+//! `Registry` exposes the same polynomial through two evaluation paths:
 //!
-//! - `xy(x, y)` builds every circuit's `sxy` into a Lagrange vector and
-//!   IFFTs it, then adds the tag term into the DC coefficient.
+//! - `xy(x, y)` builds an evaluation vector over the registry's W-domain,
+//!   including the tag term at every domain point, then interpolates it
+//!   with an IFFT.
 //! - `wxy(w, x, y)` goes through `at(w)`, which uses cached Lagrange
 //!   coefficients and never forms the full polynomial.
 //!
