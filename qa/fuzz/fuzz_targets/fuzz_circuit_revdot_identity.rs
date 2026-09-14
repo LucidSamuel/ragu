@@ -10,7 +10,7 @@
 //! ```
 //!
 //! `r` is the witness-side polynomial (assembled trace); `s(X, y)` is the
-//! wiring polynomial restricted at `y`; `t(X, z)` is the registry key
+//! wiring polynomial restricted at `y`; `t(X, z)` is the registry tag
 //! constraint polynomial restricted at `z`; `circuit.ky(instance, y)` is
 //! the instance polynomial evaluated at `y`. The equality is what actually
 //! proves "this witness satisfies this circuit's constraints" at the
@@ -29,7 +29,7 @@
 //! pinned to the honest values (so the honest witness is satisfying by
 //! construction). `s(X, y)` comes from the public [`Registry::circuit_y`].
 //! This generalizes the original target, which ran two hand-written
-//! circuits and derived `s(X, y)` by stripping the registry key term from
+//! circuits and derived `s(X, y)` by stripping the registry tag term from
 //! `Registry::wy` — a trick valid only for unmasked single-circuit
 //! registries. The public `circuit_y` accessor makes that hack
 //! unnecessary.

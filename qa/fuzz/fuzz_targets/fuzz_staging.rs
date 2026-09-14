@@ -11,7 +11,7 @@
 //! ```
 //!
 //! `r` is the assembled trace polynomial; `s(X, y)` is derived from
-//! `Registry::wy(omega_0, y)` minus the registry key term (same trick as
+//! `Registry::wy(omega_0, y)` minus the registry tag term (same trick as
 //! `fuzz_circuit_revdot_identity`, valid for a single-circuit registry
 //! whose circuit is not a mask). `ms.ky(instance, y)` is the instance
 //! polynomial evaluated at `y`.
@@ -71,7 +71,7 @@
 //!
 //! where `s_mask(y)` is `Registry::circuit_y(0, y)` for a registry built
 //! from a single `StageType::mask()` bonding object, minus the same
-//! `digest * y^{4n-1}` key term Invariant B subtracts.
+//! `tag * y^{4n-1}` tag term Invariant B subtracts.
 //!
 //! Invariant A catches sum-preserving bugs that Invariant B misses — e.g.,
 //! reversing two slots inside one stage's `rx_configured` and a
@@ -447,9 +447,9 @@ static CHAIN_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
 /// entry. The resulting registry's `circuit_y(0, y)` is the stage's full
 /// mask polynomial (the framework's `RegistryAt::y` adds the global term
 /// for masking circuits, recovering it from the `-notch`-only `sy()` that
-/// the underlying `StageMask` returns) plus the `digest * y^{4n-1}` key
+/// the underlying `StageMask` returns) plus the `tag * y^{4n-1}` tag
 /// term — exactly the inputs Invariant A wants for its zero check, after
-/// subtracting the key term.
+/// subtracting the tag term.
 fn build_mask_registry(mask: BondingObject<'static, Fp, TestRank>) -> Option<Registry<'static, Fp, TestRank>> {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_bonding(mask)
@@ -559,8 +559,8 @@ fn maybe_special(seed: u64, special: Option<u8>) -> Fp {
 }
 
 /// Same trick as `fuzz_circuit_revdot_identity::sy_from_registry`:
-/// `Registry::wy(omega_0, y)` is `s(X, y)` plus the registry key term
-/// `key.value() * y^{4n-1}` at slot `c[R::n() - 1]`. Subtract it to
+/// `Registry::wy(omega_0, y)` is `s(X, y)` plus the registry tag term
+/// `tag.value() * y^{4n-1}` at slot `c[R::n() - 1]`. Subtract it to
 /// recover the bare wiring polynomial. Valid because each MSC variant
 /// is registered alone (single-circuit registry, non-mask).
 fn sy_from_registry(
@@ -571,17 +571,17 @@ fn sy_from_registry(
     let mut wy = registry.wy(omega_0, y);
     if y != Fp::ZERO {
         let y_4n_minus_1 = y.pow_vartime([(4 * TestRank::n() - 1) as u64]);
-        let mut key_view = sparse::View::<_, TestRank, _>::wiring();
-        key_view.c.push(registry.digest() * y_4n_minus_1);
-        let key_term = key_view.build();
-        wy.sub_assign(&key_term);
+        let mut tag_view = sparse::View::<_, TestRank, _>::wiring();
+        tag_view.c.push(registry.tag() * y_4n_minus_1);
+        let tag_term = tag_view.build();
+        wy.sub_assign(&tag_term);
     }
     wy
 }
 
-/// Same key-term subtraction as `sy_from_registry`, applied to a
+/// Same tag term subtraction as `sy_from_registry`, applied to a
 /// mask-only registry. The mask-only registry's `circuit_y(0, y)` is the
-/// stage's full mask polynomial plus the `digest * y^{4n-1}` key term;
+/// stage's full mask polynomial plus the `tag * y^{4n-1}` tag term;
 /// subtracting the latter gives the bare mask polynomial that Invariant
 /// A revdots against.
 fn sy_from_mask_registry(
@@ -591,10 +591,10 @@ fn sy_from_mask_registry(
     let mut wy = mask_registry.circuit_y(CircuitIndex::new(0), y);
     if y != Fp::ZERO {
         let y_4n_minus_1 = y.pow_vartime([(4 * TestRank::n() - 1) as u64]);
-        let mut key_view = sparse::View::<_, TestRank, _>::wiring();
-        key_view.c.push(mask_registry.digest() * y_4n_minus_1);
-        let key_term = key_view.build();
-        wy.sub_assign(&key_term);
+        let mut tag_view = sparse::View::<_, TestRank, _>::wiring();
+        tag_view.c.push(mask_registry.tag() * y_4n_minus_1);
+        let tag_term = tag_view.build();
+        wy.sub_assign(&tag_term);
     }
     wy
 }

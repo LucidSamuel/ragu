@@ -24,7 +24,7 @@
 //! category, not by call order. Registering the same multiset in two
 //! different interleavings that preserve each category's internal sequence
 //! must produce byte-identical registries; the target checks that via
-//! `Registry::digest`.
+//! `Registry::tag`.
 //!
 //! ## Path agreement on the registry polynomial
 //!
@@ -32,7 +32,7 @@
 //! arithmetic:
 //!
 //! - `xy(x, y)` builds every circuit's `sxy` into a Lagrange vector and
-//!   IFFTs it, then adds the key term into the DC coefficient.
+//!   IFFTs it, then adds the tag term into the DC coefficient.
 //! - `wxy(w, x, y)` goes through `at(w)`, which uses cached Lagrange
 //!   coefficients and never forms the full polynomial.
 //!
@@ -245,8 +245,8 @@ fn run<R: Rank>(input: &Input) {
     if let Some(permuted) = build_borrowed::<R>(&reordered, &reordered_programs, &reordered_anchors)
     {
         assert_eq!(
-            registry.digest(),
-            permuted.digest(),
+            registry.tag(),
+            permuted.tag(),
             "registration order changed the registry: `finalize` is documented to \
              concatenate by category (internal, bonding, internal steps, application), \
              and `InternalCircuitIndex::ALL` in ragu_pcd derives indices from that order",
