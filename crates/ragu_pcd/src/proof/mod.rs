@@ -714,7 +714,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// nested circuits load.
     ///
     /// Shared by `compute_p` (in `fuse/_10_p.rs`) and by
-    /// [`trivial_proof`](Self::trivial_proof), so the nested
+    /// [`dummy_proof`](Self::dummy_proof), so the nested
     /// endoscaling setup lives in one place.
     pub(crate) fn compute_endoscaling<RNG: ragu_arithmetic::rand::CryptoRng>(
         &self,
@@ -858,7 +858,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     }
 
     /// Commits every native points input stage at once, for a proof whose
-    /// walk needs no transcript schedule: the trivial proof.
+    /// walk needs no transcript schedule: the dummy proof.
     fn commit_native_points_stages<RNG: ragu_arithmetic::rand::CryptoRng>(
         &self,
         rng: &mut RNG,
@@ -899,7 +899,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// interstitial) with the walk stage's witness.
     ///
     /// Shared by `compute_p` (in `fuse/_10_p.rs`) and
-    /// [`trivial_proof`](Self::trivial_proof), like
+    /// [`dummy_proof`](Self::dummy_proof), like
     /// [`compute_endoscaling`](Self::compute_endoscaling) on the nested side.
     pub(crate) fn compute_native_endoscaling<RNG: ragu_arithmetic::rand::CryptoRng>(
         &self,
@@ -946,11 +946,21 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         Ok((p_commitment, walk))
     }
 
-    pub(crate) fn trivial_pcd(&self) -> Pcd<C, R, ()> {
-        self.trivial_proof().carry(())
+    /// A synthesized dummy that stands in for the absent predecessors when
+    /// bootstrapping.
+    ///
+    /// This proof does not verify on its own; it is only ever consumed by the
+    /// internal [`Bootstrap`](crate::step::internal::bootstrap::Bootstrap) step, whose
+    /// fuse is the base case and therefore does not enforce its children's
+    /// claims. It carries the [`Dummy`] header so that it can occupy that
+    /// step's input slots.
+    ///
+    /// [`Dummy`]: crate::header::Dummy
+    pub(crate) fn dummy_pcd(&self) -> Pcd<C, R, crate::header::Dummy> {
+        self.dummy_proof().carry(())
     }
 
-    pub(crate) fn trivial_proof(&self) -> Proof<C, R> {
+    pub(crate) fn dummy_proof(&self) -> Proof<C, R> {
         let ones_host = {
             let mut view = sparse::View::<_, R, _>::trace();
             view.a.push(C::CircuitField::ONE);
@@ -999,7 +1009,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             .lifts::<C>()
             .expect("one is in the endoscalar challenge range");
         let (challenge_lifts, beta_lift) = lifts.split_at(nested::stages::challenges::NUM);
-        // A trivial proof has synthetic traces and a fixed +1 sign. Use the
+        // A dummy proof has synthetic traces and a fixed +1 sign. Use the
         // same witness for its binding partials and challenge stage.
         let nested_challenges = nested::stages::challenges::Witness {
             lifts: FixedVec::new(challenge_lifts.to_vec()).expect("NUM challenge lifts"),
@@ -1010,6 +1020,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let mut builder = ProofBuilder::<C, R, B>::new(self.params, C::ScalarField::ONE);
 
         builder.set_circuit_id(CircuitIndex::new(0));
+
         builder.set_left_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
         builder.set_right_header(vec![C::CircuitField::ZERO; HEADER_SIZE]);
 
@@ -1023,7 +1034,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder.set_native_query_rx(ones_host.clone());
         builder.set_native_registry_xy_poly(registry_xy_poly);
         // The eval stage carries the binding partial sums over the challenge
-        // lifts, and the instance their completion; a trivial proof's are
+        // lifts, and the instance their completion; a dummy proof's are
         // those of the all-one challenges.
         let binding = native::stages::eval::BindingPartials::compute::<C, R, B>(
             self.params,
@@ -1049,7 +1060,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder.set_native_bind_endoscalar_rx(ones_host.clone());
 
         // Nested accumulator: a trivial claim (all-ones traces), so that a
-        // trivial child contributes a well-formed raw claim to its parent's
+        // dummy child contributes a well-formed raw claim to its parent's
         // nested fold. The nested batch is trivial too, except for the
         // registry restriction a parent opens. Commitments are computed
         // lazily by the builder, except P_n, which the native walk below
@@ -1153,7 +1164,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 &nested::stages::inner_error::Witness {
                     native_inner_error: host_commitment,
                     registry_wy: host_commitment,
-                    // A trivial proof folds nothing, so its nested fold has
+                    // A dummy proof folds nothing, so its nested fold has
                     // no error terms.
                     error_terms: FixedVec::from_fn(|_| FixedVec::from_fn(|_| C::ScalarField::ZERO)),
                 },
@@ -1213,7 +1224,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             builder.set_bridge_eval_rx(rx, commitment);
         }
 
-        // Build dummy PointsStage inputs in `_10_p` accumulation order
+        // Build trivial PointsStage inputs in `_10_p` accumulation order
         // and delegate to `compute_endoscaling` so this trivial setup
         // cannot silently drift from the real prover path.
         // As on the nested side: every placeholder is the commitment of a
@@ -1340,6 +1351,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder.set_pre_beta(C::CircuitField::ONE);
 
         // Commitments are computed lazily by the builder from the polynomials.
-        builder.build().expect("trivial proof construction failed")
+        builder.build().expect("dummy proof construction failed")
     }
 }

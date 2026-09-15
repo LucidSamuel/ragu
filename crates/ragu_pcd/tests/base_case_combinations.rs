@@ -1,5 +1,5 @@
-//! Check the production base-case sign and both collapse guards for all
-//! combinations of trivial and nontrivial child headers.
+//! Confine the production base-case sign and both collapse exceptions to bootstrap.
+//! Ordinary unit headers must still enforce child claims in every combination.
 
 use alloc::{vec, vec::Vec};
 
@@ -27,27 +27,53 @@ use ragu_primitives::{GadgetExt, io::Write};
 use ragu_testing::strategies;
 
 use super::recursive_propagation_tests::support::{
-    self, C, HEADER_SIZE, Merge, R, Seed, TrivialLeft, TrivialRight, Value,
+    self, C, HEADER_SIZE, Merge, R, Seed, UnitLeft, UnitRight, Value,
 };
 use crate::{
+    Proof,
+    header::{Dummy, Header},
     internal::{
-        native,
+        Side, native,
         nested::{self, stages::challenges},
         stage_wires::{StageReader, stage_wire_indices, wire_degree, wires_of},
     },
-    step::internal::trivial::Trivial,
 };
+
+/// Flip the sign and repair its stage commitment and exported partial. The
+/// native binder must still derive the original sign from the input headers.
+fn flipped_sign(
+    app: &support::App,
+    proof: &Proof<C, R>,
+    sign_wire: usize,
+    sign: Fq,
+) -> Proof<C, R> {
+    let mut changed = proof.clone();
+    assert_eq!(
+        StageReader::new(&changed.nested_challenges_rx).read(sign_wire),
+        sign
+    );
+    support::set_wires(&mut changed.nested_challenges_rx, &[sign_wire], &[-sign]);
+    changed.nested_challenges_commitment.0 = ReferenceBackend::sparse_commit_to_affine(
+        &changed.nested_challenges_rx,
+        C::nested_generators(app.params),
+    );
+    let delta = -sign - sign;
+    let generator = C::nested_generators(app.params).g()[wire_degree::<R>(sign_wire)];
+    changed.nested_challenges_partial =
+        (changed.nested_challenges_partial.to_curve() + generator * delta).to_affine();
+    changed
+}
 
 fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
     let mut rng = inputs.prover_rng();
-    let unit = app.seed(&mut rng, Trivial::new(), ())?.0;
+    let unit = app.bootstrap_pcd();
     let left = app.seed(&mut rng, Seed::new(), inputs.left)?.0;
     let right = app.seed(&mut rng, Seed::new(), inputs.right)?.0;
     assert_ne!(left.data(), right.data());
     let cases = [
         (
-            "both",
-            true,
+            "both_unit",
+            false,
             app.fuse(
                 &mut rng,
                 Seed::new(),
@@ -58,11 +84,11 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
             .0,
         ),
         (
-            "left",
+            "left_unit",
             false,
             app.fuse(
                 &mut rng,
-                TrivialLeft::new(),
+                UnitLeft::new(),
                 inputs.salt + Fp::ONE,
                 unit.clone(),
                 right.clone(),
@@ -70,11 +96,11 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
             .0,
         ),
         (
-            "right",
+            "right_unit",
             false,
             app.fuse(
                 &mut rng,
-                TrivialRight::new(),
+                UnitRight::new(),
                 inputs.salt + Fp::from(2),
                 left.clone(),
                 unit,
@@ -82,7 +108,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
             .0,
         ),
         (
-            "neither",
+            "neither_unit",
             false,
             app.fuse(
                 &mut rng,
@@ -97,30 +123,44 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
     let sign_wire = stage_wire_indices::<_, R, challenges::Stage<EqAffine, R>>(|stage| {
         wires_of(&stage.base_case.lift)
     })?[0];
+    // Only Dummy x Dummy selects +1. In particular, one Dummy input or
+    // ordinary unit headers must not select the exception.
+    let suffixes = [
+        (<Dummy as Header<Fp>>::SUFFIX.get(), true),
+        (<() as Header<Fp>>::SUFFIX.get(), false),
+        (<Value as Header<Fp>>::SUFFIX.get(), false),
+    ];
+    for &(left_suffix, left_dummy) in &suffixes {
+        for &(right_suffix, right_dummy) in &suffixes {
+            let mut left_header = vec![inputs.left; HEADER_SIZE];
+            let mut right_header = vec![inputs.right; HEADER_SIZE];
+            left_header[HEADER_SIZE - 1] = Fp::from(left_suffix);
+            right_header[HEADER_SIZE - 1] = Fp::from(right_suffix);
+            let witness = challenges::Witness::new::<_, HEADER_SIZE>(
+                [Fq::ZERO; challenges::NUM],
+                &left_header,
+                &right_header,
+                Fq::ZERO,
+            );
+            assert_eq!(
+                witness.base_case_sign,
+                if left_dummy && right_dummy {
+                    Fq::ONE
+                } else {
+                    -Fq::ONE
+                },
+                "left suffix={left_suffix}, right suffix={right_suffix}"
+            );
+        }
+    }
     for (case, base_case, honest) in cases {
         assert!(
             app.verify(&honest, inputs.verifier_rng())?,
             "{case}: honest proof"
         );
         let sign = if base_case { Fq::ONE } else { -Fq::ONE };
-        let (mut changed, data) = honest.clone().into_parts();
-        assert_eq!(
-            StageReader::new(&changed.nested_challenges_rx).read(sign_wire),
-            sign
-        );
-
-        // Flip the sign and repair both the stage commitment and its exported
-        // partial. The native binder must still derive the sign from the headers.
-        support::set_wires(&mut changed.nested_challenges_rx, &[sign_wire], &[-sign]);
-        changed.nested_challenges_commitment.0 = ReferenceBackend::sparse_commit_to_affine(
-            &changed.nested_challenges_rx,
-            C::nested_generators(app.params),
-        );
-        let delta = -sign - sign;
-        let generator = C::nested_generators(app.params).g()[wire_degree::<R>(sign_wire)];
-        changed.nested_challenges_partial =
-            (changed.nested_challenges_partial.to_curve() + generator * delta).to_affine();
-        let forged = changed.carry::<Value>(data);
+        let forged =
+            flipped_sign(app, honest.proof(), sign_wire, sign).carry::<Value>(*honest.data());
         assert!(
             !app.verify(&forged, inputs.verifier_rng())?,
             "{case}: forged sign"
@@ -131,6 +171,61 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
                     app.verify(&descendant, inputs.verifier_rng())?,
                     expected,
                     "{case}/{label}: {position}"
+                );
+            }
+        }
+    }
+
+    // Bootstrap is the one legitimate exception. A forged bootstrap sign must
+    // still be rejected when an application step consumes its unit output.
+    let bootstrap = app.bootstrap_pcd();
+    let forged = flipped_sign(app, bootstrap.proof(), sign_wire, Fq::ONE).carry::<()>(());
+    for (label, child, expected) in [("honest", &bootstrap, true), ("forged", &forged, false)] {
+        assert_eq!(
+            app.verify(child, inputs.verifier_rng())?,
+            expected,
+            "bootstrap/{label}"
+        );
+        for parent_side in [Side::Left, Side::Right] {
+            let salt = Fp::random(&mut rng);
+            let parent = match parent_side {
+                Side::Left => {
+                    app.fuse(&mut rng, UnitLeft::new(), salt, child.clone(), left.clone())?
+                        .0
+                }
+                Side::Right => {
+                    app.fuse(
+                        &mut rng,
+                        UnitRight::new(),
+                        salt,
+                        left.clone(),
+                        child.clone(),
+                    )?
+                    .0
+                }
+            };
+            support::assert_copied_endpoints(parent.proof(), child.proof(), parent_side)?;
+            assert_eq!(
+                app.verify(&parent, inputs.verifier_rng())?,
+                expected,
+                "bootstrap/{label}: parent {parent_side:?}"
+            );
+            for grandparent_side in [Side::Left, Side::Right] {
+                let (l, r) = match grandparent_side {
+                    Side::Left => (parent.clone(), left.clone()),
+                    Side::Right => (left.clone(), parent.clone()),
+                };
+                let salt = Fp::random(&mut rng);
+                let grandparent = app.fuse(&mut rng, Merge::new(), salt, l, r)?.0;
+                support::assert_copied_endpoints(
+                    grandparent.proof(),
+                    parent.proof(),
+                    grandparent_side,
+                )?;
+                assert_eq!(
+                    app.verify(&grandparent, inputs.verifier_rng())?,
+                    expected,
+                    "bootstrap/{label}: parent {parent_side:?}, grandparent {grandparent_side:?}"
                 );
             }
         }
@@ -352,6 +447,63 @@ where
     Ok(constraints.hold(&coefficients))
 }
 
+fn check_proof_guards(
+    proof: &Proof<C, R>,
+    case: &str,
+    exempt: bool,
+    native_delta: Fp,
+    nested_delta: Fq,
+) -> Result<()> {
+    let mut native_trace = proof.native_outer_collapse_rx.clone();
+    native_trace.add_assign(&proof.native_preamble_rx);
+    native_trace.add_assign(&proof.native_outer_error_rx);
+    assert_eq!(
+        accepts_wrong_c(
+            native::circuits::outer_collapse::Circuit::<
+                C,
+                R,
+                HEADER_SIZE,
+                native::RevdotParameters,
+            >::new(),
+            &native_trace,
+            native_c_position(),
+            proof.native_c(),
+            native_delta,
+        )?,
+        exempt,
+        "{case}: native c guard"
+    );
+
+    let mut nested_trace = proof.nested_collapse_rx.clone();
+    for stage in [
+        nested::RxIndex::EndoscalarStage,
+        nested::RxIndex::PointsStage,
+        nested::RxIndex::BridgePreamble,
+        nested::RxIndex::BridgeSPrime,
+        nested::RxIndex::BridgeInnerError,
+        nested::RxIndex::BridgeOuterError,
+        nested::RxIndex::BridgeAB,
+        nested::RxIndex::BridgeQuery,
+        nested::RxIndex::BridgeF,
+        nested::RxIndex::BridgeEval,
+        nested::RxIndex::ChallengeStage,
+    ] {
+        nested_trace.add_assign(&proof[stage]);
+    }
+    assert_eq!(
+        accepts_wrong_c(
+            MultiStage::new(nested::circuits::collapse::Circuit::<EqAffine, R>::new()),
+            &nested_trace,
+            0, // c_n is the first slot in the nested unified instance.
+            proof.nested_c(),
+            nested_delta,
+        )?,
+        exempt,
+        "{case}: nested c guard"
+    );
+    Ok(())
+}
+
 fn check_guards(
     app: &support::App,
     inputs: &support::Inputs,
@@ -359,13 +511,13 @@ fn check_guards(
     nested_delta: Fq,
 ) -> Result<()> {
     let mut rng = inputs.prover_rng();
-    let unit = app.seed(&mut rng, Trivial::new(), ())?.0;
+    let unit = app.bootstrap_pcd();
     let left = app.seed(&mut rng, Seed::new(), inputs.left)?.0;
     let right = app.seed(&mut rng, Seed::new(), inputs.right)?.0;
     let cases = [
         (
-            "both",
-            true,
+            "both_unit",
+            false,
             app.fuse(
                 &mut rng,
                 Seed::new(),
@@ -376,11 +528,11 @@ fn check_guards(
             .0,
         ),
         (
-            "left",
+            "left_unit",
             false,
             app.fuse(
                 &mut rng,
-                TrivialLeft::new(),
+                UnitLeft::new(),
                 inputs.salt + Fp::ONE,
                 unit.clone(),
                 right.clone(),
@@ -388,11 +540,11 @@ fn check_guards(
             .0,
         ),
         (
-            "right",
+            "right_unit",
             false,
             app.fuse(
                 &mut rng,
-                TrivialRight::new(),
+                UnitRight::new(),
                 inputs.salt + Fp::from(2),
                 left.clone(),
                 unit,
@@ -400,7 +552,7 @@ fn check_guards(
             .0,
         ),
         (
-            "neither",
+            "neither_unit",
             false,
             app.fuse(
                 &mut rng,
@@ -412,59 +564,21 @@ fn check_guards(
             .0,
         ),
     ];
+    let bootstrap = app.bootstrap_pcd();
+    assert!(app.verify(&bootstrap, inputs.verifier_rng())?);
+    check_proof_guards(
+        bootstrap.proof(),
+        "bootstrap",
+        true,
+        native_delta,
+        nested_delta,
+    )?;
     for (case, exempt, pcd) in cases {
         assert!(
             app.verify(&pcd, inputs.verifier_rng())?,
             "{case}: honest proof"
         );
-        let proof = pcd.proof();
-        let mut native_trace = proof.native_outer_collapse_rx.clone();
-        native_trace.add_assign(&proof.native_preamble_rx);
-        native_trace.add_assign(&proof.native_outer_error_rx);
-        assert_eq!(
-            accepts_wrong_c(
-                native::circuits::outer_collapse::Circuit::<
-                    C,
-                    R,
-                    HEADER_SIZE,
-                    native::RevdotParameters,
-                >::new(),
-                &native_trace,
-                native_c_position(),
-                proof.native_c(),
-                native_delta,
-            )?,
-            exempt,
-            "{case}: native c guard"
-        );
-
-        let mut nested_trace = proof.nested_collapse_rx.clone();
-        for stage in [
-            nested::RxIndex::EndoscalarStage,
-            nested::RxIndex::PointsStage,
-            nested::RxIndex::BridgePreamble,
-            nested::RxIndex::BridgeSPrime,
-            nested::RxIndex::BridgeInnerError,
-            nested::RxIndex::BridgeOuterError,
-            nested::RxIndex::BridgeAB,
-            nested::RxIndex::BridgeQuery,
-            nested::RxIndex::BridgeF,
-            nested::RxIndex::BridgeEval,
-            nested::RxIndex::ChallengeStage,
-        ] {
-            nested_trace.add_assign(&proof[stage]);
-        }
-        assert_eq!(
-            accepts_wrong_c(
-                MultiStage::new(nested::circuits::collapse::Circuit::<EqAffine, R>::new()),
-                &nested_trace,
-                0, // c_n is the first slot in the nested unified instance.
-                proof.nested_c(),
-                nested_delta,
-            )?,
-            exempt,
-            "{case}: nested c guard"
-        );
+        check_proof_guards(pcd.proof(), case, exempt, native_delta, nested_delta)?;
     }
     Ok(())
 }
@@ -478,7 +592,7 @@ proptest! {
     }
 
     #[test]
-    fn both_collapse_guards_require_both_children_trivial(
+    fn both_collapse_guards_confine_the_base_case_to_bootstrap(
         inputs in support::inputs(),
         native_delta in strategies::nonzero_prime_field_element::<Fp>(),
         nested_delta in strategies::nonzero_prime_field_element::<Fq>(),

@@ -118,15 +118,15 @@ pub(crate) mod support {
 
     pub(crate) type Seed = HashStep<(), (), 0>;
     pub(crate) type Merge = HashStep<Value, Value, 1>;
-    pub(crate) type TrivialLeft = HashStep<(), Value, 2>;
-    pub(crate) type TrivialRight = HashStep<Value, (), 3>;
+    pub(crate) type UnitLeft = HashStep<(), Value, 2>;
+    pub(crate) type UnitRight = HashStep<Value, (), 3>;
 
     fn build_app() -> Result<App> {
         ApplicationBuilder::<C, R, HEADER_SIZE>::new()
             .register(Seed::new())?
             .register(Merge::new())?
-            .register(TrivialLeft::new())?
-            .register(TrivialRight::new())?
+            .register(UnitLeft::new())?
+            .register(UnitRight::new())?
             .finalize(C::baked())
     }
 
@@ -231,14 +231,20 @@ pub(crate) mod support {
         Ok((parent, proofs.0, proofs.1))
     }
 
-    /// Build unit-header proofs for base-case controls.
+    /// Fuse two bootstrap proofs to distinguish ordinary unit inputs from the base case.
     pub(crate) fn unit_fused(app: &App, inputs: &Inputs) -> Result<(UnitPcd, UnitPcd, UnitPcd)> {
-        use crate::step::internal::trivial::Trivial;
+        use crate::step::internal::rerandomize::Rerandomize;
         let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_sub(1));
-        let left = app.seed(&mut rng, Trivial::new(), ())?.0;
-        let right = app.seed(&mut rng, Trivial::new(), ())?.0;
+        let left = app.bootstrap_pcd();
+        let right = app.bootstrap_pcd();
         let parent = app
-            .fuse(&mut rng, Trivial::new(), (), left.clone(), right.clone())?
+            .fuse(
+                &mut rng,
+                Rerandomize::<()>::new(),
+                (),
+                left.clone(),
+                right.clone(),
+            )?
             .0;
         Ok((parent, left, right))
     }
@@ -293,7 +299,7 @@ pub(crate) mod support {
 
     /// Check the production parent's stored stages to ensure a substituted
     /// endpoint reached the selected child's copied instance.
-    fn assert_copied_endpoints(
+    pub(crate) fn assert_copied_endpoints(
         parent: &Proof<C, R>,
         child: &Proof<C, R>,
         side: Side,
@@ -1187,8 +1193,11 @@ mod commitments {
                 check_walk(app, &parent, &left, &right, &inputs, replacement)?;
                 let (parent, left, right) = support::unit_fused(app, &inputs)?;
                 check_coefficients(app, &parent, &inputs, delta)?;
-                check_challenge_commitment(app, parent.proof(), Fq::ONE)?;
-                check_walk(app, &parent, &left, &right, &inputs, replacement)
+                check_challenge_commitment(app, parent.proof(), -Fq::ONE)?;
+                check_walk(app, &parent, &left, &right, &inputs, replacement)?;
+                let bootstrap = app.bootstrap_pcd();
+                check_coefficients(app, &bootstrap, &inputs, delta)?;
+                check_challenge_commitment(app, bootstrap.proof(), Fq::ONE)
             }).unwrap();
         }
     }

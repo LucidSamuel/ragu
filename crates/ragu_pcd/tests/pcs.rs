@@ -291,8 +291,8 @@ fn check_batch<H: Header<Fp>>(
     Ok(())
 }
 
-fn check_trivial(app: &support::App) {
-    let proof = app.trivial_proof();
+fn check_dummy(app: &support::App) {
+    let proof = app.dummy_proof();
 
     assert_eq!(
         ReferenceBackend::sparse_commit_to_affine(
@@ -300,7 +300,7 @@ fn check_trivial(app: &support::App) {
             C::nested_generators(app.params),
         ),
         proof.nested_p_commitment(),
-        "a trivial child's nested batch polynomial must match its walked commitment"
+        "a dummy child's nested batch polynomial must match its walked commitment"
     );
 }
 
@@ -614,7 +614,7 @@ proptest! {
             let (parent, left, right) = support::unit_fused(app, &inputs)?;
             check_batch(app, &parent, &left, &right, &inputs)?;
             folding::check(app, parent.proof(), left.proof(), right.proof())?;
-            check_trivial(app);
+            check_dummy(app);
             Ok::<_, ragu_core::Error>(())
         }).unwrap();
     }

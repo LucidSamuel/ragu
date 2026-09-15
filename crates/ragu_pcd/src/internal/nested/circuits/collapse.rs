@@ -28,7 +28,7 @@
 //!
 //! ## Base case
 //!
-//! When both children are trivial their claims are not satisfied, and the
+//! When Bootstrap consumes two dummy children, their claims are not satisfied, and the
 //! prover witnesses whatever $c_n$ its folded accumulator has, exactly as
 //! the native `outer_collapse` allows. The verdict is the sign the challenge
 //! stage carries, which the native binding circuits tie to the headers.

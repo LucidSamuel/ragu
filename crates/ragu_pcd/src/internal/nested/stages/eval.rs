@@ -84,7 +84,7 @@ pub struct Evaluations<F> {
 }
 
 impl<F: PrimeField> Evaluations<F> {
-    /// All-zero values, for proofs that open nothing (the trivial proof).
+    /// All-zero values, for proofs that open nothing (the dummy proof).
     pub fn zero() -> Self {
         let child = || ChildEvaluationsWitness {
             rx: FixedVec::from_fn(|_| F::ZERO),

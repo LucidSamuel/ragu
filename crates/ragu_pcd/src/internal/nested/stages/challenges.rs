@@ -80,7 +80,7 @@ pub type Len = ConstLen<NUM>;
 #[derive(Clone)]
 pub struct Witness<F> {
     pub lifts: FixedVec<F, Len>,
-    /// $+1$ when both children of this step are trivial proofs, $-1$
+    /// $+1$ when this step declares the internal `Dummy` header for both inputs, $-1$
     /// otherwise: the native side's base-case verdict, carried as a sign so
     /// the last binding circuit can add or subtract one generator.
     pub base_case_sign: F,
@@ -99,11 +99,13 @@ impl<F: PrimeField> Witness<F> {
         right_header: &[N],
         beta: F,
     ) -> Self {
-        let is_trivial =
-            |header: &[N]| header.len() == HEADER_SIZE && header[HEADER_SIZE - 1] == N::ONE;
+        let dummy_suffix =
+            N::from(<crate::header::Dummy as crate::header::Header<N>>::SUFFIX.get());
+        let is_dummy =
+            |header: &[N]| header.len() == HEADER_SIZE && header.last() == Some(&dummy_suffix);
         Self {
             lifts: FixedVec::new(lifts.into()).expect("NUM lifts"),
-            base_case_sign: if is_trivial(left_header) && is_trivial(right_header) {
+            base_case_sign: if is_dummy(left_header) && is_dummy(right_header) {
                 F::ONE
             } else {
                 -F::ONE
