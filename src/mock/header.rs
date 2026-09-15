@@ -28,8 +28,19 @@ pub struct Suffix {
 }
 
 impl Suffix {
+    /// Creates a new application-defined [`Header`] suffix.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `value` is large enough that offsetting it past the internal
+    /// suffixes would overflow and alias a reserved internal suffix.
     #[must_use]
     pub const fn new(value: usize) -> Self {
+        assert!(
+            value <= usize::MAX - NUM_INTERNAL_SUFFIXES,
+            "application header suffix would overflow onto a reserved internal suffix"
+        );
+
         Self {
             suffix: HeaderSuffix::Application(value),
         }
@@ -76,5 +87,37 @@ impl Header for () {
 
     fn encode(_data: &()) -> (Vec<Fp>, Vec<Fq>, Vec<Ep>, Vec<Eq>) {
         (Vec::new(), Vec::new(), Vec::new(), Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_suffix_map() {
+        const MAX_APPLICATION_SUFFIX: Suffix = Suffix::new(usize::MAX - NUM_INTERNAL_SUFFIXES);
+
+        assert_eq!(Suffix::internal(0).get(), 0);
+        assert_eq!(Suffix::internal(1).get(), 1);
+        assert_eq!(Suffix::new(0).get(), 2);
+        assert_eq!(Suffix::new(1).get(), 3);
+        assert_eq!(MAX_APPLICATION_SUFFIX.get(), usize::MAX as u64);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "application header suffix would overflow onto a reserved internal suffix"
+    )]
+    fn test_suffix_rejects_first_overflow() {
+        let _ = Suffix::new(usize::MAX - NUM_INTERNAL_SUFFIXES + 1);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "application header suffix would overflow onto a reserved internal suffix"
+    )]
+    fn test_suffix_rejects_usize_max() {
+        let _ = Suffix::new(usize::MAX);
     }
 }
