@@ -619,3 +619,122 @@ proptest! {
         }).unwrap();
     }
 }
+
+mod denominators {
+    //! Exercise the PCD quotient denominator constraints on both Pasta fields.
+    //!
+    //! These are checking-driver tests at the inversion gadget boundary. They do
+    //! not force the production Fiat-Shamir transcript to emit chosen challenges.
+
+    use alloc::vec::Vec;
+
+    use proptest::prelude::*;
+    use ragu_arithmetic::ff::PrimeField;
+    use ragu_circuits::registry::CircuitIndex;
+    use ragu_core::{Error, Result, drivers::Driver, maybe::Maybe};
+    use ragu_pasta::{Fp, Fq};
+    use ragu_primitives::{Element, Simulator, allocator::Standard};
+    use ragu_testing::strategies;
+
+    use crate::internal::inverter::Inverter;
+
+    #[derive(Clone, Copy)]
+    enum Zero {
+        Variable(usize),
+        Constant(usize),
+    }
+
+    fn batch<F: PrimeField>(
+        base: F,
+        differences: &[F],
+        circuit: CircuitIndex,
+        zero: Option<Zero>,
+    ) -> Result<()> {
+        Simulator::<F>::simulate(base, |dr, witness| {
+            let allocator = &mut Standard::new();
+            let base_element = Element::alloc(dr, allocator, witness)?;
+            let mut inverter = Inverter::with_base(base_element);
+            let mut expected = Vec::new();
+            for (i, &difference) in differences.iter().enumerate() {
+                let value = match zero {
+                    Some(Zero::Variable(position) | Zero::Constant(position)) if position == i => {
+                        base
+                    }
+                    _ => base - difference,
+                };
+                let constant = match zero {
+                    Some(Zero::Variable(position)) if position == i => false,
+                    Some(Zero::Constant(position)) if position == i => true,
+                    _ => i.is_multiple_of(2),
+                };
+                let index = if constant {
+                    inverter.add_constant(dr, value)?
+                } else {
+                    let value = Element::alloc(dr, allocator, Simulator::<F>::just(|| value))?;
+                    inverter.add(dr, &value)?
+                };
+                assert_eq!(index, expected.len());
+                expected.push(base - value);
+            }
+            let index = inverter.add_circuit(dr, circuit)?;
+            assert_eq!(index, expected.len());
+            expected.push(base - circuit.omega_j::<F>());
+            let inverses = inverter.invert(dr)?;
+            assert_eq!(inverses.len(), expected.len());
+            for (inverse, difference) in inverses.iter().zip(expected) {
+                assert_eq!(**inverse.value().snag() * difference, F::ONE);
+            }
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    fn check<F: PrimeField>(
+        differences: &[F],
+        circuit: CircuitIndex,
+        position: usize,
+    ) -> Result<()> {
+        assert!(!differences.is_empty());
+        assert!(differences.iter().all(|difference| *difference != F::ZERO));
+        Simulator::<F>::simulate(F::ZERO, |dr, witness| {
+            let base = Element::alloc(dr, &mut Standard::new(), witness)?;
+            assert!(Inverter::with_base(base).invert(dr)?.is_empty());
+            Ok(())
+        })?;
+
+        let position = position % differences.len();
+        let omega = circuit.omega_j::<F>();
+        // Zero is a valid base when no denominator vanishes. The second base
+        // gives the registry denominator a generated nonzero difference.
+        for base in [F::ZERO, omega + differences[0]] {
+            batch(base, differences, circuit, None)?;
+            for zero in [Zero::Variable(position), Zero::Constant(position)] {
+                assert!(matches!(
+                    batch(base, differences, circuit, Some(zero)),
+                    Err(Error::InvalidWitness(_))
+                ));
+            }
+        }
+        // All variable/constant differences remain nonzero; only u - omega_j
+        // vanishes. The batch inversion's zero advice must still be constrained.
+        assert!(matches!(
+            batch(omega, differences, circuit, None),
+            Err(Error::InvalidWitness(_))
+        ));
+        Ok(())
+    }
+
+    proptest! {
+        #[test]
+        fn quotient_inversion_rejects_each_kind_of_zero_denominator(
+            native in proptest::collection::vec(strategies::nonzero_prime_field_element::<Fp>(), 1..=32),
+            nested in proptest::collection::vec(strategies::nonzero_prime_field_element::<Fq>(), 1..=32),
+            circuit in 0u32..=u16::MAX.into(),
+            position in any::<usize>(),
+        ) {
+            let circuit = CircuitIndex::from_u32(circuit);
+            check(&native, circuit, position).unwrap();
+            check(&nested, circuit, position).unwrap();
+        }
+    }
+}

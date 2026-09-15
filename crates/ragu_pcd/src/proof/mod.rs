@@ -16,6 +16,9 @@ pub(crate) mod builder;
 #[path = "../../tests/base_case_combinations.rs"]
 mod base_case_combinations_tests;
 #[cfg(test)]
+#[path = "../../tests/recursive_boundaries.rs"]
+mod recursive_boundary_tests;
+#[cfg(test)]
 #[path = "../../tests/recursive_propagation.rs"]
 pub(crate) mod recursive_propagation_tests;
 

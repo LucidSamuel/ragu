@@ -297,8 +297,8 @@ pub(crate) mod support {
         Ok(proofs)
     }
 
-    /// Check the production parent's stored stages to ensure a substituted
-    /// endpoint reached the selected child's copied instance.
+    /// Check the production parent's stored stages to ensure substituted
+    /// endpoints and the circuit ID reached the selected child's copied instance.
     pub(crate) fn assert_copied_endpoints(
         parent: &Proof<C, R>,
         child: &Proof<C, R>,
@@ -335,6 +335,23 @@ pub(crate) mod support {
                 .collect::<Vec<_>>(),
             coordinates(child.nested_p_commitment()),
             "{side:?}: copied nested endpoint"
+        );
+        let circuit_id = stage_wire_indices::<
+            _,
+            R,
+            crate::internal::native::stages::preamble::Stage<C, R, HEADER_SIZE>,
+        >(|stage| {
+            let child = match side {
+                Side::Left => &stage.left,
+                Side::Right => &stage.right,
+            };
+            wires_of(&child.circuit_id)
+        })?;
+        assert_eq!(circuit_id.len(), 1);
+        assert_eq!(
+            StageReader::new(&parent.native_preamble_rx).read(circuit_id[0]),
+            child.circuit_id().omega_j(),
+            "{side:?}: copied circuit id"
         );
         Ok(())
     }
@@ -695,7 +712,7 @@ mod timing {
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, ff::Field, group::Curve};
     use ragu_backend::{Backend, ReferenceBackend};
-    use ragu_circuits::staging::StageExt;
+    use ragu_circuits::{polynomials::Rank, registry::CircuitIndex, staging::StageExt};
     use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
     use ragu_primitives::{GadgetExt, Point};
@@ -776,7 +793,12 @@ mod timing {
         );
 
         // Include an honest control through the same recursive construction.
-        for case in ["honest", "ab_after_x", "registry_after_u"] {
+        for case in [
+            "honest",
+            "ab_after_x",
+            "registry_after_u",
+            "registry_after_all_openings",
+        ] {
             let (mut changed, data) = honest.clone().into_parts();
             match case {
                 "ab_after_x" => {
@@ -822,21 +844,46 @@ mod timing {
                     assert_eq!(replayed[..7], original[..7]);
                     assert_ne!(replayed[7], changed.x(), "the replacement must change x");
                 }
-                "registry_after_u" => {
+                "registry_after_u" | "registry_after_all_openings" => {
                     // registry_xy is committed after alpha but before u. Preserve its
                     // old opening at u_n to exercise more than a changed evaluation.
                     let u = nested::challenge::<C>(changed.u())?;
                     let w = nested::challenge::<C>(changed.w())?;
                     let old_u = changed.nested_registry_xy_poly.eval(u);
                     let old_w = changed.nested_registry_xy_poly.eval(w);
-                    support::add_rooted_term(
-                        &mut changed.nested_registry_xy_poly,
-                        u,
-                        registry_positions,
-                        registry_delta,
-                    );
+                    if case == "registry_after_u" {
+                        support::add_rooted_term(
+                            &mut changed.nested_registry_xy_poly,
+                            u,
+                            registry_positions,
+                            registry_delta,
+                        );
+                        assert_ne!(changed.nested_registry_xy_poly.eval(w), old_w);
+                    } else {
+                        let domain_size = 1usize << app.nested_registry.log2_domain();
+                        let openings: Vec<_> = (0..domain_size)
+                            .map(|i| {
+                                let point = CircuitIndex::new(i).omega_j();
+                                (point, changed.nested_registry_xy_poly.eval(point))
+                            })
+                            .collect();
+                        let offset = registry_positions.0 % (R::num_coeffs() - domain_size - 2);
+                        // Add delta * X^offset * (X^N - 1) * (X-u) * (X-w).
+                        // This preserves every registry-domain opening as well
+                        // as both old transcript-derived evaluation points.
+                        support::edit(&mut changed.nested_registry_xy_poly, |coefficients| {
+                            for (degree, coefficient) in [(0, u * w), (1, -u - w), (2, Fq::ONE)] {
+                                coefficients[offset + degree] -= registry_delta * coefficient;
+                                coefficients[offset + domain_size + degree] +=
+                                    registry_delta * coefficient;
+                            }
+                        });
+                        for (point, value) in openings {
+                            assert_eq!(changed.nested_registry_xy_poly.eval(point), value);
+                        }
+                        assert_eq!(changed.nested_registry_xy_poly.eval(w), old_w);
+                    }
                     assert_eq!(changed.nested_registry_xy_poly.eval(u), old_u);
-                    assert_ne!(changed.nested_registry_xy_poly.eval(w), old_w);
                     let point = ReferenceBackend::sparse_commit_to_affine(
                         &changed.nested_registry_xy_poly,
                         C::nested_generators(app.params),
@@ -923,8 +970,12 @@ mod commitments {
     use alloc::vec::Vec;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{Cycle, ff::Field};
-    use ragu_backend::ReferenceBackend;
+    use ragu_arithmetic::{
+        Cycle, FixedGenerators,
+        ff::Field,
+        group::{Curve, CurveAffine},
+    };
+    use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::{
         polynomials::{Rank, sparse},
         staging::Stage,
@@ -968,8 +1019,26 @@ mod commitments {
             coefficients[coefficient] += delta;
             changed.nested_challenges_rx = sparse::Polynomial::from_coeffs(coefficients);
             assert!(
-                !verify(changed)?,
+                !verify(changed.clone())?,
                 "accepted changed challenge stage coefficient {coefficient}"
+            );
+            changed.nested_challenges_commitment.0 = ReferenceBackend::sparse_commit_to_affine(
+                &changed.nested_challenges_rx,
+                C::nested_generators(app.params),
+            );
+            // Keep the exported partial consistent with the edited commitment:
+            // it contains every term except beta's. Rejection must still hold
+            // after both commitment representations have been repaired.
+            if coefficient
+                != crate::internal::native::circuits::bind_beta::generator_index::<C, R>()
+            {
+                changed.nested_challenges_partial = (changed.nested_challenges_partial.to_curve()
+                    + C::nested_generators(app.params).g()[coefficient] * delta)
+                    .to_affine();
+            }
+            assert!(
+                !verify(changed)?,
+                "accepted repaired challenge stage coefficient {coefficient}"
             );
         }
 
