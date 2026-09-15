@@ -298,7 +298,7 @@ pub(crate) mod support {
     }
 
     /// Check the production parent's stored stages to ensure substituted
-    /// endpoints and the circuit ID reached the selected child's copied instance.
+    /// endpoints, claims, challenges and circuit ID reached the copied instance.
     pub(crate) fn assert_copied_endpoints(
         parent: &Proof<C, R>,
         child: &Proof<C, R>,
@@ -325,16 +325,44 @@ pub(crate) mod support {
                 Side::Left => &stage.left,
                 Side::Right => &stage.right,
             };
-            wires_of(&child.p)
+            let mut wires = Vec::new();
+            for point in [
+                &child.p,
+                &child.a,
+                &child.b,
+                &child.registry_xy,
+                &child.challenges,
+            ]
+            .into_iter()
+            .chain(child.bridges.iter())
+            {
+                wires.extend(wires_of(point)?);
+            }
+            Ok(wires)
         })?;
         let reader = StageReader::new(&parent.native_points_binding_rx);
+        let expected: Vec<_> = [
+            child.nested_p_commitment(),
+            child.nested_a_commitment(),
+            child.nested_b_commitment(),
+            child.nested_registry_xy_commitment(),
+            child.nested_challenges_commitment(),
+        ]
+        .into_iter()
+        .chain(
+            nested::RxIndex::BRIDGES
+                .iter()
+                .map(|&id| child.nested_rx_commitment(id)),
+        )
+        .flat_map(coordinates)
+        .collect();
         assert_eq!(
             nested
                 .iter()
                 .map(|&wire| reader.read(wire))
                 .collect::<Vec<_>>(),
-            coordinates(child.nested_p_commitment()),
-            "{side:?}: copied nested endpoint"
+            expected,
+            "{side:?}: copied nested commitments"
         );
         let circuit_id = stage_wire_indices::<
             _,
@@ -352,6 +380,46 @@ pub(crate) mod support {
             StageReader::new(&parent.native_preamble_rx).read(circuit_id[0]),
             child.circuit_id().omega_j(),
             "{side:?}: copied circuit id"
+        );
+        let native_claims = stage_wire_indices::<
+            _,
+            R,
+            crate::internal::native::stages::preamble::Stage<C, R, HEADER_SIZE>,
+        >(|stage| {
+            let child = match side {
+                Side::Left => &stage.left,
+                Side::Right => &stage.right,
+            };
+            let mut wires = wires_of(&child.unified.c)?;
+            wires.extend(wires_of(&child.unified.pre_beta)?);
+            wires.extend(wires_of(&child.unified.nested_challenges_partial)?);
+            Ok(wires)
+        })?;
+        let reader = StageReader::new(&parent.native_preamble_rx);
+        let expected: Vec<_> = [child.native_c(), child.pre_beta()]
+            .into_iter()
+            .chain(coordinates(child.nested_challenges_partial()))
+            .collect();
+        assert_eq!(
+            native_claims
+                .iter()
+                .map(|&wire| reader.read(wire))
+                .collect::<Vec<_>>(),
+            expected,
+            "{side:?}: copied native claim and challenge binding"
+        );
+        let nested_claim = stage_wire_indices::<_, R, preamble::Stage<EqAffine, R>>(|stage| {
+            let child = match side {
+                Side::Left => &stage.left,
+                Side::Right => &stage.right,
+            };
+            wires_of(&child.nested.c)
+        })?;
+        assert_eq!(nested_claim.len(), 1);
+        assert_eq!(
+            StageReader::new(&parent[nested::RxIndex::BridgePreamble]).read(nested_claim[0]),
+            child.nested_c(),
+            "{side:?}: copied nested claim"
         );
         Ok(())
     }
