@@ -10,12 +10,12 @@
 //!
 //! # Why a corruption is not always a rejection
 //!
-//! A proof's polynomials are blinded, so most of their coefficients are
-//! degrees of freedom no check binds; moving one of those is not forgery and
-//! the verifier accepting afterwards is correct. Asserting rejection there
-//! would fail an honest verifier. So [`Proof::corrupt`] returns a
-//! [`Binding`], and a harness asserts rejection only for
-//! [`Binding::MustReject`].
+//! Some requested edits make no change: a zero delta, an out-of-range
+//! coefficient index, or an assignment of the value already present. These
+//! return [`Binding::Unbound`]; a harness asserts rejection only for
+//! [`Binding::MustReject`]. Classification describes one edit to an otherwise
+//! valid proof. Composed edits can cancel, so their final effect must be
+//! considered separately.
 //!
 //! The classification is derived, not guessed:
 //!
@@ -28,50 +28,24 @@
 //!   challenge or bridge commitment is caught earlier still: the verifier
 //!   rederives every challenge from the transcript over the bridge
 //!   commitments.
-//! * **A cached commitment** — of a native or nested polynomial, the walked
-//!   $P$ and $P_n$ included — is recomputed by the verifier from its
-//!   polynomial and compared as one batch per curve under a fresh scalar,
-//!   so any change is caught unless that scalar is a root of the
-//!   difference.
+//! * **A polynomial coefficient or cached commitment** — native or nested,
+//!   the walked $P$ and $P_n$ included — is bound by the verifier's
+//!   commitment checks. Every effective coefficient edit leaves its cache
+//!   unchanged. Adding $\delta X^i$ changes the commitment by $\delta G_i$,
+//!   even outside the circuit claim's $t_z$ region or when the derived $c$
+//!   or $v$ stays unchanged. The verifier recomputes commitments from their
+//!   polynomials and compares them in one batch per curve under a fresh
+//!   scalar, so the mismatch is caught unless that scalar is a root of the
+//!   difference. Blinding freedom does not permit changing a polynomial
+//!   while retaining its old commitment.
 //! * **A rescaled accumulator** — $a \mapsto s\,a$, $b \mapsto s^{-1} b$,
 //!   caches updated to match — preserves the derived $c$ and every
 //!   commitment check, and is caught by what the verifier reads off the
 //!   stages instead: the eval stage claims $a(u)$ and $b(u)$, which the
 //!   verifier recomputes from the polynomials, and on the native side the
 //!   `ab` bridge stage the verifier rederives holds the old commitments.
-//! * **The `registry_xy` polynomial** is compared against
-//!   $m(w, x, y)$ at a $w$ the verifier samples fresh, so any change to it is
-//!   caught on the same grounds.
-//! * **A native or nested rx coefficient** is caught when the coefficient
-//!   sits in $[0, n)$: every native component enters some circuit claim, and
-//!   every nested one enters the endoscaling steps' or the instance
-//!   circuits', which reserve every nested stage. A circuit claim checks
-//!   $\operatorname{revdot}(a, a(zX) + s\_y + t\_z) = k(y)$,
-//!   where the verifier — not the prover — supplies $t\_z$. Perturbing
-//!   coefficient $i$ of $a$ by $\delta$ moves the left side by
-//!   $$\delta \left( a\_{4n-1-i}(z^i + z^{4n-1-i}) + s\_{y,4n-1-i} - z^{2n-1-i} - z^{2n+i} \right),$$
-//!   and for $i < n$ the exponent $2n + i$ of that last term — which comes
-//!   from $t\_z$ and is thus outside the prover's reach — is matched by no
-//!   other term, so the bracket is a nonzero polynomial in the fresh $z$.
-//! * **Everything else** — a coefficient at $i \ge n$ — is
-//!   [`Binding::Unbound`]: the claim moves only where $s\_y$ happens to be
-//!   occupied, which the wiring polynomial decides and this module does not
-//!   model.
-//!
-//! * **A nested accumulator coefficient** is caught when it moves the
-//!   derived $c_n = \operatorname{revdot}(a_n, b_n)$. The raw nested claim
-//!   itself is tautological, its $k(y)$ being derived from the very
-//!   polynomials it checks, but $c_n$ is also a wire of the export
-//!   circuit's instance: that claim's $k(y_n)$ moves while the circuit's
-//!   trace stays put, and the two are compared at a $y$ the verifier
-//!   samples fresh. Whether a coefficient moves $c_n$ depends on the
-//!   partner polynomial, so the classification compares $c_n$ before and
-//!   after the edit.
-//! * **The nested `registry_xy` polynomial** is compared against
-//!   $m_n(w, x_n, y_n)$ at a $w$ the verifier samples fresh, like its native
-//!   counterpart, so any change to it is caught.
-//! * **A nested `p` coefficient** is caught on the same grounds: the
-//!   derived $v_n = p_n(u_n)$ is a wire of the export circuit's instance.
+//! * **The `registry_xy` polynomials** are also compared against
+//!   $m(w, x, y)$ and $m_n(w, x_n, y_n)$ at a $w$ the verifier samples fresh.
 //! * **A nested challenge stage coefficient** is caught at any index: the
 //!   verifier recomputes the stage from the proof's challenges.
 //! * **The exported challenge binding** — the challenge stage's commitment
@@ -305,10 +279,8 @@ pub enum Binding {
     /// must not accept — except with negligible probability over the
     /// randomness the verifier samples for itself.
     MustReject,
-    /// The corruption moved nothing any verifier check binds — a blinding
-    /// coefficient, a value that happened not to change, or a coefficient
-    /// outside the region the claim's $t\_z$ term reaches. Acceptance is the
-    /// correct outcome and a harness must not assert otherwise.
+    /// The edit made no change, such as a zero delta or an out-of-range
+    /// coefficient index. It creates no obligation to reject.
     Unbound,
 }
 
@@ -472,9 +444,8 @@ impl BridgeCommitment {
 
 /// Targeted corruption of a single proof component.
 ///
-/// Apply one with [`Proof::corrupt`]; apply several in sequence for a
-/// coordinated mutation, in which case the proof must reject if *any* of them
-/// reported [`Binding::MustReject`].
+/// Apply one with [`Proof::corrupt`]. Its [`Binding`] describes that edit in
+/// isolation; a harness composing edits must account for cancellations.
 pub enum Corruption<C: Cycle> {
     /// Set `circuit_id` to the given index. Out-of-domain indices are
     /// rejected outright; in-domain ones move `omega_j` in the instance and
@@ -640,13 +611,6 @@ fn monomial<F: Field, R: Rank>(coeff: usize, delta: F) -> Option<sparse::Polynom
     Some(sparse::Polynomial::from_coeffs(coeffs))
 }
 
-/// Whether a coefficient of a polynomial folded into a *circuit* claim is one
-/// the verifier's own $t\_z$ term reaches. See the [module
-/// documentation](self).
-fn in_tz_reach<R: Rank>(coeff: usize) -> bool {
-    coeff < R::n()
-}
-
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Apply a [`Corruption`] to this proof, reporting whether
     /// [`verify`](crate::Application::verify) is obliged to reject afterwards.
@@ -801,30 +765,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 let Some(delta) = monomial::<_, R>(coeff, delta) else {
                     return Binding::Unbound;
                 };
-                match component {
-                    // `a` and `b` reach the verifier only through the derived
-                    // `c = revdot(a, b)` the instance carries: the raw claim
-                    // that folds them recomputes its own k(y) from the same
-                    // two polynomials and so is tautological. Whether `c`
-                    // moved is decided exactly, by looking.
-                    RxComponent::AbA | RxComponent::AbB => {
-                        let before = self.native_c();
-                        self.native_component_mut(component).add_assign(&delta);
-                        if self.native_c() == before {
-                            Binding::Unbound
-                        } else {
-                            Binding::MustReject
-                        }
-                    }
-                    RxComponent::Rx(_) => {
-                        self.native_component_mut(component).add_assign(&delta);
-                        if in_tz_reach::<R>(coeff) {
-                            Binding::MustReject
-                        } else {
-                            Binding::Unbound
-                        }
-                    }
-                }
+                self.native_component_mut(component).add_assign(&delta);
+                Binding::MustReject
             }
 
             Corruption::RegistryXyCoeff { coeff, delta } => {
@@ -839,16 +781,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 let Some(delta) = monomial::<_, R>(coeff, delta) else {
                     return Binding::Unbound;
                 };
-                // `p` is opened at `u` into the instance's `v` and folded
-                // into no claim, so the corruption binds exactly when `v`
-                // moves — which it does not when `u` is zero.
-                let before = self.v();
                 self.native_p_poly_mut().add_assign(&delta);
-                if self.v() == before {
-                    Binding::Unbound
-                } else {
-                    Binding::MustReject
-                }
+                Binding::MustReject
             }
 
             Corruption::NestedCoeff {
@@ -859,14 +793,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 let Some(delta) = monomial::<_, R>(coeff, delta) else {
                     return Binding::Unbound;
                 };
-                // Every nested component enters a circuit claim: the
-                // instance circuits reserve every stage.
                 self.nested_rx_mut(index).add_assign(&delta);
-                if matches!(index, NestedRx::ChallengeStage) || in_tz_reach::<R>(coeff) {
-                    Binding::MustReject
-                } else {
-                    Binding::Unbound
-                }
+                Binding::MustReject
             }
 
             Corruption::NestedAccumulatorCoeff {
@@ -877,17 +805,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 let Some(delta) = monomial::<_, R>(coeff, delta) else {
                     return Binding::Unbound;
                 };
-                // The raw nested claim is tautological, its k(y) being
-                // derived from these very polynomials at verification time;
-                // the derived c_n is bound as a wire of the export claim's
-                // instance, so the edit is caught exactly when it moves it.
-                let before = self.nested_c();
                 self.nested_accumulator_mut(which).add_assign(&delta);
-                if self.nested_c() == before {
-                    Binding::Unbound
-                } else {
-                    Binding::MustReject
-                }
+                Binding::MustReject
             }
 
             Corruption::NestedRegistryXyCoeff { coeff, delta } => {
@@ -902,15 +821,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 let Some(delta) = monomial::<_, R>(coeff, delta) else {
                     return Binding::Unbound;
                 };
-                // The derived v_n is bound as a wire of the export claim's
-                // instance, so the edit is caught exactly when it moves it.
-                let before = self.nested_v().ok();
                 self.nested_p_poly_mut().add_assign(&delta);
-                if self.nested_v().ok() == before {
-                    Binding::Unbound
-                } else {
-                    Binding::MustReject
-                }
+                Binding::MustReject
             }
         }
     }
@@ -923,8 +835,9 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     }
 
     /// The number of coefficients at the low end that a circuit claim's
-    /// $t\_z$ term reaches, so a harness can steer toward corruptions whose
-    /// rejection is asserted.
+    /// $t\_z$ term reaches, for harnesses that bias sampling toward this region.
+    /// Cached commitments bind every coefficient, so this is not a boundary
+    /// between [`Binding::MustReject`] and [`Binding::Unbound`] edits.
     #[doc(hidden)]
     pub fn num_bound_coeffs() -> usize {
         R::n()

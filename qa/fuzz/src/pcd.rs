@@ -271,7 +271,8 @@ pub fn fused_fixtures(app: &Application<'_, C, R, HEADER_SIZE>) -> Vec<Fixture> 
 /// Every field is taken modulo the space it addresses, so no input is
 /// rejected out of hand and the fuzzer's mutations stay meaningful. The
 /// `bound` flags steer a coefficient index into the low `n` coefficients,
-/// where a circuit claim's $t_z$ term makes rejection mandatory — see
+/// where a circuit claim's $t_z$ term provides an additional check. Cached
+/// commitments require rejection throughout the full coefficient range; see
 /// [`ragu_pcd::fuzzing::corrupt`].
 #[derive(Arbitrary, Debug, Clone)]
 pub enum FuzzCorruption {
@@ -347,7 +348,7 @@ pub enum FuzzCorruption {
         coeff: u16,
         /// What to add.
         delta: u64,
-        /// Steer the coefficient into the bound region.
+        /// Bias the coefficient toward the low `n` coefficients.
         bound: bool,
     },
     /// Perturb one coefficient of the `registry_xy` polynomial.
@@ -372,7 +373,7 @@ pub enum FuzzCorruption {
         coeff: u16,
         /// What to add.
         delta: u64,
-        /// Steer the coefficient into the bound region.
+        /// Bias the coefficient toward the low `n` coefficients.
         bound: bool,
     },
 }
@@ -392,7 +393,7 @@ fn nonzero<F: Field + From<u64>>(v: u64) -> F {
 }
 
 /// Resolves a coefficient index into the rank's coefficient space, optionally
-/// steering it into the low `n` coefficients a circuit claim binds.
+/// steering it into the low `n` coefficients reached by the $t_z$ term.
 fn coeff_index(raw: u16, bound: bool) -> usize {
     let modulus = if bound {
         Proof::<C, R>::num_bound_coeffs()

@@ -15,8 +15,11 @@ mod _09_eval;
 mod _10_p;
 mod _11_circuits;
 pub(crate) mod claims;
+// PCS and folding properties use private fuse internals. The proof-binding
+// properties live under `proof` for direct access to cached fields.
 #[cfg(test)]
-mod tests;
+#[path = "../../tests/pcs.rs"]
+mod pcs_tests;
 // The patcher seam (see `crate::fuzzing`). Its source lives with the rest of
 // the fuzzing surface in `src/fuzzing/`, but it is mounted here because it
 // calls this pipeline's `pub(super)` steps. The file gates itself behind

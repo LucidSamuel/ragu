@@ -10,6 +10,15 @@
 #![allow(dead_code)]
 
 pub(crate) mod builder;
+// These regression suites edit proof fields directly. Keep their sources
+// grouped by subject in tests/ and their access confined to the test build.
+#[cfg(test)]
+#[path = "../../tests/base_case_combinations.rs"]
+mod base_case_combinations_tests;
+#[cfg(test)]
+#[path = "../../tests/recursive_propagation.rs"]
+pub(crate) mod recursive_propagation_tests;
+
 // Keep this beneath `proof` so the equivalence helper can inspect private
 // `Proof` fields while the backend-equivalence suite remains consolidated.
 // TODO: Revisit this temporary layout; for now, it keeps all

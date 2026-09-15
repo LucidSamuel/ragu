@@ -4,8 +4,7 @@
 //! `fuzz_pcd_lifecycle` all rest on one contract: when
 //! [`Proof::corrupt`](ragu_pcd::Proof::corrupt) reports
 //! [`Binding::MustReject`], `verify` must not accept. A wrong classification
-//! would not make those targets weaker — it would make them fire on honest
-//! behavior, five hours into a cron run, with a reproducer nobody can act on.
+//! can either skip a required rejection check or report a false positive.
 //!
 //! So the contract is pinned here instead, over the whole vocabulary and over
 //! proofs of two shapes: a `WitnessLeaf` seed, and a `Merge2` fuse of two
@@ -17,8 +16,9 @@
 //! nothing. [`the_trivial_proof_does_not_verify`] pins that, because a fuzz
 //! target that starts from it passes vacuously.
 
-use ragu_arithmetic::Cycle;
-use ragu_circuits::polynomials::ProductionRank;
+mod nontrivial_support;
+
+use nontrivial_support::{C, HEADER_SIZE, R, app};
 use ragu_core::Result;
 use ragu_pasta::{Fp, Fq, Pasta};
 use ragu_pcd::{
@@ -28,12 +28,8 @@ use ragu_pcd::{
         NestedAccumulator, NestedCommitment, NestedRx, RxComponent, Side,
     },
 };
-use ragu_testing::pcd::nontrivial::{Hash2, InternalNode, LeafNode, Merge2, WitnessLeaf};
+use ragu_testing::pcd::nontrivial::{InternalNode, LeafNode};
 use rand::{SeedableRng, rngs::StdRng};
-
-type C = Pasta;
-type R = ProductionRank;
-const HEADER_SIZE: usize = 4;
 
 /// Which header a fixture's proof carries, so it can be verified again after
 /// corruption.
@@ -69,76 +65,12 @@ fn empty_app() -> Application<'static, C, R, HEADER_SIZE> {
         .expect("the empty application must build")
 }
 
-fn app() -> Application<'static, C, R, HEADER_SIZE> {
-    let pasta = Pasta::baked();
-    let poseidon = Pasta::circuit_poseidon(pasta);
-    ApplicationBuilder::<C, R, HEADER_SIZE>::new()
-        .register(WitnessLeaf {
-            poseidon_params: poseidon,
-        })
-        .and_then(|b| {
-            b.register(Hash2 {
-                poseidon_params: poseidon,
-            })
-        })
-        .and_then(|b| {
-            b.register(Merge2 {
-                poseidon_params: poseidon,
-            })
-        })
-        .and_then(|b| b.finalize(pasta))
-        .expect("the application must build")
-}
-
 /// A leaf and a fuse of two fuses, in the application that registers the
 /// steps they use.
 fn fixtures(app: &Application<'_, C, R, HEADER_SIZE>) -> Vec<Fixture> {
-    let pasta = Pasta::baked();
-    let poseidon = Pasta::circuit_poseidon(pasta);
-    let leaf = |rng: &mut StdRng, witness: u64| {
-        app.seed(
-            rng,
-            WitnessLeaf {
-                poseidon_params: poseidon,
-            },
-            Fp::from(witness),
-        )
-        .expect("seeding must succeed")
-        .0
-    };
-    let node = |rng: &mut StdRng, l: u64, r: u64| {
-        let (left, right) = (leaf(rng, l), leaf(rng, r));
-        app.fuse(
-            rng,
-            Hash2 {
-                poseidon_params: poseidon,
-            },
-            (),
-            left,
-            right,
-        )
-        .expect("fusing two leaves must succeed")
-        .0
-    };
-
     let mut rng = StdRng::seed_from_u64(0x1eaf);
-    let (leaf_proof, leaf_data) = leaf(&mut rng, 42).into_parts();
-
-    let mut rng = StdRng::seed_from_u64(0xdeeb);
-    let (left, right) = (node(&mut rng, 13, 17), node(&mut rng, 19, 23));
-    let (deep_proof, deep_data) = app
-        .fuse(
-            &mut rng,
-            Merge2 {
-                poseidon_params: poseidon,
-            },
-            (),
-            left,
-            right,
-        )
-        .expect("fusing two nodes must succeed")
-        .0
-        .into_parts();
+    let (leaf_proof, leaf_data) = nontrivial_support::leaf(app, &mut rng, 42).into_parts();
+    let (deep_proof, deep_data) = nontrivial_support::deep(app).into_parts();
 
     vec![
         Fixture {
@@ -155,9 +87,9 @@ fn fixtures(app: &Application<'_, C, R, HEADER_SIZE>) -> Vec<Fixture> {
 }
 
 /// Every corruption the vocabulary can express, at the coefficient indices
-/// that matter: zero and the last bound one (inside the region a circuit
-/// claim's `t_z` term reaches), the first unbound one, and the last
-/// coefficient of all.
+/// that matter: zero, both sides of the circuit claim's `t_z` boundary, and
+/// the last coefficient. Every nonzero coefficient edit leaves a stale
+/// commitment, including those outside the `t_z` region.
 fn vocabulary() -> Vec<Corruption<C>> {
     let n = Proof::<C, R>::num_bound_coeffs();
     let total = Proof::<C, R>::num_coeffs();
@@ -220,7 +152,7 @@ fn vocabulary() -> Vec<Corruption<C>> {
     }
 
     for index in NestedRx::ALL {
-        for coeff in [0, n - 1, n] {
+        for coeff in coeffs {
             out.push(Corruption::NestedCoeff {
                 index,
                 coeff,
@@ -230,7 +162,7 @@ fn vocabulary() -> Vec<Corruption<C>> {
     }
 
     for which in NestedAccumulator::ALL {
-        for coeff in [0, n - 1, n] {
+        for coeff in coeffs {
             out.push(Corruption::NestedAccumulatorCoeff {
                 which,
                 coeff,
@@ -253,12 +185,8 @@ fn vocabulary() -> Vec<Corruption<C>> {
     out
 }
 
-/// Honest proofs verify; corrupted ones that bound the verifier do not.
-///
-/// The `Unbound` half is deliberately left unasserted: a coefficient outside
-/// what any claim binds is blinding freedom, and the verifier accepting after
-/// it moved is correct. What this test rules out is the other error — a
-/// corruption classified `MustReject` that the verifier lets through.
+/// Honest proofs and no-op edits verify. Effective coefficient edits must be
+/// classified `MustReject`, and every `MustReject` edit must be rejected.
 #[test]
 fn corruptions_that_bind_the_verifier_are_rejected() {
     let app = app();
@@ -281,7 +209,20 @@ fn corruptions_that_bind_the_verifier_are_rejected() {
             };
             let described = format!("{corruption:?}");
             let binding = corrupted.proof.corrupt(clone_corruption(corruption));
-            if binding != Binding::MustReject {
+            // These coefficient edits all have nonzero deltas and in-range
+            // indices. Require rejection even if the classifier says they
+            // are unbound, then check the classification itself.
+            let coefficient_edit = matches!(
+                corruption,
+                Corruption::NativeCoeff { .. }
+                    | Corruption::RegistryXyCoeff { .. }
+                    | Corruption::PCoeff { .. }
+                    | Corruption::NestedCoeff { .. }
+                    | Corruption::NestedAccumulatorCoeff { .. }
+                    | Corruption::NestedRegistryXyCoeff { .. }
+                    | Corruption::NestedPCoeff { .. }
+            );
+            if !coefficient_edit && binding != Binding::MustReject {
                 continue;
             }
             bound += 1;
@@ -290,6 +231,34 @@ fn corruptions_that_bind_the_verifier_are_rejected() {
                 "the verifier accepted a corrupted {:?} proof: {described}",
                 fixture.shape,
             );
+            assert_eq!(
+                binding,
+                Binding::MustReject,
+                "a coefficient edit with a stale commitment was classified Unbound: {described}",
+            );
+        }
+
+        for (coeff, delta) in [(0, 0u64), (Proof::<C, R>::num_coeffs(), 7), (usize::MAX, 7)] {
+            for corruption in [
+                Corruption::NativeCoeff {
+                    component: RxComponent::Rx(NativeRx::Application),
+                    coeff,
+                    delta: Fp::from(delta),
+                },
+                Corruption::NestedCoeff {
+                    index: NestedRx::BridgeEval,
+                    coeff,
+                    delta: Fq::from(delta),
+                },
+            ] {
+                let mut unchanged = Fixture {
+                    shape: fixture.shape,
+                    proof: fixture.proof.clone(),
+                    data: fixture.data,
+                };
+                assert_eq!(unchanged.proof.corrupt(corruption), Binding::Unbound);
+                assert!(matches!(unchanged.verify(&app, 1234), Ok(true)));
+            }
         }
     }
 
