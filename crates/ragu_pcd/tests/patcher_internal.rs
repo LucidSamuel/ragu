@@ -125,17 +125,24 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     // The binding circuits must reject a different curve point in every
     // bound slot. Negating y preserves curve membership, so this exercises
     // the commitment equalities independently of the curve checks.
-    if name == "bind_beta" || name == "bind_endoscalar" {
+    if matches!(name, "bind_beta" | "bind_endoscalar" | "nested_export") {
         let point_wires: Vec<_> = spec
             .outputs
             .iter()
             .filter_map(|output| match (name, *output) {
                 ("bind_beta", OutputRef::Stage(i)) => Some(cap.stage_wires[i]),
                 ("bind_endoscalar", OutputRef::Instance(i)) => Some(cap.instance[i]),
+                ("nested_export", OutputRef::Instance(i)) if i >= 5 => Some(cap.instance[i]),
                 _ => None,
             })
             .collect();
-        assert_eq!(point_wires.len(), if name == "bind_beta" { 52 } else { 8 });
+        let expected = match name {
+            "bind_beta" => 52,
+            "bind_endoscalar" => 8,
+            "nested_export" => 28,
+            _ => unreachable!(),
+        };
+        assert_eq!(point_wires.len(), expected);
         for (i, coordinates) in point_wires.chunks_exact(2).enumerate() {
             let mut changed = rec.values.clone();
             let y = coordinates[1];
@@ -331,7 +338,12 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
         stage_values: &[C::ScalarField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
-        let census = check(self.point, spec, circuit, stage_values, make_witness)?;
+        let mut expanded = spec.clone();
+        if expanded.name == "nested_export" {
+            assert_eq!(expanded.outputs.len(), 3, "confirm current oracle omission");
+            expanded.outputs.extend((5..33).map(OutputRef::Instance));
+        }
+        let census = check(self.point, &expanded, circuit, stage_values, make_witness)?;
         self.census.push(census);
         Ok(())
     }
@@ -359,7 +371,7 @@ fn expected(name: &str, point: &str) -> Census {
         "native_endoscaling_step_24" => (376, 5724, 0, 2, 0, 2, 187),
         step if step.starts_with("native_endoscaling_step_") => (376, 10692, 0, 2, 0, 2, 187),
         step if step.starts_with("endoscaling_step_") => (410, 10760, 0, 2, 0, 2, 204),
-        "nested_export" => (1574, 4939, 33, 3, 0, 3, 789),
+        "nested_export" => (1574, 4939, 33, 31, 0, 31, 789),
         "nested_collapse" if point == "bootstrap" => (1574, 6448, 33, 12, 0, 12, 801),
         "nested_collapse" => (1574, 6448, 33, 13, 0, 13, 799),
         "nested_compute_v" => (1574, 7586, 33, 1, 0, 1, 789),

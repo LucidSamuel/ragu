@@ -17,27 +17,72 @@ use ragu_circuits::{
 };
 use ragu_core::{
     Result,
-    drivers::{Driver, DriverTypes, LinearExpression},
+    drivers::{Driver, DriverTypes, DriverValue, LinearExpression},
     gadgets::Bound,
     maybe::Empty,
     routines::Routine,
 };
 use ragu_pasta::{EqAffine, Fp, Fq};
-use ragu_primitives::{GadgetExt, io::Write};
+use ragu_primitives::{GadgetExt, allocator::Standard, io::Write};
 use ragu_testing::strategies;
+use rand::{SeedableRng, rngs::StdRng};
 
 use super::recursive_propagation_tests::support::{
     self, C, HEADER_SIZE, Merge, R, Seed, UnitLeft, UnitRight, Value,
 };
 use crate::{
-    Proof,
+    ApplicationBuilder, Proof,
     header::{Dummy, Header},
     internal::{
         Side, native,
         nested::{self, stages::challenges},
         stage_wires::{StageReader, stage_wire_indices, wire_degree, wires_of},
     },
+    step::{Encoded, Index, Step},
 };
+
+/// Preserve ordinary unit headers through successive fuses.
+struct UnitStep;
+
+impl Step<C> for UnitStep {
+    const INDEX: Index = Index::new(0);
+
+    type Witness<'source> = ();
+    type Aux<'source> = ();
+    type Left = ();
+    type Right = ();
+    type Output = ();
+
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>, const N: usize>(
+        &self,
+        dr: &mut D,
+        _: DriverValue<D, ()>,
+        left: DriverValue<D, ()>,
+        right: DriverValue<D, ()>,
+    ) -> Result<(
+        (
+            Encoded<'dr, D, Self::Left, N>,
+            Encoded<'dr, D, Self::Right, N>,
+            Encoded<'dr, D, Self::Output, N>,
+        ),
+        DriverValue<D, ()>,
+        DriverValue<D, ()>,
+    )>
+    where
+        Self: 'dr,
+    {
+        let allocator = &mut Standard::new();
+        Ok((
+            (
+                Encoded::new(dr, allocator, left)?,
+                Encoded::new(dr, allocator, right)?,
+                Encoded::from_gadget(()),
+            ),
+            D::unit(),
+            D::unit(),
+        ))
+    }
+}
 
 /// Flip the sign and repair its stage commitment and exported partial. The
 /// native binder must still derive the original sign from the input headers.
@@ -581,6 +626,69 @@ fn check_guards(
         check_proof_guards(pcd.proof(), case, exempt, native_delta, nested_delta)?;
     }
     Ok(())
+}
+
+#[test]
+fn noncanonical_unit_children_reject_through_two_generations() {
+    let app = ApplicationBuilder::<C, R, HEADER_SIZE>::new()
+        .register(UnitStep)
+        .expect("register unit step")
+        .finalize(C::baked())
+        .expect("build unit application");
+    let mut rng = StdRng::seed_from_u64(873003);
+    let honest = app.bootstrap_pcd();
+    let (control, ()) = app
+        .fuse(&mut rng, UnitStep, (), honest.clone(), honest.clone())
+        .expect("honest unit parent");
+    assert!(app.verify(&control, StdRng::seed_from_u64(873004)).unwrap());
+
+    for (origin, original) in [
+        ("raw dummy retyped as unit", app.dummy_proof()),
+        ("valid bootstrap unit", honest.into_parts().0),
+    ] {
+        for (nested, mutation) in [(true, "nested p"), (false, "application trace")] {
+            let mut proof = original.clone();
+            // Repair the changed polynomial's commitment so rejection must
+            // enforce the child's claim beyond checking its cached commitment.
+            if nested {
+                proof
+                    .nested_p_poly
+                    .add_assign(&sparse::Polynomial::from_coeffs(vec![Fq::ONE]));
+                proof.nested_p_commitment.0 = ReferenceBackend::sparse_commit_to_affine(
+                    &proof.nested_p_poly,
+                    C::nested_generators(app.params),
+                );
+            } else {
+                proof
+                    .native_application_rx
+                    .add_assign(&sparse::Polynomial::from_coeffs(vec![Fp::ONE]));
+                proof.native_application_commitment.0 = ReferenceBackend::sparse_commit_to_affine(
+                    &proof.native_application_rx,
+                    C::host_generators(app.params),
+                );
+            }
+            let child = proof.carry::<()>(());
+            assert!(
+                !app.verify(&child, StdRng::seed_from_u64(873005)).unwrap(),
+                "{origin}/{mutation}: invalid child must reject after cache repair",
+            );
+            let (parent, ()) = app
+                .fuse(&mut rng, UnitStep, (), child.clone(), child)
+                .expect("assemble parent");
+            assert!(
+                !app.verify(&parent, StdRng::seed_from_u64(873006)).unwrap(),
+                "{origin}/{mutation}: parent must reject",
+            );
+            let (grandparent, ()) = app
+                .fuse(&mut rng, UnitStep, (), parent.clone(), parent)
+                .expect("assemble grandparent");
+            assert!(
+                !app.verify(&grandparent, StdRng::seed_from_u64(873007))
+                    .unwrap(),
+                "{origin}/{mutation}: grandparent must reject",
+            );
+        }
+    }
 }
 
 proptest! {
