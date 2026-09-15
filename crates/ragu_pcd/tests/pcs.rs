@@ -738,3 +738,89 @@ mod denominators {
         }
     }
 }
+
+mod child_openings {
+    //! The folded child PCS claims of a terminal proof are bound.
+    //!
+    //! A root's native `compute_v` reads each child's claimed opening
+    //! $p_c(u_c) = v_c$ off the preamble stage and $p_c(u)$ off the eval
+    //! stage, and the decider never reads those wires directly. They are
+    //! bound all the same: the eval stage is committed before $\beta$ is
+    //! squeezed and $P$ is the walk over the constituent commitments, so
+    //! opening the root's $p$ pins every eval wire to the real evaluation of
+    //! its committed polynomial, the children's included.
+    //!
+    //! Each edit here repairs every cache it invalidates, so a rejection
+    //! comes from the binding rather than from a stale commitment: editing
+    //! any of the four wires is rejected, and editing an eval wire is still
+    //! rejected once the eval bridge slot is repaired too. A child that never
+    //! ran, presented as an application child, is the forgery those wires
+    //! would have to cover; the honest pipeline sets them for it and the root
+    //! is still rejected.
+
+    use proptest::prelude::*;
+    use ragu_core::Result;
+    use ragu_pasta::Fp;
+    use ragu_testing::strategies;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::support::{self, C, ChildWire, R, Value, dummy_as_value, repair_bridge_eval_slot};
+    use crate::Proof;
+
+    fn check(app: &support::App, inputs: &support::Inputs, delta: Fp) -> Result<()> {
+        let (parent, _, right) = support::fused(app, inputs)?;
+        assert!(
+            app.verify(&parent, inputs.verifier_rng())?,
+            "the honest root verifies"
+        );
+        let data = *parent.data();
+        let rejected = |proof: Proof<C, R>| -> Result<bool> {
+            Ok(!app.verify(&proof.carry::<Value>(data), inputs.verifier_rng())?)
+        };
+
+        for wire in ChildWire::ALL {
+            let mut proof = parent.proof().clone();
+            wire.bump(app, &mut proof, delta, true)?;
+            assert!(
+                rejected(proof)?,
+                "{wire:?}: an edited child opening wire must be rejected"
+            );
+        }
+
+        let mut proof = parent.proof().clone();
+        ChildWire::EvalLeftP.bump(app, &mut proof, delta, true)?;
+        repair_bridge_eval_slot(app, &mut proof)?;
+        assert!(
+            rejected(proof)?,
+            "the eval stage is transcript-bound before beta"
+        );
+
+        let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(2));
+        let root = app
+            .fuse(
+                &mut rng,
+                support::Merge::new(),
+                inputs.salt,
+                dummy_as_value(app),
+                right,
+            )?
+            .0;
+        assert!(
+            !app.verify(&root, inputs.verifier_rng())?,
+            "a child that never ran must be rejected"
+        );
+        Ok(())
+    }
+
+    proptest! {
+        #![proptest_config(support::config())]
+
+        #[test]
+        fn edited_child_openings_reject(
+            inputs in support::inputs(),
+            delta in strategies::nonzero_prime_field_element::<Fp>(),
+        ) {
+            support::with_app(|app| check(app, &inputs, delta)).unwrap();
+        }
+    }
+}

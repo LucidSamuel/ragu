@@ -7,11 +7,12 @@ pub(crate) mod support {
     //! Shared inputs, proof fixtures built with `Application::seed` and
     //! `Application::fuse`, and local polynomial edits for the protocol properties.
 
-    use alloc::{format, string::String, vec, vec::Vec};
+    use alloc::{format, string::String, sync::Arc, vec, vec::Vec};
     use core::marker::PhantomData;
 
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
+    use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
     use ragu_core::{
         Result,
@@ -19,7 +20,7 @@ pub(crate) mod support {
         gadgets::{Bound, Kind},
         maybe::Maybe,
     };
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Pasta};
+    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
     use ragu_primitives::{
         Element,
         allocator::{Allocator, Standard},
@@ -36,8 +37,14 @@ pub(crate) mod support {
         header::{Header, Suffix},
         internal::{
             Side,
-            native::stages::points::BindingStage,
-            nested::{self, stages::preamble},
+            native::{
+                self,
+                stages::{eval as native_eval, points::BindingStage, preamble as native_preamble},
+            },
+            nested::{
+                self,
+                stages::{eval as nested_eval, preamble},
+            },
             stage_wires::{StageReader, stage_wire_indices, wire_degree, wires_of},
         },
         step::{Encoded, Index, Step},
@@ -479,6 +486,130 @@ pub(crate) mod support {
             .into_option()
             .expect("fixture point is not the identity");
         [*coordinates.x(), *coordinates.y()]
+    }
+
+    /// A commitment cache a property recomputes after editing the polynomial
+    /// it caches, so that a rejection is the binding's and not a stale
+    /// cache's. The decider recomputes every cache; these are the ones the
+    /// edits here reach.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum Cache {
+        NativePreamble,
+        NativeEval,
+        BridgeEval,
+    }
+
+    pub(crate) fn native_commit(app: &App, poly: &sparse::Polynomial<Fp, R>) -> EqAffine {
+        ReferenceBackend::sparse_commit_to_affine(poly, C::host_generators(app.params))
+    }
+
+    pub(crate) fn nested_commit(app: &App, poly: &sparse::Polynomial<Fq, R>) -> EpAffine {
+        ReferenceBackend::sparse_commit_to_affine(poly, C::nested_generators(app.params))
+    }
+
+    /// Recomputes `cache` from the polynomial it caches.
+    pub(crate) fn recommit(app: &App, proof: &mut Proof<C, R>, cache: Cache) {
+        match cache {
+            Cache::NativePreamble => {
+                proof.native_preamble_commitment.0 = native_commit(app, &proof.native_preamble_rx);
+            }
+            Cache::NativeEval => {
+                proof.native_eval_commitment.0 = native_commit(app, &proof.native_eval_rx);
+            }
+            Cache::BridgeEval => {
+                proof.bridge_eval_commitment = nested_commit(app, &proof.bridge_eval_rx);
+            }
+        }
+    }
+
+    /// The wires carrying a child's deferred PCS claim into the root's
+    /// `compute_v`: $p_c(u)$ in the eval stage, and $v_c$ and $u_c$ in the
+    /// preamble stage's copy of the child's unified instance.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(crate) enum ChildWire {
+        EvalLeftP,
+        EvalRightP,
+        PreambleLeftV,
+        PreambleLeftU,
+    }
+
+    impl ChildWire {
+        pub(crate) const ALL: [Self; 4] = [
+            Self::EvalLeftP,
+            Self::EvalRightP,
+            Self::PreambleLeftV,
+            Self::PreambleLeftU,
+        ];
+
+        /// The wire's reservation index in its stage.
+        pub(crate) fn index(self) -> Result<usize> {
+            type EvalStage = native_eval::Stage<C, R, HEADER_SIZE>;
+            type PreambleStage = native_preamble::Stage<C, R, HEADER_SIZE>;
+            let wires = match self {
+                Self::EvalLeftP => stage_wire_indices::<Fp, R, EvalStage>(|out| {
+                    wires_of(&out.evaluations.left.p_poly)
+                })?,
+                Self::EvalRightP => stage_wire_indices::<Fp, R, EvalStage>(|out| {
+                    wires_of(&out.evaluations.right.p_poly)
+                })?,
+                Self::PreambleLeftV => {
+                    stage_wire_indices::<Fp, R, PreambleStage>(|out| wires_of(&out.left.unified.v))?
+                }
+                Self::PreambleLeftU => {
+                    stage_wire_indices::<Fp, R, PreambleStage>(|out| wires_of(&out.left.unified.u))?
+                }
+            };
+            assert_eq!(wires.len(), 1, "an element is one wire");
+            Ok(wires[0])
+        }
+
+        /// Adds `delta` to the wire's value in its stage polynomial and, when
+        /// `repair` is set, recommits the stage so the cache check passes.
+        pub(crate) fn bump(
+            self,
+            app: &App,
+            proof: &mut Proof<C, R>,
+            delta: Fp,
+            repair: bool,
+        ) -> Result<()> {
+            let wire = self.index()?;
+            let (poly, cache) = match self {
+                Self::EvalLeftP | Self::EvalRightP => {
+                    (&mut proof.native_eval_rx, Cache::NativeEval)
+                }
+                Self::PreambleLeftV | Self::PreambleLeftU => {
+                    (&mut proof.native_preamble_rx, Cache::NativePreamble)
+                }
+            };
+            let old = StageReader::<Fp, R>::new(poly).read(wire);
+            set_wires(poly, &[wire], &[old + delta]);
+            if repair {
+                recommit(app, proof, cache);
+            }
+            Ok(())
+        }
+    }
+
+    /// Copies the native eval commitment into the `eval` bridge stage's
+    /// `native_eval` slot and recommits the bridge, so that the nested export
+    /// circuit's stage copy matches the cache again. What remains
+    /// inconsistent is the transcript: `pre_beta` was squeezed over the old
+    /// bridge commitment.
+    pub(crate) fn repair_bridge_eval_slot(app: &App, proof: &mut Proof<C, R>) -> Result<()> {
+        let [x, y] = coordinates(proof.native_rx_commitment(native::RxIndex::Eval));
+        let wires = stage_wire_indices::<Fq, R, nested_eval::Stage<EqAffine, R>>(|out| {
+            wires_of(&out.native_eval)
+        })?;
+        set_wires(Arc::make_mut(&mut proof.bridge_eval_rx), &wires, &[x, y]);
+        recommit(app, proof, Cache::BridgeEval);
+        Ok(())
+    }
+
+    /// The synthesized dummy, retyped to the header an application step
+    /// declares for its children: a child that never ran, presented as one
+    /// that did.
+    pub(crate) fn dummy_as_value(app: &App) -> TestPcd {
+        app.dummy_proof().carry(Fp::ZERO)
     }
 }
 
