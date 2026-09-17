@@ -513,13 +513,13 @@ fn print_nested_circuit_constraint_counts() {
     print_stage!("challenges", stages::challenges::Stage<EqAffine, R>);
 }
 
-/// Verifies the native registry digest matches the expected value.
+/// Verifies the native registry tag matches the expected value.
 ///
 /// This test ensures the wiring polynomial structure is mathematically
 /// equivalent to the reference implementation by comparing cryptographic
-/// digests.
+/// tags.
 #[test]
-fn test_native_registry_digest() {
+fn test_native_registry_tag() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
@@ -531,19 +531,19 @@ fn test_native_registry_digest() {
     let expected = fp!(0x04cdee417718f4b3b6b410483016d90532de94a1bd0be8c75b0c04e8cbca6bf9);
 
     assert_eq!(
-        app.native_registry.digest(),
+        app.native_registry.tag(),
         expected,
-        "Native registry digest changed unexpectedly!"
+        "Native registry tag changed unexpectedly!"
     );
 }
 
-/// Verifies the nested registry digest matches the expected value.
+/// Verifies the nested registry tag matches the expected value.
 ///
 /// This test ensures the wiring polynomial structure is mathematically
 /// equivalent to the reference implementation by comparing cryptographic
-/// digests.
+/// tags.
 #[test]
-fn test_nested_registry_digest() {
+fn test_nested_registry_tag() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
@@ -555,16 +555,16 @@ fn test_nested_registry_digest() {
     let expected = fq!(0x39eade847f0df8a128fcfbf639a2605a047215c629a52e71802743dc7c004c81);
 
     assert_eq!(
-        app.nested_registry.digest(),
+        app.nested_registry.tag(),
         expected,
-        "Nested registry digest changed unexpectedly!"
+        "Nested registry tag changed unexpectedly!"
     );
 }
 
-/// Helper test to print current registry digests in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release print_registry_digests -- --nocapture`
+/// Helper test to print current registry tags in copy-pasteable format.
+/// Run with: `cargo test -p ragu_pcd --release print_registry_tags -- --nocapture`
 #[test]
-fn print_registry_digests() {
+fn print_registry_tags() {
     use alloc::{format, string::String, vec::Vec};
     use std::println;
 
@@ -578,18 +578,18 @@ fn print_registry_digests() {
         .finalize(pasta)
         .unwrap();
 
-    let native_digest = app.native_registry.digest();
-    let nested_digest = app.nested_registry.digest();
+    let native_tag = app.native_registry.tag();
+    let nested_tag = app.nested_registry.tag();
 
     // Convert to big-endian hex for repr256! format
-    let native_bytes: Vec<u8> = native_digest
+    let native_bytes: Vec<u8> = native_tag
         .to_repr()
         .as_ref()
         .iter()
         .rev()
         .cloned()
         .collect();
-    let nested_bytes: Vec<u8> = nested_digest
+    let nested_bytes: Vec<u8> = nested_tag
         .to_repr()
         .as_ref()
         .iter()
@@ -597,7 +597,7 @@ fn print_registry_digests() {
         .cloned()
         .collect();
 
-    println!("\n// Copy-paste the following into the registry digest tests:");
+    println!("\n// Copy-paste the following into the registry tag tests:");
     println!(
         "    let expected = fp!(0x{});",
         native_bytes

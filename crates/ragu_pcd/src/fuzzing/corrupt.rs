@@ -878,7 +878,7 @@ impl NestedRx {
     ///
     /// Derived from `internal::nested::RxIndex::ALL` for the same reason as
     /// [`NativeRx::ALL`], and more urgently: this order is pinned by
-    /// `test_nested_registry_digest`, so restating it by hand would put a
+    /// `test_nested_registry_tag`, so restating it by hand would put a
     /// consensus-relevant ordering in two places.
     pub const ALL: [Self; Self::NUM] = Self::derive_all();
 

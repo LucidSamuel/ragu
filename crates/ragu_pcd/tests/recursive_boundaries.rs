@@ -97,17 +97,11 @@ mod registry {
             first.native_registry.log2_domain(),
             second.native_registry.log2_domain()
         );
+        assert_eq!(first.nested_registry.tag(), second.nested_registry.tag());
+        assert_ne!(first.native_registry.tag(), second.native_registry.tag());
         assert_eq!(
-            first.nested_registry.digest(),
-            second.nested_registry.digest()
-        );
-        assert_ne!(
-            first.native_registry.digest(),
-            second.native_registry.digest()
-        );
-        assert_eq!(
-            first.native_registry.digest(),
-            equivalent.native_registry.digest()
+            first.native_registry.tag(),
+            equivalent.native_registry.tag()
         );
 
         let mut rng = inputs.prover_rng();
