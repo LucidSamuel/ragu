@@ -971,7 +971,9 @@ mod tests {
             .expect("failed to create test application")
     }
 
-    /// Corrupts a proof so that it no longer verifies on its own.
+    /// Corrupts a proof so that it no longer verifies on its own. The edited
+    /// polynomial's commitment cache is left stale, so a parent fused from the
+    /// result opens a polynomial that its walked commitment does not match.
     fn corrupt(pcd: Pcd<Pasta, TestR, ()>) -> Pcd<Pasta, TestR, ()> {
         let (mut proof, ()) = pcd.into_parts();
         proof
@@ -979,6 +981,17 @@ mod tests {
             .add_assign(&sparse::Polynomial::from_coeffs(alloc::vec![
                 <Pasta as Cycle>::CircuitField::ONE,
             ]));
+        proof.carry(())
+    }
+
+    /// Makes a proof's statement false without editing a polynomial: its stored
+    /// $\mu$ no longer matches the transcript. A parent reads a child's $\mu$
+    /// only into its copy of the child's instance, and every commitment cache
+    /// stays consistent, so a parent fused from the result can be rejected only
+    /// by enforcing its children's claims.
+    fn invalidate(pcd: Pcd<Pasta, TestR, ()>) -> Pcd<Pasta, TestR, ()> {
+        let (mut proof, ()) = pcd.into_parts();
+        proof.mu += <Pasta as Cycle>::CircuitField::ONE;
         proof.carry(())
     }
 
@@ -992,6 +1005,11 @@ mod tests {
         // `Pcd<()>` slipped through. Now only a step declaring `Dummy`
         // inputs triggers it, so an application step's children always have
         // their claims enforced and the forgery is rejected.
+        //
+        // The children are invalidated without editing a polynomial. An edit
+        // leaves that polynomial's commitment cache stale, and the verifier
+        // rejects the parent on that mismatch alone, whether or not the child
+        // claims are enforced: the test would pass with the base case open.
         let app = unit_app();
         let mut rng = StdRng::seed_from_u64(1);
 
@@ -1022,18 +1040,18 @@ mod tests {
             "a parent fused from valid children must verify"
         );
 
-        let invalid_child = corrupt(valid_unit);
+        let invalid_child = invalidate(valid_unit);
         assert!(
             !app.verify(&invalid_child, StdRng::seed_from_u64(4))
                 .expect("invalid child verify should not error"),
-            "corrupted child proof should not verify on its own"
+            "invalidated child proof should not verify on its own"
         );
 
-        // Fusing the corrupted children through a unit step no longer receives
-        // base-case treatment: `UnitStep` declares `()` inputs, not `Dummy`,
-        // so the revdot claim is enforced. `fuse` does not check that the trace
-        // it assembles is satisfiable, so it still succeeds; the forgery is
-        // rejected by the verifier.
+        // Fusing the invalidated children through a unit step no longer
+        // receives base-case treatment: `UnitStep` declares `()` inputs, not
+        // `Dummy`, so the revdot claim is enforced. `fuse` does not check that
+        // the trace it assembles is satisfiable, so it still succeeds; the
+        // forgery is rejected by the verifier.
         let (parent, ()) = app
             .fuse(&mut rng, UnitStep, (), invalid_child.clone(), invalid_child)
             .expect("fuse assembles a proof regardless of satisfiability");
