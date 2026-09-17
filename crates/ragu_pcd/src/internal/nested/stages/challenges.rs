@@ -18,12 +18,38 @@
 //! the sign and export their sum through the unified instance, and the
 //! parent's `bind_beta`, which adds `pre_beta`'s term and holds the result
 //! against the commitment it walks: `pre_beta` is squeezed after the native
-//! `eval` stage carrying the binders' partials is committed. Connecting the
-//! walked point to the stage polynomial consumed by nested claims also
-//! requires the PCS and recursive constraints.
+//! `eval` stage carrying the binders' partials is committed.
+//!
+//! ## Binding
+//!
+//! The nested circuits load this stage unenforced, and none of them derives
+//! its contents: the nested side sees neither the transcript nor the headers.
+//! The polynomial a step's nested claims are checked against is fixed from
+//! the native side, by the step's parent.
+//!
+//! - The commitment the parent walks for the stage is the recomputed point.
+//!   `bind_beta` enforces the two equal on the [`BindingStage`]'s copy, and
+//!   the sign in that point is the one the step's last `bind_challenges`
+//!   circuit derived from the step's input headers.
+//! - The parent's endoscaling steps fold that same copy into its $P_n$, the
+//!   commitment its nested batch opens. The batch opens the stage polynomial
+//!   at the parent's $x_n z_n$, with the step's other rx polynomials
+//!   ([`Batch::queries`]).
+//! - The parent's nested `compute_v` adds the opened evaluation to each of
+//!   the step's export, collapse and compute-v claims, and holds the fold of
+//!   its children's claims against its own $A_n(x_n z_n)$.
+//!
+//! The stage is unblinded and the commitment scheme is binding, so the only
+//! polynomial that opens the walked point holds the transcript's lifts and
+//! the header-derived sign. A step whose prover traced its nested circuits
+//! against a different sign or lift fails those claims in its parent's fold.
+//! The root has no parent: the decider rederives the root's stage polynomial
+//! from its headers and challenges, and compares coefficients.
 //!
 //! [`challenge`]: crate::internal::nested::challenge
 //! [`StageExt::generator_index_for_a`]: ragu_circuits::staging::StageExt::generator_index_for_a
+//! [`BindingStage`]: crate::internal::native::stages::points::BindingStage
+//! [`Batch::queries`]: crate::internal::nested::pcs::Batch::queries
 
 use core::marker::PhantomData;
 

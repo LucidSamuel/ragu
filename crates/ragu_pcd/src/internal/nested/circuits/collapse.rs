@@ -28,11 +28,16 @@
 //!
 //! ## Base case
 //!
-//! When Bootstrap consumes two dummy children, their claims are not satisfied, and the
-//! prover witnesses whatever $c_n$ its folded accumulator has, exactly as
-//! the native `outer_collapse` allows. The verdict is the sign the challenge
-//! stage carries, which the native binding circuits tie to the headers.
+//! When Bootstrap consumes two dummy children, their claims are not
+//! satisfied, and the prover witnesses whatever $c_n$ its folded accumulator
+//! has, exactly as the native `outer_collapse` allows. The verdict is the
+//! sign the challenge stage carries. No nested circuit constrains that wire:
+//! this step's parent, or the decider at the root, holds the challenge stage
+//! polynomial to the sign the native binding circuits derive from the headers
+//! (see [`challenges`]), so a step cannot select the exception its headers do
+//! not.
 //!
+//! [`challenges`]: stages::challenges
 //! [`ClaimFolder::fold_inner`]: fold_revdot::ClaimFolder::fold_inner
 //! [`ClaimFolder::fold_outer`]: fold_revdot::ClaimFolder::fold_outer
 //! [`TwoProofKySource`]: crate::internal::nested::claims::TwoProofKySource

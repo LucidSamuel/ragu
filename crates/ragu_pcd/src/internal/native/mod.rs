@@ -10,9 +10,10 @@
 //! [`stages::points`]). This mirrors the nested side's walk over the native
 //! batch.
 //!
-//! Full recursive verification also requires the shared bit and curve
-//! contracts and bindings connecting the walk's inputs and endpoint to the
-//! intended polynomial commitments.
+//! [`circuits::bind_endoscalar`] emits the bit and curve contracts the steps
+//! share, and pins the walk's endpoint and this step's persistent points to
+//! the unified instance. [`circuits::bind_beta`] holds the children's walked
+//! points against the children's unified instances.
 
 pub use circuits::bind_challenges::NUM_BINDERS;
 use ragu_arithmetic::Cycle;

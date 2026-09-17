@@ -21,9 +21,10 @@
 //! against the stage as walked. $\beta$ is squeezed after the eval stage is
 //! committed, so its term cannot be bound here.
 //!
-//! These checks fix the claimed partial to the expected generator sum.
-//! Connecting that point to the stage polynomial consumed by nested claims
-//! requires separate recursive constraints.
+//! These checks fix the claimed partial to the expected generator sum. A
+//! parent carries that point to the stage polynomial the nested claims
+//! consume, through its [`bind_beta`](super::bind_beta), its endoscaling walk
+//! and its nested batch (see [`challenges`]).
 //!
 //! ## Staging
 //!

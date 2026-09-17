@@ -497,6 +497,7 @@ pub(crate) mod support {
         NativePreamble,
         NativeEval,
         BridgeEval,
+        NestedChallenges,
     }
 
     pub(crate) fn native_commit(app: &App, poly: &sparse::Polynomial<Fp, R>) -> EqAffine {
@@ -518,6 +519,10 @@ pub(crate) mod support {
             }
             Cache::BridgeEval => {
                 proof.bridge_eval_commitment = nested_commit(app, &proof.bridge_eval_rx);
+            }
+            Cache::NestedChallenges => {
+                proof.nested_challenges_commitment.0 =
+                    nested_commit(app, &proof.nested_challenges_rx);
             }
         }
     }

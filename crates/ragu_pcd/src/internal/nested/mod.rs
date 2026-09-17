@@ -107,16 +107,18 @@ impl Parameters for RevdotParameters {
 /// corresponding native challenge, the derivation `compute_p` already applies
 /// to `pre_beta`.
 ///
-/// The protocol requires the relevant nested commitments to be bound into
-/// the native transcript before the challenge, and the consuming circuits
-/// to use this same lifted value. This helper performs only the scalar
-/// conversion; it does not establish those recursive bindings or enforce
-/// the nested fold in-circuit.
+/// This helper performs only the scalar conversion. The native points
+/// stages bind the nested commitments into the native transcript before
+/// each challenge (see [`native::stages::points`]), and the consuming
+/// circuits read the lifted values from the challenge stage, which a parent
+/// binds to the transcript (see [`stages::challenges`]).
 ///
 /// # Errors
 ///
 /// Fails when the native challenge lies at or above $2^{\mathtt{CAPACITY}}$,
 /// a $2^{-129}$ event for a transcript output.
+///
+/// [`native::stages::points`]: crate::internal::native::stages::points
 pub fn challenge<C: Cycle>(native: C::CircuitField) -> Result<C::ScalarField> {
     Ok(lift_endoscalar(extract_endoscalar(native)?))
 }

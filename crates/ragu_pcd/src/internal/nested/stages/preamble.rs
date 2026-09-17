@@ -39,9 +39,9 @@ pub const NUM_POINTS: usize = 3 + 2 * (RxIndex::NUM + 4);
 /// The remaining `stashed_*` fields are copies of values the child's nested
 /// unified instance exports, placed here so that loading can enforce them
 /// against [`PointsStage`] and so that this step can compute the child's
-/// expected export claim value $k(y_n)$ from them. Binding the copies to the
-/// child's export circuit requires verifying the nested fold with that
-/// expected value.
+/// expected export claim value $k(y_n)$ from them. The collapse circuit binds
+/// the copies to the child's export circuit: it folds the child's
+/// instance-circuit claims with that expected value, outside the base case.
 #[derive(Clone)]
 pub struct ChildWitness<C: CurveAffine> {
     // Field order matches the `_10_p` accumulation order.

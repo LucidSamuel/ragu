@@ -19,10 +19,18 @@
 //!   points stages are compared with the recomputed polynomial commitments;
 //! - $c$, $v$, $c_n$ and $v_n$ are derived from the polynomials, never read.
 //!
-//! Checking a cached commitment against its polynomial is separate from
-//! binding it to a walk's staged inputs or endpoint. For $P_n$, the
-//! native `bind_endoscalar` circuit supplies the endpoint equality via
-//! the unified instance.
+//! Checking a cached commitment against its polynomial does not tie it to a
+//! walk's staged inputs or endpoint; the recursion circuits do, and the
+//! decider checks their claims. For $P_n$, the native `bind_endoscalar`
+//! circuit pins the endpoint through the unified instance, and `bind_beta`
+//! holds the children's staged points against the children's unified
+//! instances.
+//!
+//! A parent holds each child's nested challenge stage to the child's headers
+//! (see [`challenges`]). The root has no parent, which is why the decider
+//! rederives that stage itself.
+//!
+//! [`challenges`]: crate::internal::nested::stages::challenges
 
 use alloc::vec::Vec;
 use core::iter::once;
@@ -241,9 +249,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
         // Recompute this proof's unblinded nested challenge stage from its
         // native challenges, base-case sign and `pre_beta`, and compare its
-        // coefficients. Native binding circuits check claimed commitments;
-        // connecting those points to the stage consumed by nested claims
-        // requires separate recursive constraints.
+        // coefficients. A parent holds a child's stage to the child's headers
+        // through `bind_beta`, its walk and its nested batch; the root has no
+        // parent, so the decider holds the root's stage to its headers here.
         let nested_challenges_claim = {
             let (challenge_lifts, beta_lift) = lifts.split_at(nested_challenges::NUM);
             let expected_challenges = nested_challenges::Stage::<C::HostCurve, R>::rx(
@@ -262,9 +270,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         };
 
         // Check cached commitments against their polynomials in one batch
-        // per curve, including P = Com(p) and P_n = Com(p_n). Binding these
-        // commitments to the staged inputs and endpoints of the endoscaling
-        // walks requires separate checks.
+        // per curve, including P = Com(p) and P_n = Com(p_n). The endoscaling
+        // walks' staged inputs and endpoints are tied to these commitments by
+        // `nested_points_claim` below and by the circuits that pin each walk
+        // (`bind_endoscalar` and `bind_beta` for P_n, the nested `export` and
+        // `loading` for P), whose claims the revdot checks above cover.
         let commitments_claim = {
             let proof = pcd.proof();
             let native = {

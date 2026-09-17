@@ -22,8 +22,10 @@
 //! This checks the walked commitment against the child's exported partial
 //! and transcript challenge.
 //!
-//! Connecting each walked point to the challenge stage polynomial consumed
-//! by the child's nested claims also requires the PCS and recursive constraints.
+//! The endoscaling steps fold the same stage point into $P_n$, and the
+//! nested batch opens the child's challenge stage polynomial against it, so
+//! the polynomial the child's nested claims consume is the one this circuit
+//! checked (see [`challenges`]).
 //!
 //! The same stage holds each child's $P_n$ as walked. The child's own
 //! `bind_endoscalar` pinned its walk's last interstitial to the

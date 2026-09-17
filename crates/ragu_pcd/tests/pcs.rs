@@ -329,7 +329,7 @@ mod folding {
     //! with the accumulator and bridge polynomials stored by `Application::fuse`.
     //! The parent's fold uses copied child instances to bind the children's claims.
 
-    use alloc::vec::Vec;
+    use alloc::{borrow::Cow, vec::Vec};
 
     use ragu_arithmetic::{Cycle, ff::Field};
     use ragu_backend::{Backend, ReferenceBackend};
@@ -382,24 +382,20 @@ mod folding {
         }
     }
 
-    pub(super) fn check(
-        app: &support::App,
-        parent: &Proof<C, R>,
-        left: &Proof<C, R>,
-        right: &Proof<C, R>,
-    ) -> Result<()> {
-        let nested_source = NestedFuseProofSource { left, right };
+    type Claims<'a> =
+        claims::Builder<'a, 'a, Cow<'a, sparse::Polynomial<Fq, R>>, Fq, R, ReferenceBackend>;
 
-        let y = nested::challenge::<C>(parent.y())?;
-        let z = nested::challenge::<C>(parent.z())?;
-        let mu = nested::challenge::<C>(parent.mu())?;
-        let nu = nested::challenge::<C>(parent.nu())?;
-        let mu_prime = nested::challenge::<C>(parent.mu_prime())?;
-        let nu_prime = nested::challenge::<C>(parent.nu_prime())?;
-
-        let mut nested_claims =
-            claims::Builder::<_, Fq, R, ReferenceBackend>::new(&app.nested_registry, y, z);
-        nested::claims::build(&nested_source, &mut nested_claims)?;
+    /// The children's nested claims at `y` and `z`, in the order
+    /// [`build`](nested::claims::build) emits them, with their $k(y)$ values.
+    fn child_claims<'a>(
+        app: &'a support::App,
+        left: &'a Proof<C, R>,
+        right: &'a Proof<C, R>,
+        y: Fq,
+        z: Fq,
+    ) -> Result<(Claims<'a>, ChildValues)> {
+        let mut nested_claims = claims::Builder::new(&app.nested_registry, y, z);
+        nested::claims::build(&NestedFuseProofSource { left, right }, &mut nested_claims)?;
         let unified_ky = |proof: &Proof<C, R>| -> Result<Fq> {
             NestedFuseEmulator::<C>::emulate_wireless(
                 (proof.nested_instance()?, y),
@@ -421,6 +417,37 @@ mod folding {
             left_unified: unified_ky(left)?,
             right_unified: unified_ky(right)?,
         };
+        Ok((nested_claims, children))
+    }
+
+    /// Whether every nested claim of the two children holds at `y` and `z`.
+    pub(super) fn claims_hold(
+        app: &support::App,
+        left: &Proof<C, R>,
+        right: &Proof<C, R>,
+        y: Fq,
+        z: Fq,
+    ) -> Result<bool> {
+        let (nested_claims, children) = child_claims(app, left, right, y, z)?;
+        Ok(nested::claims::ky_values(&children)
+            .zip(nested_claims.a.iter().zip(nested_claims.b.iter()))
+            .all(|(ky, (a, b))| a.revdot(b) == ky))
+    }
+
+    pub(super) fn check(
+        app: &support::App,
+        parent: &Proof<C, R>,
+        left: &Proof<C, R>,
+        right: &Proof<C, R>,
+    ) -> Result<()> {
+        let y = nested::challenge::<C>(parent.y())?;
+        let z = nested::challenge::<C>(parent.z())?;
+        let mu = nested::challenge::<C>(parent.mu())?;
+        let nu = nested::challenge::<C>(parent.nu())?;
+        let mu_prime = nested::challenge::<C>(parent.mu_prime())?;
+        let nu_prime = nested::challenge::<C>(parent.nu_prime())?;
+
+        let (nested_claims, children) = child_claims(app, left, right, y, z)?;
 
         // Two raw claims, one circuit claim per endoscaling step and per
         // instance circuit per child, and one bonding claim per bonding kind
@@ -821,6 +848,99 @@ mod child_openings {
             delta in strategies::nonzero_prime_field_element::<Fp>(),
         ) {
             support::with_app(|app| check(app, &inputs, delta)).unwrap();
+        }
+    }
+}
+
+mod challenge_stage {
+    //! A parent binds the challenge stage its child's nested claims consume.
+    //!
+    //! No nested circuit constrains a step's challenge stage, which carries
+    //! the base-case sign beside the lifts. The step's parent binds it twice:
+    //! `bind_beta` holds the commitment the parent walks against the point
+    //! the step's native binders exported, and the nested batch opens the
+    //! stage polynomial against that walked commitment.
+    //!
+    //! The edit here isolates those two checks. The stage pads every value
+    //! with a $d$-wire that no nested circuit reads, and that the gate leaves
+    //! free while its $c$-wire is zero. A child with an edited pad keeps every
+    //! nested claim true, which the property asserts, and its native side is
+    //! untouched, so only the binding can reject it: `bind_beta` once the
+    //! commitment is recomputed, the batch opening while it is left stale.
+
+    use proptest::prelude::*;
+    use ragu_arithmetic::ff::Field;
+    use ragu_core::Result;
+    use ragu_pasta::{EqAffine, Fq};
+    use ragu_testing::strategies;
+    use rand::{SeedableRng, rngs::StdRng};
+
+    use super::{
+        folding,
+        support::{self, Cache, R, Value},
+    };
+    use crate::internal::{
+        nested::stages::challenges,
+        stage_wires::{StageReader, stage_wire_indices, wires_of},
+    };
+
+    fn check(app: &support::App, inputs: &support::Inputs, delta: Fq, y: Fq, z: Fq) -> Result<()> {
+        let (child, _, _) = support::fused(app, inputs)?;
+        let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(3));
+        let sibling = support::sibling(app, &child, &mut rng)?;
+        for (label, honest) in [("child", &child), ("sibling", &sibling)] {
+            assert!(
+                app.verify(honest, inputs.verifier_rng())?,
+                "the honest {label} verifies"
+            );
+        }
+
+        let pad = stage_wire_indices::<_, R, challenges::Stage<EqAffine, R>>(|stage| {
+            wires_of(&stage.base_case.zero)
+        })?[0];
+        let mut stale = child.proof().clone();
+        assert_eq!(
+            StageReader::new(&stale.nested_challenges_rx).read(pad),
+            Fq::ZERO
+        );
+        support::set_wires(&mut stale.nested_challenges_rx, &[pad], &[delta]);
+        let mut recommitted = stale.clone();
+        support::recommit(app, &mut recommitted, Cache::NestedChallenges);
+
+        for (case, forged) in [("recommitted", recommitted), ("stale", stale)] {
+            assert!(
+                folding::claims_hold(app, &forged, sibling.proof(), y, z)?,
+                "{case}: the edit must leave the child's nested claims true"
+            );
+            let forged = forged.carry::<Value>(*child.data());
+            assert!(!app.verify(&forged, inputs.verifier_rng())?, "{case}: root");
+
+            // The honest prover debug-asserts that its walk ends at Com(p_n),
+            // which a stale child cache breaks before the decider is reached.
+            if case == "stale" && cfg!(debug_assertions) {
+                continue;
+            }
+            for (position, descendant) in support::descendants(app, &forged, &sibling, &mut rng)? {
+                assert!(
+                    !app.verify(&descendant, inputs.verifier_rng())?,
+                    "{case}: {position}"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    proptest! {
+        #![proptest_config(support::config())]
+
+        #[test]
+        fn edited_challenge_stage_rejects_in_descendants(
+            inputs in support::inputs(),
+            delta in strategies::nonzero_prime_field_element::<Fq>(),
+            y in strategies::nonzero_prime_field_element::<Fq>(),
+            z in strategies::nonzero_prime_field_element::<Fq>(),
+        ) {
+            support::with_app(|app| check(app, &inputs, delta, y, z)).unwrap();
         }
     }
 }
