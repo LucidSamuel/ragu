@@ -325,13 +325,15 @@ fn unified_slot_positions(name: &str) -> Vec<usize> {
     positions
 }
 
-/// [`covered_element_positions`] for the nested unified instance.
-fn covered_nested_element_positions(coverage: &nested::unified::Coverage) -> Vec<usize> {
+/// Every wire of the covered nested unified slots, in $k(Y)$ order.
+/// The exported points are checked against stage values, so both coordinates
+/// of every point are outputs alongside the covered field elements.
+fn covered_nested_positions(coverage: &nested::unified::Coverage) -> Vec<usize> {
     let mut positions = Vec::new();
     let mut position = 0;
     coverage.for_each_slot(|_, covered, wires| {
-        if wires == 1 && covered {
-            positions.push(position);
+        if covered {
+            positions.extend(position..position + wires);
         }
         position += wires;
     });
@@ -1184,7 +1186,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             })
         };
         let nested_coverage = |instance: nested::unified::Instance<C::HostCurve>| -> Vec<usize> {
-            covered_nested_element_positions(&instance.coverage)
+            covered_nested_positions(&instance.coverage)
         };
 
         // export copies the instance's x, y, u (and its commitments) from

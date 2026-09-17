@@ -338,12 +338,14 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
         stage_values: &[C::ScalarField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
-        let mut expanded = spec.clone();
-        if expanded.name == "nested_export" {
-            assert_eq!(expanded.outputs.len(), 3, "confirm current oracle omission");
-            expanded.outputs.extend((5..33).map(OutputRef::Instance));
+        if spec.name == "nested_export" {
+            assert_eq!(
+                spec.outputs,
+                (2..33).map(OutputRef::Instance).collect::<Vec<_>>(),
+                "nested export must declare x, y, u and every exported point coordinate",
+            );
         }
-        let census = check(self.point, &expanded, circuit, stage_values, make_witness)?;
+        let census = check(self.point, spec, circuit, stage_values, make_witness)?;
         self.census.push(census);
         Ok(())
     }
