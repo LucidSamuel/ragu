@@ -4,6 +4,9 @@
 //! ([`pcs`]): it recomputes $v_n$ from the query and eval bridge stages'
 //! nested values and provides it as the instance's $v_n$ slot.
 //!
+//! The [`eval` stage] documents the commitment ordering and decider checks
+//! that bind the child evaluations used here.
+//!
 //! ## Operations
 //!
 //! ### Revdot folding
@@ -35,6 +38,7 @@
 //! [`Batch::queries`]: crate::internal::nested::pcs::Batch::queries
 //! [`Batch::evaluated`]: crate::internal::nested::pcs::Batch::evaluated
 //! [`build`]: claims::build
+//! [`eval` stage]: crate::internal::nested::stages::eval
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;

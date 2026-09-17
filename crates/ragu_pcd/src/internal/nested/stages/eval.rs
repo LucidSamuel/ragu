@@ -3,11 +3,24 @@
 //! Alongside the host-curve commitment it bridges, this stage carries the
 //! nested evaluations at $u_n$ of every polynomial the nested batch folds
 //! into $p_n$, in the order [`Batch::evaluated`] fixes; the nested $v_n$ is
-//! the $\beta_n$-weighted sum of $f_n(u_n)$ and these values. They ride here
-//! because this bridge stage's commitment is absorbed before $\beta$ is
-//! squeezed.
+//! the $\beta_n$-weighted sum of $f_n(u_n)$ and these values.
+//!
+//! The child evaluations have no individual opening constraints in this
+//! stage; [`compute_v`] accumulates them into $v_n$. The bridge commitment
+//! is absorbed before `pre_beta` is squeezed, so these values are committed
+//! before its nested counterpart $\beta_n$ is derived. Changing these
+//! values requires recomputing the commitment and challenge; a cancellation
+//! computed with $\beta_n$ held fixed does not by itself establish a valid
+//! change to the proof.
+//!
+//! At the decider, [`Proof::nested_v`] derives $v_n$ from the retained
+//! polynomial $p_n$. The nested revdot claims bind this value to the
+//! `compute_v` trace, and the commitment checks bind $p_n$ to $P_n$.
+//! Preserve this aggregate binding, the commitment's position before
+//! `pre_beta`, and the ordering shared with [`Batch::evaluated`].
 //!
 //! [`Batch::evaluated`]: crate::internal::nested::pcs::Batch::evaluated
+//! [`compute_v`]: crate::internal::nested::circuits::compute_v
 
 use core::marker::PhantomData;
 
