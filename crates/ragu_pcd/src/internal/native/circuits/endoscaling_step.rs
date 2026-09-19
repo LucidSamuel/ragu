@@ -14,8 +14,16 @@
 //! inputs' curve membership, and the interstitials are equal to points
 //! computed from them.
 //!
+//! A step exposes no values, but its public output is still the zero suffix
+//! every internal circuit carries (see [`unified`]), so its instance
+//! polynomial is $k(Y) = 1$ while its linear constraint has no wires. The
+//! application `circuit_id` may name any native slot, and the suffix is what
+//! stops a step from satisfying an application instance. The nested walk has
+//! no such selector and needs no suffix.
+//!
 //! [`EndoscalingStep`]: crate::internal::endoscalar::EndoscalingStep
 //! [`stages::points`]: crate::internal::native::stages::points
+//! [`unified`]: crate::internal::native::unified
 
 use core::marker::PhantomData;
 
@@ -31,7 +39,7 @@ use ragu_core::{
     gadgets::{Bound, Kind},
     maybe::Maybe,
 };
-use ragu_primitives::{GadgetExt, NonzeroBank, vec::Len};
+use ragu_primitives::{Element, GadgetExt, NonzeroBank, WithSuffix, vec::Len};
 
 use super::super::{
     ENDOSCALINGS_PER_STEP,
@@ -78,15 +86,15 @@ impl<C: Cycle, R: Rank> MultiStageCircuit<C::CircuitField, R> for Circuit<C, R> 
     type Last = WalkStage<C::NestedCurve>;
     type Instance<'source> = ();
     type Witness<'source> = Witness<'source, C>;
-    type Output = Kind![C::CircuitField; ()];
+    type Output = Kind![C::CircuitField; WithSuffix<'_, _, ()>];
     type Aux<'source> = ();
 
     fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
         &self,
-        _: &mut D,
+        dr: &mut D,
         _: DriverValue<D, ()>,
     ) -> Result<Bound<'dr, D, Self::Output>> {
-        Ok(())
+        Ok(WithSuffix::new((), Element::zero(dr)))
     }
 
     fn witness<'a, 'dr, 'source: 'dr, D: Driver<'dr, F = C::CircuitField>>(
@@ -139,6 +147,6 @@ impl<C: Cycle, R: Rank> MultiStageCircuit<C::CircuitField, R> for Circuit<C, R> 
         })?;
         acc.enforce_equal(dr, &interstitials[self.step])?;
 
-        Ok(WithAux::new((), D::unit()))
+        Ok(WithAux::new(WithSuffix::new((), Element::zero(dr)), D::unit()))
     }
 }

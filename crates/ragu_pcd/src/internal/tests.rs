@@ -256,9 +256,9 @@ fn test_internal_circuit_constraint_counts() {
     // out the same; the last walks the two that remain.
     let last = native::NUM_ENDOSCALING_STEPS as u32 - 1;
     for step in 0..last {
-        check_constraints!(EndoscalingStep(step),   mul = 2026, lin = 3677);
+        check_constraints!(EndoscalingStep(step),   mul = 2026, lin = 3678);
     }
-    check_constraints!(EndoscalingStep(last),       mul = 1108, lin = 1841);
+    check_constraints!(EndoscalingStep(last),       mul = 1108, lin = 1842);
 }
 
 #[rustfmt::skip]
@@ -513,6 +513,55 @@ fn print_nested_circuit_constraint_counts() {
     print_stage!("challenges", stages::challenges::Stage<EqAffine, R>);
 }
 
+/// Checks that only step slots can satisfy an application instance.
+///
+/// The application `circuit_id` is only checked for registry-domain
+/// membership, so a prover may point it at any native slot. Every slot other
+/// than a step must fail an application instance for every trace. Stage masks
+/// and unassigned slots fail on the constant term: their wiring polynomial has
+/// no `ONE` row. Internal circuits fail on the linear term: their last public
+/// output is the zero suffix appended by the unified output builder, so that
+/// row has no wires and contributes zero for every trace, while an application
+/// instance's linear coefficient is its output header suffix, which is never
+/// zero.
+#[test]
+fn test_non_step_slots_reject_application_instances() {
+    use alloc::{format, string::String, vec::Vec};
+
+    use ragu_arithmetic::{
+        ff::Field,
+        rand::{SeedableRng, rngs::StdRng},
+    };
+    use ragu_circuits::registry::CircuitIndex;
+
+    let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
+        .finalize(Pasta::baked())
+        .unwrap();
+    let registry = &app.native_registry;
+    let x = Fp::random(&mut StdRng::seed_from_u64(0));
+
+    let steps = InternalCircuitIndex::NUM..registry.num_circuits();
+    let unprotected: Vec<String> = (0..registry.num_circuits().next_power_of_two())
+        .filter(|slot| !steps.contains(slot))
+        .filter(|&slot| {
+            let sx = registry.wx(CircuitIndex::new(slot).omega_j(), x);
+            let mut coeffs = sx.iter_coeffs();
+            let constant = coeffs.next().unwrap();
+            let linear = coeffs.next().unwrap();
+            constant != Fp::ZERO && linear != Fp::ZERO
+        })
+        .map(|slot| match InternalCircuitIndex::ALL.get(slot) {
+            Some(id) => format!("{id:?}"),
+            None => format!("slot {slot}"),
+        })
+        .collect();
+
+    assert!(
+        unprotected.is_empty(),
+        "non-step slots that can satisfy an application instance: {unprotected:?}"
+    );
+}
+
 /// Verifies the native registry tag matches the expected value.
 ///
 /// This test ensures the wiring polynomial structure is mathematically
@@ -528,7 +577,7 @@ fn test_native_registry_tag() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x04cdee417718f4b3b6b410483016d90532de94a1bd0be8c75b0c04e8cbca6bf9);
+    let expected = fp!(0x28d017ebc8e63d3049d60b9fdf16acb3edbf3dd4018346be33ffae251751b8fc);
 
     assert_eq!(
         app.native_registry.tag(),
