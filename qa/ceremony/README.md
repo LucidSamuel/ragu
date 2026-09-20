@@ -2,9 +2,11 @@
 
 This directory contains QA tooling and example records for the temporary
 registry-collision workaround in [#78](https://github.com/tachyon-zcash/ragu/issues/78).
-The Bitcoin/OpenTimestamps procedure below is an example, not a production
-ceremony protocol prescribed by Ragu. API consumers remain responsible for
-the [setup sampling requirement](../../book/src/guide/configuration.md#registry-tags).
+The API change is temporary setup-time tag injection. The manifest format,
+OpenTimestamps service, Bitcoin beacon, and block-selection rule below are
+choices for exercising that API in QA, not a production ceremony specification.
+Consumers can use their own setup procedure while satisfying the
+[sampling requirement](../../book/src/guide/configuration.md#registry-tags).
 
 This example commits to the complete setup of both registries before the
 Bitcoin beacon output is known. `registry_tags` derives the tags from the

@@ -149,10 +149,9 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 
     /// Supplies the registry tag to use at finalization.
     ///
-    /// The API consumer must choose the value after the complete pre-keyed
-    /// system description was fixed and publicly committed. See [`Tag::from_beacon`]
-    /// for the full ceremony requirement. This crate cannot check the
-    /// ceremony or that the manifest describes the actual setup.
+    /// This is a temporary setup parameter for the registry-collision
+    /// workaround. The caller must satisfy the [sampling requirement](Tag#sampling-requirement);
+    /// this method stores the supplied value without validating its origin.
     pub fn with_tag(mut self, tag: Tag<F>) -> Self {
         self.tag = Some(tag);
         self
@@ -226,8 +225,8 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 
     /// Builds the [`Registry`].
     ///
-    /// Requires a tag supplied through [`Self::with_tag`], chosen after the
-    /// complete registry description was fixed; see [`Tag::from_beacon`].
+    /// Requires a tag supplied through [`Self::with_tag`] that satisfies the
+    /// [sampling requirement](Tag#sampling-requirement).
     /// The `insecure-test-registry-tag` feature permits a fixed test tag when
     /// none is supplied. Production consumers must not enable that feature.
     ///
@@ -290,13 +289,13 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// Public registry binding tag injected into the registry polynomial
 /// $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
 ///
-/// **Temporary registry-collision workaround:** finalization requires a
-/// caller-supplied tag. Wrap a final field element from a completed ceremony
-/// with [`Tag::new`], or derive it from the ceremony inputs with
-/// [`Tag::from_beacon`], then supply it with [`RegistryBuilder::with_tag`].
-/// The complete pre-keyed system description must have been fixed and publicly
-/// committed before the beacon output was known. Production consumers must
-/// not use the fixed tag provided by the `insecure-test-registry-tag` feature.
+/// **Temporary stopgap for [#78]:** finalization accepts this tag as a setup
+/// parameter while the registry-collision workaround is needed. The consumer
+/// chooses how to obtain it, subject to the sampling requirement below. Wrap
+/// the final field element with [`Tag::new`] and supply it through
+/// [`RegistryBuilder::with_tag`]; [`Tag::from_beacon`] is an optional helper.
+/// Production consumers must not use the fixed tag provided by the
+/// `insecure-test-registry-tag` feature.
 ///
 /// In Fiat-Shamir transformed protocols, common inputs such as the proving
 /// statement (i.e., circuit descriptions) must be included in the transcript
@@ -319,13 +318,16 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 ///
 /// # Sampling requirement
 ///
-/// The API consumer must supply a value sampled independently after the
-/// complete pre-keyed system description was fixed and publicly committed.
-/// This includes every registered application circuit, the internal circuits,
-/// and the full setup context recorded in the canonical, versioned manifest
-/// required by [`Tag::from_beacon`]. The beacon source and derivation rule
-/// must be fixed before the output is known. Changing the description requires
-/// a new ceremony; see [`Tag::from_beacon`] and [#78].
+/// The registry tag ($\kappa$) must be sampled independently and without bias
+/// after the complete pre-keyed system description has been fixed and publicly
+/// committed, then permanently bound to that description.
+///
+/// The description includes the code and dependencies, ordered application
+/// and internal circuit manifests, fields and domains, ranks and capacities,
+/// transcript rules and domain-separation tags, features and configuration,
+/// and all public parameters. For an application, it covers both registries.
+/// Changing the description requires new tags. The consumer is responsible
+/// for this contract; the API does not verify the setup procedure.
 ///
 /// # Break self-reference without preprocessing
 ///

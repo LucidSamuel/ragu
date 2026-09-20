@@ -12,12 +12,12 @@
 //! the canonical, versioned setup manifest covering the code and complete
 //! setup of both registries, as hex. Both inputs are decoded to raw bytes
 //! before deriving the tags.
-//! The documented ceremony uses SHA-256 of `setup.manifest`, whose artifact
+//! The QA example uses SHA-256 of `setup.manifest`, whose artifact
 //! digests bind the actual code and parameter bytes. A Git commit ID, or a
 //! hash of that ID, is not a substitute. See `qa/ceremony/README.md`.
 //! Prints the native and nested tags as big-endian hex, ready to pin next to
-//! the inputs and timestamp proof. See the "Registry Tags" section of the
-//! book for the procedure and [`RegistryTags::from_beacon`]
+//! the inputs and timestamp proof. See `qa/ceremony/README.md` for the example
+//! procedure and [`RegistryTags::from_beacon`]
 //! for the sampling requirement. Use [`ApplicationBuilder::with_registry_tags`](ragu_pcd::ApplicationBuilder::with_registry_tags)
 //! to build an application with these tags.
 

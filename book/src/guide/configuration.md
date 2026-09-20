@@ -227,9 +227,12 @@ let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
 
 **Temporary stopgap:** caller-supplied registry tags replace the evaluation-based
 derivation for the registry-collision issue
-[#78](https://github.com/tachyon-zcash/ragu/issues/78). The API accepts setup-time
-$\kappa$ values; consumers choose the procedure that supplies them. Ragu does
-not prescribe a beacon provider or ceremony protocol.
+[#78](https://github.com/tachyon-zcash/ragu/issues/78). This setup parameter is
+intended to be removed once the workaround is no longer needed. Consumers
+choose the procedure that supplies the $\kappa$ values, subject to the sampling
+requirement below. The Bitcoin/OpenTimestamps example in `qa/ceremony`
+exercises this temporary mechanism; it does not define a production ceremony
+protocol for Ragu.
 
 `with_registry_tags` supplies the application's registry tags: one field element
 per registry, injected into every circuit's wiring polynomial. They exist so
@@ -265,18 +268,18 @@ The description covers the complete setup of both native and nested registries:
 the code and dependencies, ordered circuit manifests (including internal
 circuits), fields and domains, ranks and capacities, transcript rules and
 domain-separation tags, features and configuration, and all public parameters.
-A canonical, versioned setup manifest records this description. Values fixed
-unambiguously by the committed code need not be repeated; the manifest must
-record every remaining setup choice. Changing the description requires a new
-set of tags. Hash the manifest and the actual contents of referenced artifacts
-with SHA-256 or an equivalent collision-resistant hash; a Git commit ID alone
-does not provide that content binding.
+Values fixed unambiguously by the committed code need not be repeated; every
+remaining setup choice must be committed explicitly. Changing the description
+requires a new set of tags.
 
 `RegistryTags::from_beacon` is an optional helper that derives both tags from
 caller-supplied beacon bytes and `manifest_digest`. It hashes each registry's
 label, the manifest digest, and the beacon output together with length prefixes.
 Consumers can instead supply the final field elements directly through
-`with_registry_tags`.
+`with_registry_tags`. When using the helper, a canonical, versioned manifest
+records the complete description. Hash the manifest and the actual contents of
+referenced artifacts with SHA-256 or an equivalent collision-resistant hash;
+a Git commit ID alone does not provide that content binding.
 
 The consumer is responsible for the sampling requirement and for checking
 that the committed description matches the setup. Ragu does not perform
@@ -285,12 +288,12 @@ helper's input contract in full.
 
 ### Ceremony
 
-`qa/ceremony/README.md` contains an example using a Bitcoin block hash and
-[OpenTimestamps](https://opentimestamps.org), along with QA tooling and example
-records. It illustrates the temporary setup mechanism; it is not a prescribed
-production ceremony. A future Bitcoin block provides
-unpredictability after commitment, not unbiasability; this assumes miners do
-not selectively withhold blocks or reorganize the chain to bias the tags.
+`qa/ceremony/README.md` contains the QA example, its manifest format, and the
+Bitcoin/[OpenTimestamps](https://opentimestamps.org) steps used to exercise it.
+Its provider and block-selection choices belong to that example. A future
+Bitcoin block provides unpredictability after commitment, not unbiasability;
+this assumes miners do not selectively withhold blocks or reorganize the
+chain to bias the tags.
 
 ## Parameter Selection Guide
 

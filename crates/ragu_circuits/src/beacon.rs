@@ -58,33 +58,25 @@ impl<F: FromUniformBytes<64>> Tag<F> {
     ///
     /// # Caller requirement
     ///
-    /// The complete pre-keyed system, including every application step, must
-    /// be fixed and publicly committed before the beacon output is known.
-    /// Its manifest must bind the code and dependencies, ordered circuit
-    /// manifests, fields and domains, ranks and capacities, transcript rules
-    /// and domain-separation tags, features and configuration, and all public
-    /// parameters. For an application, this covers both native and nested
-    /// registries. Values fixed unambiguously by the committed code need not
-    /// be repeated; all remaining setup choices must be recorded explicitly.
+    /// The inputs must satisfy [`Tag`]'s [sampling requirement](Tag#sampling-requirement).
+    /// Commit the complete description before the beacon output is known,
+    /// fixing the beacon source, label, and derivation rule in advance.
+    /// The circuit author must not control or grind the output.
     ///
-    /// Hash the manifest's canonical bytes with SHA-256 or an equivalent
-    /// collision-resistant hash. Referenced code, dependency, and parameter
-    /// artifacts must also be bound by content digests of that strength.
-    /// The digests must cover the actual source and parameter contents;
-    /// hashing a SHA-1 commit ID again does not strengthen its binding.
-    /// The beacon source, label, and derivation rule must also be fixed in
-    /// advance; the circuit author must not control or grind the output.
-    /// Changing the description requires a new ceremony.
+    /// `manifest_digest` must bind the complete description through a canonical,
+    /// versioned manifest. Hash its bytes with SHA-256 or an equivalent
+    /// collision-resistant hash, and bind the actual referenced code,
+    /// dependency, and parameter contents with digests of that strength.
+    /// A Git commit ID alone does not provide that content binding. The caller
+    /// must check that the committed description matches the actual setup.
     ///
     /// A future Bitcoin block provides unpredictability after commitment, not
     /// unbiasability. Using it as a beacon assumes miners do not selectively
     /// withhold blocks or reorganize the chain to bias the tags.
     ///
-    /// The caller must check the manifest and its content digests against the
-    /// actual setup and verify that the commitment precedes the beacon.
-    /// Mixing in an unchecked digest does not establish either property. See
-    /// the beacon proposal in
-    /// [#78](https://github.com/tachyon-zcash/ragu/issues/78#issuecomment-3484495372).
+    /// `qa/ceremony` demonstrates one Bitcoin/OpenTimestamps procedure for
+    /// exercising this temporary helper; it is not a production ceremony
+    /// specification.
     pub fn from_beacon(beacon: &[u8], manifest_digest: &[u8], label: &[u8]) -> Self {
         let digest = Params::new()
             .personal(b"ragu_tag_beacon_")

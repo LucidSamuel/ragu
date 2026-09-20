@@ -70,16 +70,16 @@ pub use backend::SelectableBackend;
 
 /// Temporary setup tags for an [`Application`]'s native and nested registries.
 ///
-/// API consumers must supply these through
-/// [`ApplicationBuilder::with_registry_tags`]. Both values must be chosen
-/// after the complete setup of both registries, including every application
-/// step, was fixed and publicly committed; see [`Tag::from_beacon`].
-/// Production consumers must not use a fixed test key.
+/// These are setup parameters for the temporary registry-collision workaround
+/// in [#78](https://github.com/tachyon-zcash/ragu/issues/78). API consumers must
+/// supply them through [`ApplicationBuilder::with_registry_tags`], satisfying
+/// [`Tag`]'s [sampling requirement](Tag#sampling-requirement) for the complete
+/// setup of both registries. Production consumers must not use a fixed test key.
 ///
-/// To supply the final field elements from a completed ceremony, wrap each
+/// To supply the final field elements from your setup procedure, wrap each
 /// value with [`Tag::new`] and set [`Self::native`] and [`Self::nested`].
-/// [`Self::from_beacon`] is a convenience for deriving those values from the
-/// ceremony inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
+/// [`Self::from_beacon`] is an optional helper for deriving those values from
+/// beacon inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
 /// resulting tags directly; finalization does not hash them again.
 pub struct RegistryTags<C: Cycle> {
     /// Tag for the native registry, over [`Cycle::CircuitField`].
@@ -140,11 +140,10 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
     /// Supplies the tags to use when [`Self::finalize`] builds both registries.
     ///
-    /// The caller must choose the values after the complete application was
-    /// fixed and publicly committed, following the ceremony described by
-    /// [`Tag::from_beacon`]. This includes checking that the manifest digest
-    /// identifies the complete setup, including the public parameters supplied
-    /// to [`Self::finalize`]. No ceremony or manifest checks are performed here.
+    /// The caller's setup procedure must satisfy the
+    /// [sampling requirement](Tag#sampling-requirement) for the complete
+    /// application, including the public parameters supplied to [`Self::finalize`].
+    /// This method stores the final values without validating their origin.
     /// Production callers must not use a test key.
     pub fn with_registry_tags(mut self, tags: RegistryTags<C>) -> Self {
         self.native_registry = self.native_registry.with_tag(tags.native);
