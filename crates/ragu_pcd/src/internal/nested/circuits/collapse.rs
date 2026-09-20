@@ -23,15 +23,18 @@
 //! the claims: each child's raw accumulator value $c$ and the $k(y_n)$ of
 //! its nested unified instance, both read off the `preamble` bridge stage's
 //! copies (the instance's through [`ChildOutput::nested_instance`]), at the
-//! $y_n$ the instance carries; one for each endoscaling step; zero for each
-//! bonding claim.
+//! current step's $y_n$ from the challenge stage; one for each endoscaling
+//! step; zero for each bonding claim. Export separately equates the current
+//! instance's $y_n$ with that stage value.
 //!
 //! ## Base case
 //!
 //! When Bootstrap consumes two dummy children, their claims are not
 //! satisfied, and the prover witnesses whatever $c_n$ its folded accumulator
-//! has, exactly as the native `outer_collapse` allows. The verdict is the
-//! sign the challenge stage carries. No nested circuit constrains that wire:
+//! has, exactly as the native `outer_collapse` allows. The layer-one
+//! equalities remain enforced; only the final $c_n$ comparison is waived.
+//! The verdict is the sign the challenge stage carries. No nested circuit
+//! constrains that wire:
 //! this step's parent, or the decider at the root, holds the challenge stage
 //! polynomial to the sign the native binding circuits derive from the headers
 //! (see [`challenges`]), so a step cannot select the exception its headers do
@@ -110,12 +113,11 @@ impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
         let mut unified = unified::OutputBuilder::new(witness.map(|w| w.instance));
         let lifts = &stages.challenges.pairs;
 
-        // The children's k(y_n) values, from the preamble's copies, at the
-        // y_n the instance carries (pinned to the challenge stage by the
-        // export circuit).
-        let y = unified.y.read(dr, allocator)?;
-        let left_unified = stages.preamble.left.nested_instance().ky(dr, &y)?;
-        let right_unified = stages.preamble.right.nested_instance().ky(dr, &y)?;
+        // Evaluate the children's instance copies at this step's challenge
+        // stage y_n, independently of Export's equality for the public copy.
+        let y = &lifts[challenges::Y].lift;
+        let left_unified = stages.preamble.left.nested_instance().ky(dr, y)?;
+        let right_unified = stages.preamble.right.nested_instance().ky(dr, y)?;
         let ky = TwoProofKySource::new(
             dr,
             stages.preamble.left.nested.c.clone(),

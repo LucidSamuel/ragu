@@ -492,6 +492,26 @@ where
     Ok(constraints.hold(&coefficients))
 }
 
+fn nested_collapse_trace(proof: &Proof<C, R>) -> sparse::Polynomial<Fq, R> {
+    let mut nested_trace = proof.nested_collapse_rx.clone();
+    for stage in [
+        nested::RxIndex::EndoscalarStage,
+        nested::RxIndex::PointsStage,
+        nested::RxIndex::BridgePreamble,
+        nested::RxIndex::BridgeSPrime,
+        nested::RxIndex::BridgeInnerError,
+        nested::RxIndex::BridgeOuterError,
+        nested::RxIndex::BridgeAB,
+        nested::RxIndex::BridgeQuery,
+        nested::RxIndex::BridgeF,
+        nested::RxIndex::BridgeEval,
+        nested::RxIndex::ChallengeStage,
+    ] {
+        nested_trace.add_assign(&proof[stage]);
+    }
+    nested_trace
+}
+
 fn check_proof_guards(
     proof: &Proof<C, R>,
     case: &str,
@@ -519,26 +539,10 @@ fn check_proof_guards(
         "{case}: native c guard"
     );
 
-    let mut nested_trace = proof.nested_collapse_rx.clone();
-    for stage in [
-        nested::RxIndex::EndoscalarStage,
-        nested::RxIndex::PointsStage,
-        nested::RxIndex::BridgePreamble,
-        nested::RxIndex::BridgeSPrime,
-        nested::RxIndex::BridgeInnerError,
-        nested::RxIndex::BridgeOuterError,
-        nested::RxIndex::BridgeAB,
-        nested::RxIndex::BridgeQuery,
-        nested::RxIndex::BridgeF,
-        nested::RxIndex::BridgeEval,
-        nested::RxIndex::ChallengeStage,
-    ] {
-        nested_trace.add_assign(&proof[stage]);
-    }
     assert_eq!(
         accepts_wrong_c(
             MultiStage::new(nested::circuits::collapse::Circuit::<EqAffine, R>::new()),
-            &nested_trace,
+            &nested_collapse_trace(proof),
             0, // c_n is the first slot in the nested unified instance.
             proof.nested_c(),
             nested_delta,
@@ -547,6 +551,72 @@ fn check_proof_guards(
         "{case}: nested c guard"
     );
     Ok(())
+}
+
+#[test]
+fn nested_collapse_uses_challenge_stage_y_even_in_bootstrap() -> Result<()> {
+    support::with_app(|app| {
+        let bootstrap = app.bootstrap_pcd();
+        let mut rng = StdRng::seed_from_u64(873008);
+        let (ordinary, _) = app.fuse(
+            &mut rng,
+            Seed::new(),
+            Fp::from(7),
+            bootstrap.clone(),
+            bootstrap.clone(),
+        )?;
+        assert!(app.verify(&bootstrap, StdRng::seed_from_u64(873009))?);
+        assert!(app.verify(&ordinary, StdRng::seed_from_u64(873010))?);
+
+        let stage_wires = stage_wire_indices::<_, R, challenges::Stage<EqAffine, R>>(|stage| {
+            Ok(vec![
+                *stage.pairs[challenges::Y].lift.wire(),
+                *stage.base_case.lift.wire(),
+            ])
+        })?;
+        let y_degree = wire_degree::<R>(stage_wires[0]);
+        let sign_degree = wire_degree::<R>(stage_wires[1]);
+
+        for (case, proof, sign) in [
+            ("bootstrap", bootstrap.proof(), Fq::ONE),
+            ("non-base", ordinary.proof(), -Fq::ONE),
+        ] {
+            let mut constraints = TraceConstraints {
+                gates: 1,
+                linear: Vec::new(),
+            };
+            let circuit =
+                MultiStage::new(nested::circuits::collapse::Circuit::<EqAffine, R>::new());
+            let (output, _) = circuit.witness(&mut constraints, Empty)?.into_parts();
+            let instance_y = output.y.wire();
+            assert_eq!(instance_y.constant, Fq::ZERO);
+            assert_eq!(instance_y.terms.len(), 1);
+            let (instance_y_degree, coefficient) = instance_y.terms[0];
+            assert_eq!(coefficient, Fq::ONE);
+            assert_ne!(instance_y_degree, y_degree);
+
+            let trace = nested_collapse_trace(proof);
+            let coefficients: Vec<_> = trace.iter_coeffs().collect();
+            assert!(constraints.hold(&coefficients), "{case}: honest trace");
+            assert_eq!(coefficients[sign_degree], sign);
+            assert_eq!(coefficients[y_degree], proof.nested_instance()?.y);
+            assert_eq!(coefficients[instance_y_degree], coefficients[y_degree]);
+
+            // Change only the supported challenge-stage coefficient. The
+            // layer-one equalities must reject even when the final c_n
+            // comparison is waived, without relying on Export's equality.
+            let mut changed = coefficients.clone();
+            changed[y_degree] += Fq::ONE;
+            assert!(!constraints.hold(&changed), "{case}: substituted stage y");
+
+            // The public copy is Export's responsibility. This is a local
+            // Collapse check, not acceptance of a proof with a divergent y.
+            let mut changed = coefficients;
+            changed[instance_y_degree] += Fq::ONE;
+            assert!(constraints.hold(&changed), "{case}: substituted instance y");
+        }
+        Ok(())
+    })
 }
 
 fn check_guards(
