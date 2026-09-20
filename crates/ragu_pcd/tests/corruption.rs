@@ -22,7 +22,7 @@ use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::Result;
 use ragu_pasta::{Fp, Fq, Pasta};
 use ragu_pcd::{
-    Application, ApplicationBuilder, Proof, RegistryTags,
+    Application, ApplicationBuilder, Proof,
     fuzzing::corrupt::{
         Binding, BridgeCommitment, Challenge, Corruption, NativeRx, NestedRx, RxComponent, Side,
     },
@@ -64,7 +64,7 @@ impl Fixture {
 /// circuit.
 fn empty_app() -> Application<'static, C, R, HEADER_SIZE> {
     ApplicationBuilder::<C, R, HEADER_SIZE>::new()
-        .finalize(Pasta::baked(), RegistryTags::insecure_test_values())
+        .finalize(Pasta::baked())
         .expect("the empty application must build")
 }
 
@@ -85,7 +85,7 @@ fn app() -> Application<'static, C, R, HEADER_SIZE> {
                 poseidon_params: poseidon,
             })
         })
-        .and_then(|b| b.finalize(pasta, RegistryTags::insecure_test_values()))
+        .and_then(|b| b.finalize(pasta))
         .expect("the application must build")
 }
 

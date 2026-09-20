@@ -44,10 +44,16 @@ they are not for deployment.
 
 ## Step 4 — tags
 
-`cargo run -p ragu_pcd --example registry_tags -- B` (`tags.txt`):
+The tags were recomputed after adding the committed code hash to the
+derivation. This checks the updated tooling against the recorded inputs; the
+timestamp does not attest that this derivation was fixed before the beacon.
+This remains a dry run.
 
-- native (Fp): `0x036c4c4b629858e85bc634851206ce640ec4faea673150f5a5cbb7607705241f`
-- nested (Fq): `0x1cf9eff85d9fc437495a9a22d185a0e9c5e022f8b6c1968dd654fdc1e862f7a4`
+`cargo run -p ragu_pcd --example registry_tags -- B X` (`tags.txt`), where
+`X` is the commit hash in `commit.txt`. Both inputs are decoded from hex:
+
+- native (Fp): `0x2193df436e54d78eda23f6a6062a8c48f0077455afc7e18e83d90c762b56e84d`
+- nested (Fq): `0x1461bebcd64c01b3412dba7160a8fc3077b127911e557f7cd1de990240220f41`
 
 ## Step 5 — publish
 

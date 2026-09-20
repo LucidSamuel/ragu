@@ -162,7 +162,7 @@ pub fn anchor_tail<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program
 mod tests {
     use ff::Field;
     use proptest::prelude::*;
-    use ragu_circuits::{CircuitExt, polynomials::TestRank, registry::{RegistryBuilder, Tag}};
+    use ragu_circuits::{CircuitExt, polynomials::TestRank, registry::RegistryBuilder};
     use ragu_pasta::Fp;
 
     use super::{
@@ -270,7 +270,7 @@ mod tests {
             };
             let registry = RegistryBuilder::<Fp, TestRank>::new()
                 .register_circuit(circuit)
-                .and_then(|b| b.finalize(Tag::insecure_test_value()));
+                .and_then(|b| b.finalize());
             if let Ok(registry) = registry {
                 let trace = circuit
                     .trace(steered.preamble.values())

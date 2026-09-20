@@ -38,7 +38,7 @@ ragu_arithmetic = { path = "../../crates/ragu_arithmetic" }
 ragu_primitives = { path = "../../crates/ragu_primitives" }
 ragu_pasta = { path = "../../crates/ragu_pasta", features = ["baked"] }
 ragu_core = { path = "../../crates/ragu_core" }
-ragu_circuits = { path = "../../crates/ragu_circuits", features = ["test-utils"] }
+ragu_circuits = { path = "../../crates/ragu_circuits" }
 ragu_pcd = { path = "../../crates/ragu_pcd", features = ["unstable-fuzzing"] }
 # The patcher engine (recording driver, repair solver, oracles) that
 # `fuzz_advice_patcher` drives over generated programs.

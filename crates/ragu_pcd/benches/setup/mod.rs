@@ -2,7 +2,7 @@ use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::{Application, ApplicationBuilder, Pcd, RegistryTags};
+use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -44,7 +44,7 @@ pub fn setup_seed() -> (
         .unwrap()
         .register(nontrivial::Hash2 { poseidon_params })
         .unwrap()
-        .finalize(pasta, RegistryTags::insecure_test_values())
+        .finalize(pasta)
         .unwrap();
     (app, poseidon_params, StdRng::seed_from_u64(1234))
 }
@@ -94,7 +94,7 @@ pub fn setup_fuse_accelerated() -> (
         .unwrap()
         .register(nontrivial::Hash2 { poseidon_params })
         .unwrap()
-        .finalize(pasta, RegistryTags::insecure_test_values())
+        .finalize(pasta)
         .unwrap();
     let mut rng = StdRng::seed_from_u64(1234);
 

@@ -12,6 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 REPO="$(git rev-parse --show-toplevel)"
+CODE_HASH="$(cat commit.txt)"
 
 if command -v ots >/dev/null 2>&1; then
   OTS=ots
@@ -69,7 +70,7 @@ printf 'ATTESTATION_BLOCK=%s\nBEACON_RULE=%s\nBEACON_HEIGHT=%s\n' \
   "${N:-pending}" "$RULE" "$BEACON_HEIGHT" > attestation.txt
 
 echo "== 4. derive the tags =="
-(cd "$REPO" && cargo run -q -p ragu_pcd --example registry_tags -- "$B1") | tee tags.txt
+(cd "$REPO" && cargo run -q -p ragu_pcd --example registry_tags -- "$B1" "$CODE_HASH") | tee tags.txt
 echo
 if [ -z "$N" ]; then
   echo "Note: the attestation is still pending; re-run later to upgrade commit.txt.ots."

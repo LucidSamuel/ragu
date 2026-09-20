@@ -120,7 +120,7 @@ use pasta_curves::Fp;
 use ragu_circuits::{
     BondingObject, Circuit, CircuitExt, WithAux,
     polynomials::{Rank, TestRank, sparse},
-    registry::{CircuitIndex, Registry, RegistryBuilder, Tag},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
     staging::{MultiStage, MultiStageCircuit, Stage, StageBuilder, StageExt},
 };
 use ragu_core::{
@@ -427,7 +427,7 @@ where
 {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_circuit(circuit)
-        .and_then(|b| b.finalize(Tag::insecure_test_value()))
+        .and_then(|b| b.finalize())
         .ok()
 }
 
@@ -450,7 +450,7 @@ static CHAIN_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
 fn build_mask_registry(mask: BondingObject<'static, Fp, TestRank>) -> Option<Registry<'static, Fp, TestRank>> {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_bonding(mask)
-        .finalize(Tag::insecure_test_value())
+        .finalize()
         .ok()
 }
 

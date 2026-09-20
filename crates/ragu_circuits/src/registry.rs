@@ -53,9 +53,10 @@
 //!
 //! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
+mod beacon;
+
 use alloc::{boxed::Box, vec::Vec};
 
-use blake2b_simd::Params;
 use ragu_arithmetic::{
     Domain, bitreverse,
     ff::{Field, FromUniformBytes, PrimeField},
@@ -127,6 +128,7 @@ pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
     bonding: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     internal_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     application_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    tag: Option<Tag<F>>,
 }
 
 impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
@@ -143,6 +145,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             bonding: Vec::new(),
             internal_steps: Vec::new(),
             application_steps: Vec::new(),
+            tag: None,
         }
     }
 
@@ -212,11 +215,12 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         self
     }
 
-    /// Builds the [`Registry`], binding every wiring polynomial to `tag`.
+    /// Builds the [`Registry`].
     ///
-    /// The tag is injected as the monomial $\kappa \cdot (XY)^{4n-1}$ and is
-    /// not validated here. See [`Tag`] for the requirement it must satisfy,
-    /// and [`Tag::insecure_test_value`] for tests.
+    /// Requires a tag supplied through [`Self::with_tag`], chosen after the
+    /// complete registry description was fixed; see [`Tag::from_beacon`].
+    /// The `insecure-test-registry-tag` feature permits a fixed test tag when
+    /// none is supplied. Production consumers must not enable that feature.
     ///
     /// Circuits are concatenated in the following order for proper indexing:
     /// 1. Internal circuits: System circuits for the PCD construction
@@ -230,8 +234,13 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// # Errors
     ///
     /// Returns [`Error::CircuitBoundExceeded`] if the total number of
-    /// registered circuits exceeds the rank capacity.
-    pub fn finalize(self, tag: Tag<F>) -> Result<Registry<'params, F, R>> {
+    /// registered circuits exceeds the rank capacity, or
+    /// [`Error::Initialization`] if no tag was supplied and the test-only
+    /// fallback is disabled.
+    pub fn finalize(self) -> Result<Registry<'params, F, R>>
+    where
+        F: FromUniformBytes<64>,
+    {
         let total_circuits = self.num_circuits();
         if total_circuits > R::num_coeffs() {
             return Err(Error::CircuitBoundExceeded {
@@ -256,97 +265,81 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             .map(|circuit| crate::floor_planner::floor_plan(circuit.segment_records()))
             .collect();
 
-        Ok(Registry {
+        // Create provisional registry (tag not yet computed)
+        let mut registry = Registry {
             domain,
             circuits,
             floor_plans,
-            tag,
-        })
+            tag: Tag::default(),
+        };
+        registry.tag = Tag::new(registry.compute_registry_tag(self.tag)?);
+
+        Ok(registry)
     }
 }
 
-/// Public registry binding tag $\kappa$, injected into the registry polynomial
-/// $m(W, X, Y)$ to prevent adaptive-statement (weak Fiat-Shamir) attacks.
+/// Public registry binding tag injected into the registry polynomial
+/// $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
 ///
-/// # Requirement
+/// **Temporary beacon replacement:** finalization currently requires a
+/// caller-supplied tag. Use [`Tag::from_beacon`] after fixing and publicly
+/// committing the complete registry description, then supply it with
+/// [`RegistryBuilder::with_tag`]. Production consumers must not use the
+/// fixed tag provided by the `insecure-test-registry-tag` feature.
 ///
-/// The registry tag ($\kappa$) must be sampled independently and without bias
-/// after the complete pre-keyed system description has been fixed and
-/// publicly committed, then permanently bound to that description.
+/// In Fiat-Shamir transformed protocols, common inputs such as the proving
+/// statement (i.e., circuit descriptions) must be included in the transcript
+/// before any prover messages or verifier challenges. Otherwise, malicious
+/// provers may adaptively choose another statement during, or even after,
+/// generating a proof. In the literature, this is known as
+/// [weak Fiat-Shamir attacks](https://eprint.iacr.org/2023/1400).
 ///
-/// Each clause is load-bearing:
+/// To prevent such attacks, one can include a digest $H(m(W, X, Y))$ of the
+/// registry polynomial in the transcript before any prover messages, forcing a
+/// fixed instance. However, $m$ contains the description of a recursive
+/// verifier whose logic depends on a transcript salted with the very digest
+/// itself, creating a circular dependency.
 ///
-/// - **Independently and without bias**: the tag must come from a source the
-///   circuit author neither controls nor can grind, and must be uniform in the
-///   field. [`Tag::from_beacon`] derives such a value from the output of a
-///   public randomness beacon.
-/// - **Complete**: the description is the whole unkeyed registry, including
-///   every application step. Adding or changing any registered circuit
-///   invalidates the tag.
-/// - **Fixed and publicly committed**: the description must be published and
-///   timestamped before the tag is drawn, so that third parties can verify the
-///   ordering.
-/// - **Permanently bound**: the tag is valid only for that description and is
-///   never reused for, or substituted into, another.
+/// Many preprocessing recursive SNARKs avoid this self-reference problem
+/// implicitly because the circuit descriptions are encoded in a verification
+/// key that is generated ahead of time and carried through public inputs to the
+/// recursive verifier. Ragu avoids preprocessing by design, and does not use
+/// verification keys, which suggests an alternative solution.
 ///
-/// This crate cannot check any of it. [`RegistryBuilder::finalize`] accepts
-/// whatever tag it is handed; the guarantee rests entirely on the procedure
-/// that produced the value.
+/// # Sampling requirement
 ///
-/// # Why
+/// The API consumer must supply a value sampled independently after the
+/// complete registry description was fixed and publicly committed. This
+/// includes every registered application circuit, the internal circuits,
+/// and all parameters determining their wiring. The beacon source and
+/// derivation rule must be fixed before the output is known. Changing the
+/// description requires a new ceremony; see [`Tag::from_beacon`] and [#78].
 ///
-/// Fiat-Shamir soundness requires the statement to be fixed before the
-/// challenges are drawn. Here the statement is $m$ itself: it encodes every
-/// registered circuit. Without a tag, whoever controls the circuit description
-/// can produce a partial proof, learn the challenges, and then retrofit a
-/// degree of freedom in $m$ so that the restriction checks pass — a
-/// [weak Fiat-Shamir attack](https://eprint.iacr.org/2023/1400).
+/// # Break self-reference without preprocessing
 ///
-/// The usual defence, absorbing a digest $H(m)$ into the transcript, is
-/// circular here: $m$ contains the recursive verifier, whose sponge would have
-/// to contain that very digest. Ragu has no preprocessing and no verification
-/// key through which to carry it in.
+/// With the resulting registry [`Tag`], we can break the self-reference without
+/// preprocessing or reliance on public inputs.
 ///
-/// The tag breaks the cycle by fixing a coefficient of $m$ to a value that is
-/// unpredictable while the description is still malleable. Concretely, it is
-/// injected as the monomial $\kappa \cdot (XY)^{4n-1}$ at the registry level,
-/// so every wiring polynomial, and hence every restriction of $m$ that the
-/// protocol checks, depends on it. Violating the sampling requirement restores
-/// exactly the attack above: a tag known or chosen before the description is
-/// fixed hands the author the free coefficient back.
+/// Concretely, the registry tag $k$ is injected as the monomial
+/// $k \cdot (XY)^{4n-1}$ at the registry level, binding each circuit's wiring
+/// polynomial to the registry polynomial and thus the entire registry polynomial
+/// to the Fiat-Shamir transcript without self-reference. The tag randomizes the
+/// wiring polynomial directly.
 ///
-/// # Binding is one-directional
-///
-/// The tag is bound *into* $m$: the polynomial depends on $\kappa$. The
-/// converse does not hold. Nothing in $m$ or in this crate ties $\kappa$ to the
-/// description it was drawn for, so "drawn after the description was fixed" is
-/// a property of the sampling procedure, not of the value.
-///
-/// Deriving the tag from the registry itself, $\kappa = H(m)$, would make the
-/// binding two-directional and remove the procedural requirement. That is the
-/// intended long-term design, tracked in [#78]; supplying the tag externally is
-/// a stopgap until evaluating $m$ is cheap enough for such a digest to be
-/// binding at an acceptable cost.
-///
-/// # Constructors
-///
-/// - [`Tag::from_beacon`]: the production path. Hashes a public randomness
-///   beacon output to a uniform field element.
-/// - [`Tag::new`]: wraps a field element as-is, for loading a value that was
-///   produced by [`Tag::from_beacon`] and pinned. The caller asserts the
-///   requirement above.
-/// - [`Tag::insecure_test_value`]: a fixed, public value for tests. Never use
-///   it in production.
+/// The tag is installed during [`RegistryBuilder::finalize`] and used during
+/// polynomial evaluations of circuits in the registry.
 ///
 /// [#78]: https://github.com/tachyon-zcash/ragu/issues/78
 pub struct Tag<F: Field>(F);
 
+impl<F: Field> Default for Tag<F> {
+    fn default() -> Self {
+        Self(F::ONE)
+    }
+}
+
 impl<F: Field> Tag<F> {
-    /// Wraps a field element as a registry tag.
-    ///
-    /// The caller asserts that `val` satisfies the sampling requirement in the
-    /// [type-level documentation](Tag), typically because it was produced by
-    /// [`Tag::from_beacon`] and pinned. Nothing here can check that.
+    /// Creates a new registry tag from a field element.
     pub fn new(val: F) -> Self {
         Self(val)
     }
@@ -354,42 +347,6 @@ impl<F: Field> Tag<F> {
     /// Returns the registry tag value.
     pub fn value(&self) -> F {
         self.0
-    }
-}
-
-impl<F: FromUniformBytes<64>> Tag<F> {
-    /// Derives a registry tag from the output of a public randomness beacon.
-    ///
-    /// `beacon` is the raw beacon output, for example a block hash published
-    /// after the registry's description was committed. `label` separates the
-    /// tags of distinct registries drawn from the same output, such as an
-    /// application's native and nested registries. Both are length-prefixed
-    /// and absorbed into BLAKE2b, personalized for this purpose, and the
-    /// 64-byte digest is reduced to a uniform field element.
-    ///
-    /// This discharges the "without bias" clause of the requirement. Whether
-    /// the beacon output was independent of, and published after, the
-    /// committed description is up to the caller's procedure.
-    pub fn from_beacon(beacon: &[u8], label: &[u8]) -> Self {
-        let digest = Params::new()
-            .personal(b"ragu_tag_beacon_")
-            .to_state()
-            .update(&(label.len() as u64).to_le_bytes())
-            .update(label)
-            .update(&(beacon.len() as u64).to_le_bytes())
-            .update(beacon)
-            .finalize();
-        Self(F::from_uniform_bytes(digest.as_array()))
-    }
-
-    /// A fixed, publicly known tag for tests.
-    ///
-    /// **Never use this in production.** It violates every clause of the
-    /// sampling requirement: it is known before any description is fixed, it
-    /// is the same for every registry, and anyone can reproduce it. A registry
-    /// finalized with it has no protection against adaptive-statement attacks.
-    pub fn insecure_test_value() -> Self {
-        Self::from_beacon(b"INSECURE ragu test tag: never use in production", b"test")
     }
 }
 
@@ -484,9 +441,9 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
 
     /// Returns the registry tag value.
     ///
-    /// This is the value supplied to [`RegistryBuilder::finalize`]; it is
-    /// injected into every wiring polynomial as $\kappa \cdot (XY)^{4n-1}$.
-    /// See [`Tag`] for the requirement it must satisfy.
+    /// This is the binding tag computed during
+    /// [`RegistryBuilder::finalize`] that ties each circuit's wiring
+    /// polynomial to this registry.
     pub fn tag(&self) -> F {
         self.tag.value()
     }
@@ -830,54 +787,10 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
     }
 }
 
-#[cfg(feature = "test-utils")]
 impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
-    /// Regression digest of the registry polynomial, for tests.
-    ///
-    /// Absorbs six chained evaluations of $m(W, X, Y)$, tag term included,
-    /// into BLAKE2b: starting from fixed points, each evaluation seeds the
-    /// next point. Any change to a registered circuit, to the registration
-    /// order, or to the tag flips the result, which makes it a cheap tripwire
-    /// for unintended changes to a registry.
-    ///
-    /// It is **not** binding and plays no role in the protocol: six
-    /// evaluations constrain six of the roughly $(4n)^2$ coefficients of each
-    /// circuit's wiring polynomial, so distinct registries that share a digest
-    /// are easy to construct. See [`Tag`] for the binding requirement.
-    pub fn evaluation_digest(&self) -> F {
-        let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
-
-        let field_from_hash = |digest_state: &blake2b_simd::Hash, index: u8| {
-            F::from_uniform_bytes(
-                Params::new()
-                    .personal(b"ragu_registry___")
-                    .to_state()
-                    .update(digest_state.as_bytes())
-                    .update(&[index])
-                    .finalize()
-                    .as_array(),
-            )
-        };
-
-        // Fixed starting point (small primes); later points come from the hash.
-        let mut w = F::from(2u64);
-        let mut x = F::from(3u64);
-        let mut y = F::from(5u64);
-
-        for _ in 0..6 {
-            let eval = self.wxy(w, x, y);
-            hasher.update(eval.to_repr().as_ref());
-
-            let digest_state = hasher.finalize();
-            w = field_from_hash(&digest_state, 0);
-            x = field_from_hash(&digest_state, 1);
-            y = field_from_hash(&digest_state, 2);
-
-            hasher = Params::new().personal(b"ragu_registry___").to_state();
-            hasher.update(digest_state.as_bytes());
-        }
-
-        field_from_hash(&hasher.finalize(), 0)
+    /// Use the caller's beacon tag through the temporary replacement.
+    fn compute_registry_tag(&self, tag: Option<Tag<F>>) -> Result<F> {
+        beacon::registry_tag(tag)
     }
 }
 
@@ -890,7 +803,7 @@ mod tests {
     use ragu_core::Result;
     use ragu_pasta::Fp;
 
-    use super::{CircuitIndex, RegistryBuilder, Tag};
+    use super::{CircuitIndex, RegistryBuilder};
     use crate::{polynomials::TestRank, tests::SquareCircuit};
     type TestRegistryBuilder<'a> = RegistryBuilder<'a, Fp, TestRank>;
 
@@ -928,7 +841,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 19 })?
             .register_circuit(SquareCircuit { times: 19 })?
             .register_circuit(SquareCircuit { times: 19 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         let w = Fp::random(&mut ragu_arithmetic::rand::rng());
         let x = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -971,7 +884,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 10 })?
             .register_circuit(SquareCircuit { times: 11 })?
             .register_circuit(SquareCircuit { times: 19 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         let x = Fp::random(&mut rand::rng());
         let y = Fp::random(&mut rand::rng());
@@ -1021,7 +934,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 5 })?
             .register_circuit(SquareCircuit { times: 10 })?
             .register_circuit(SquareCircuit { times: 11 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         let w = Fp::random(&mut ragu_arithmetic::rand::rng());
         let x = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -1065,7 +978,7 @@ mod tests {
         let registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 5 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         let omega = registry.domain.omega();
 
@@ -1089,7 +1002,7 @@ mod tests {
         for i in 1..=5 {
             builder = builder.register_circuit(SquareCircuit { times: i })?;
         }
-        let registry = builder.finalize(Tag::insecure_test_value())?;
+        let registry = builder.finalize()?;
         assert_eq!(registry.domain.n(), 8);
 
         let x = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -1110,7 +1023,7 @@ mod tests {
         // Checks that a single circuit can be finalized without bit-shift overflows.
         let _registry = TestRegistryBuilder::new()
             .register_circuit(SquareCircuit { times: 1 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         Ok(())
     }
@@ -1148,7 +1061,7 @@ mod tests {
                 builder = builder.register_circuit(SquareCircuit { times: i })?;
             }
 
-            let registry = builder.finalize(Tag::insecure_test_value())?;
+            let registry = builder.finalize()?;
 
             // Verify domain size is next power of 2
             let expected_domain_size = num_circuits.next_power_of_two();
@@ -1173,7 +1086,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 5 })?
             .register_circuit(SquareCircuit { times: 10 })?
             .register_circuit(SquareCircuit { times: 11 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         // All registered circuit indices should be in the domain
         for i in 0..4 {
@@ -1214,7 +1127,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 1 })?
             .register_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 3 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         assert_eq!(registry.num_circuits(), 3);
 
@@ -1291,7 +1204,7 @@ mod tests {
         );
 
         // Finalize the registry
-        let registry = builder.finalize(Tag::insecure_test_value())?;
+        let registry = builder.finalize()?;
         assert_eq!(registry.num_circuits(), 4);
 
         Ok(())
@@ -1305,7 +1218,7 @@ mod tests {
             .register_internal_circuit(SquareCircuit { times: 2 })?
             .register_circuit(SquareCircuit { times: 3 })?
             .register_circuit(SquareCircuit { times: 4 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         assert_eq!(registry.num_circuits(), 4);
 
@@ -1315,7 +1228,7 @@ mod tests {
             .register_internal_circuit(SquareCircuit { times: 1 })?
             .register_circuit(SquareCircuit { times: 4 })?
             .register_internal_circuit(SquareCircuit { times: 2 })?
-            .finalize(Tag::insecure_test_value())?;
+            .finalize()?;
 
         assert_eq!(registry2.num_circuits(), 4);
 
@@ -1336,7 +1249,7 @@ mod tests {
         // num_circuits counts all categories
         assert_eq!(builder.num_circuits(), 5);
 
-        let registry = builder.finalize(Tag::insecure_test_value())?;
+        let registry = builder.finalize()?;
         assert_eq!(registry.num_circuits(), 5);
 
         // Verify evaluation consistency

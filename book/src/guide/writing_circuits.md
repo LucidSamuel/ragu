@@ -232,11 +232,9 @@ let pasta = Pasta::baked();
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
     .register(CreateLeaf { poseidon_params: Pasta::circuit_poseidon(pasta) })?
     .register(CombineNodes { poseidon_params: Pasta::circuit_poseidon(pasta) })?
-    .finalize(pasta, tags)?;
+    .finalize(pasta)?;
 ```
 
-`tags` are the application's registry tags, which must be drawn after this
-exact set of steps is fixed; see [Registry Tags](configuration.md#registry-tags).
 For details on parameter selection (`Pasta`, `R<13>`, `4`), see
 [Configuration](configuration.md).
 

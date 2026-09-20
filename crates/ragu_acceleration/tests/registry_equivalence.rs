@@ -9,7 +9,7 @@ use ragu_arithmetic::{
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     polynomials::{TestRank, sparse::Polynomial},
-    registry::{CircuitIndex, RegistryBuilder, Tag},
+    registry::{CircuitIndex, RegistryBuilder},
 };
 use ragu_pasta::Pasta;
 use ragu_testing::{
@@ -102,7 +102,7 @@ where
     for times in circuit_times {
         builder = builder.register_circuit(SquareCircuit { times }).unwrap();
     }
-    let registry = builder.finalize(Tag::insecure_test_value()).unwrap();
+    let registry = builder.finalize().unwrap();
     let registry_at = registry.at(w);
     let circuit = CircuitIndex::new(circuit_index);
 

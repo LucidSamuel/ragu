@@ -24,7 +24,7 @@ use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::Result;
 use ragu_pasta::Pasta;
 use ragu_pcd::{
-    Application, ApplicationBuilder, RegistryTags, Proof,
+    Application, ApplicationBuilder, Proof,
     fuzzing::corrupt::{
         Binding, BridgeCommitment, Challenge, Corruption, NativeRx, NestedRx, RxComponent, Side,
     },
@@ -105,7 +105,7 @@ pub fn nontrivial_app(steps: usize) -> SyncApp {
     }
     SyncApp(
         builder
-            .finalize(Pasta::baked(), RegistryTags::insecure_test_values())
+            .finalize(Pasta::baked())
             .expect("the nontrivial application must build"),
     )
 }

@@ -74,7 +74,7 @@ use pasta_curves::Fp;
 use ragu_circuits::{
     CircuitExt, Trace,
     polynomials::{Rank, TestRank, sparse},
-    registry::{CircuitIndex, Registry, RegistryBuilder, Tag},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, Op, OpSet, Overrides, Preamble, Program, ProgramCircuit, shadow_eval,
@@ -205,7 +205,7 @@ fuzz_target!(|input: Input| {
     };
     let registry = match RegistryBuilder::<Fp, TestRank>::new()
         .register_circuit(circuit)
-        .and_then(|b| b.finalize(Tag::insecure_test_value()))
+        .and_then(|b| b.finalize())
     {
         Ok(r) => r,
         Err(_) => return, // Rank overflow: program too large for TestRank.

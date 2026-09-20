@@ -21,8 +21,7 @@
 //! category, not by call order. Registering the same multiset in two
 //! different interleavings that preserve each category's internal sequence
 //! must produce byte-identical registries; the target checks that via
-//! `Registry::evaluation_digest` (the tag is supplied, so it cannot tell
-//! them apart).
+//! `Registry::tag`.
 //!
 //! ## Path agreement on the registry polynomial
 //!
@@ -62,7 +61,7 @@
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use ragu_circuits::polynomials::Rank;
-use ragu_circuits::registry::{CircuitIndex, RegistryBuilder, Tag};
+use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
 use ragu_testing_fuzz::params::{Fp, RankChoice, TestRank};
 use ragu_testing_fuzz::substrate::{
     Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval, steer,
@@ -242,12 +241,9 @@ fn run<R: Rank>(input: &Input) {
     }
     if let Some(permuted) = build_borrowed::<R>(&reordered, &reordered_programs, &reordered_anchors)
     {
-        // Both registries carry the same supplied tag, so the tag cannot tell
-        // them apart; compare the registry polynomials through the regression
-        // digest instead.
         assert_eq!(
-            registry.evaluation_digest(),
-            permuted.evaluation_digest(),
+            registry.tag(),
+            permuted.tag(),
             "registration order changed the registry: `finalize` is documented to \
              concatenate by category (internal, bonding, internal steps, application), \
              and `InternalCircuitIndex::ALL` in ragu_pcd derives indices from that order",
@@ -370,7 +366,7 @@ fn build_borrowed<'a, R: Rank>(
             Category::Bonding => builder.register_bonding(bonding_mask::<R>()?),
         };
     }
-    builder.finalize(Tag::insecure_test_value()).ok()
+    builder.finalize().ok()
 }
 
 /// A bonding object to occupy `RegistryBuilder`'s bonding bucket.
@@ -419,7 +415,7 @@ fn fill<'a, R: Rank>(
             .register_circuit(ProgramCircuit { program, anchors })
             .ok()?;
     }
-    builder.finalize(Tag::insecure_test_value()).ok()
+    builder.finalize().ok()
 }
 
 /// A minimal two-wire stage, used only to mint a bonding object.

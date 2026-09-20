@@ -10,26 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added iteration over the stored coefficients of sparse polynomials.
-- Added `Tag::from_beacon`, which derives a registry tag from a public
-  randomness beacon output, and `Tag::insecure_test_value` for tests.
-- Added `Registry::evaluation_digest` under the `test-utils` feature: a
-  non-binding regression digest of the registry polynomial.
+- Added `Tag::from_beacon` and `RegistryBuilder::with_tag` for caller-supplied
+  tags chosen after the circuits are fixed. Finalization requires a tag;
+  `insecure-test-registry-tag` enables a fixed fallback for tests only.
 
 ### Changed
 
+- Temporarily replaced evaluation-based registry tags with caller-supplied tags.
+
 - Renamed `registry::Key` to `registry::Tag` and `Registry::digest()` to
   `Registry::tag()`.
-- `RegistryBuilder::finalize` now takes the registry `Tag` instead of deriving
-  it from the registry polynomial. The registry tag (κ) must be sampled
-  independently and without bias after the complete pre-keyed system
-  description has been fixed and publicly committed, then permanently bound
-  to that description; see the `Tag` documentation.
-
-### Removed
-
-- Removed the derivation of the registry tag from evaluations of the registry
-  polynomial, which did not bind the polynomial. Its hash now serves only as
-  `Registry::evaluation_digest`.
 
 ## [0.0.0] - 2025-07-29
 

@@ -203,15 +203,16 @@ use ragu_pcd::{ApplicationBuilder, RegistryTags};
 // Initialize Pasta curves
 let pasta = Pasta::baked();
 
-// The output of a public randomness beacon, drawn after the code was
-// committed; see "Registry Tags" below.
-let tags = RegistryTags::<Pasta>::from_beacon(&beacon_output);
+// The beacon output and committed code hash, both decoded to raw bytes.
+// The beacon is drawn after the code was committed; see "Registry Tags" below.
+let tags = RegistryTags::<Pasta>::from_beacon(&beacon_output, &code_hash);
 
 // Build application with production parameters
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
     .register(step1)?
     .register(step2)?
-    .finalize(pasta, tags)?;
+    .with_registry_tags(tags)
+    .finalize(pasta)?;
 ```
 
 **Why these parameters?**
@@ -222,10 +223,22 @@ let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
 
 ## Registry Tags
 
-`finalize` takes the application's registry tags: one field element per
-registry, injected into every circuit's wiring polynomial. They exist so that
-whoever controls the circuit definitions cannot adapt them to Fiat-Shamir
-challenges that have already been derived.
+`with_registry_tags` supplies the application's registry tags: one field element
+per registry, injected into every circuit's wiring polynomial. They exist so
+that whoever controls the circuit definitions cannot adapt them to
+Fiat-Shamir challenges that have already been derived.
+
+`finalize` requires these tags and returns an initialization error if they
+are missing. The evaluation-based derivation is temporarily removed; see
+[#78](https://github.com/tachyon-zcash/ragu/issues/78).
+
+For tests, benchmarks, and fuzzing, `ragu_circuits` provides the explicitly
+named `insecure-test-registry-tag` feature. It uses a fixed test key when
+no tag is supplied. `ragu_testing` enables this feature for the repository's
+test fixtures, so existing test callers can keep using `finalize` directly.
+**Production consumers must supply their own tags and must not enable this
+feature or depend on `ragu_testing`.** Cargo features are additive, including
+features enabled by dependencies and `--all-features`.
 
 The registry tag ($\kappa$) must be sampled independently and without bias
 after the complete pre-keyed system description has been fixed and publicly
@@ -233,14 +246,16 @@ committed, then permanently bound to that description. Here the description
 is every registered step plus Ragu's internal circuits; changing any of them
 produces a new description, which needs new tags.
 
-`RegistryTags::from_beacon` derives both tags from the output of a public
-randomness beacon, such as a block hash published after the code was
-committed. `RegistryTags::insecure_test_values` provides fixed tags for tests;
-a production build must never use it.
+`RegistryTags::from_beacon` derives both tags from a public randomness beacon
+output and the committed code hash. Both inputs are raw bytes, not their hex
+encodings. Each registry's label, the code hash, and the beacon output are
+length-prefixed and hashed together, so changing the code hash changes both
+tags even when the beacon output is the same.
 
-Nothing in Ragu can verify that a tag was drawn correctly. Publish the
-procedure alongside the pinned value so that third parties can check it. The
-`Tag` documentation in `ragu_circuits` states the requirement in full.
+Nothing in Ragu can verify that a tag was drawn correctly or that the supplied
+code hash matches the registered circuits. Publish the procedure alongside the
+pinned inputs so that third parties can check it. The `Tag::from_beacon`
+documentation in `ragu_circuits` states the requirement in full.
 
 ### Ceremony
 
@@ -251,8 +266,10 @@ is what the "publicly committed" clause needs: proof that the code existed
 before the beacon output did.
 
 1. **Freeze the code.** Land every circuit change, including all application
-   steps, and note the commit hash `X`. Any change to a registered circuit
-   after this point restarts the ceremony.
+   steps, and pin the dependencies and configuration that determine the
+   registries. Note the commit hash `X` covering that description. Fix the
+   beacon selection rule and tag derivation at this point too. Any change to
+   a registered circuit after this point restarts the ceremony.
 2. **Commit to it publicly.** Timestamp `X`:
    `printf '%s\n' X > commit.txt && ots stamp commit.txt`, and keep
    `commit.txt.ots`. Once a calendar's transaction confirms,
@@ -263,12 +280,13 @@ before the beacon output did.
    repository host.
 3. **Draw the beacon output.** Wait for block `N + 100`, far past any
    reorganization, and record its hash `B` from more than one source.
-4. **Derive the tags.** `cargo run -p ragu_pcd --example registry_tags -- B`
-   prints the native and nested tags; in code this is
-   `RegistryTags::<Pasta>::from_beacon(&B)`.
+4. **Derive the tags.**
+   `cargo run -p ragu_pcd --example registry_tags -- B X` prints the native
+   and nested tags. The example decodes both hex strings to raw bytes; in
+   code this is `RegistryTags::<Pasta>::from_beacon(&B, &X)`.
 5. **Pin and publish.** Ship `B`, `X`, `N` and `commit.txt.ots` together with
-   the application, and derive the tags from `B` in code rather than pasting
-   the field elements, so the derivation stays reproducible.
+   the application, and derive the tags from `B` and `X` in code so the
+   derivation stays reproducible.
 
 To check a published ceremony: verify the attestation (`ots verify` against a
 Bitcoin node, or `ots info` for the height), confirm block `N + 100`'s hash is
@@ -316,12 +334,13 @@ You can build different applications with different parameters:
 // Small, fast application for testing
 let test_app = ApplicationBuilder::<Pasta, TestRank, 1>::new()
     .register(small_step)?
-    .finalize(pasta, RegistryTags::insecure_test_values())?;
+    .finalize(pasta)?;
 
 // Production application, with tags drawn for exactly this set of steps
 let prod_app = ApplicationBuilder::<Pasta, ProductionRank, 8>::new()
     .register(complex_step)?
-    .finalize(pasta, prod_tags)?;
+    .with_registry_tags(prod_tags)
+    .finalize(pasta)?;
 ```
 
 Proofs from different configurations are **not compatible** - they're

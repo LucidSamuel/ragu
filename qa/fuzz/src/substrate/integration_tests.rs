@@ -19,7 +19,7 @@ use proptest::prelude::*;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, TestRank, sparse},
-    registry::{CircuitIndex, Registry, RegistryBuilder, Tag},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_pasta::Fp;
 use ragu_primitives::{Simulator, allocator::Standard};
@@ -67,7 +67,7 @@ proptest! {
         };
         let Ok(registry) = RegistryBuilder::<Fp, TestRank>::new()
             .register_circuit(circuit)
-            .and_then(|b| b.finalize(Tag::insecure_test_value()))
+            .and_then(|b| b.finalize())
         else {
             // Rank overflow: the program needs more gates than TestRank has.
             return Ok(());

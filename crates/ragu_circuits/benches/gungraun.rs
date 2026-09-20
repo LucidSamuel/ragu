@@ -9,7 +9,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     Circuit, CircuitExt,
     polynomials::{ProductionRank, TestRank, sparse},
-    registry::{Registry, RegistryBuilder, Tag},
+    registry::{Registry, RegistryBuilder},
     testing::synthesis_counts,
 };
 use ragu_pasta::{Fp, Pasta};
@@ -117,7 +117,7 @@ fn register() {
 #[library_benchmark]
 #[bench::finalize(builder_squares())]
 fn finalize(builder: RegistryBuilder<Fp, ProductionRank>) {
-    black_box(builder.finalize(Tag::insecure_test_value())).unwrap();
+    black_box(builder.finalize()).unwrap();
 }
 
 #[library_benchmark(setup = setup_with_rng)]

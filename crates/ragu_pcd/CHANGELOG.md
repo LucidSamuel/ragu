@@ -18,18 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifying with the reference kernels.
 - Added an opt-in `native-msm` feature for applications that select the
   accelerated backend.
-- Added `RegistryTags`, the native and nested registry tags of an application,
-  with `RegistryTags::from_beacon` to derive both from a public randomness
-  beacon output and `RegistryTags::insecure_test_values` for tests.
+- Added `RegistryTags::from_beacon` and `ApplicationBuilder::with_registry_tags`
+  to supply both registry tags before finalization. Production callers must
+  choose the values after fixing and publicly committing the complete application.
 
 ### Changed
 
-- `ApplicationBuilder::finalize` now takes the application's `RegistryTags`
-  instead of deriving the registry tags from the registry polynomials. The
-  registry tag (κ) must be sampled independently and without bias after the
-  complete pre-keyed system description has been fixed and publicly
-  committed, then permanently bound to that description; the description
-  includes every registered step. See `ragu_circuits::registry::Tag`.
 - Replaced the placeholder PCD transcript tag with `ragu-pcd-v1`. Proofs produced
   with the previous `FIXME` tag are incompatible with this protocol version.
 - The `std` feature now enables the required `alloc` feature.

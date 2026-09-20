@@ -12,7 +12,7 @@ use ragu_arithmetic::ff::{FromUniformBytes, PrimeField};
 use ragu_circuits::{
     BondingObject, Circuit, Trace,
     polynomials::{Rank, sparse},
-    registry::{CircuitIndex, Registry, RegistryBuilder, Tag},
+    registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_core::Result;
 
@@ -85,15 +85,12 @@ impl<'p, F: FromUniformBytes<64>, R: Rank> TestRegistryBuilder<'p, F, R> {
     }
 
     /// Finalizes the builder into a [`TestRegistry`].
-    ///
-    /// The registry is bound to [`Tag::insecure_test_value`], which is fine
-    /// for tests and never for production; see [`Tag`].
     pub fn finalize(self) -> Result<TestRegistry<'p, F, R>> {
         Ok(TestRegistry {
             inner: self
                 .inner
                 .expect("builder poisoned by a prior failed registration")
-                .finalize(Tag::insecure_test_value())?,
+                .finalize()?,
         })
     }
 }

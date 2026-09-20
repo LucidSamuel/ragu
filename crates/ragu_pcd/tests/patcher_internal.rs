@@ -52,7 +52,7 @@ use ragu_circuits::{Circuit, polynomials::ProductionRank};
 use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
-    ApplicationBuilder, RegistryTags,
+    ApplicationBuilder,
     fuzzing::patcher::{
         CircuitSpec, InternalCircuitVisitor, OutputRef, capture_internal_circuits,
         capture_internal_circuits_bootstrap,
@@ -313,10 +313,8 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
 /// wires, instance wires, outputs or hints, or that changes how many single
 /// wire nudges the constraints neutralize, is noticed here. The sweep
 /// tallies and `cheatable` are judged at the witness, so they are pinned per
-/// capture point; the rest is structural. The endoscaling steps' tallies
-/// follow the endoscalar bit patterns, which the transcript derives from
-/// values that depend on the registry tags, so they move whenever
-/// `RegistryTags::insecure_test_values` changes.
+/// capture point; the rest is structural. The endoscaling tallies depend on
+/// transcript-derived bit patterns, so they also depend on the fixed test tag.
 fn expected(name: &str, point: &str) -> Census {
     let (stage_wires, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name {
         "hashes_1" => (456, 5561, 38, 8, 0, 8, 238),
@@ -373,7 +371,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         .register(leaf_step())?
         .register(hash2())?
         .register(merge2())?
-        .finalize(pasta, RegistryTags::insecure_test_values())?;
+        .finalize(pasta)?;
     let mut rng = StdRng::seed_from_u64(1234);
 
     // The base case: the internal bootstrap step over two dummy children.

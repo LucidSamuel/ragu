@@ -7,7 +7,7 @@ use ragu_core::{
 };
 use ragu_pasta::Pasta;
 use ragu_pcd::{
-    ApplicationBuilder, RegistryTags,
+    ApplicationBuilder,
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
@@ -166,9 +166,7 @@ fn register_steps_success_and_finalize() {
         .unwrap()
         .register(Step1)
         .unwrap();
-    builder
-        .finalize(pasta, RegistryTags::insecure_test_values())
-        .unwrap();
+    builder.finalize(pasta).unwrap();
 }
 
 #[test]

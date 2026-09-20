@@ -217,57 +217,50 @@ fn print_internal_stage_parameters() {
     print_stage!(Eval);
 }
 
-/// Verifies the native registry's regression digest matches the expected value.
-///
-/// The digest hashes evaluations of the registry polynomial, so it changes
-/// whenever a registered circuit, the registration order, or the tag changes.
-/// This pins the wiring polynomial structure against unintended changes; it is
-/// not a security check (see `Tag`).
+/// Verifies the native registry uses the fixed tag enabled by the testing feature.
 #[test]
-fn test_native_registry_digest() {
+fn test_native_registry_tag() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta, RegistryTags::insecure_test_values())
+        .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x1d4f892397545821419d53e6c306f9686e15434d5a7fae9df70828fa1a538afa);
+    let expected = fp!(0x247e382a1523800d0fc7bccd9b0e1e57eecd7a9758c4b7537f4ed76f5f54fe43);
 
     assert_eq!(
-        app.native_registry.evaluation_digest(),
+        app.native_registry.tag(),
         expected,
-        "Native registry digest changed unexpectedly!"
+        "Native registry tag changed unexpectedly!"
     );
 }
 
-/// Verifies the nested registry's regression digest matches the expected value.
-///
-/// See [`test_native_registry_digest`] for what this does and does not check.
+/// Verifies the nested registry uses the fixed tag enabled by the testing feature.
 #[test]
-fn test_nested_registry_digest() {
+fn test_nested_registry_tag() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta, RegistryTags::insecure_test_values())
+        .finalize(pasta)
         .unwrap();
 
-    let expected = fq!(0x0929102222c317ff68e4bcf4f7f26f27f2561b2822e917abe483c7abacadced4);
+    let expected = fq!(0x009ad8ef87fe4e7dc6e51df8807db0f783f39978e29787ab3e00a28c15d2bdbd);
 
     assert_eq!(
-        app.nested_registry.evaluation_digest(),
+        app.nested_registry.tag(),
         expected,
-        "Nested registry digest changed unexpectedly!"
+        "Nested registry tag changed unexpectedly!"
     );
 }
 
-/// Helper test to print current registry digests in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release print_registry_digests -- --nocapture`
+/// Helper test to print current registry tags in copy-pasteable format.
+/// Run with: `cargo test -p ragu_pcd --release print_registry_tags -- --nocapture`
 #[test]
-fn print_registry_digests() {
+fn print_registry_tags() {
     use alloc::{format, string::String, vec::Vec};
     use std::println;
 
@@ -278,21 +271,21 @@ fn print_registry_digests() {
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta, RegistryTags::insecure_test_values())
+        .finalize(pasta)
         .unwrap();
 
-    let native_digest = app.native_registry.evaluation_digest();
-    let nested_digest = app.nested_registry.evaluation_digest();
+    let native_tag = app.native_registry.tag();
+    let nested_tag = app.nested_registry.tag();
 
     // Convert to big-endian hex for repr256! format
-    let native_bytes: Vec<u8> = native_digest
+    let native_bytes: Vec<u8> = native_tag
         .to_repr()
         .as_ref()
         .iter()
         .rev()
         .cloned()
         .collect();
-    let nested_bytes: Vec<u8> = nested_digest
+    let nested_bytes: Vec<u8> = nested_tag
         .to_repr()
         .as_ref()
         .iter()
@@ -300,7 +293,7 @@ fn print_registry_digests() {
         .cloned()
         .collect();
 
-    println!("\n// Copy-paste the following into the registry digest tests:");
+    println!("\n// Copy-paste the following into the registry tag tests:");
     println!(
         "    let expected = fp!(0x{});",
         native_bytes

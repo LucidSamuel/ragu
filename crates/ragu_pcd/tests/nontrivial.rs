@@ -2,7 +2,7 @@ use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::{ApplicationBuilder, RegistryTags};
+use ragu_pcd::ApplicationBuilder;
 use ragu_testing::pcd::nontrivial::{Hash2, WitnessLeaf};
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -16,7 +16,7 @@ fn various_merging_operations() -> Result<()> {
         .register(Hash2 {
             poseidon_params: Pasta::circuit_poseidon(pasta),
         })?
-        .finalize(pasta, RegistryTags::insecure_test_values())?;
+        .finalize(pasta)?;
 
     let mut rng = StdRng::seed_from_u64(1234);
 

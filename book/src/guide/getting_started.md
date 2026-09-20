@@ -20,7 +20,7 @@ Add Ragu to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ragu_circuits = "0.1"
+ragu_circuits = { version = "0.1", features = ["insecure-test-registry-tag"] }
 ragu_core = "0.1"
 ragu_pasta = { version = "0.1", features = ["baked"] }
 ragu_pcd = "0.1"
@@ -29,6 +29,10 @@ ragu_arithmetic = "0.1"
 ff = "0.14"
 rand = "0.10"
 ```
+
+This example uses a fixed registry tag for testing. **Do not enable
+`insecure-test-registry-tag` in production.** Production applications must
+[supply tags drawn after the circuits are fixed](configuration.md#registry-tags).
 
 ## Overview: Building a Merkle Tree with Proofs
 
@@ -254,7 +258,7 @@ The application is configured and built as follows:
 ```rust
 use ragu_circuits::polynomials::R;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::{ApplicationBuilder, RegistryTags};
+use ragu_pcd::ApplicationBuilder;
 use rand::{SeedableRng, rngs::StdRng};
 
 fn main() -> Result<()> {
@@ -262,11 +266,7 @@ fn main() -> Result<()> {
     let pasta = Pasta::baked();
     let mut rng = StdRng::seed_from_u64(12345);
 
-    // 2. Build application with our steps.
-    //
-    // The registry tags bind the application's circuits; see "Registry
-    // Tags" in Configuration. The fixed test values are fine while following
-    // along locally and must never ship in production.
+    // 2. Build application with our steps
     let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
         .register(CreateLeaf {
             poseidon_params: Pasta::circuit_poseidon(pasta),
@@ -274,7 +274,7 @@ fn main() -> Result<()> {
         .register(CombineNodes {
             poseidon_params: Pasta::circuit_poseidon(pasta),
         })?
-        .finalize(pasta, RegistryTags::insecure_test_values())?;
+        .finalize(pasta)?;
 
     println!("Application built successfully!");
 
