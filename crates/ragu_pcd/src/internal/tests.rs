@@ -217,6 +217,19 @@ fn print_internal_stage_parameters() {
     print_stage!(Eval);
 }
 
+#[test]
+fn supplied_tags_reach_both_registries() -> Result<()> {
+    let tags = RegistryTags::<Pasta>::from_beacon(&[0x42; 32], &[0x24; 20]);
+    let native = tags.native.value();
+    let nested = tags.nested.value();
+    let app = ApplicationBuilder::<Pasta, R, 4>::new()
+        .with_registry_tags(tags)
+        .finalize(Pasta::baked())?;
+    assert_eq!(app.native_registry.tag(), native);
+    assert_eq!(app.nested_registry.tag(), nested);
+    Ok(())
+}
+
 /// Verifies the native registry uses the fixed tag enabled by the testing feature.
 #[test]
 fn test_native_registry_tag() {

@@ -96,9 +96,11 @@ restricted in the number of constraints they emit to avoid overlapping this
 term. This so-called [registry constraint](../extensions/registry.md) is
 trivially satisfied for all values of $\color{#7e22ce}{\kappa}$, since $\v{c}_0
 = 0$ anyway. In practice, $\color{#7e22ce}{\kappa}$ is the public registry
-binding tag, computed deterministically from the registry polynomial prior to
-substitution. Its purpose is to make non-trivial evaluations of $s$
-unpredictable even to someone who chooses the circuits.
+binding tag. The temporary setup derives it from a public randomness beacon
+after the complete registry description has been fixed and publicly committed;
+see [Registry Tags](../../guide/configuration.md#registry-tags). Its purpose is
+to make non-trivial evaluations of $s$ unpredictable even to someone who chooses
+the circuits.
 
 [^conventionally]: There is nothing preventing the roles of $\v{a}_0$ and
     $\v{b}_0$ from being swapped, since neither wire is actually constrained in

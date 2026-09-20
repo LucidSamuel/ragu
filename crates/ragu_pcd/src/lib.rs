@@ -36,7 +36,6 @@ pub mod fuzzing;
 pub mod header;
 mod internal;
 mod proof;
-mod registry_tags;
 pub mod step;
 mod verify;
 
@@ -52,7 +51,7 @@ use ragu_arithmetic::{
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
-    registry::{Registry, RegistryBuilder},
+    registry::{Registry, RegistryBuilder, Tag},
 };
 use ragu_core::{Error, Result};
 use step::{Step, internal::adapter::Adapter};
@@ -68,7 +67,38 @@ use step::{Step, internal::adapter::Adapter};
 pub(crate) const RAGU_TAG: &[u8] = b"ragu-pcd-v1";
 
 pub use backend::SelectableBackend;
-pub use registry_tags::RegistryTags;
+
+/// The native and nested registry tags of an [`Application`].
+///
+/// API consumers must supply these through
+/// [`ApplicationBuilder::with_registry_tags`]. Both values must be chosen
+/// after the complete description, including every application step, was
+/// fixed and publicly committed; see [`Tag::from_beacon`]. Production
+/// consumers must not use a fixed test key.
+///
+/// To supply the final field elements from a completed ceremony, wrap each
+/// value with [`Tag::new`] and set [`Self::native`] and [`Self::nested`].
+/// [`Self::from_beacon`] is a convenience for deriving those values from the
+/// ceremony inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
+/// resulting tags directly; finalization does not hash them again.
+pub struct RegistryTags<C: Cycle> {
+    /// Tag for the native registry, over [`Cycle::CircuitField`].
+    pub native: Tag<C::CircuitField>,
+    /// Tag for the nested registry, over [`Cycle::ScalarField`].
+    pub nested: Tag<C::ScalarField>,
+}
+
+impl<C: Cycle> RegistryTags<C> {
+    /// Derives both tags from a public randomness beacon and the committed
+    /// code hash, with distinct labels for the two registries. Both inputs
+    /// are raw bytes, not hex strings. See [`Tag::from_beacon`].
+    pub fn from_beacon(beacon: &[u8], code_hash: &[u8]) -> Self {
+        Self {
+            native: Tag::from_beacon(beacon, code_hash, b"ragu_pcd native registry"),
+            nested: Tag::from_beacon(beacon, code_hash, b"ragu_pcd nested registry"),
+        }
+    }
+}
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<
@@ -105,6 +135,19 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             header_map: BTreeMap::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// Supplies the tags to use when [`Self::finalize`] builds both registries.
+    ///
+    /// The caller must choose the values after the complete application was
+    /// fixed and publicly committed, following the ceremony described by
+    /// [`Tag::from_beacon`]. This includes checking that the code hash
+    /// identifies all registered circuits. No ceremony or code-hash checks
+    /// are performed here. Production callers must not use a test key.
+    pub fn with_registry_tags(mut self, tags: RegistryTags<C>) -> Self {
+        self.native_registry = self.native_registry.with_tag(tags.native);
+        self.nested_registry = self.nested_registry.with_tag(tags.nested);
+        self
     }
 
     /// Selects a Ragu-owned computational backend.
