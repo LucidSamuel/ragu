@@ -6,9 +6,10 @@
 #   ./continue.sh <height>   beacon block = <height>, whatever the attestation
 #                            state (dry runs only; the record says so)
 #
-# Upgrades the OpenTimestamps proof, fetches the beacon block's hash from two
-# explorers, derives the tags, and writes attestation.txt, beacon.txt and
-# tags.txt. Safe to re-run; exits 1 while there is still something to wait for.
+# Upgrades and verifies the OpenTimestamps proof (requires Bitcoin Core for
+# verification), fetches the beacon block's hash from two explorers, and derives
+# the tags. Output records are replaced only after successful tag derivation.
+# Exits 1 while there is still something to wait for.
 set -euo pipefail
 cd "$(dirname "$0")"
 REPO="$(git rev-parse --show-toplevel)"
@@ -25,16 +26,27 @@ else
   OTS="$VENV/bin/ots"
 fi
 
-echo "== 1. upgrade the timestamp proof =="
+echo "== 1. upgrade and verify the timestamp proof =="
 "$OTS" upgrade commit.txt.ots || true
-INFO="$("$OTS" info commit.txt.ots)"
-N="$(printf '%s\n' "$INFO" | grep -o 'BitcoinBlockHeaderAttestation([0-9]*)' \
-     | grep -o '[0-9]*' | sort -n | head -1 || true)"
-if [ -n "$N" ]; then
-  echo "attested in block N=$N"
+N=""
+if VERIFIED="$("$OTS" verify commit.txt.ots 2>&1)"; then
+  printf '%s\n' "$VERIFIED"
+  # Use only the height ots verified against Bitcoin, not unverified metadata
+  # from `ots info`. ots verifies the file digest and the earliest valid proof.
+  N="$(printf '%s\n' "$VERIFIED" | sed -n \
+    's/^Success! Bitcoin block \([0-9][0-9]*\) attests existence as of .*$/\1/p')"
+  if [[ ! "$N" =~ ^[0-9]+$ ]]; then
+    echo "cannot identify a single verified Bitcoin attestation height." >&2
+    exit 1
+  fi
+  echo "verified attestation in block N=$N"
 else
-  pending="$(printf '%s\n' "$INFO" | grep -c PendingAttestation || true)"
-  echo "attestation pending: $pending calendar(s) not yet confirmed in Bitcoin."
+  printf '%s\n' "$VERIFIED" >&2
+  if [ $# -eq 0 ]; then
+    echo "cannot choose N+100 without a verified timestamp; ots verify requires Bitcoin Core." >&2
+    exit 1
+  fi
+  echo "dry run: the timestamp is unverified."
 fi
 
 echo "== 2. choose the beacon block =="
@@ -43,10 +55,6 @@ if [ $# -ge 1 ]; then
   RULE="given"
   echo "using block $BEACON_HEIGHT as given (dry run: not tied to the attestation)"
 else
-  if [ -z "$N" ]; then
-    echo "cannot choose N+100 without the attestation. Try again in a few hours."
-    exit 1
-  fi
   BEACON_HEIGHT=$((N + 100))
   RULE="N+100"
 fi
@@ -65,14 +73,22 @@ if [ "$B1" != "$B2" ]; then
   exit 1
 fi
 echo "B = hash of block $BEACON_HEIGHT = $B1"
-printf '%s\n' "$B1" > beacon.txt
+
+# Keep the existing records intact if derivation fails, including when cargo
+# emits partial output before returning an error. Stage on the same filesystem.
+CEREMONY_OUTPUT="$(mktemp -d .continue.XXXXXXXX)"
+trap 'rm -rf -- "$CEREMONY_OUTPUT"' EXIT
+printf '%s\n' "$B1" > "$CEREMONY_OUTPUT/beacon.txt"
 printf 'ATTESTATION_BLOCK=%s\nBEACON_RULE=%s\nBEACON_HEIGHT=%s\n' \
-  "${N:-pending}" "$RULE" "$BEACON_HEIGHT" > attestation.txt
+  "${N:-unverified}" "$RULE" "$BEACON_HEIGHT" > "$CEREMONY_OUTPUT/attestation.txt"
 
 echo "== 4. derive the tags =="
-(cd "$REPO" && cargo run -q -p ragu_pcd --example registry_tags -- "$B1" "$CODE_HASH") | tee tags.txt
+(cd "$REPO" && cargo run -q -p ragu_pcd --example registry_tags -- "$B1" "$CODE_HASH") \
+  > "$CEREMONY_OUTPUT/tags.txt"
+mv "$CEREMONY_OUTPUT/beacon.txt" "$CEREMONY_OUTPUT/attestation.txt" "$CEREMONY_OUTPUT/tags.txt" .
+cat tags.txt
 echo
 if [ -z "$N" ]; then
-  echo "Note: the attestation is still pending; re-run later to upgrade commit.txt.ots."
+  echo "Note: this dry run has no verified attestation; re-run later to upgrade and verify commit.txt.ots."
 fi
 echo "Publish commit.txt, commit.txt.ots, attestation.txt, beacon.txt and tags.txt together."

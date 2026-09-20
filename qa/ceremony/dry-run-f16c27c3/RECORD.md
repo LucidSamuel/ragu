@@ -40,7 +40,10 @@ they are not for deployment.
   `0000000000000000000038916afdcfcbc96ddbc3e2c11f7e5d566da548b755d8`
   (`beacon.txt`; the selection rule is recorded in `attestation.txt`).
 - A real ceremony uses block `N + 100`; running `./continue.sh` with no
-  argument after the attestation lands does exactly that.
+  argument after the attestation lands verifies it and uses that rule.
+  Verification requires a Bitcoin Core node configured for `ots`.
+  An explicit height still permits a dry run without a verified timestamp;
+  the script records that state as `ATTESTATION_BLOCK=unverified`.
 
 ## Step 4 — tags
 
@@ -58,7 +61,8 @@ This remains a dry run.
 ## Step 5 — publish
 
 This directory is the bundle: `commit.txt`, `commit.txt.ots`,
-`attestation.txt`, `beacon.txt`, `tags.txt`. To check it: `ots info
-commit.txt.ots` for the attestation (pending until upgraded), block 967791's
-hash on an explorer of your choosing against `beacon.txt`, and the example
-above against `tags.txt`.
+`attestation.txt`, `beacon.txt`, `tags.txt`. Inspect the pending proof with
+`ots info commit.txt.ots`; once upgraded, verify it with `ots verify
+commit.txt.ots` against a Bitcoin Core node. `ots info` does not verify the
+timestamp. Check block 967791's hash on an explorer of your choosing against
+`beacon.txt`, and the example above against `tags.txt`.

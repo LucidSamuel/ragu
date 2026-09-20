@@ -274,12 +274,14 @@ before the beacon output did.
    `printf '%s\n' X > commit.txt && ots stamp commit.txt`, and keep
    `commit.txt.ots`. Once a calendar's transaction confirms,
    `ots upgrade commit.txt.ots` turns the pending proof into a Bitcoin
-   attestation naming a block height `N` (take the earliest if several
-   calendars attest). Pushing the commit is not a substitute: only the
-   attestation proves the ordering to someone who does not trust the
-   repository host.
-3. **Draw the beacon output.** Wait for block `N + 100`, far past any
-   reorganization, and record its hash `B` from more than one source.
+   attestation. Run `ots verify commit.txt.ots` against a configured Bitcoin
+   Core node to check both the current `commit.txt` and its attestation. Use
+   the earliest **verified** block height `N` reported by that command.
+   `ots info` only displays proof metadata and does not verify it. Pushing
+   the commit is not a substitute: only the verified attestation proves the
+   ordering to someone who does not trust the repository host.
+3. **Draw the beacon output.** Wait for block `N + 100` and record its hash
+   `B` from more than one source.
 4. **Derive the tags.**
    `cargo run -p ragu_pcd --example registry_tags -- B X` prints the native
    and nested tags. The example decodes both hex strings to raw bytes; in
@@ -288,9 +290,10 @@ before the beacon output did.
    the application, and derive the tags from `B` and `X` in code so the
    derivation stays reproducible.
 
-To check a published ceremony: verify the attestation (`ots verify` against a
-Bitcoin node, or `ots info` for the height), confirm block `N + 100`'s hash is
-`B` on an independent explorer, and repeat step 4.
+To check a published ceremony: run `ots verify commit.txt.ots` against a
+Bitcoin Core node with the published `commit.txt` alongside the proof, use
+the verified height `N`, confirm block `N + 100`'s hash is `B` on an
+independent explorer, and repeat step 4.
 
 ## Parameter Selection Guide
 
