@@ -4,23 +4,9 @@ use blake2b_simd::Params;
 use ragu_arithmetic::ff::FromUniformBytes;
 use ragu_core::Result;
 
-use super::{RegistryBuilder, Tag};
-use crate::polynomials::Rank;
+use crate::registry::Tag;
 
-impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
-    /// Supplies the registry tag to use at finalization.
-    ///
-    /// The API consumer must choose the value after the complete registry
-    /// description was fixed and publicly committed. See [`Tag::from_beacon`]
-    /// for the full ceremony requirement. This crate cannot check the
-    /// ceremony or that the code hash identifies the registered circuits.
-    pub fn with_tag(mut self, tag: Tag<F>) -> Self {
-        self.tag = Some(tag);
-        self
-    }
-}
-
-pub(super) fn registry_tag<F: FromUniformBytes<64>>(tag: Option<Tag<F>>) -> Result<F> {
+pub(crate) fn registry_tag<F: FromUniformBytes<64>>(tag: Option<Tag<F>>) -> Result<F> {
     if let Some(tag) = tag {
         return Ok(tag.value());
     }
@@ -84,7 +70,7 @@ impl<F: FromUniformBytes<64>> Tag<F> {
             .update(&(beacon.len() as u64).to_le_bytes())
             .update(beacon)
             .finalize();
-        Self(F::from_uniform_bytes(digest.as_array()))
+        Self::new(F::from_uniform_bytes(digest.as_array()))
     }
 }
 
@@ -145,7 +131,7 @@ mod tests {
     fn beacon_tag_sets_the_registry_term() -> Result<()> {
         let tag = Tag::<Fp>::from_beacon(b"beacon", b"code hash", b"label");
         let value = tag.value();
-        let mut registry = RegistryBuilder::<Fp, TestRank>::new()
+        let registry = RegistryBuilder::<Fp, TestRank>::new()
             .with_tag(tag)
             .register_circuit(())?
             .finalize()?;
@@ -155,9 +141,12 @@ mod tests {
         let x = Fp::from(2);
         let y = Fp::from(3);
         let tagged = registry.wxy(w, x, y);
-        registry.tag = Tag::new(Fp::ZERO);
+        let untagged = RegistryBuilder::<Fp, TestRank>::new()
+            .with_tag(Tag::new(Fp::ZERO))
+            .register_circuit(())?
+            .finalize()?;
         assert_eq!(
-            tagged - registry.wxy(w, x, y),
+            tagged - untagged.wxy(w, x, y),
             value * (x * y).pow_vartime([(4 * TestRank::n() - 1) as u64]),
         );
         Ok(())

@@ -53,8 +53,6 @@
 //!
 //! [registry chapter]: https://tachyon.z.cash/ragu/protocol/extensions/registry.html
 
-mod beacon;
-
 use alloc::{boxed::Box, vec::Vec};
 
 use ragu_arithmetic::{
@@ -147,6 +145,17 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             application_steps: Vec::new(),
             tag: None,
         }
+    }
+
+    /// Supplies the registry tag to use at finalization.
+    ///
+    /// The API consumer must choose the value after the complete registry
+    /// description was fixed and publicly committed. See [`Tag::from_beacon`]
+    /// for the full ceremony requirement. This crate cannot check the
+    /// ceremony or that the code hash identifies the registered circuits.
+    pub fn with_tag(mut self, tag: Tag<F>) -> Self {
+        self.tag = Some(tag);
+        self
     }
 
     /// Returns the number of internal circuits (circuits + bonding).
@@ -790,7 +799,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
 impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
     /// Use the caller's beacon tag through the temporary replacement.
     fn compute_registry_tag(&self, tag: Option<Tag<F>>) -> Result<F> {
-        beacon::registry_tag(tag)
+        crate::beacon::registry_tag(tag)
     }
 }
 
