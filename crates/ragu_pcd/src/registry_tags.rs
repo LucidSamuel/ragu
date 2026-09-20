@@ -12,6 +12,12 @@ use crate::{ApplicationBuilder, SelectableBackend};
 /// after the complete description, including every application step, was
 /// fixed and publicly committed; see [`Tag::from_beacon`]. Production
 /// consumers must not use a fixed test key.
+///
+/// To supply the final field elements from a completed ceremony, wrap each
+/// value with [`Tag::new`] and set [`Self::native`] and [`Self::nested`].
+/// [`Self::from_beacon`] is a convenience for deriving those values from the
+/// ceremony inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
+/// resulting tags directly; finalization does not hash them again.
 pub struct RegistryTags<C: Cycle> {
     /// Tag for the native registry, over [`Cycle::CircuitField`].
     pub native: Tag<C::CircuitField>,

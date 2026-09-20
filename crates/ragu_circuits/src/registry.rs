@@ -291,10 +291,12 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
 ///
 /// **Temporary beacon replacement:** finalization currently requires a
-/// caller-supplied tag. Use [`Tag::from_beacon`] after fixing and publicly
-/// committing the complete registry description, then supply it with
-/// [`RegistryBuilder::with_tag`]. Production consumers must not use the
-/// fixed tag provided by the `insecure-test-registry-tag` feature.
+/// caller-supplied tag. Wrap a final field element from a completed ceremony
+/// with [`Tag::new`], or derive it from the ceremony inputs with
+/// [`Tag::from_beacon`], then supply it with [`RegistryBuilder::with_tag`].
+/// The complete registry description must have been fixed and publicly
+/// committed before the beacon output was known. Production consumers must
+/// not use the fixed tag provided by the `insecure-test-registry-tag` feature.
 ///
 /// In Fiat-Shamir transformed protocols, common inputs such as the proving
 /// statement (i.e., circuit descriptions) must be included in the transcript
@@ -349,6 +351,9 @@ impl<F: Field> Default for Tag<F> {
 
 impl<F: Field> Tag<F> {
     /// Creates a new registry tag from a field element.
+    ///
+    /// This wraps an already-derived value without hashing it. The caller
+    /// must satisfy the [sampling requirement](Tag#sampling-requirement).
     pub fn new(val: F) -> Self {
         Self(val)
     }

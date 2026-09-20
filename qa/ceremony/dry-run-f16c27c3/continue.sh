@@ -83,7 +83,7 @@ printf 'ATTESTATION_BLOCK=%s\nBEACON_RULE=%s\nBEACON_HEIGHT=%s\n' \
   "${N:-unverified}" "$RULE" "$BEACON_HEIGHT" > "$CEREMONY_OUTPUT/attestation.txt"
 
 echo "== 4. derive the tags =="
-(cd "$REPO" && cargo run -q -p ragu_pcd --example registry_tags -- "$B1" "$CODE_HASH") \
+(cd "$REPO" && cargo run -q -p ragu_ceremony --bin registry_tags -- "$B1" "$CODE_HASH") \
   > "$CEREMONY_OUTPUT/tags.txt"
 mv "$CEREMONY_OUTPUT/beacon.txt" "$CEREMONY_OUTPUT/attestation.txt" "$CEREMONY_OUTPUT/tags.txt" .
 cat tags.txt

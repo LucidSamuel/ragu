@@ -52,7 +52,7 @@ derivation. This checks the updated tooling against the recorded inputs; the
 timestamp does not attest that this derivation was fixed before the beacon.
 This remains a dry run.
 
-`cargo run -p ragu_pcd --example registry_tags -- B X` (`tags.txt`), where
+`cargo run -p ragu_ceremony --bin registry_tags -- B X` (`tags.txt`), where
 `X` is the commit hash in `commit.txt`. Both inputs are decoded from hex:
 
 - native (Fp): `0x2193df436e54d78eda23f6a6062a8c48f0077455afc7e18e83d90c762b56e84d`
@@ -65,4 +65,4 @@ This directory is the bundle: `commit.txt`, `commit.txt.ots`,
 `ots info commit.txt.ots`; once upgraded, verify it with `ots verify
 commit.txt.ots` against a Bitcoin Core node. `ots info` does not verify the
 timestamp. Check block 967791's hash on an explorer of your choosing against
-`beacon.txt`, and the example above against `tags.txt`.
+`beacon.txt`, and the command above against `tags.txt`.

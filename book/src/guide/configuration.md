@@ -196,16 +196,18 @@ The type system will catch mismatches at compile time.
 Here's a production-ready configuration:
 
 ```rust
-use ragu_circuits::polynomials::R;
+use ragu_circuits::{polynomials::R, registry::Tag};
 use ragu_pasta::Pasta;
 use ragu_pcd::{ApplicationBuilder, RegistryTags};
 
 // Initialize Pasta curves
 let pasta = Pasta::baked();
 
-// The beacon output and committed code hash, both decoded to raw bytes.
-// The beacon is drawn after the code was committed; see "Registry Tags" below.
-let tags = RegistryTags::<Pasta>::from_beacon(&beacon_output, &code_hash);
+// Pin the final field elements from the completed ceremony below.
+let tags = RegistryTags::<Pasta> {
+    native: Tag::new(native_kappa), // Fp
+    nested: Tag::new(nested_kappa), // Fq
+};
 
 // Build application with production parameters
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
@@ -228,6 +230,11 @@ per registry, injected into every circuit's wiring polynomial. They exist so
 that whoever controls the circuit definitions cannot adapt them to
 Fiat-Shamir challenges that have already been derived.
 
+Production callers can supply the final $\kappa$ values directly, as above.
+The native and nested tags use distinct registry labels and fields, so both
+values are needed, passed together as one `RegistryTags` argument. The builder
+stores them and `finalize` installs them without hashing them again.
+
 `finalize` requires these tags and returns an initialization error if they
 are missing. The evaluation-based derivation is temporarily removed; see
 [#78](https://github.com/tachyon-zcash/ragu/issues/78).
@@ -246,11 +253,12 @@ committed, then permanently bound to that description. Here the description
 is every registered step plus Ragu's internal circuits; changing any of them
 produces a new description, which needs new tags.
 
-`RegistryTags::from_beacon` derives both tags from a public randomness beacon
-output and the committed code hash. Both inputs are raw bytes, not their hex
-encodings. Each registry's label, the code hash, and the beacon output are
-length-prefixed and hashed together, so changing the code hash changes both
-tags even when the beacon output is the same.
+The ceremony tool uses `RegistryTags::from_beacon` to derive both tags from a
+public randomness beacon output and the committed code hash. Applications can
+also use this helper when deriving tags from the published inputs. Both inputs
+are raw bytes, not their hex encodings. Each registry's label, the code hash,
+and the beacon output are length-prefixed and hashed together, so changing the
+code hash changes both tags even when the beacon output is the same.
 
 Nothing in Ragu can verify that a tag was drawn correctly or that the supplied
 code hash matches the registered circuits. Publish the procedure alongside the
@@ -283,12 +291,13 @@ before the beacon output did.
 3. **Draw the beacon output.** Wait for block `N + 100` and record its hash
    `B` from more than one source.
 4. **Derive the tags.**
-   `cargo run -p ragu_pcd --example registry_tags -- B X` prints the native
-   and nested tags. The example decodes both hex strings to raw bytes; in
+   `cargo run -p ragu_ceremony --bin registry_tags -- B X` prints the native
+   and nested tags. The tool decodes both hex strings to raw bytes; in
    code this is `RegistryTags::<Pasta>::from_beacon(&B, &X)`.
-5. **Pin and publish.** Ship `B`, `X`, `N` and `commit.txt.ots` together with
-   the application, and derive the tags from `B` and `X` in code so the
-   derivation stays reproducible.
+5. **Pin and publish.** Pin the resulting native and nested $\kappa$ values
+   and pass them through `with_registry_tags`, as above. Publish the tags
+   together with `B`, `X`, `N` and `commit.txt.ots` so third parties can
+   reproduce the derivation and check that the pinned values match.
 
 To check a published ceremony: run `ots verify commit.txt.ots` against a
 Bitcoin Core node with the published `commit.txt` alongside the proof, use

@@ -1,7 +1,7 @@
 //! Derives an application's registry tags from a beacon output and code hash.
 //!
 //! ```text
-//! cargo run -p ragu_pcd --example registry_tags -- <beacon-hex> <code-hash-hex>
+//! cargo run -p ragu_ceremony --bin registry_tags -- <beacon-hex> <code-hash-hex>
 //! ```
 //!
 //! `<beacon-hex>` is the beacon output as hex, for example the hash of the
@@ -9,7 +9,7 @@
 //! code hash as hex. Both are decoded to raw bytes before deriving the tags.
 //! Prints the native and nested tags as big-endian hex, ready to pin next to
 //! the inputs and timestamp proof. See the "Registry Tags" section of the
-//! book for the procedure and [`Tag::from_beacon`](ragu_circuits::registry::Tag::from_beacon)
+//! book for the procedure and [`RegistryTags::from_beacon`]
 //! for the sampling requirement. Use [`ApplicationBuilder::with_registry_tags`](ragu_pcd::ApplicationBuilder::with_registry_tags)
 //! to build an application with these tags.
 

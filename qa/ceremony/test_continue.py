@@ -68,6 +68,9 @@ class ContinueTests(unittest.TestCase):
                 else:
                     raise AssertionError(url)
             elif name == "cargo":
+                assert sys.argv[1:-2] == [
+                    "run", "-q", "-p", "ragu_ceremony", "--bin", "registry_tags", "--",
+                ]
                 assert sys.argv[-2:] == ["11" * 32, "24" * 20]
                 print(os.environ.get("RAGU_TEST_TAG_OUTPUT", "derived tags"))
                 sys.exit(int(os.environ.get("RAGU_TEST_CARGO_STATUS", "0")))
