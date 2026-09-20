@@ -277,6 +277,7 @@ impl<'a> Reader<'a> {
     /// the remaining input could contain `count` elements of at least
     /// `minimum_bytes` bytes each.
     pub fn reserve<T>(&mut self, count: u64, minimum_bytes: usize) -> Result<Vec<T>, Error<'a>> {
+        let wire_count = count;
         let count = usize::try_from(count).map_err(|_| Error::Length {
             offset: self.offset,
             value: count,
@@ -296,11 +297,9 @@ impl<'a> Reader<'a> {
                 bytes: self.remaining(),
             });
         }
-        let bytes = count.checked_mul(size_of::<T>()).ok_or(Error::Limit {
+        let bytes = count.checked_mul(size_of::<T>()).ok_or(Error::Length {
             offset: self.offset,
-            resource: "allocation",
-            requested: usize::MAX,
-            remaining: self.limits.allocation,
+            value: wire_count,
         })?;
         if bytes > self.limits.allocation {
             return Err(Error::Limit {

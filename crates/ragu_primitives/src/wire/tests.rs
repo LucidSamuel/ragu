@@ -175,6 +175,25 @@ fn rejects_impossible_counts_and_aggregate_budget_exhaustion() {
     .unwrap();
 }
 
+#[test]
+fn reservation_overflow_reports_the_wire_count() {
+    // With no per-element minimum and unbounded budgets, only the size
+    // computation can reject this count.
+    let limits = Limits {
+        elements: usize::MAX,
+        allocation: usize::MAX,
+    };
+    let count = u64::MAX / 2;
+    let Error::Length { offset, value } = Reader::new(&[], limits)
+        .reserve::<u64>(count, 0)
+        .unwrap_err()
+    else {
+        panic!("expected a length error")
+    };
+    assert_eq!(offset, 0);
+    assert_eq!(value, count);
+}
+
 proptest! {
     #[test]
     fn vectors_roundtrip(values in proptest::collection::vec(any::<u64>(), 0..64)) {

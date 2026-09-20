@@ -1,9 +1,10 @@
 use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
 
 // Neither Clone nor a byte codec is required of the omitted type.
-#[derive(Debug)]
 struct Cache;
 
+// The derived fields exist only to be left out of the compressed type.
+#[allow(dead_code)]
 #[derive(Compress)]
 struct Working<T>
 where
@@ -28,8 +29,6 @@ fn omitted_cache_needs_no_clone_or_codec() {
     let decoded = WorkingCompressed::<u64>::from_bytes(&bytes, Limits::default()).unwrap();
     assert_eq!(decoded.value, 42);
     assert_eq!(bytes, 42u64.to_bytes());
-    assert_eq!(working.scratch.len(), 3);
-    assert_eq!(format!("{:?}", working.cache), "Cache");
 }
 
 #[derive(Compress)]
