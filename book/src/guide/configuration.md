@@ -196,17 +196,24 @@ The type system will catch mismatches at compile time.
 Here's a production-ready configuration:
 
 ```rust
-use ragu_circuits::polynomials::R;
+use ragu_circuits::{polynomials::R, registry::Tag};
 use ragu_pasta::Pasta;
-use ragu_pcd::ApplicationBuilder;
+use ragu_pcd::{ApplicationBuilder, RegistryTags};
 
 // Initialize Pasta curves
 let pasta = Pasta::baked();
+
+// Pin the final field elements supplied by your setup procedure.
+let tags = RegistryTags::<Pasta> {
+    native: Tag::new(native_kappa), // Fp
+    nested: Tag::new(nested_kappa), // Fq
+};
 
 // Build application with production parameters
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
     .register(step1)?
     .register(step2)?
+    .with_registry_tags(tags)
     .finalize(pasta)?;
 ```
 
@@ -215,6 +222,78 @@ let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
 - `R<13>`: 2,048 gates — enough for most steps
 - `4`: Four field elements per header - balance between flexibility and
   performance
+
+## Registry Tags
+
+**Temporary stopgap:** caller-supplied registry tags replace the evaluation-based
+derivation for the registry-collision issue
+[#78](https://github.com/tachyon-zcash/ragu/issues/78). This setup parameter is
+intended to be removed once the workaround is no longer needed. Consumers
+choose the procedure that supplies the $\kappa$ values, subject to the sampling
+requirement below. The Bitcoin/OpenTimestamps example in `qa/ceremony`
+exercises this temporary mechanism; it does not define a production ceremony
+protocol for Ragu.
+
+`with_registry_tags` supplies the application's registry tags: one field element
+per registry, injected into every circuit's wiring polynomial. They exist so
+that whoever controls the circuit definitions cannot adapt them to
+Fiat-Shamir challenges that have already been derived.
+
+Production callers can supply the final $\kappa$ values directly, as above.
+The native and nested tags use distinct registry labels and fields, so both
+values are needed, passed together as one `RegistryTags` argument. The builder
+stores them and `finalize` installs them without hashing them again.
+
+`finalize` requires these tags and returns an initialization error if they
+are missing.
+
+For tests, benchmarks, and fuzzing, `ragu_circuits` provides the explicitly
+named `insecure-test-registry-tag` feature. It uses a fixed test key when
+no tag is supplied. `ragu_testing` enables this feature for the repository's
+test fixtures, so existing test callers can keep using `finalize` directly.
+**Production consumers must supply their own tags and must not enable this
+feature or depend on `ragu_testing`.** Cargo features are additive, including
+features enabled by dependencies and `--all-features`.
+
+The registry tag ($\kappa$) must be sampled independently and without bias
+after the complete pre-keyed system description has been fixed and publicly
+committed, then permanently bound to that description.
+
+Sampling is over the whole field, so zero is intentionally accepted. Under
+independent uniform sampling, the probability that either Pasta registry tag
+is zero is at most $1/|\mathbb{F}_p| + 1/|\mathbb{F}_q|$. Soundness arguments
+that require nonzero tags must include this setup error.
+
+The description covers the complete setup of both native and nested registries:
+the code and dependencies, ordered circuit manifests (including internal
+circuits), fields and domains, ranks and capacities, transcript rules and
+domain-separation tags, features and configuration, and all public parameters.
+Values fixed unambiguously by the committed code need not be repeated; every
+remaining setup choice must be committed explicitly. Changing the description
+requires a new set of tags.
+
+`RegistryTags::from_beacon` is an optional helper that derives both tags from
+caller-supplied beacon bytes and `manifest_digest`. It hashes each registry's
+label, the manifest digest, and the beacon output together with length prefixes.
+Consumers can instead supply the final field elements directly through
+`with_registry_tags`. When using the helper, a canonical, versioned manifest
+records the complete description. Hash the manifest and the actual contents of
+referenced artifacts with SHA-256 or an equivalent collision-resistant hash;
+a Git commit ID alone does not provide that content binding.
+
+The consumer is responsible for the sampling requirement and for checking
+that the committed description matches the setup. Ragu does not perform
+ceremony verification. The `Tag::from_beacon` documentation states the
+helper's input contract in full.
+
+### Ceremony
+
+`qa/ceremony/README.md` contains the QA example, its manifest format, and the
+Bitcoin/[OpenTimestamps](https://opentimestamps.org) steps used to exercise it.
+Its provider and block-selection choices belong to that example. A future
+Bitcoin block provides unpredictability after commitment, not unbiasability;
+this assumes miners do not selectively withhold blocks or reorganize the
+chain to bias the tags.
 
 ## Parameter Selection Guide
 
@@ -260,9 +339,10 @@ let test_app = ApplicationBuilder::<Pasta, TestRank, 1>::new()
     .register(small_step)?
     .finalize(pasta)?;
 
-// Production application
+// Production application, with tags drawn for exactly this set of steps
 let prod_app = ApplicationBuilder::<Pasta, ProductionRank, 8>::new()
     .register(complex_step)?
+    .with_registry_tags(prod_tags)
     .finalize(pasta)?;
 ```
 

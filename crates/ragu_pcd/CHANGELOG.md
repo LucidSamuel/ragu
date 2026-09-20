@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   verifying with the reference kernels.
 - Added an opt-in `native-msm` feature for applications that select the
   accelerated backend.
+- Added `RegistryTags::from_beacon` and `ApplicationBuilder::with_registry_tags`
+  to supply both registry tags before finalization. Production callers must
+  choose the values after fixing and publicly committing the complete application.
 
 ### Changed
 

@@ -313,7 +313,8 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
 /// wires, instance wires, outputs or hints, or that changes how many single
 /// wire nudges the constraints neutralize, is noticed here. The sweep
 /// tallies and `cheatable` are judged at the witness, so they are pinned per
-/// capture point; the rest is structural.
+/// capture point; the rest is structural. The endoscaling tallies depend on
+/// transcript-derived bit patterns, so they also depend on the fixed test tag.
 fn expected(name: &str, point: &str) -> Census {
     let (stage_wires, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name {
         "hashes_1" => (456, 5561, 38, 8, 0, 8, 238),
@@ -333,9 +334,9 @@ fn expected(name: &str, point: &str) -> Census {
         ("outer_collapse", "bootstrap") => (190, 44),
         ("outer_collapse", _) => (188, 50),
         ("compute_v", _) => (13, 324),
-        (_, "bootstrap") => (50, 59),
-        (_, "leaves") => (47, 62),
-        (_, "nodes") => (42, 67),
+        (_, "bootstrap") => (48, 61),
+        (_, "leaves") => (45, 64),
+        (_, "nodes") => (46, 63),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {

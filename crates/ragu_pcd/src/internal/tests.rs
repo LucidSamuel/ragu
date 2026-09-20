@@ -217,11 +217,20 @@ fn print_internal_stage_parameters() {
     print_stage!(Eval);
 }
 
-/// Verifies the native registry tag matches the expected value.
-///
-/// This test ensures the wiring polynomial structure is mathematically
-/// equivalent to the reference implementation by comparing cryptographic
-/// tags.
+#[test]
+fn supplied_tags_reach_both_registries() -> Result<()> {
+    let tags = RegistryTags::<Pasta>::from_beacon(&[0x42; 32], &[0x24; 20]);
+    let native = tags.native.value();
+    let nested = tags.nested.value();
+    let app = ApplicationBuilder::<Pasta, R, 4>::new()
+        .with_registry_tags(tags)
+        .finalize(Pasta::baked())?;
+    assert_eq!(app.native_registry.tag(), native);
+    assert_eq!(app.nested_registry.tag(), nested);
+    Ok(())
+}
+
+/// Verifies the native registry uses the fixed tag enabled by the testing feature.
 #[test]
 fn test_native_registry_tag() {
     let pasta = Pasta::baked();
@@ -232,7 +241,7 @@ fn test_native_registry_tag() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x2d79887a5bba454fd675fbbeba1027eee9be53f804179f1e2ca2481644f2b547);
+    let expected = fp!(0x247e382a1523800d0fc7bccd9b0e1e57eecd7a9758c4b7537f4ed76f5f54fe43);
 
     assert_eq!(
         app.native_registry.tag(),
@@ -241,11 +250,7 @@ fn test_native_registry_tag() {
     );
 }
 
-/// Verifies the nested registry tag matches the expected value.
-///
-/// This test ensures the wiring polynomial structure is mathematically
-/// equivalent to the reference implementation by comparing cryptographic
-/// tags.
+/// Verifies the nested registry uses the fixed tag enabled by the testing feature.
 #[test]
 fn test_nested_registry_tag() {
     let pasta = Pasta::baked();
@@ -256,7 +261,7 @@ fn test_nested_registry_tag() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fq!(0x2f4bf855b80a694facbe9a2c26ee8d1dae9e15bb7b7eba54ca53f5c166e1d150);
+    let expected = fq!(0x009ad8ef87fe4e7dc6e51df8807db0f783f39978e29787ab3e00a28c15d2bdbd);
 
     assert_eq!(
         app.nested_registry.tag(),
