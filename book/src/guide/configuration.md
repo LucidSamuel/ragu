@@ -198,16 +198,20 @@ Here's a production-ready configuration:
 ```rust
 use ragu_circuits::polynomials::R;
 use ragu_pasta::Pasta;
-use ragu_pcd::ApplicationBuilder;
+use ragu_pcd::{ApplicationBuilder, RegistryTags};
 
 // Initialize Pasta curves
 let pasta = Pasta::baked();
+
+// The output of a public randomness beacon, drawn after the code was
+// committed; see "Registry Tags" below.
+let tags = RegistryTags::<Pasta>::from_beacon(&beacon_output);
 
 // Build application with production parameters
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
     .register(step1)?
     .register(step2)?
-    .finalize(pasta)?;
+    .finalize(pasta, tags)?;
 ```
 
 **Why these parameters?**
@@ -215,6 +219,60 @@ let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
 - `R<13>`: 2,048 gates — enough for most steps
 - `4`: Four field elements per header - balance between flexibility and
   performance
+
+## Registry Tags
+
+`finalize` takes the application's registry tags: one field element per
+registry, injected into every circuit's wiring polynomial. They exist so that
+whoever controls the circuit definitions cannot adapt them to Fiat-Shamir
+challenges that have already been derived.
+
+The registry tag ($\kappa$) must be sampled independently and without bias
+after the complete pre-keyed system description has been fixed and publicly
+committed, then permanently bound to that description. Here the description
+is every registered step plus Ragu's internal circuits; changing any of them
+produces a new description, which needs new tags.
+
+`RegistryTags::from_beacon` derives both tags from the output of a public
+randomness beacon, such as a block hash published after the code was
+committed. `RegistryTags::insecure_test_values` provides fixed tags for tests;
+a production build must never use it.
+
+Nothing in Ragu can verify that a tag was drawn correctly. Publish the
+procedure alongside the pinned value so that third parties can check it. The
+`Tag` documentation in `ragu_circuits` states the requirement in full.
+
+### Ceremony
+
+The procedure below produces tags that satisfy the requirement and leaves a
+record third parties can check. It uses a Bitcoin block hash as the beacon and
+[OpenTimestamps](https://opentimestamps.org) as the public commitment, which
+is what the "publicly committed" clause needs: proof that the code existed
+before the beacon output did.
+
+1. **Freeze the code.** Land every circuit change, including all application
+   steps, and note the commit hash `X`. Any change to a registered circuit
+   after this point restarts the ceremony.
+2. **Commit to it publicly.** Timestamp `X`:
+   `printf '%s\n' X > commit.txt && ots stamp commit.txt`, and keep
+   `commit.txt.ots`. Once a calendar's transaction confirms,
+   `ots upgrade commit.txt.ots` turns the pending proof into a Bitcoin
+   attestation naming a block height `N` (take the earliest if several
+   calendars attest). Pushing the commit is not a substitute: only the
+   attestation proves the ordering to someone who does not trust the
+   repository host.
+3. **Draw the beacon output.** Wait for block `N + 100`, far past any
+   reorganization, and record its hash `B` from more than one source.
+4. **Derive the tags.** `cargo run -p ragu_pcd --example registry_tags -- B`
+   prints the native and nested tags; in code this is
+   `RegistryTags::<Pasta>::from_beacon(&B)`.
+5. **Pin and publish.** Ship `B`, `X`, `N` and `commit.txt.ots` together with
+   the application, and derive the tags from `B` in code rather than pasting
+   the field elements, so the derivation stays reproducible.
+
+To check a published ceremony: verify the attestation (`ots verify` against a
+Bitcoin node, or `ots info` for the height), confirm block `N + 100`'s hash is
+`B` on an independent explorer, and repeat step 4.
 
 ## Parameter Selection Guide
 
@@ -258,12 +316,12 @@ You can build different applications with different parameters:
 // Small, fast application for testing
 let test_app = ApplicationBuilder::<Pasta, TestRank, 1>::new()
     .register(small_step)?
-    .finalize(pasta)?;
+    .finalize(pasta, RegistryTags::insecure_test_values())?;
 
-// Production application
+// Production application, with tags drawn for exactly this set of steps
 let prod_app = ApplicationBuilder::<Pasta, ProductionRank, 8>::new()
     .register(complex_step)?
-    .finalize(pasta)?;
+    .finalize(pasta, prod_tags)?;
 ```
 
 Proofs from different configurations are **not compatible** - they're

@@ -254,7 +254,7 @@ The application is configured and built as follows:
 ```rust
 use ragu_circuits::polynomials::R;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::ApplicationBuilder;
+use ragu_pcd::{ApplicationBuilder, RegistryTags};
 use rand::{SeedableRng, rngs::StdRng};
 
 fn main() -> Result<()> {
@@ -262,7 +262,11 @@ fn main() -> Result<()> {
     let pasta = Pasta::baked();
     let mut rng = StdRng::seed_from_u64(12345);
 
-    // 2. Build application with our steps
+    // 2. Build application with our steps.
+    //
+    // The registry tags bind the application's circuits; see "Registry
+    // Tags" in Configuration. The fixed test values are fine while following
+    // along locally and must never ship in production.
     let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
         .register(CreateLeaf {
             poseidon_params: Pasta::circuit_poseidon(pasta),
@@ -270,7 +274,7 @@ fn main() -> Result<()> {
         .register(CombineNodes {
             poseidon_params: Pasta::circuit_poseidon(pasta),
         })?
-        .finalize(pasta)?;
+        .finalize(pasta, RegistryTags::insecure_test_values())?;
 
     println!("Application built successfully!");
 
