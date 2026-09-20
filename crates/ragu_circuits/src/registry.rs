@@ -149,10 +149,10 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 
     /// Supplies the registry tag to use at finalization.
     ///
-    /// The API consumer must choose the value after the complete registry
-    /// description was fixed and publicly committed. See [`Tag::from_beacon`]
+    /// The API consumer must choose the value after the complete pre-keyed
+    /// system description was fixed and publicly committed. See [`Tag::from_beacon`]
     /// for the full ceremony requirement. This crate cannot check the
-    /// ceremony or that the code hash identifies the registered circuits.
+    /// ceremony or that the manifest describes the actual setup.
     pub fn with_tag(mut self, tag: Tag<F>) -> Self {
         self.tag = Some(tag);
         self
@@ -290,11 +290,11 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// Public registry binding tag injected into the registry polynomial
 /// $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
 ///
-/// **Temporary beacon replacement:** finalization currently requires a
+/// **Temporary registry-collision workaround:** finalization requires a
 /// caller-supplied tag. Wrap a final field element from a completed ceremony
 /// with [`Tag::new`], or derive it from the ceremony inputs with
 /// [`Tag::from_beacon`], then supply it with [`RegistryBuilder::with_tag`].
-/// The complete registry description must have been fixed and publicly
+/// The complete pre-keyed system description must have been fixed and publicly
 /// committed before the beacon output was known. Production consumers must
 /// not use the fixed tag provided by the `insecure-test-registry-tag` feature.
 ///
@@ -320,11 +320,12 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// # Sampling requirement
 ///
 /// The API consumer must supply a value sampled independently after the
-/// complete registry description was fixed and publicly committed. This
-/// includes every registered application circuit, the internal circuits,
-/// and all parameters determining their wiring. The beacon source and
-/// derivation rule must be fixed before the output is known. Changing the
-/// description requires a new ceremony; see [`Tag::from_beacon`] and [#78].
+/// complete pre-keyed system description was fixed and publicly committed.
+/// This includes every registered application circuit, the internal circuits,
+/// and the full setup context recorded in the canonical, versioned manifest
+/// required by [`Tag::from_beacon`]. The beacon source and derivation rule
+/// must be fixed before the output is known. Changing the description requires
+/// a new ceremony; see [`Tag::from_beacon`] and [#78].
 ///
 /// # Break self-reference without preprocessing
 ///
@@ -354,6 +355,11 @@ impl<F: Field> Tag<F> {
     ///
     /// This wraps an already-derived value without hashing it. The caller
     /// must satisfy the [sampling requirement](Tag#sampling-requirement).
+    ///
+    /// Zero is intentionally accepted: setup sampling is over the whole field.
+    /// Under independent uniform sampling, zero occurs with probability
+    /// `1 / |F|` per registry. Soundness arguments that assume a nonzero tag
+    /// must include this setup error, summed across registries.
     pub fn new(val: F) -> Self {
         Self(val)
     }

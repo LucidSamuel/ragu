@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline ceremony regressions: python3 qa/ceremony/test_continue.py."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import textwrap
 import unittest
 
 
-SCRIPT = Path(__file__).parent / "dry-run-f16c27c3" / "continue.sh"
+SCRIPT = Path(__file__).parent / "continue.sh"
 VERIFIED = "Success! Bitcoin block 967690 attests existence as of 2026-09-20 UTC"
 BEACON = "11" * 32
 ARTIFACTS = ("attestation.txt", "beacon.txt", "tags.txt")
@@ -26,7 +27,12 @@ class ContinueTests(unittest.TestCase):
         self.bin.mkdir()
         shutil.copyfile(SCRIPT, self.directory / "continue.sh")
         (self.directory / "commit.txt").write_text("24" * 20 + "\n")
-        (self.directory / "commit.txt.ots").write_bytes(b"mock timestamp")
+        (self.directory / "setup.manifest").write_bytes(b'{"format":"test-fixture"}\n')
+        self.manifest_digest = hashlib.sha256(
+            (self.directory / "setup.manifest").read_bytes(),
+        ).hexdigest()
+        (self.directory / "manifest_digest.txt").write_text(self.manifest_digest + "\n")
+        (self.directory / "setup.manifest.ots").write_bytes(b"mock timestamp")
         self.original = {name: f"previous {name}\n" for name in ARTIFACTS}
         for name, contents in self.original.items():
             (self.directory / name).write_text(contents)
@@ -47,7 +53,10 @@ class ContinueTests(unittest.TestCase):
                 assert sys.argv[1:] == ["rev-parse", "--show-toplevel"]
                 print(os.environ["RAGU_TEST_REPO"])
             elif name == "ots":
-                if sys.argv[1] == "upgrade":
+                if sys.argv[1] == "stamp":
+                    assert sys.argv[2] == "setup.manifest"
+                    Path("setup.manifest.ots").write_bytes(b"new mock timestamp")
+                elif sys.argv[1] == "upgrade":
                     print("Success! Timestamp complete", file=sys.stderr)
                 elif sys.argv[1] == "info":
                     print("verify BitcoinBlockHeaderAttestation(1)")
@@ -71,7 +80,7 @@ class ContinueTests(unittest.TestCase):
                 assert sys.argv[1:-2] == [
                     "run", "-q", "-p", "ragu_ceremony", "--bin", "registry_tags", "--",
                 ]
-                assert sys.argv[-2:] == ["11" * 32, "24" * 20]
+                assert sys.argv[-2:] == ["11" * 32, os.environ["RAGU_TEST_MANIFEST_DIGEST"]]
                 print(os.environ.get("RAGU_TEST_TAG_OUTPUT", "derived tags"))
                 sys.exit(int(os.environ.get("RAGU_TEST_CARGO_STATUS", "0")))
             else:
@@ -89,10 +98,11 @@ class ContinueTests(unittest.TestCase):
             "RAGU_TEST_REPO": str(self.directory),
             "RAGU_TEST_CALLS": str(self.directory / "calls.jsonl"),
             "RAGU_TEST_VERIFY_OUTPUT": VERIFIED,
+            "RAGU_TEST_MANIFEST_DIGEST": self.manifest_digest,
         })
         environment.update(settings)
         return subprocess.run(
-            ["bash", str(self.directory / "continue.sh"), *args],
+            ["bash", str(self.directory / "continue.sh"), str(self.directory), *args],
             capture_output=True, text=True, env=environment, timeout=15,
         )
 
@@ -100,6 +110,24 @@ class ContinueTests(unittest.TestCase):
         for name, contents in self.original.items():
             self.assertEqual((self.directory / name).read_text(), contents)
         self.assertEqual(list(self.directory.glob(".continue.*")), [])
+
+    def test_changed_manifest_does_not_contact_beacon_or_publish(self):
+        (self.directory / "setup.manifest").write_bytes(b"changed setup")
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match", result.stderr)
+        self.assert_records_unchanged()
+        calls = [json.loads(line) for line in (self.directory / "calls.jsonl").read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("ots", "curl", "cargo") for call in calls))
+
+    def test_missing_timestamp_stamps_manifest(self):
+        (self.directory / "setup.manifest.ots").unlink()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        calls = [json.loads(line) for line in (self.directory / "calls.jsonl").read_text().splitlines()]
+        self.assertIn(["ots", "stamp", "setup.manifest"], calls)
+        self.assertIn(["ots", "verify", "setup.manifest.ots"], calls)
+        self.assertEqual((self.directory / "setup.manifest.ots").read_bytes(), b"new mock timestamp")
 
     def test_unverified_timestamp_does_not_publish(self):
         for output in (

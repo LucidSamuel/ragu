@@ -203,7 +203,7 @@ use ragu_pcd::{ApplicationBuilder, RegistryTags};
 // Initialize Pasta curves
 let pasta = Pasta::baked();
 
-// Pin the final field elements from the completed ceremony below.
+// Pin the final field elements supplied by your setup procedure.
 let tags = RegistryTags::<Pasta> {
     native: Tag::new(native_kappa), // Fp
     nested: Tag::new(nested_kappa), // Fq
@@ -225,6 +225,12 @@ let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
 
 ## Registry Tags
 
+**Temporary stopgap:** caller-supplied registry tags replace the evaluation-based
+derivation for the registry-collision issue
+[#78](https://github.com/tachyon-zcash/ragu/issues/78). The API accepts setup-time
+$\kappa$ values; consumers choose the procedure that supplies them. Ragu does
+not prescribe a beacon provider or ceremony protocol.
+
 `with_registry_tags` supplies the application's registry tags: one field element
 per registry, injected into every circuit's wiring polynomial. They exist so
 that whoever controls the circuit definitions cannot adapt them to
@@ -236,8 +242,7 @@ values are needed, passed together as one `RegistryTags` argument. The builder
 stores them and `finalize` installs them without hashing them again.
 
 `finalize` requires these tags and returns an initialization error if they
-are missing. The evaluation-based derivation is temporarily removed; see
-[#78](https://github.com/tachyon-zcash/ragu/issues/78).
+are missing.
 
 For tests, benchmarks, and fuzzing, `ragu_circuits` provides the explicitly
 named `insecure-test-registry-tag` feature. It uses a fixed test key when
@@ -249,60 +254,43 @@ features enabled by dependencies and `--all-features`.
 
 The registry tag ($\kappa$) must be sampled independently and without bias
 after the complete pre-keyed system description has been fixed and publicly
-committed, then permanently bound to that description. Here the description
-is every registered step plus Ragu's internal circuits; changing any of them
-produces a new description, which needs new tags.
+committed, then permanently bound to that description.
 
-The ceremony tool uses `RegistryTags::from_beacon` to derive both tags from a
-public randomness beacon output and the committed code hash. Applications can
-also use this helper when deriving tags from the published inputs. Both inputs
-are raw bytes, not their hex encodings. Each registry's label, the code hash,
-and the beacon output are length-prefixed and hashed together, so changing the
-code hash changes both tags even when the beacon output is the same.
+Sampling is over the whole field, so zero is intentionally accepted. Under
+independent uniform sampling, the probability that either Pasta registry tag
+is zero is at most $1/|\mathbb{F}_p| + 1/|\mathbb{F}_q|$. Soundness arguments
+that require nonzero tags must include this setup error.
 
-Nothing in Ragu can verify that a tag was drawn correctly or that the supplied
-code hash matches the registered circuits. Publish the procedure alongside the
-pinned inputs so that third parties can check it. The `Tag::from_beacon`
-documentation in `ragu_circuits` states the requirement in full.
+The description covers the complete setup of both native and nested registries:
+the code and dependencies, ordered circuit manifests (including internal
+circuits), fields and domains, ranks and capacities, transcript rules and
+domain-separation tags, features and configuration, and all public parameters.
+A canonical, versioned setup manifest records this description. Values fixed
+unambiguously by the committed code need not be repeated; the manifest must
+record every remaining setup choice. Changing the description requires a new
+set of tags. Hash the manifest and the actual contents of referenced artifacts
+with SHA-256 or an equivalent collision-resistant hash; a Git commit ID alone
+does not provide that content binding.
+
+`RegistryTags::from_beacon` is an optional helper that derives both tags from
+caller-supplied beacon bytes and `manifest_digest`. It hashes each registry's
+label, the manifest digest, and the beacon output together with length prefixes.
+Consumers can instead supply the final field elements directly through
+`with_registry_tags`.
+
+The consumer is responsible for the sampling requirement and for checking
+that the committed description matches the setup. Ragu does not perform
+ceremony verification. The `Tag::from_beacon` documentation states the
+helper's input contract in full.
 
 ### Ceremony
 
-The procedure below produces tags that satisfy the requirement and leaves a
-record third parties can check. It uses a Bitcoin block hash as the beacon and
-[OpenTimestamps](https://opentimestamps.org) as the public commitment, which
-is what the "publicly committed" clause needs: proof that the code existed
-before the beacon output did.
-
-1. **Freeze the code.** Land every circuit change, including all application
-   steps, and pin the dependencies and configuration that determine the
-   registries. Note the commit hash `X` covering that description. Fix the
-   beacon selection rule and tag derivation at this point too. Any change to
-   a registered circuit after this point restarts the ceremony.
-2. **Commit to it publicly.** Timestamp `X`:
-   `printf '%s\n' X > commit.txt && ots stamp commit.txt`, and keep
-   `commit.txt.ots`. Once a calendar's transaction confirms,
-   `ots upgrade commit.txt.ots` turns the pending proof into a Bitcoin
-   attestation. Run `ots verify commit.txt.ots` against a configured Bitcoin
-   Core node to check both the current `commit.txt` and its attestation. Use
-   the earliest **verified** block height `N` reported by that command.
-   `ots info` only displays proof metadata and does not verify it. Pushing
-   the commit is not a substitute: only the verified attestation proves the
-   ordering to someone who does not trust the repository host.
-3. **Draw the beacon output.** Wait for block `N + 100` and record its hash
-   `B` from more than one source.
-4. **Derive the tags.**
-   `cargo run -p ragu_ceremony --bin registry_tags -- B X` prints the native
-   and nested tags. The tool decodes both hex strings to raw bytes; in
-   code this is `RegistryTags::<Pasta>::from_beacon(&B, &X)`.
-5. **Pin and publish.** Pin the resulting native and nested $\kappa$ values
-   and pass them through `with_registry_tags`, as above. Publish the tags
-   together with `B`, `X`, `N` and `commit.txt.ots` so third parties can
-   reproduce the derivation and check that the pinned values match.
-
-To check a published ceremony: run `ots verify commit.txt.ots` against a
-Bitcoin Core node with the published `commit.txt` alongside the proof, use
-the verified height `N`, confirm block `N + 100`'s hash is `B` on an
-independent explorer, and repeat step 4.
+`qa/ceremony/README.md` contains an example using a Bitcoin block hash and
+[OpenTimestamps](https://opentimestamps.org), along with QA tooling and example
+records. It illustrates the temporary setup mechanism; it is not a prescribed
+production ceremony. A future Bitcoin block provides
+unpredictability after commitment, not unbiasability; this assumes miners do
+not selectively withhold blocks or reorganize the chain to bias the tags.
 
 ## Parameter Selection Guide
 

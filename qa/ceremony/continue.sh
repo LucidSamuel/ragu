@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# Continues the registry-tag ceremony started for commit f16c27c3 (see
-# RECORD.md).
+# QA example for the temporary registry-tag workaround.
+# Usage: continue.sh <record-directory> [beacon-height]
 #
-#   ./continue.sh            beacon block = N + 100, N = attestation block
-#   ./continue.sh <height>   beacon block = <height>, whatever the attestation
-#                            state (dry runs only; the record says so)
-#
-# Upgrades and verifies the OpenTimestamps proof (requires Bitcoin Core for
-# verification), fetches the beacon block's hash from two explorers, and derives
-# the tags. Output records are replaced only after successful tag derivation.
-# Exits 1 while there is still something to wait for.
+# The default uses the verified timestamp height + 100. An explicit height
+# exercises a dry run without that ordering guarantee.
 set -euo pipefail
-cd "$(dirname "$0")"
+if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
+  echo "usage: continue.sh <record-directory> [beacon-height]" >&2
+  exit 2
+fi
+cd "$1"
+shift
 REPO="$(git rev-parse --show-toplevel)"
-CODE_HASH="$(cat commit.txt)"
+MANIFEST_DIGEST="$(shasum -a 256 setup.manifest | cut -d ' ' -f 1)"
+if [ "$MANIFEST_DIGEST" != "$(cat manifest_digest.txt)" ]; then
+  echo "setup.manifest does not match manifest_digest.txt; prepare a fresh record." >&2
+  exit 1
+fi
 
 if command -v ots >/dev/null 2>&1; then
   OTS=ots
@@ -26,10 +29,14 @@ else
   OTS="$VENV/bin/ots"
 fi
 
-echo "== 1. upgrade and verify the timestamp proof =="
-"$OTS" upgrade commit.txt.ots || true
+echo "== 1. stamp, upgrade, and verify the manifest =="
+if [ ! -f setup.manifest.ots ]; then
+  "$OTS" stamp setup.manifest
+fi
+
+"$OTS" upgrade setup.manifest.ots || true
 N=""
-if VERIFIED="$("$OTS" verify commit.txt.ots 2>&1)"; then
+if VERIFIED="$("$OTS" verify setup.manifest.ots 2>&1)"; then
   printf '%s\n' "$VERIFIED"
   # Use only the height ots verified against Bitcoin, not unverified metadata
   # from `ots info`. ots verifies the file digest and the earliest valid proof.
@@ -83,12 +90,12 @@ printf 'ATTESTATION_BLOCK=%s\nBEACON_RULE=%s\nBEACON_HEIGHT=%s\n' \
   "${N:-unverified}" "$RULE" "$BEACON_HEIGHT" > "$CEREMONY_OUTPUT/attestation.txt"
 
 echo "== 4. derive the tags =="
-(cd "$REPO" && cargo run -q -p ragu_ceremony --bin registry_tags -- "$B1" "$CODE_HASH") \
+(cd "$REPO" && cargo run -q -p ragu_ceremony --bin registry_tags -- "$B1" "$MANIFEST_DIGEST") \
   > "$CEREMONY_OUTPUT/tags.txt"
 mv "$CEREMONY_OUTPUT/beacon.txt" "$CEREMONY_OUTPUT/attestation.txt" "$CEREMONY_OUTPUT/tags.txt" .
 cat tags.txt
 echo
 if [ -z "$N" ]; then
-  echo "Note: this dry run has no verified attestation; re-run later to upgrade and verify commit.txt.ots."
+  echo "Note: this dry run has no verified attestation; re-run later to upgrade and verify setup.manifest.ots."
 fi
-echo "Publish commit.txt, commit.txt.ots, attestation.txt, beacon.txt and tags.txt together."
+echo "Keep commit.txt, setup.manifest, manifest_digest.txt, setup.manifest.ots, attestation.txt, beacon.txt and tags.txt together."

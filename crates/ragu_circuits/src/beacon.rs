@@ -1,4 +1,8 @@
-//! Temporary replacement for evaluation-based registry tags.
+//! Temporary setup-time tag injection for the registry-collision issue.
+//!
+//! [`Tag::from_beacon`] is an optional derivation helper. API consumers choose
+//! the beacon and setup procedure; the Bitcoin ceremony in `qa/ceremony` is
+//! an example for exercising this stopgap.
 
 use blake2b_simd::Params;
 use ragu_arithmetic::ff::FromUniformBytes;
@@ -33,40 +37,62 @@ pub(crate) fn registry_tag<F: FromUniformBytes<64>>(tag: Option<Tag<F>>) -> Resu
 }
 
 impl<F: FromUniformBytes<64>> Tag<F> {
-    /// Derives a registry tag from a public randomness beacon and a code hash.
+    /// Derives a registry tag from a public randomness beacon and a setup
+    /// manifest digest.
+    ///
+    /// This is a temporary helper for the registry-collision workaround in
+    /// [#78](https://github.com/tachyon-zcash/ragu/issues/78). It derives tags
+    /// from caller-provided inputs without prescribing a beacon provider or
+    /// ceremony protocol.
     ///
     /// `beacon` is the raw beacon output, for example a block hash published
-    /// after the registry's description was committed. `code_hash` is the raw
-    /// digest identifying that description, for example a decoded commit hash
-    /// covering all circuit code and the inputs that determine the registry.
+    /// after the system's description was committed. `manifest_digest` is the
+    /// raw digest of the canonical, versioned setup manifest described below.
     /// `label` separates the tags of distinct registries drawn from the same
     /// output, such as an application's native and nested registries.
     ///
-    /// The label, code hash, and beacon output are absorbed in that order into
-    /// BLAKE2b, personalized for this purpose. Each is prefixed by its byte
-    /// length as a little-endian `u64`. The 64-byte digest is reduced to a
-    /// uniform field element.
+    /// The label, manifest digest, and beacon output are absorbed in that
+    /// order into BLAKE2b, personalized for this purpose. Each is prefixed by
+    /// its byte length as a little-endian `u64`. The 64-byte digest is reduced
+    /// to a field element.
     ///
-    /// # Ceremony requirement
+    /// # Caller requirement
     ///
-    /// The complete untagged registry, including every application step, must
+    /// The complete pre-keyed system, including every application step, must
     /// be fixed and publicly committed before the beacon output is known.
+    /// Its manifest must bind the code and dependencies, ordered circuit
+    /// manifests, fields and domains, ranks and capacities, transcript rules
+    /// and domain-separation tags, features and configuration, and all public
+    /// parameters. For an application, this covers both native and nested
+    /// registries. Values fixed unambiguously by the committed code need not
+    /// be repeated; all remaining setup choices must be recorded explicitly.
+    ///
+    /// Hash the manifest's canonical bytes with SHA-256 or an equivalent
+    /// collision-resistant hash. Referenced code, dependency, and parameter
+    /// artifacts must also be bound by content digests of that strength.
+    /// The digests must cover the actual source and parameter contents;
+    /// hashing a SHA-1 commit ID again does not strengthen its binding.
     /// The beacon source, label, and derivation rule must also be fixed in
     /// advance; the circuit author must not control or grind the output.
     /// Changing the description requires a new ceremony.
     ///
-    /// The caller must check that the code hash identifies the actual registry
-    /// and that the commitment precedes the beacon. Mixing in an unchecked
-    /// code hash does not establish either property. See the beacon proposal
-    /// in [#78](https://github.com/tachyon-zcash/ragu/issues/78#issuecomment-3484495372).
-    pub fn from_beacon(beacon: &[u8], code_hash: &[u8], label: &[u8]) -> Self {
+    /// A future Bitcoin block provides unpredictability after commitment, not
+    /// unbiasability. Using it as a beacon assumes miners do not selectively
+    /// withhold blocks or reorganize the chain to bias the tags.
+    ///
+    /// The caller must check the manifest and its content digests against the
+    /// actual setup and verify that the commitment precedes the beacon.
+    /// Mixing in an unchecked digest does not establish either property. See
+    /// the beacon proposal in
+    /// [#78](https://github.com/tachyon-zcash/ragu/issues/78#issuecomment-3484495372).
+    pub fn from_beacon(beacon: &[u8], manifest_digest: &[u8], label: &[u8]) -> Self {
         let digest = Params::new()
             .personal(b"ragu_tag_beacon_")
             .to_state()
             .update(&(label.len() as u64).to_le_bytes())
             .update(label)
-            .update(&(code_hash.len() as u64).to_le_bytes())
-            .update(code_hash)
+            .update(&(manifest_digest.len() as u64).to_le_bytes())
+            .update(manifest_digest)
             .update(&(beacon.len() as u64).to_le_bytes())
             .update(beacon)
             .finalize();
@@ -102,15 +128,15 @@ mod tests {
 
     #[test]
     fn beacon_tag_binds_each_input() {
-        let tag = Tag::<Fp>::from_beacon(b"beacon", b"code hash", b"label").value();
-        for (beacon, code_hash, label) in [
-            (&b"other beacon"[..], &b"code hash"[..], &b"label"[..]),
-            (b"beacon", b"other code hash", b"label"),
-            (b"beacon", b"code hash", b"other label"),
+        let tag = Tag::<Fp>::from_beacon(b"beacon", b"manifest digest", b"label").value();
+        for (beacon, manifest_digest, label) in [
+            (&b"other beacon"[..], &b"manifest digest"[..], &b"label"[..]),
+            (b"beacon", b"other manifest digest", b"label"),
+            (b"beacon", b"manifest digest", b"other label"),
         ] {
             assert_ne!(
                 tag,
-                Tag::<Fp>::from_beacon(beacon, code_hash, label).value()
+                Tag::<Fp>::from_beacon(beacon, manifest_digest, label).value()
             );
         }
     }
@@ -129,7 +155,7 @@ mod tests {
 
     #[test]
     fn beacon_tag_sets_the_registry_term() -> Result<()> {
-        let tag = Tag::<Fp>::from_beacon(b"beacon", b"code hash", b"label");
+        let tag = Tag::<Fp>::from_beacon(b"beacon", b"manifest digest", b"label");
         let value = tag.value();
         let registry = RegistryBuilder::<Fp, TestRank>::new()
             .with_tag(tag)

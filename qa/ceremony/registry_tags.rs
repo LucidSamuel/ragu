@@ -1,12 +1,20 @@
-//! Derives an application's registry tags from a beacon output and code hash.
+//! Derives an application's registry tags from a beacon output and manifest digest.
+//!
+//! QA tooling for the temporary registry-collision workaround. The caller
+//! chooses the beacon and setup procedure; this tool only derives the tags.
 //!
 //! ```text
-//! cargo run -p ragu_ceremony --bin registry_tags -- <beacon-hex> <code-hash-hex>
+//! cargo run -p ragu_ceremony --bin registry_tags -- <beacon-hex> <manifest-digest-hex>
 //! ```
 //!
 //! `<beacon-hex>` is the beacon output as hex, for example the hash of the
-//! Bitcoin block the ceremony selected. `<code-hash-hex>` is the committed
-//! code hash as hex. Both are decoded to raw bytes before deriving the tags.
+//! Bitcoin block the ceremony selected. `<manifest-digest-hex>` is the digest of
+//! the canonical, versioned setup manifest covering the code and complete
+//! setup of both registries, as hex. Both inputs are decoded to raw bytes
+//! before deriving the tags.
+//! The documented ceremony uses SHA-256 of `setup.manifest`, whose artifact
+//! digests bind the actual code and parameter bytes. A Git commit ID, or a
+//! hash of that ID, is not a substitute. See `qa/ceremony/README.md`.
 //! Prints the native and nested tags as big-endian hex, ready to pin next to
 //! the inputs and timestamp proof. See the "Registry Tags" section of the
 //! book for the procedure and [`RegistryTags::from_beacon`]
@@ -19,26 +27,27 @@ use ragu_pcd::RegistryTags;
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let (Some(beacon_hex), Some(code_hash_hex), None) = (args.next(), args.next(), args.next())
+    let (Some(beacon_hex), Some(manifest_digest_hex), None) =
+        (args.next(), args.next(), args.next())
     else {
-        eprintln!("usage: registry_tags <beacon-hex> <code-hash-hex>");
+        eprintln!("usage: registry_tags <beacon-hex> <manifest-digest-hex>");
         std::process::exit(2);
     };
     let beacon = decode_hex(&beacon_hex).unwrap_or_else(|e| {
         eprintln!("invalid beacon hex: {e}");
         std::process::exit(2);
     });
-    let code_hash = decode_hex(&code_hash_hex).unwrap_or_else(|e| {
-        eprintln!("invalid code hash hex: {e}");
+    let manifest_digest = decode_hex(&manifest_digest_hex).unwrap_or_else(|e| {
+        eprintln!("invalid manifest digest hex: {e}");
         std::process::exit(2);
     });
 
-    let tags = RegistryTags::<Pasta>::from_beacon(&beacon, &code_hash);
+    let tags = RegistryTags::<Pasta>::from_beacon(&beacon, &manifest_digest);
     println!("beacon ({} bytes): {}", beacon.len(), be_hex_bytes(&beacon));
     println!(
-        "code hash ({} bytes): {}",
-        code_hash.len(),
-        be_hex_bytes(&code_hash)
+        "manifest digest ({} bytes): {}",
+        manifest_digest.len(),
+        be_hex_bytes(&manifest_digest)
     );
     println!("native tag (Fp): 0x{}", be_hex(tags.native.value()));
     println!("nested tag (Fq): 0x{}", be_hex(tags.nested.value()));
