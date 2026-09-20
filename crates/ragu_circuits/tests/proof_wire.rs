@@ -144,13 +144,14 @@ fn decoder_and_verifier_reject_different_classes_of_tampering() {
     assert!(!verifier::verify(&decoded));
 
     let bytes = example(3).compress().to_bytes();
+    // The generated struct derives no Debug, so `unwrap_err` is unavailable.
     for length in 0..bytes.len() {
         CompressedToyProof::from_bytes(&bytes[..length], Limits::default())
             .err()
             .expect("truncated proof");
     }
     let mut wrong_version = bytes.clone();
-    wrong_version[0] = wire::VERSION + 1;
+    wrong_version[0] = wire::VERSION.wrapping_add(1);
     CompressedToyProof::from_bytes(&wrong_version, Limits::default())
         .err()
         .expect("wrong version");

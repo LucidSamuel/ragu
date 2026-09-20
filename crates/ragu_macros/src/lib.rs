@@ -23,17 +23,6 @@ use proc_macro::TokenStream;
 use ragu_arithmetic::repr256 as _;
 use syn::{DeriveInput, LitInt, parse_macro_input};
 
-// Documentation lives on the public re-export in ragu_primitives::wire.
-#[allow(missing_docs)]
-#[proc_macro_derive(Compress, attributes(ragu))]
-pub fn derive_compress(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    macro_body(|| {
-        let path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::compress::derive(input, path)
-    })
-}
-
 // Documentation for the `repr256` macro is in `macro@ragu_arithmetic::repr256`.
 #[allow(missing_docs)]
 #[proc_macro]
@@ -130,6 +119,17 @@ pub fn derive_gadget_equals(input: TokenStream) -> TokenStream {
             ragu_core_path,
             ragu_primitives_path,
         )
+    })
+}
+
+// Documentation for the `Compress` derive macro is in `derive@ragu_primitives::wire::Compress`.
+#[allow(missing_docs)]
+#[proc_macro_derive(Compress, attributes(ragu))]
+pub fn derive_compress(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    macro_body(|| {
+        let path = path_resolution::RaguPrimitivesPath::resolve()?;
+        derive::compress::derive(input, path)
     })
 }
 
