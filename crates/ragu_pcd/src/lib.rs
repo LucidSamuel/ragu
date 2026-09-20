@@ -51,7 +51,7 @@ use ragu_arithmetic::{
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
-    registry::{Registry, RegistryBuilder},
+    registry::{Registry, RegistryBuilder, Tag},
 };
 use ragu_core::{Error, Result};
 use step::{Step, internal::adapter::Adapter};
@@ -67,6 +67,44 @@ use step::{Step, internal::adapter::Adapter};
 pub(crate) const RAGU_TAG: &[u8] = b"ragu-pcd-v1";
 
 pub use backend::SelectableBackend;
+
+/// The registry tags of an [`Application`]: one for the native registry and
+/// one for the nested registry.
+///
+/// Both registries are part of the pre-keyed system description, so both tags
+/// fall under the sampling requirement documented on [`Tag`]. They live over
+/// different fields, and the nested registry does not depend on the
+/// application's steps, but the two must be drawn together, after the complete
+/// description, including every registered step, has been fixed and publicly
+/// committed. [`RegistryTags::from_beacon`] derives both from one beacon
+/// output.
+pub struct RegistryTags<C: Cycle> {
+    /// Tag for the native registry, over [`Cycle::CircuitField`].
+    pub native: Tag<C::CircuitField>,
+    /// Tag for the nested registry, over [`Cycle::ScalarField`].
+    pub nested: Tag<C::ScalarField>,
+}
+
+impl<C: Cycle> RegistryTags<C> {
+    /// Derives both tags from the output of a public randomness beacon, with
+    /// distinct labels for the two registries. See [`Tag::from_beacon`].
+    pub fn from_beacon(beacon: &[u8]) -> Self {
+        Self {
+            native: Tag::from_beacon(beacon, b"ragu_pcd native registry"),
+            nested: Tag::from_beacon(beacon, b"ragu_pcd nested registry"),
+        }
+    }
+
+    /// Fixed, publicly known tags for tests.
+    ///
+    /// **Never use this in production.** See [`Tag::insecure_test_value`].
+    pub fn insecure_test_values() -> Self {
+        Self {
+            native: Tag::insecure_test_value(),
+            nested: Tag::insecure_test_value(),
+        }
+    }
+}
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<
@@ -177,6 +215,11 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// Perform finalization and optimization steps to produce the
     /// [`Application`].
     ///
+    /// `tags` supplies the native and nested registry tags. They are injected
+    /// into the registries' wiring polynomials and not validated here; see
+    /// [`RegistryTags`] and [`Tag`] for the requirement they must satisfy, and
+    /// [`RegistryTags::insecure_test_values`] for tests.
+    ///
     /// This also bootstraps the recursion: it fuses two synthesized dummies
     /// through an internal step — the only fuse treated as the base case — to
     /// produce the bootstrap proof that [`seed`](Application::seed) consumes as
@@ -189,6 +232,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     pub fn finalize(
         mut self,
         params: &'params C::Params,
+        tags: RegistryTags<C>,
     ) -> Result<Application<'params, C, R, HEADER_SIZE, B>> {
         // Build the native registry:
         // 1. Application circuits (already registered)
@@ -230,8 +274,8 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         self.nested_registry = internal::nested::register_all::<C, R>(self.nested_registry)?;
 
         let mut app = Application {
-            native_registry: self.native_registry.finalize()?,
-            nested_registry: self.nested_registry.finalize()?,
+            native_registry: self.native_registry.finalize(tags.native)?,
+            nested_registry: self.nested_registry.finalize(tags.nested)?,
             params,
             num_application_steps: self.num_application_steps,
             bootstrap: None,

@@ -64,14 +64,15 @@
 //! stage's [staging mask](StageExt::mask).
 //!
 //! ```rust,ignore
-//! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
+//! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder, Tag};
 //!
 //! let a = MyStage::rx(alpha, my_stage_witness)?;
 //!
 //! // Register the mask alone, so its circuit index is zero.
+//! // `tag` is the registry tag; see `Tag` for the requirement it must satisfy.
 //! let registry = RegistryBuilder::<Fp, R>::new()
 //!     .register_bonding(MyStage::mask()?)
-//!     .finalize()?;
+//!     .finalize(tag)?;
 //! let mask_index = CircuitIndex::new(0);
 //!
 //! let y = Fp::random(&mut ragu_arithmetic::rand::rng());
@@ -82,7 +83,7 @@
 //! check, they can be combined using a random challenge $z$:
 //!
 //! ```rust,ignore
-//! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
+//! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder, Tag};
 //!
 //! let a = MyStage::rx(alpha_a, my_stage_witness)?;
 //! let b = MyStage::rx(alpha_b, my_stage_witness)?;
@@ -94,9 +95,10 @@
 //! combined.scale(z);
 //! combined.add_assign(&b);
 //!
+//! // `tag` is the registry tag; see `Tag` for the requirement it must satisfy.
 //! let registry = RegistryBuilder::<Fp, R>::new()
 //!     .register_bonding(MyStage::mask()?)
-//!     .finalize()?;
+//!     .finalize(tag)?;
 //! let mask_index = CircuitIndex::new(0);
 //!
 //! let y = Fp::random(&mut ragu_arithmetic::rand::rng());

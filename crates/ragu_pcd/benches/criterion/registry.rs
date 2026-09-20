@@ -3,7 +3,7 @@ use ff::Field;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::ApplicationBuilder;
+use ragu_pcd::{ApplicationBuilder, RegistryTags};
 use ragu_testing::pcd::nontrivial;
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -27,14 +27,20 @@ fn registry_bench(c: &mut Criterion) {
     finalize_group.bench_function("finalize", |b| {
         b.iter_batched(
             make_builder,
-            |builder| builder.finalize(pasta).unwrap(),
+            |builder| {
+                builder
+                    .finalize(pasta, RegistryTags::insecure_test_values())
+                    .unwrap()
+            },
             criterion::BatchSize::PerIteration,
         );
     });
     finalize_group.finish();
 
     // Build the finalized app once for evaluation benchmarks.
-    let app = make_builder().finalize(pasta).unwrap();
+    let app = make_builder()
+        .finalize(pasta, RegistryTags::insecure_test_values())
+        .unwrap();
     let registry = app.native_registry();
 
     // Use deterministic "random" field elements.

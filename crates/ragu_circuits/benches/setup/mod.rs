@@ -1,7 +1,7 @@
 use ff::Field;
 use ragu_circuits::{
     polynomials::{ProductionRank, TestRank, sparse},
-    registry::{Registry, RegistryBuilder},
+    registry::{Registry, RegistryBuilder, Tag},
 };
 use ragu_pasta::Fp;
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
@@ -96,5 +96,7 @@ pub fn builder_simple<'a>() -> RegistryBuilder<'a, Fp, TestRank> {
 }
 
 pub fn registry_simple<'a>() -> Registry<'a, Fp, TestRank> {
-    builder_simple().finalize().unwrap()
+    builder_simple()
+        .finalize(Tag::insecure_test_value())
+        .unwrap()
 }

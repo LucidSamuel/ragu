@@ -94,7 +94,7 @@ use ragu_arithmetic::Coeff;
 use ragu_circuits::{
     Circuit, CircuitExt, WithAux,
     polynomials::TestRank,
-    registry::{CircuitIndex, Registry, RegistryBuilder},
+    registry::{CircuitIndex, Registry, RegistryBuilder, Tag},
 };
 use ragu_core::{
     Result,
@@ -177,21 +177,21 @@ fn special_value(idx: u8) -> Fp {
 static BOOL_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_circuit(BoolCircuit)
-        .and_then(|b| b.finalize())
+        .and_then(|b| b.finalize(Tag::insecure_test_value()))
         .ok()
 });
 
 static POINT_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_circuit(PointCircuit)
-        .and_then(|b| b.finalize())
+        .and_then(|b| b.finalize(Tag::insecure_test_value()))
         .ok()
 });
 
 static ROUTINE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_circuit(RoutineCircuit)
-        .and_then(|b| b.finalize())
+        .and_then(|b| b.finalize(Tag::insecure_test_value()))
         .ok()
 });
 
@@ -199,7 +199,7 @@ static KNOWN_ROUTINE_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>>
     LazyLock::new(|| {
         RegistryBuilder::<Fp, TestRank>::new()
             .register_circuit(KnownRoutineCircuit)
-            .and_then(|b| b.finalize())
+            .and_then(|b| b.finalize(Tag::insecure_test_value()))
             .ok()
     });
 
@@ -542,7 +542,7 @@ fuzz_target!(|input: Input| {
             };
             let registry = match RegistryBuilder::<Fp, TestRank>::new()
                 .register_circuit(circuit)
-                .and_then(|b| b.finalize())
+                .and_then(|b| b.finalize(Tag::insecure_test_value()))
             {
                 Ok(r) => r,
                 Err(_) => return, // rank overflow

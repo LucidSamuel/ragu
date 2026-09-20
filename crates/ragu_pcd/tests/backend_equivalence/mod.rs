@@ -18,7 +18,7 @@ use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 use crate::{
-    Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
+    Application, ApplicationBuilder, Pcd, Proof, RegistryTags, SelectableBackend,
     step::{Encoded, Index, Step},
 };
 
@@ -131,7 +131,7 @@ impl Apps {
             .unwrap()
             .register_dummy_circuits(dummy_circuits)
             .unwrap()
-            .finalize(pasta)
+            .finalize(pasta, RegistryTags::insecure_test_values())
             .unwrap();
         let accelerated = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
             .with_backend::<AcceleratedBackend>()
@@ -139,7 +139,7 @@ impl Apps {
             .unwrap()
             .register_dummy_circuits(dummy_circuits)
             .unwrap()
-            .finalize(pasta)
+            .finalize(pasta, RegistryTags::insecure_test_values())
             .unwrap();
         let prover = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
             .with_backend::<AcceleratedProver>()
@@ -147,7 +147,7 @@ impl Apps {
             .unwrap()
             .register_dummy_circuits(dummy_circuits)
             .unwrap()
-            .finalize(pasta)
+            .finalize(pasta, RegistryTags::insecure_test_values())
             .unwrap();
         Self {
             reference,
@@ -157,12 +157,14 @@ impl Apps {
     }
 
     fn check_registries(&self) -> TestCaseResult {
-        let native = self.reference.native_registry.tag();
-        let nested = self.reference.nested_registry.tag();
-        prop_assert_eq!(native, self.accelerated.native_registry.tag());
-        prop_assert_eq!(nested, self.accelerated.nested_registry.tag());
-        prop_assert_eq!(native, self.prover.native_registry.tag());
-        prop_assert_eq!(nested, self.prover.nested_registry.tag());
+        // The tag is supplied, so comparing it would prove nothing; compare
+        // the registry polynomials themselves through the regression digest.
+        let native = self.reference.native_registry.evaluation_digest();
+        let nested = self.reference.nested_registry.evaluation_digest();
+        prop_assert_eq!(native, self.accelerated.native_registry.evaluation_digest());
+        prop_assert_eq!(nested, self.accelerated.nested_registry.evaluation_digest());
+        prop_assert_eq!(native, self.prover.native_registry.evaluation_digest());
+        prop_assert_eq!(nested, self.prover.nested_registry.evaluation_digest());
         Ok(())
     }
 
@@ -465,7 +467,7 @@ fn selected_backend_dispatch_reaches_msm() {
         .unwrap()
         .register_dummy_circuits(0)
         .unwrap()
-        .finalize(Pasta::baked())
+        .finalize(Pasta::baked(), RegistryTags::insecure_test_values())
         .unwrap();
     let mut rng = StdRng::seed_from_u64(0);
     let (left, _) = app.seed(&mut rng, UnitStep, ()).unwrap();

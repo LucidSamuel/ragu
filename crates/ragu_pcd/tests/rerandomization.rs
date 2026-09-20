@@ -9,7 +9,7 @@ use ragu_core::{
 };
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
-    ApplicationBuilder,
+    ApplicationBuilder, RegistryTags,
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
@@ -154,7 +154,7 @@ fn rerandomization_flow() {
         .unwrap()
         .register(Step1)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
     let mut rng = StdRng::seed_from_u64(1234);
@@ -181,7 +181,7 @@ fn multiple_rerandomizations_all_verify() {
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
     let mut rng = StdRng::seed_from_u64(9999);
@@ -207,7 +207,7 @@ fn rerandomization_preserves_header_data() {
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(StepWithData)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
     let mut rng = StdRng::seed_from_u64(4321);
@@ -242,7 +242,7 @@ fn rerandomized_fused_proof_verifies() {
         .unwrap()
         .register(Step1)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
     let mut rng = StdRng::seed_from_u64(7777);

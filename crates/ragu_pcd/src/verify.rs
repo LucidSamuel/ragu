@@ -281,7 +281,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        ApplicationBuilder,
+        ApplicationBuilder, RegistryTags,
         step::{Encoded, Index, Step},
     };
 
@@ -291,7 +291,7 @@ mod tests {
     fn create_test_app() -> crate::Application<'static, Pasta, TestR, HEADER_SIZE> {
         let pasta = Pasta::baked();
         ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-            .finalize(pasta)
+            .finalize(pasta, RegistryTags::insecure_test_values())
             .expect("failed to create test application")
     }
 
@@ -446,7 +446,7 @@ mod tests {
             .expect("register seed step")
             .register(UnitStep)
             .expect("register fuse step")
-            .finalize(Pasta::baked())
+            .finalize(Pasta::baked(), RegistryTags::insecure_test_values())
             .expect("failed to create test application")
     }
 
@@ -583,7 +583,7 @@ mod tests {
         let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
             .register(UnitSeed)
             .expect("register seed step")
-            .finalize(pasta)
+            .finalize(pasta, RegistryTags::insecure_test_values())
             .expect("failed to create test application");
 
         let mut rng = StdRng::seed_from_u64(7);

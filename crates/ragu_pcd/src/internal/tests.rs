@@ -217,58 +217,57 @@ fn print_internal_stage_parameters() {
     print_stage!(Eval);
 }
 
-/// Verifies the native registry tag matches the expected value.
+/// Verifies the native registry's regression digest matches the expected value.
 ///
-/// This test ensures the wiring polynomial structure is mathematically
-/// equivalent to the reference implementation by comparing cryptographic
-/// tags.
+/// The digest hashes evaluations of the registry polynomial, so it changes
+/// whenever a registered circuit, the registration order, or the tag changes.
+/// This pins the wiring polynomial structure against unintended changes; it is
+/// not a security check (see `Tag`).
 #[test]
-fn test_native_registry_tag() {
+fn test_native_registry_digest() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
-    let expected = fp!(0x2d79887a5bba454fd675fbbeba1027eee9be53f804179f1e2ca2481644f2b547);
+    let expected = fp!(0x1d4f892397545821419d53e6c306f9686e15434d5a7fae9df70828fa1a538afa);
 
     assert_eq!(
-        app.native_registry.tag(),
+        app.native_registry.evaluation_digest(),
         expected,
-        "Native registry tag changed unexpectedly!"
+        "Native registry digest changed unexpectedly!"
     );
 }
 
-/// Verifies the nested registry tag matches the expected value.
+/// Verifies the nested registry's regression digest matches the expected value.
 ///
-/// This test ensures the wiring polynomial structure is mathematically
-/// equivalent to the reference implementation by comparing cryptographic
-/// tags.
+/// See [`test_native_registry_digest`] for what this does and does not check.
 #[test]
-fn test_nested_registry_tag() {
+fn test_nested_registry_digest() {
     let pasta = Pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
-    let expected = fq!(0x2f4bf855b80a694facbe9a2c26ee8d1dae9e15bb7b7eba54ca53f5c166e1d150);
+    let expected = fq!(0x0929102222c317ff68e4bcf4f7f26f27f2561b2822e917abe483c7abacadced4);
 
     assert_eq!(
-        app.nested_registry.tag(),
+        app.nested_registry.evaluation_digest(),
         expected,
-        "Nested registry tag changed unexpectedly!"
+        "Nested registry digest changed unexpectedly!"
     );
 }
 
-/// Helper test to print current registry tags in copy-pasteable format.
-/// Run with: `cargo test -p ragu_pcd --release print_registry_tags -- --nocapture`
+/// Helper test to print current registry digests in copy-pasteable format.
+/// Run with: `cargo test -p ragu_pcd --release print_registry_digests -- --nocapture`
 #[test]
-fn print_registry_tags() {
+fn print_registry_digests() {
     use alloc::{format, string::String, vec::Vec};
     use std::println;
 
@@ -279,21 +278,21 @@ fn print_registry_tags() {
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
         .unwrap()
-        .finalize(pasta)
+        .finalize(pasta, RegistryTags::insecure_test_values())
         .unwrap();
 
-    let native_tag = app.native_registry.tag();
-    let nested_tag = app.nested_registry.tag();
+    let native_digest = app.native_registry.evaluation_digest();
+    let nested_digest = app.nested_registry.evaluation_digest();
 
     // Convert to big-endian hex for repr256! format
-    let native_bytes: Vec<u8> = native_tag
+    let native_bytes: Vec<u8> = native_digest
         .to_repr()
         .as_ref()
         .iter()
         .rev()
         .cloned()
         .collect();
-    let nested_bytes: Vec<u8> = nested_tag
+    let nested_bytes: Vec<u8> = nested_digest
         .to_repr()
         .as_ref()
         .iter()
@@ -301,7 +300,7 @@ fn print_registry_tags() {
         .cloned()
         .collect();
 
-    println!("\n// Copy-paste the following into the registry tag tests:");
+    println!("\n// Copy-paste the following into the registry digest tests:");
     println!(
         "    let expected = fp!(0x{});",
         native_bytes

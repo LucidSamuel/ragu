@@ -30,7 +30,7 @@ use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
 use ragu_circuits::{
     polynomials::Rank,
-    registry::{CircuitIndex, RegistryBuilder},
+    registry::{CircuitIndex, RegistryBuilder, Tag},
 };
 use ragu_testing_fuzz::params::{FieldChoice, RankChoice};
 use ragu_testing_fuzz::substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval};
@@ -84,7 +84,7 @@ fn run<F: PrimeField<Repr = [u8; 32]> + ff::FromUniformBytes<64>, R: Rank>(
     };
     let registry = match RegistryBuilder::<F, R>::new()
         .register_circuit(circuit)
-        .and_then(|b| b.finalize())
+        .and_then(|b| b.finalize(Tag::insecure_test_value()))
     {
         Ok(r) => r,
         Err(_) => return, // Circuit too large for rank — skip.

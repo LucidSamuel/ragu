@@ -52,7 +52,7 @@ use ragu_circuits::{Circuit, polynomials::ProductionRank};
 use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
-    ApplicationBuilder,
+    ApplicationBuilder, RegistryTags,
     fuzzing::patcher::{
         CircuitSpec, InternalCircuitVisitor, OutputRef, capture_internal_circuits,
         capture_internal_circuits_bootstrap,
@@ -313,7 +313,10 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
 /// wires, instance wires, outputs or hints, or that changes how many single
 /// wire nudges the constraints neutralize, is noticed here. The sweep
 /// tallies and `cheatable` are judged at the witness, so they are pinned per
-/// capture point; the rest is structural.
+/// capture point; the rest is structural. The endoscaling steps' tallies
+/// follow the endoscalar bit patterns, which the transcript derives from
+/// values that depend on the registry tags, so they move whenever
+/// `RegistryTags::insecure_test_values` changes.
 fn expected(name: &str, point: &str) -> Census {
     let (stage_wires, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name {
         "hashes_1" => (456, 5561, 38, 8, 0, 8, 238),
@@ -333,9 +336,9 @@ fn expected(name: &str, point: &str) -> Census {
         ("outer_collapse", "bootstrap") => (190, 44),
         ("outer_collapse", _) => (188, 50),
         ("compute_v", _) => (13, 324),
-        (_, "bootstrap") => (50, 59),
-        (_, "leaves") => (47, 62),
-        (_, "nodes") => (42, 67),
+        (_, "bootstrap") => (48, 61),
+        (_, "leaves") => (45, 64),
+        (_, "nodes") => (46, 63),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {
@@ -370,7 +373,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         .register(leaf_step())?
         .register(hash2())?
         .register(merge2())?
-        .finalize(pasta)?;
+        .finalize(pasta, RegistryTags::insecure_test_values())?;
     let mut rng = StdRng::seed_from_u64(1234);
 
     // The base case: the internal bootstrap step over two dummy children.

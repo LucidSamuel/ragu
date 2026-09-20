@@ -9,7 +9,7 @@ use ragu_acceleration::AcceleratedBackend;
 use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_pasta::{Fp, Pasta};
-use ragu_pcd::{Application, ApplicationBuilder, Pcd};
+use ragu_pcd::{Application, ApplicationBuilder, Pcd, RegistryTags};
 use ragu_testing::pcd::nontrivial;
 use rand::rngs::StdRng;
 use setup::{
@@ -42,7 +42,7 @@ fn finalize(
         &'static <Pasta as Cycle>::Params,
     ),
 ) {
-    black_box(app.finalize(pasta)).unwrap();
+    black_box(app.finalize(pasta, RegistryTags::insecure_test_values())).unwrap();
 }
 
 library_benchmark_group!(
