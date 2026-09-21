@@ -13,7 +13,7 @@ use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     Circuit,
     polynomials::{Rank, sparse},
-    staging::MultiStage,
+    staging::{MultiStage, StageReader, stage_wire_indices, wire_degree, wires_of},
 };
 use ragu_core::{
     Result,
@@ -36,7 +36,6 @@ use crate::{
     internal::{
         Side, native,
         nested::{self, stages::challenges},
-        stage_wires::{StageReader, stage_wire_indices, wire_degree, wires_of},
     },
     step::{Encoded, Index, Step},
 };

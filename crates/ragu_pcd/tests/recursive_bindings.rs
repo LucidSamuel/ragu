@@ -18,7 +18,7 @@ use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
-    staging::{Stage, StageExt},
+    staging::{Stage, StageExt, StageReader, stage_wire_indices, wires_of},
 };
 use ragu_core::Result;
 use ragu_pasta::{Ep, EpAffine, EqAffine, Fp, Fq};
@@ -34,7 +34,6 @@ use crate::{
         endoscalar::PointsWitness,
         native::{self, stages::points},
         nested::{self, stages::challenges},
-        stage_wires::{StageReader, stage_wire_indices, wires_of},
     },
 };
 

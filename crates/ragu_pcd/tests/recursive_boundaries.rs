@@ -351,18 +351,16 @@ mod stages {
         ff::{Field, WithSmallOrderMulGroup},
     };
     use ragu_backend::{Backend, ReferenceBackend};
-    use ragu_circuits::polynomials::sparse;
+    use ragu_circuits::{
+        polynomials::sparse,
+        staging::{StageReader, stage_wire_indices, wires_of},
+    };
     use ragu_core::Result;
     use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
     use ragu_testing::strategies;
 
     use super::support::{self, C, R, Value};
-    use crate::internal::{
-        endoscalar::EndoscalarStage,
-        native::stages::points::WalkStage,
-        nested,
-        stage_wires::{StageReader, stage_wire_indices, wires_of},
-    };
+    use crate::internal::{endoscalar::EndoscalarStage, native::stages::points::WalkStage, nested};
 
     /// The algebraic extension of the endoscalar map to arbitrary field wires.
     /// A pair (n, e) contributes (1 - 2n) * (1 + (zeta - 1)e).

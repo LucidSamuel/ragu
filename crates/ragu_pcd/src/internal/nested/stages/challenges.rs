@@ -210,6 +210,12 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
 #[cfg(test)]
 mod tests {
+    use alloc::vec::Vec;
+
+    use ragu_circuits::{
+        polynomials::ProductionRank,
+        staging::{StageExt, StageReader, stage_wire_indices, wires_of},
+    };
     use ragu_pasta::EqAffine;
 
     use super::*;
@@ -218,5 +224,35 @@ mod tests {
     #[test]
     fn stage_values_matches_wire_count() {
         assert_stage_values(&Stage::<EqAffine, R>::default());
+    }
+
+    /// The challenge stage's lifts read back off its rx polynomial are the
+    /// lifts it was built from, at the indices its gadget names.
+    #[test]
+    fn stage_values_read_back() -> Result<()> {
+        type R = ProductionRank;
+        type F = ragu_pasta::Fq;
+        let lifts: [F; NUM] = core::array::from_fn(|i| F::from(3 + i as u64));
+        let beta = F::from(99);
+        let header = [ragu_pasta::Fp::from(crate::header::Suffix::new(0).get()); 4];
+        let witness = Witness::new::<_, 4>(lifts, &header, &header, beta);
+        let rx = <Stage<EqAffine, R> as StageExt<F, R>>::rx(F::from(11), &witness)?;
+        let reader = StageReader::<F, R>::new(&rx);
+
+        let indices = stage_wire_indices::<F, R, Stage<EqAffine, R>>(|out| {
+            let mut wires = Vec::new();
+            for pair in out.pairs.iter() {
+                wires.extend(wires_of(&pair.lift)?);
+            }
+            wires.extend(wires_of(&out.base_case.lift)?);
+            wires.extend(wires_of(&out.beta.lift)?);
+            Ok(wires)
+        })?;
+        for (i, lift) in lifts.iter().enumerate() {
+            assert_eq!(reader.read(indices[i]), *lift, "lift {i}");
+        }
+        assert_eq!(reader.read(indices[SIGN_INDEX]), -F::ONE);
+        assert_eq!(reader.read(indices[BETA_INDEX]), beta);
+        Ok(())
     }
 }

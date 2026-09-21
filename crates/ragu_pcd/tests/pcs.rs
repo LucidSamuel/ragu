@@ -874,6 +874,7 @@ mod challenge_stage {
 
     use proptest::prelude::*;
     use ragu_arithmetic::ff::Field;
+    use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
     use ragu_core::Result;
     use ragu_pasta::{EqAffine, Fq};
     use ragu_testing::strategies;
@@ -883,10 +884,7 @@ mod challenge_stage {
         folding,
         support::{self, Cache, R, Value},
     };
-    use crate::internal::{
-        nested::stages::challenges,
-        stage_wires::{StageReader, stage_wire_indices, wires_of},
-    };
+    use crate::internal::nested::stages::challenges;
 
     fn check(app: &support::App, inputs: &support::Inputs, delta: Fq, y: Fq, z: Fq) -> Result<()> {
         let (child, _, _) = support::fused(app, inputs)?;

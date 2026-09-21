@@ -76,7 +76,7 @@ use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     Circuit,
     polynomials::Rank,
-    staging::{MultiStage, Stage, StageExt},
+    staging::{MultiStage, Stage, StageExt, stage_wire_indices, wires_of},
 };
 use ragu_core::{
     Result,
@@ -95,7 +95,6 @@ use crate::{
         endoscalar::EndoscalarStage,
         native::{self, stages::points as native_points, total_circuit_counts},
         nested::{self, EndoscalingStep, EndoscalingStepWitness, NumStepsLen, PointsStage},
-        stage_wires::{stage_wire_indices, wires_of},
         transcript::Transcript,
     },
     proof::ProofBuilder,

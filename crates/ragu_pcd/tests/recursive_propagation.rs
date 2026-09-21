@@ -14,7 +14,10 @@ pub(crate) mod support {
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
     use ragu_backend::{Backend, ReferenceBackend};
-    use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
+    use ragu_circuits::{
+        polynomials::{ProductionRank, Rank, sparse},
+        staging::{StageReader, stage_wire_indices, wire_degree, wires_of},
+    };
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue},
@@ -47,7 +50,6 @@ pub(crate) mod support {
                 self,
                 stages::{eval as nested_eval, preamble},
             },
-            stage_wires::{StageReader, stage_wire_indices, wire_degree, wires_of},
         },
         step::{Encoded, Index, Step},
     };
@@ -931,17 +933,14 @@ mod endpoints {
     use proptest::prelude::*;
     use ragu_arithmetic::Cycle;
     use ragu_backend::{Backend, ReferenceBackend};
+    use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
     use ragu_core::Result;
     use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
 
     use super::support::{self, C, R, Value, coordinates};
-    use crate::internal::{
-        native::stages::points::WalkStage,
-        nested,
-        stage_wires::{StageReader, stage_wire_indices, wires_of},
-    };
+    use crate::internal::{native::stages::points::WalkStage, nested};
 
     fn check(
         app: &support::App,
@@ -1083,7 +1082,11 @@ mod timing {
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, ff::Field, group::Curve};
     use ragu_backend::{Backend, ReferenceBackend};
-    use ragu_circuits::{polynomials::Rank, registry::CircuitIndex, staging::StageExt};
+    use ragu_circuits::{
+        polynomials::Rank,
+        registry::CircuitIndex,
+        staging::{StageExt, StageReader, stage_wire_indices, wires_of},
+    };
     use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
     use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
     use ragu_primitives::{GadgetExt, Point};
@@ -1102,7 +1105,6 @@ mod timing {
                 self,
                 stages::{ab, f},
             },
-            stage_wires::{StageReader, stage_wire_indices, wires_of},
             transcript::Transcript,
         },
         proof::bridge_alpha_power,
@@ -1524,13 +1526,11 @@ mod commitments {
             CurveAffine,
             group::{Curve, Group},
         };
+        use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
 
-        use crate::internal::{
-            native::{
-                RxIndex,
-                stages::points::{BindingStage, WalkStage},
-            },
-            stage_wires::{StageReader, stage_wire_indices, wires_of},
+        use crate::internal::native::{
+            RxIndex,
+            stages::points::{BindingStage, WalkStage},
         };
 
         type Nested = <C as ragu_arithmetic::Cycle>::NestedCurve;

@@ -1,23 +1,18 @@
-//! Naming a stage's values by position, and reading them off its rx
-//! polynomial.
+//! Stage wire indices and their locations in rx polynomials.
 //!
-//! A stage's rx polynomial carries its values unblinded: `StageExt::rx` puts
-//! the blinding `alpha` at the SYSTEM gate alone and the values, two per
-//! gate, at the $a$ and $d$ wires of the stage's reserved gates in
-//! allocation order. So a value can be named by its reservation index (the
-//! order the stage's output gadget traverses its wires) and read straight
-//! off the polynomial at the degree that index maps to. The verifier uses
-//! this to hold what the stages claim against what it can recompute, and
-//! the patcher harness to declare a circuit's outputs.
+//! A stage's rx polynomial carries its values unblinded:
+//! [`StageExt::rx`](super::StageExt::rx) puts the blinding `alpha` at the
+//! SYSTEM gate alone and the values, two per gate, at the $a$ and $d$
+//! wires of the stage's reserved gates in allocation order. A value can be
+//! named by its reservation index (the order the stage's output gadget
+//! traverses its wires) and read straight off the polynomial at the degree
+//! that index maps to. These helpers let consumers identify stage fields and
+//! read their values using the same layout as stage construction and loading.
 
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
 use ragu_arithmetic::{Coeff, ff::Field};
-use ragu_circuits::{
-    polynomials::{Rank, sparse},
-    staging::Stage,
-};
 use ragu_core::{
     Result,
     convert::WireMap,
@@ -29,10 +24,13 @@ use ragu_core::{
     maybe::Empty,
 };
 
+use super::Stage;
+use crate::polynomials::{Rank, sparse};
+
 /// A driver that is never driven: its `usize` wires let a stage gadget be
-/// rebound onto reservation indices, exactly as `StageGuard` rebinds it
-/// onto the reserved wires, so a stage field can be named by index.
-pub(crate) struct Indexed<F>(PhantomData<F>);
+/// rebound onto reservation indices, exactly as [`StageGuard`](super::StageGuard)
+/// rebinds it onto the reserved wires, so a stage field can be named by index.
+pub struct Indexed<F>(PhantomData<F>);
 
 impl<F: Field> DriverTypes for Indexed<F> {
     type ImplField = F;
@@ -105,9 +103,7 @@ impl<F: Field> WireMap<F> for WireCollector<F> {
 
 /// The reservation indices of a sub-gadget of a stage output rebound by
 /// [`stage_wire_indices`] (a `Point` yields its two coordinates).
-pub(crate) fn wires_of<'dr, F: Field, G: Gadget<'dr, Indexed<F>>>(
-    gadget: &G,
-) -> Result<Vec<usize>> {
+pub fn wires_of<'dr, F: Field, G: Gadget<'dr, Indexed<F>>>(gadget: &G) -> Result<Vec<usize>> {
     let mut collector = WireCollector::<F> {
         wires: Vec::new(),
         _marker: PhantomData,
@@ -123,7 +119,7 @@ pub(crate) fn wires_of<'dr, F: Field, G: Gadget<'dr, Indexed<F>>>(
 /// the stage out, then rebinds the gadget onto indices starting at the
 /// stage's first reserved wire — `2 · (skip_gates − 1)` wires precede it,
 /// two per gate of every ancestor stage, the SYSTEM gate aside.
-pub(crate) fn stage_wire_indices<F: Field, R: Rank, S: Stage<F, R> + Default>(
+pub fn stage_wire_indices<F: Field, R: Rank, S: Stage<F, R> + Default>(
     select: impl for<'dst> FnOnce(Bound<'dst, Indexed<F>, S::OutputKind>) -> Result<Vec<usize>>,
 ) -> Result<Vec<usize>> {
     let mut counter = Emulator::counter();
@@ -141,7 +137,9 @@ pub(crate) fn stage_wire_indices<F: Field, R: Rank, S: Stage<F, R> + Default>(
 /// reservation index `index`: the $a$ wire of its gate for an even index,
 /// the $d$ wire for an odd one, in the trace layout (`a[g]` at
 /// $2n - 1 - g$, `d[g]` at $4n - 1 - g$), the SYSTEM gate being gate zero.
-pub(crate) fn wire_degree<R: Rank>(index: usize) -> usize {
+///
+/// `index` must name a reserved stage wire within the rank's gate capacity.
+pub fn wire_degree<R: Rank>(index: usize) -> usize {
     let gate = 1 + index / 2;
     if index.is_multiple_of(2) {
         2 * R::n() - 1 - gate
@@ -151,14 +149,14 @@ pub(crate) fn wire_degree<R: Rank>(index: usize) -> usize {
 }
 
 /// Reads a stage's values off its rx polynomial by reservation index.
-pub(crate) struct StageReader<F, R> {
+pub struct StageReader<F, R> {
     coeffs: Vec<F>,
     _marker: PhantomData<R>,
 }
 
 impl<F: Field, R: Rank> StageReader<F, R> {
     /// Takes the polynomial's coefficients, densely.
-    pub(crate) fn new(rx: &sparse::Polynomial<F, R>) -> Self {
+    pub fn new(rx: &sparse::Polynomial<F, R>) -> Self {
         Self {
             coeffs: rx.iter_coeffs().collect(),
             _marker: PhantomData,
@@ -166,46 +164,9 @@ impl<F: Field, R: Rank> StageReader<F, R> {
     }
 
     /// The value at reservation index `index`.
-    pub(crate) fn read(&self, index: usize) -> F {
+    ///
+    /// `index` must name a reserved stage wire within the rank's gate capacity.
+    pub fn read(&self, index: usize) -> F {
         self.coeffs[wire_degree::<R>(index)]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use ragu_circuits::{polynomials::ProductionRank, staging::StageExt};
-    use ragu_pasta::EqAffine;
-
-    use super::*;
-    use crate::internal::nested::stages::challenges::{self, Stage as Challenges};
-
-    /// The challenge stage's lifts read back off its rx polynomial are the
-    /// lifts it was built from, at the indices its gadget names.
-    #[test]
-    fn stage_values_read_back() -> Result<()> {
-        type R = ProductionRank;
-        type F = ragu_pasta::Fq;
-        let lifts: [F; challenges::NUM] = core::array::from_fn(|i| F::from(3 + i as u64));
-        let beta = F::from(99);
-        let header = [ragu_pasta::Fp::from(crate::header::Suffix::new(0).get()); 4];
-        let witness = challenges::Witness::new::<_, 4>(lifts, &header, &header, beta);
-        let rx = <Challenges<EqAffine, R> as StageExt<F, R>>::rx(F::from(11), &witness)?;
-        let reader = StageReader::<F, R>::new(&rx);
-
-        let indices = stage_wire_indices::<F, R, Challenges<EqAffine, R>>(|out| {
-            let mut wires = Vec::new();
-            for pair in out.pairs.iter() {
-                wires.extend(wires_of(&pair.lift)?);
-            }
-            wires.extend(wires_of(&out.base_case.lift)?);
-            wires.extend(wires_of(&out.beta.lift)?);
-            Ok(wires)
-        })?;
-        for (i, lift) in lifts.iter().enumerate() {
-            assert_eq!(reader.read(indices[i]), *lift, "lift {i}");
-        }
-        assert_eq!(reader.read(indices[challenges::SIGN_INDEX]), -F::ONE);
-        assert_eq!(reader.read(indices[challenges::BETA_INDEX]), beta);
-        Ok(())
     }
 }

@@ -45,7 +45,7 @@ use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
-    staging::StageExt,
+    staging::{StageExt, StageReader, stage_wire_indices, wires_of},
 };
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{Element, GadgetExt as _, Point, extract_endoscalar};
@@ -65,7 +65,6 @@ use crate::{
             stages::{ab as nested_ab, challenges as nested_challenges},
             unified as nested_unified,
         },
-        stage_wires::{StageReader, stage_wire_indices, wires_of},
         transcript::Transcript,
     },
 };
