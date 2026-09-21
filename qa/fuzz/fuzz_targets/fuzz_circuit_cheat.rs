@@ -1,4 +1,4 @@
-//! The "patcher" technique (issue #728): mutate one witness input, repair
+//! The "patcher" technique: mutate one witness input, repair
 //! every downstream wire by re-tracing, and demand the assembled
 //! constraint identity's verdict match an independent native oracle.
 //!

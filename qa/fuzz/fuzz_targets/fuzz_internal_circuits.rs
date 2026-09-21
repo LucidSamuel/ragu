@@ -31,6 +31,8 @@
 //! every fuzz iteration afterwards works on the captured graphs through a
 //! [`Prepared`] probe, which solved the part of each witness the inputs force
 //! once and only re-solves what a cheat can still change.
+//! Each captured honest witness is replayed through fresh synthesis during
+//! initialization, using the same checks as the PR regression suite.
 //!
 //! # The oracle
 //!
@@ -93,7 +95,7 @@
 //! same path, so a mirror that has drifted from `fuse` is reproduced faithfully
 //! rather than caught. The structural half of that drift (a circuit added to
 //! the recursion and forgotten here, or one whose wire counts moved) is pinned
-//! by the census in `ragu_pcd`'s `patcher_internal` test. Value-level drift —
+//! by the census in `qa/fuzz/src/internal_patcher_regression.rs`. Value-level drift —
 //! the mirror deriving a *different* honest witness than a real fuse would —
 //! is not checked anywhere yet, and wants the two paths sharing one
 //! implementation rather than another test.
@@ -111,143 +113,17 @@ use ragu_core::Result;
 // crate's direct `pasta_curves` is a distinct instance and would not unify
 // with `<Pasta as Cycle>::CircuitField`.
 use ragu_pasta::Pasta;
-use ragu_pcd::{
-    Application,
-    fuzzing::patcher::{
-        CircuitSpec, InternalCircuitVisitor, capture_internal_circuits,
-        capture_internal_circuits_bootstrap,
-    },
-};
-use ragu_testing::patcher::{
-    Prepared, ProbeOutcome, capture_with_stage_values, discover_free_advice, forced_by, playback,
-};
+use ragu_pcd::fuzzing::patcher::{CircuitSpec, InternalCircuitVisitor};
+use ragu_testing::patcher::{Prepared, playback};
 use ragu_testing_fuzz::{
+    internal_patcher::{Mutation, Point, capture_checked, check_binding, probe_mutations},
     patcher_analysis::{analyze_component_rank, analyze_connectivity},
-    pcd::{self, HEADER_SIZE, R, SyncApp},
     source_shape::analyze_source_shape,
 };
-use rand::{SeedableRng, rngs::StdRng};
 
 type NativeField = <Pasta as Cycle>::CircuitField;
 type NestedField = <Pasta as Cycle>::ScalarField;
-type App = Application<'static, Pasta, R, HEADER_SIZE>;
-
-/// The applications the capture points run in, indexed by how many steps they
-/// register.
-///
-/// The base case runs in the one-step application on purpose: with one
-/// registered step the registry rounds to $16$ circuits and with two or three
-/// to $32$, so that point is not only a different fuse but a different
-/// registry width.
-static APPS: LazyLock<[SyncApp; 3]> = LazyLock::new(|| {
-    [
-        pcd::nontrivial_app(1),
-        pcd::nontrivial_app(2),
-        pcd::nontrivial_app(3),
-    ]
-});
-
-/// Where in a proof tree the internal circuits are captured.
-///
-/// A point is a pure function of itself: it builds its own children from its
-/// own seed and its own witnesses, so [`Point::capture`] can be run again
-/// later and see the same circuits with the same honest witnesses. The replay
-/// depends on that.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Point {
-    /// The base case: the internal bootstrap step over two synthesized dummy
-    /// children, in the one-step application.
-    Bootstrap,
-    /// A `Hash2` fuse of two seeded leaves.
-    Leaves,
-    /// A `Merge2` fuse of two `Hash2` nodes: the first point whose children
-    /// carry accumulators of their own.
-    Nodes,
-    /// A `Merge2` fuse of a `Merge2` node with a `Hash2` node. The two sides
-    /// are of unequal depth, so the collapse circuits fold two accumulators
-    /// that are not each other's mirror image.
-    Lopsided,
-}
-
-impl Point {
-    const ALL: [Point; 4] = [
-        Point::Bootstrap,
-        Point::Leaves,
-        Point::Nodes,
-        Point::Lopsided,
-    ];
-
-    fn name(self) -> &'static str {
-        match self {
-            Point::Bootstrap => "bootstrap",
-            Point::Leaves => "leaves",
-            Point::Nodes => "nodes",
-            Point::Lopsided => "lopsided",
-        }
-    }
-
-    /// How many steps the application this point runs in registers.
-    fn steps(self) -> usize {
-        match self {
-            Point::Bootstrap => 1,
-            Point::Leaves => 2,
-            Point::Nodes | Point::Lopsided => 3,
-        }
-    }
-
-    /// The RNG seed every proof of this point is built from — distinct per
-    /// point, so no two points share their blinding.
-    fn rng_seed(self) -> u64 {
-        match self {
-            Point::Bootstrap => 0x5eed_0001,
-            Point::Leaves => 0x1eaf_0002,
-            Point::Nodes => 0x0de0_0003,
-            Point::Lopsided => 0x109d_0004,
-        }
-    }
-
-    /// The leaf witnesses this point seeds from — empty for the bootstrap.
-    fn witnesses(self) -> &'static [u64] {
-        match self {
-            Point::Bootstrap => &[],
-            Point::Leaves => &[3, 5],
-            Point::Nodes => &[7, 11, 13, 17],
-            Point::Lopsided => &[19, 23, 29, 31, 37, 41],
-        }
-    }
-
-    fn app(self) -> &'static App {
-        &APPS[self.steps() - 1].0
-    }
-
-    /// Builds this point's tree and hands every internal circuit of its final
-    /// fuse to `visitor`.
-    fn capture<V: InternalCircuitVisitor<Pasta>>(self, visitor: &mut V) -> Result<()> {
-        let app = self.app();
-        let mut rng = StdRng::seed_from_u64(self.rng_seed());
-        let w = self.witnesses();
-        match self {
-            Point::Bootstrap => capture_internal_circuits_bootstrap(app, &mut rng, visitor),
-            Point::Leaves => {
-                let left = pcd::seed(app, &mut rng, w[0]);
-                let right = pcd::seed(app, &mut rng, w[1]);
-                capture_internal_circuits(app, &mut rng, pcd::hash2(), (), left, right, visitor)
-            }
-            Point::Nodes => {
-                let left = pcd::node(app, &mut rng, w[0], w[1]);
-                let right = pcd::node(app, &mut rng, w[2], w[3]);
-                capture_internal_circuits(app, &mut rng, pcd::merge2(), (), left, right, visitor)
-            }
-            Point::Lopsided => {
-                let ll = pcd::node(app, &mut rng, w[0], w[1]);
-                let lr = pcd::node(app, &mut rng, w[2], w[3]);
-                let deep = app.fuse(&mut rng, pcd::merge2(), (), ll, lr)?.0;
-                let shallow = pcd::node(app, &mut rng, w[4], w[5]);
-                capture_internal_circuits(app, &mut rng, pcd::merge2(), (), deep, shallow, visitor)
-            }
-        }
-    }
-}
+type CircuitSelector = u16;
 
 /// One captured internal circuit, ready to probe.
 struct Captured<F> {
@@ -280,12 +156,7 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 ) -> Result<Captured<F>> {
     let name = format!("{}@{}", spec.name, point.name());
     let source_shape = analyze_source_shape(circuit)?;
-    let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)?;
-    let resolution = spec.resolve(&cap.instance, &cap.stage_wires)?;
-    assert!(
-        !resolution.outputs.is_empty(),
-        "{name}: nothing to watch — the oracle would be vacuous here",
-    );
+    let (cap, resolution) = capture_checked(&name, spec, circuit, stage_values, make_witness)?;
 
     let source = source_shape.compare(&cap);
     assert!(
@@ -297,7 +168,9 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     // the outputs, the solver must force every output — else the circuit
     // never constrains it and no cheat can tell us anything about it.
     // Whether the inputs *alone* force it is reported.
-    let free = discover_free_advice(&cap.recorder.events, &cap.recorder.values);
+    let binding = check_binding(&name, &cap, &resolution);
+    let free = binding.free;
+    let strongly_forced = binding.strongly_forced;
     let connectivity = analyze_connectivity(
         &cap.recorder.events,
         cap.recorder.values.len(),
@@ -339,35 +212,6 @@ fn collect<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
         .copied()
         .filter(|w| !resolution.inputs.contains(w))
         .collect();
-    let mut granted = resolution.inputs.clone();
-    granted.extend(
-        free.iter()
-            .copied()
-            .filter(|w| !resolution.outputs.contains(w)),
-    );
-    let weakly = forced_by(&cap.recorder.events, &cap.recorder.values, &granted);
-    let unforced: Vec<usize> = resolution
-        .outputs
-        .iter()
-        .copied()
-        .filter(|w| weakly.binary_search(w).is_err())
-        .collect();
-    assert!(
-        unforced.is_empty(),
-        "{name}: declared outputs {unforced:?} are not forced even with every hint \
-         granted — the circuit never constrains them; fix before fuzzing",
-    );
-    let strongly = forced_by(
-        &cap.recorder.events,
-        &cap.recorder.values,
-        &resolution.inputs,
-    );
-    let strongly_forced = resolution
-        .outputs
-        .iter()
-        .filter(|w| strongly.binary_search(w).is_ok())
-        .count();
-
     let prepared = Prepared::new(
         cap.recorder.events,
         cap.recorder.values,
@@ -450,6 +294,11 @@ static CIRCUITS: LazyLock<Collector<NativeField, NestedField>> = LazyLock::new(|
             )
         });
     }
+    let total = collector.native.len() + collector.nested.len();
+    assert!(
+        total <= usize::from(CircuitSelector::MAX) + 1,
+        "the circuit selector must reach all {total} captured circuits",
+    );
     collector
 });
 
@@ -526,27 +375,10 @@ fn replay(
     visitor.verdict
 }
 
-/// How a cheat rewrites its target wire, mirroring the corner cases
-/// `fuzz_advice_patcher` found productive.
-#[derive(Arbitrary, Debug, Clone, Copy)]
-enum Mutation {
-    /// `v + δ` for a small delta.
-    AddSmall(u64),
-    /// `v · m`.
-    MulSmall(u64),
-    /// `−v`.
-    Negate,
-    /// Zero — the corner case gadget hints most often mishandle.
-    Zero,
-    /// Copy another cheatable wire's honest value: the probe for a missing
-    /// copy constraint.
-    CopyFrom(u16),
-}
-
 #[derive(Arbitrary, Debug)]
 struct Input {
     /// Which captured circuit to probe (modulo the count, native first).
-    circuit: u8,
+    circuit: CircuitSelector,
     /// Coordinated cheats: `(wire index mod cheatable count, mutation)`.
     cheats: Vec<(u16, Mutation)>,
 }
@@ -570,7 +402,7 @@ fuzz_target!(
         if total == 0 {
             return;
         }
-        let index = input.circuit as usize % total;
+        let index = usize::from(input.circuit) % total;
         if index < circuits.native.len() {
             let circuit = &circuits.native[index];
             probe(circuit, &input, |witness| {
@@ -592,70 +424,11 @@ fn probe<F: PrimeFieldBits>(
     input: &Input,
     replay: impl Fn(&[F]) -> Option<bool>,
 ) {
-    if circuit.cheatable.is_empty() {
-        return;
-    }
-    let honest = circuit.prepared.honest();
-
-    // Resolve the cheats onto distinct wires, each nudged off its honest
-    // value so every cheat does real work.
-    let mut cheats: Vec<(usize, F)> = Vec::new();
-    for (raw, mutation) in input.cheats.iter().take(8) {
-        let wire = circuit.cheatable[*raw as usize % circuit.cheatable.len()];
-        if cheats.iter().any(|(w, _)| *w == wire) {
-            continue;
-        }
-        let mut value = match mutation {
-            Mutation::AddSmall(d) => honest[wire] + F::from(*d),
-            Mutation::MulSmall(m) => honest[wire] * F::from(*m),
-            Mutation::Negate => -honest[wire],
-            Mutation::Zero => F::ZERO,
-            Mutation::CopyFrom(o) => {
-                honest[circuit.cheatable[*o as usize % circuit.cheatable.len()]]
-            }
-        };
-        if value == honest[wire] {
-            value += F::ONE;
-        }
-        cheats.push((wire, value));
-    }
-    if cheats.is_empty() {
-        // Default to one small cheat so every input does work.
-        cheats.push((circuit.cheatable[0], honest[circuit.cheatable[0]] + F::ONE));
-    }
-
-    let ProbeOutcome::OutputsMoved { witness, moved } = circuit.prepared.probe(&cheats) else {
-        return;
-    };
-
-    // The recorded graph says this is a soundness bug. Before saying so, put
-    // the accepting witness back through a fresh synthesis of the same
-    // circuit: a capture that drifted from the production code would
-    // otherwise be reported as a break in the circuit.
-    let name = circuit.name();
-    match replay(&witness) {
-        Some(true) => panic!(
-            "INTERNAL CIRCUIT SOUNDNESS SIGNAL in `{name}` (replay-confirmed): cheating \
-             advice {cheats:?} and repairing through the captured constraints left every \
-             constraint satisfied, yet the wires {moved:?} this circuit is responsible for \
-             moved while every input it receives — instance and stage alike — was held at \
-             its honest value. A fresh synthesis of the circuit accepts the same witness, \
-             so this is not a recording artifact: the circuit accepts two witnesses that \
-             agree on everything it takes in and disagree on something it vouches for.",
-        ),
-        Some(false) => panic!(
-            "CAPTURE DIVERGENCE in `{name}`: the recorded constraint graph accepted a \
-             witness that a fresh synthesis of the same circuit rejects, after cheating \
-             advice {cheats:?} moved the outputs {moved:?}. This is not evidence about the \
-             circuit — it is evidence that the capture and the circuit disagree, which \
-             makes every verdict this target has produced about `{name}` unsound in both \
-             directions. Fix the capture path before reading anything else here.",
-        ),
-        None => panic!(
-            "REPLAY UNREACHABLE for `{name}`: rebuilding the capture point never reached \
-             the circuit, so the accepting witness (from cheating {cheats:?}, moving \
-             {moved:?}) could not be checked against a fresh synthesis. A capture point is \
-             supposed to be reproducible from its own seed; this one is not.",
-        ),
-    }
+    probe_mutations(
+        &circuit.name(),
+        &circuit.prepared,
+        &circuit.cheatable,
+        &input.cheats,
+        replay,
+    );
 }

@@ -1,4 +1,4 @@
-//! The "patcher" technique with a real repair engine (issues #728, #793).
+//! The "patcher" technique with a real repair engine.
 //!
 //! `fuzz_circuit_cheat` is a patcher whose "repair" is re-tracing the
 //! circuit on the mutated witness: every wire — including advice — is
@@ -133,8 +133,8 @@
 //!
 //! The engine — the recording driver, the repair solver, the oracles, and
 //! the planted-bug selftest — lives in `ragu_testing::patcher`, where it is
-//! unit tested in CI and available to `ragu_pcd`'s own tests for the
-//! internal recursion circuits (issue #793). `PATCHER_SELFTEST=1` runs that
+//! unit tested in CI and shared with the internal recursion circuit
+//! harnesses. `PATCHER_SELFTEST=1` runs that
 //! selftest here on demand: a deliberately under-constrained circuit (a root
 //! and a "square" allocated as independent free wires, with the
 //! `square = root²` gate omitted) whose oracle must fire — proof the
@@ -185,9 +185,8 @@ const RANK_WIRE_CAP: usize = 384;
 /// How a cheat rewrites the honest value of its target advice wire.
 ///
 /// `AddSmall` is the historical mutation, but a `u64` delta explores only a
-/// ~2⁻¹⁹⁰ sliver of the field around the honest value, and issue #728's
-/// premise is that under-constrained bugs live at corner cases. The rest
-/// aim directly at them: exact special values (0, ±1, p−2, 2⁻¹, roots of
+/// ~2⁻¹⁹⁰ sliver of the field around the honest value. Other mutations target
+/// corner cases: exact special values (0, ±1, p−2, 2⁻¹, roots of
 /// unity, 2^k boundaries), full-width deltas, sign/scale flips, and
 /// aliasing against another advice wire — the direct probe for a missing
 /// copy constraint ("these two should both be pinned, but only one is").
@@ -297,10 +296,10 @@ fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, 
 
 /// The patcher vocabulary: `OpSet::ALL`.
 ///
-/// The single-unknown solver (issue #796 item 1) handles any constraint
+/// The single-unknown solver handles any constraint
 /// with one unknown, so the value-fallible arithmetic gadgets `invert` and
 /// `divide` — whose freshly-allocated inverse/quotient is a *gate input*
-/// the solver back-solves — are in scope (issue #796 item 2), as is
+/// the solver back-solves — are in scope, as is
 /// `is_zero` (`x·is_zero = 0`, `x·inv = 1 − is_zero`). The boolean
 /// allocator and combinators `BoolAlloc`/`BoolNot`/`BoolAnd` also
 /// participate: their booleanity (`a·b = 0`, `a + b = 1`) and result

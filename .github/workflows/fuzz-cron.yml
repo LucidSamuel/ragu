@@ -1,10 +1,10 @@
 name: Continuous fuzzing
 
 # Runs every fuzz target for a bounded budget on a scheduled cadence.
-# Unlike the per-PR `fuzz harness check (nightly)` job in `rust.yml` (which
-# only `cargo check`s for bitrot), this workflow actually exercises libFuzzer
-# against each target, accumulates a corpus across runs, and surfaces any
-# crash as a failed job + uploaded artifact.
+# The per-PR `fuzz harness check (nightly)` job in `rust.yml` executes the
+# support and patcher regression tests and checks target compilation. This
+# workflow runs libFuzzer campaigns, accumulates a corpus across runs, and
+# surfaces any crash as a failed job + uploaded artifact.
 
 on:
   # Three times weekly: Sundays, Wednesdays, and Fridays at 00:00 UTC.

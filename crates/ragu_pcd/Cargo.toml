@@ -6,6 +6,9 @@ description = "Top-level API for building proof-carrying data (PCD) applications
 license.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+# Some files in tests/ are unit-test modules that need private library access.
+# Register integration targets explicitly instead of treating every file as one.
+autotests = false
 
 readme = "README.md"
 homepage.workspace = true
@@ -57,6 +60,8 @@ ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
 gungraun = { workspace = true }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 proptest = { workspace = true }
+# Parallel test cases also exercise the prover without its multicore feature.
+rayon = { workspace = true }
 
 [[bench]]
 name = "gungraun"
@@ -72,10 +77,23 @@ name = "criterion_registry"
 path = "benches/criterion/registry.rs"
 harness = false
 
-[[test]]
-name = "patcher_internal"
-required-features = ["unstable-fuzzing"]
+[[bench]]
+name = "criterion_verify"
+path = "benches/criterion/verify.rs"
+harness = false
 
 [[test]]
 name = "corruption"
 required-features = ["unstable-fuzzing"]
+
+[[test]]
+name = "nontrivial"
+
+[[test]]
+name = "registration_errors"
+
+[[test]]
+name = "registry_tags"
+
+[[test]]
+name = "rerandomization"

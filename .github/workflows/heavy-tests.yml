@@ -1,0 +1,67 @@
+name: Heavy tests
+
+# Runs the recursion regression suites that the PR gate compiles but skips.
+# The properties in `crates/ragu_pcd/tests/{recursive_bindings,
+# recursive_propagation, recursive_boundaries, base_case_combinations}.rs`
+# and the proof-producing properties in `tests/pcs.rs` use production-rank
+# proofs and are marked `#[ignore]`, so `rust.yml` reports them as ignored on
+# every platform. The PCS denominator gadget test stays in the PR gate.
+# This workflow runs them with `--ignored`, one job per suite, at eight
+# cases per property. The suites assert proof bindings, which depend on
+# neither the platform nor the prover's scheduling, so they run once, with
+# every feature on, on x86-64 Linux. The serial trace evaluator keeps its
+# own unit tests and the PR gate's default-features pass.
+
+on:
+  # Daily at 02:00 UTC, after the fuzzing campaigns have had their window.
+  # Scheduled runs always use the default branch.
+  schedule:
+    - cron: '0 2 * * *'
+
+# A run that is still going when the next one fires is superseded.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  suites:
+    name: ${{ matrix.suite.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          # `filter` is a libtest name filter over the ignored tests of the
+          # `ragu_pcd` unit binary: the module each file is mounted as.
+          - name: recursive bindings
+            filter: proof::recursive_binding_tests
+          - name: recursive propagation
+            filter: proof::recursive_propagation_tests
+          - name: recursive boundaries
+            filter: proof::recursive_boundary_tests
+          - name: base case combinations
+            filter: proof::base_case_combinations_tests
+          - name: PCS
+            filter: fuse::pcs_tests
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+        with:
+          cache-suffix: heavy-tests
+      - name: Run the suite's ignored properties
+        # The filter reaches the command through `env` rather than `${{ }}`
+        # interpolation in `run:`, which zizmor's template-injection audit
+        # flags. Eight cases per property; the PR gate skips these tests.
+        env:
+          SUITE: ${{ matrix.suite.filter }}
+          PROPTEST_CASES: "8"
+        run: >-
+          cargo test --release -p ragu_pcd --locked --all-features
+          -- --ignored "$SUITE"

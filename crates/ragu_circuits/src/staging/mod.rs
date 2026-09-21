@@ -150,12 +150,14 @@
 
 pub(crate) mod bonding;
 mod builder;
+mod layout;
 pub(crate) mod mask;
 mod rx_driver;
 
 use alloc::boxed::Box;
 
 pub use builder::{StageBuilder, StageGuard};
+pub use layout::{Indexed, StageReader, stage_wire_indices, wire_degree, wires_of};
 use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
     Result,

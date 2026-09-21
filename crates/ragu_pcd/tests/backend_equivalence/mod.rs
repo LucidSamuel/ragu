@@ -314,6 +314,7 @@ fn config() -> ProptestConfig {
     if let Some(cases) = std::env::var("PROPTEST_CASES")
         .ok()
         .and_then(|value| value.parse().ok())
+        .filter(|&cases: &u32| cases > 0)
     {
         config.cases = cases;
     }
@@ -446,10 +447,12 @@ fn check_corrupted_pcd_equivalence(
         let corrupted_pcd = corrupted.carry::<()>(());
         let context = alloc::format!("{corruption_name} corruption in {proof_kind} proof");
         check_verifiers_agree(apps, &corrupted_pcd, verifier_seed, &context)?;
-        prop_assert_ne!(
+        // A rejection, not an error: the verifier must decide on a
+        // corrupted proof rather than fail on it.
+        prop_assert_eq!(
             verifier_outcome(&apps.reference, &corrupted_pcd, verifier_seed).0,
-            VerifierDecision::Accept,
-            "verifier accepted {}",
+            VerifierDecision::Reject,
+            "verifier did not reject {}",
             context,
         );
     }
