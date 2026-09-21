@@ -13,18 +13,18 @@ mod registry {
 
     use proptest::prelude::*;
     use ragu_arithmetic::ff::Field;
-    use ragu_circuits::registry::CircuitIndex;
+    use ragu_circuits::registry::{CircuitIndex, Tag};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue},
         maybe::Maybe,
     };
-    use ragu_pasta::Fp;
+    use ragu_pasta::{Fp, Fq};
     use ragu_primitives::{Element, allocator::Standard};
 
     use super::support::{self, C, HEADER_SIZE, R, Value};
     use crate::{
-        ApplicationBuilder,
+        ApplicationBuilder, RegistryTags,
         internal::native::InternalCircuitIndex,
         step::{Encoded, Index, Step},
     };
@@ -68,12 +68,25 @@ mod registry {
     }
 
     fn app(first: Fp, second: Fp, extra_steps: usize) -> Result<support::App> {
-        ApplicationBuilder::<C, R, HEADER_SIZE>::new()
+        app_with_tags(first, second, extra_steps, None)
+    }
+
+    fn app_with_tags(
+        first: Fp,
+        second: Fp,
+        extra_steps: usize,
+        tags: Option<RegistryTags<C>>,
+    ) -> Result<support::App> {
+        let builder = ApplicationBuilder::<C, R, HEADER_SIZE>::new()
             .register(ConstantSeed::<0>(first))?
             .register(support::Merge::new())?
             .register(ConstantSeed::<2>(second))?
-            .register_dummy_circuits(extra_steps)?
-            .finalize(C::baked())
+            .register_dummy_circuits(extra_steps)?;
+        match tags {
+            Some(tags) => builder.with_registry_tags(tags),
+            None => builder,
+        }
+        .finalize(C::baked())
     }
 
     /// Exercise the ordinary size and both sides of a registry-domain expansion.
@@ -85,9 +98,38 @@ mod registry {
     }
 
     fn check_registries(inputs: &support::Inputs, extra_steps: usize, reblind: bool) -> Result<()> {
-        let first = app(inputs.left, inputs.right, extra_steps)?;
-        let second = app(inputs.right, inputs.left, extra_steps)?;
-        let equivalent = app(inputs.left, inputs.right, extra_steps)?;
+        // Tags are setup inputs, not hashes computed by finalization. Give
+        // each different setup its own tags and reuse both for an equivalent
+        // setup. These reproducible draws are test fixtures only.
+        let mut tag_rng = inputs.prover_rng();
+        let first_native = Fp::random(&mut tag_rng);
+        let first_nested = Fq::random(&mut tag_rng);
+        let second_native = Fp::random(&mut tag_rng);
+        let second_nested = Fq::random(&mut tag_rng);
+        let tags = |native, nested| {
+            Some(RegistryTags {
+                native: Tag::new(native),
+                nested: Tag::new(nested),
+            })
+        };
+        let first = app_with_tags(
+            inputs.left,
+            inputs.right,
+            extra_steps,
+            tags(first_native, first_nested),
+        )?;
+        let second = app_with_tags(
+            inputs.right,
+            inputs.left,
+            extra_steps,
+            tags(second_native, second_nested),
+        )?;
+        let equivalent = app_with_tags(
+            inputs.left,
+            inputs.right,
+            extra_steps,
+            tags(first_native, first_nested),
+        )?;
         assert_ne!(inputs.left, inputs.right);
         assert_eq!(
             first.native_registry.num_circuits(),
@@ -97,11 +139,15 @@ mod registry {
             first.native_registry.log2_domain(),
             second.native_registry.log2_domain()
         );
-        assert_eq!(first.nested_registry.tag(), second.nested_registry.tag());
+        assert_ne!(first.nested_registry.tag(), second.nested_registry.tag());
         assert_ne!(first.native_registry.tag(), second.native_registry.tag());
         assert_eq!(
             first.native_registry.tag(),
             equivalent.native_registry.tag()
+        );
+        assert_eq!(
+            first.nested_registry.tag(),
+            equivalent.nested_registry.tag()
         );
 
         let mut rng = inputs.prover_rng();
