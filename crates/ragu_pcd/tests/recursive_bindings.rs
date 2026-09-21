@@ -1,4 +1,4 @@
-//! Repaired substitutions at the recursive bindings introduced by PR #873.
+//! Repaired substitutions at the recursive proof bindings.
 //!
 //! Each mutation states which local relation it preserves before checking the
 //! production verifier and two generations of production fusion. Rejection is
