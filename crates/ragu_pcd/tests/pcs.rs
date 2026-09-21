@@ -3,6 +3,8 @@
 //! Proofs are built by `Application::fuse`. The tests compare the production batch
 //! iterators and proof outputs with explicit expected query lists and batching
 //! arithmetic, so a shared ordering bug cannot change both sides of an assertion.
+//! The proof-producing properties run in the scheduled heavy-tests workflow;
+//! the denominator gadget property stays in the PR gate.
 
 use alloc::{format, string::String, vec, vec::Vec};
 
@@ -633,6 +635,7 @@ proptest! {
     #![proptest_config(support::config())]
 
     #[test]
+    #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
     fn nested_batch_opens_what_it_claims(inputs in support::inputs()) {
         support::with_app(|app| {
             let (parent, left, right) = support::fused(app, &inputs)?;
@@ -843,6 +846,7 @@ mod child_openings {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn edited_child_openings_reject(
             inputs in support::inputs(),
             delta in strategies::nonzero_prime_field_element::<Fp>(),
@@ -934,6 +938,7 @@ mod challenge_stage {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn edited_challenge_stage_rejects_in_descendants(
             inputs in support::inputs(),
             delta in strategies::nonzero_prime_field_element::<Fq>(),

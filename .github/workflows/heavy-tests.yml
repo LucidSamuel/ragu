@@ -1,13 +1,13 @@
 name: Heavy tests
 
 # Runs the recursion regression suites that the PR gate compiles but skips.
-# Every property in `crates/ragu_pcd/tests/{recursive_bindings,
+# The properties in `crates/ragu_pcd/tests/{recursive_bindings,
 # recursive_propagation, recursive_boundaries, base_case_combinations}.rs`
-# proves tens of production-rank proofs per case and is marked `#[ignore]`, so
-# `rust.yml` reports them as ignored on every platform. This workflow runs
-# them with `--ignored`, one job per suite so each stays well inside the
-# six-hour job limit and a failure names its suite, at more proptest cases
-# than a PR could afford. The suites assert proof bindings, which depend on
+# and the proof-producing properties in `tests/pcs.rs` use production-rank
+# proofs and are marked `#[ignore]`, so `rust.yml` reports them as ignored on
+# every platform. The PCS denominator gadget test stays in the PR gate.
+# This workflow runs them with `--ignored`, one job per suite, at eight
+# cases per property. The suites assert proof bindings, which depend on
 # neither the platform nor the prover's scheduling, so they run once, with
 # every feature on, on x86-64 Linux; the 32-bit job in `rust.yml` remains the
 # portability gate for the limb arithmetic and `usize` boundaries, and the
@@ -47,6 +47,8 @@ jobs:
             filter: proof::recursive_boundary_tests
           - name: base case combinations
             filter: proof::base_case_combinations_tests
+          - name: PCS
+            filter: fuse::pcs_tests
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
