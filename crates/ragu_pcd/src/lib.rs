@@ -51,16 +51,55 @@ use ragu_arithmetic::{
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
-    registry::{Registry, RegistryBuilder},
+    registry::{Registry, RegistryBuilder, Tag},
 };
 use ragu_core::{Error, Result};
 use step::{Step, internal::adapter::Adapter};
 
-/// Domain separation tag for Ragu PCD protocol.
-// FIXME: choose a permanent domain separation tag before release.
-pub(crate) const RAGU_TAG: &[u8] = b"FIXME";
+/// Domain separation tag for the Ragu PCD protocol.
+///
+/// This version is independent of crate releases. Bump it for incompatible changes
+/// to the transcript schedule, encodings, challenge derivation, cryptographic suite,
+/// or verification semantics. Compatible implementation changes retain the tag.
+///
+/// The prover and all verifier paths must agree on this tag. Changing it breaks
+/// compatibility with existing proofs.
+pub(crate) const RAGU_TAG: &[u8] = b"ragu-pcd-v1";
 
 pub use backend::SelectableBackend;
+
+/// Temporary setup tags for an [`Application`]'s native and nested registries.
+///
+/// These are setup parameters for the temporary registry-collision workaround
+/// in [#78](https://github.com/tachyon-zcash/ragu/issues/78). API consumers must
+/// supply them through [`ApplicationBuilder::with_registry_tags`], satisfying
+/// [`Tag`]'s [sampling requirement](Tag#sampling-requirement) for the complete
+/// setup of both registries. Production consumers must not use a fixed test key.
+///
+/// To supply the final field elements from your setup procedure, wrap each
+/// value with [`Tag::new`] and set [`Self::native`] and [`Self::nested`].
+/// [`Self::from_beacon`] is an optional helper for deriving those values from
+/// beacon inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
+/// resulting tags directly; finalization does not hash them again.
+pub struct RegistryTags<C: Cycle> {
+    /// Tag for the native registry, over [`Cycle::CircuitField`].
+    pub native: Tag<C::CircuitField>,
+    /// Tag for the nested registry, over [`Cycle::ScalarField`].
+    pub nested: Tag<C::ScalarField>,
+}
+
+impl<C: Cycle> RegistryTags<C> {
+    /// Derives both tags from a public randomness beacon and a manifest digest,
+    /// with distinct labels for the two registries. `manifest_digest` covers
+    /// the complete setup of both registries. Both inputs are raw bytes, not
+    /// hex strings. See [`Tag::from_beacon`].
+    pub fn from_beacon(beacon: &[u8], manifest_digest: &[u8]) -> Self {
+        Self {
+            native: Tag::from_beacon(beacon, manifest_digest, b"ragu_pcd native registry"),
+            nested: Tag::from_beacon(beacon, manifest_digest, b"ragu_pcd nested registry"),
+        }
+    }
+}
 
 /// Builder for an [`Application`] for proof-carrying data.
 pub struct ApplicationBuilder<
@@ -97,6 +136,19 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             header_map: BTreeMap::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// Supplies the tags to use when [`Self::finalize`] builds both registries.
+    ///
+    /// The caller's setup procedure must satisfy the
+    /// [sampling requirement](Tag#sampling-requirement) for the complete
+    /// application, including the public parameters supplied to [`Self::finalize`].
+    /// This method stores the final values without validating their origin.
+    /// Production callers must not use a test key.
+    pub fn with_registry_tags(mut self, tags: RegistryTags<C>) -> Self {
+        self.native_registry = self.native_registry.with_tag(tags.native);
+        self.nested_registry = self.nested_registry.with_tag(tags.nested);
+        self
     }
 
     /// Selects a Ragu-owned computational backend.
@@ -170,6 +222,11 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
     /// Perform finalization and optimization steps to produce the
     /// [`Application`].
+    ///
+    /// Requires [`Self::with_registry_tags`] with values chosen after the
+    /// complete application was fixed and publicly committed. The
+    /// `ragu_circuits/insecure-test-registry-tag` feature supplies a fixed
+    /// fallback for tests and must not be enabled in production.
     ///
     /// This also bootstraps the recursion: it fuses two synthesized dummies
     /// through an internal step — the only fuse treated as the base case — to

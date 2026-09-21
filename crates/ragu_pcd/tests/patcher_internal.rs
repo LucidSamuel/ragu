@@ -400,7 +400,8 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
 /// wires, instance wires, outputs or hints, or that changes how many single
 /// wire nudges the constraints neutralize, is noticed here. The sweep
 /// tallies and `cheatable` are judged at the witness, so they are pinned per
-/// capture point; the rest is structural.
+/// capture point; the rest is structural. The endoscaling tallies depend on
+/// transcript-derived bit patterns, so they also depend on the fixed test tag.
 fn expected(name: &str, point: &str) -> Census {
     let (stage_wires, wires, instance, outputs, demoted, strongly_forced, cheatable) = match name {
         "hashes_1" => (528, 6160, 48, 12, 0, 12, 278),
@@ -437,23 +438,23 @@ fn expected(name: &str, point: &str) -> Census {
         ("bind_challenges_4", "bootstrap") => (16, 712),
         (bind, _) if bind.starts_with("bind_challenges_") => (14, 712),
         ("bind_beta", _) => (102, 692),
-        ("bind_endoscalar", "bootstrap") => (50, 392),
-        ("bind_endoscalar", "leaves") => (50, 392),
+        ("bind_endoscalar", "bootstrap") => (48, 394),
+        ("bind_endoscalar", "leaves") => (51, 391),
         ("bind_endoscalar", "nodes") => (44, 398),
-        (step, "bootstrap") if step.starts_with("native_endoscaling_step_") => (49, 138),
-        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (49, 138),
+        (step, "bootstrap") if step.starts_with("native_endoscaling_step_") => (47, 140),
+        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (50, 137),
         (step, "nodes") if step.starts_with("native_endoscaling_step_") => (43, 144),
-        ("nested_export", "bootstrap") => (87, 702),
-        ("nested_export", "leaves") => (90, 699),
+        ("nested_export", "bootstrap") => (85, 704),
+        ("nested_export", "leaves") => (91, 698),
         ("nested_export", "nodes") => (84, 705),
-        ("nested_collapse", "bootstrap") => (88, 713),
-        ("nested_collapse", "leaves") => (90, 710),
+        ("nested_collapse", "bootstrap") => (86, 715),
+        ("nested_collapse", "leaves") => (91, 709),
         ("nested_collapse", "nodes") => (84, 716),
-        ("nested_compute_v", "bootstrap") => (86, 703),
-        ("nested_compute_v", "leaves") => (89, 700),
+        ("nested_compute_v", "bootstrap") => (84, 705),
+        ("nested_compute_v", "leaves") => (90, 699),
         ("nested_compute_v", "nodes") => (83, 706),
-        (_, "bootstrap") => (49, 155),
-        (_, "leaves") => (49, 155),
+        (_, "bootstrap") => (47, 157),
+        (_, "leaves") => (50, 154),
         (_, "nodes") => (43, 161),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };

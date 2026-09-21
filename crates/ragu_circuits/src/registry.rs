@@ -55,7 +55,6 @@
 
 use alloc::{boxed::Box, vec::Vec};
 
-use blake2b_simd::Params;
 use ragu_arithmetic::{
     Domain, bitreverse,
     ff::{Field, FromUniformBytes, PrimeField},
@@ -127,6 +126,7 @@ pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
     bonding: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     internal_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     application_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
+    tag: Option<Tag<F>>,
 }
 
 impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
@@ -143,7 +143,18 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             bonding: Vec::new(),
             internal_steps: Vec::new(),
             application_steps: Vec::new(),
+            tag: None,
         }
+    }
+
+    /// Supplies the registry tag to use at finalization.
+    ///
+    /// This is a temporary setup parameter for the registry-collision
+    /// workaround. The caller must satisfy the [sampling requirement](Tag#sampling-requirement);
+    /// this method stores the supplied value without validating its origin.
+    pub fn with_tag(mut self, tag: Tag<F>) -> Self {
+        self.tag = Some(tag);
+        self
     }
 
     /// Returns the number of internal circuits (circuits + bonding).
@@ -214,6 +225,11 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 
     /// Builds the [`Registry`].
     ///
+    /// Requires a tag supplied through [`Self::with_tag`] that satisfies the
+    /// [sampling requirement](Tag#sampling-requirement).
+    /// The `insecure-test-registry-tag` feature permits a fixed test tag when
+    /// none is supplied. Production consumers must not enable that feature.
+    ///
     /// Circuits are concatenated in the following order for proper indexing:
     /// 1. Internal circuits: System circuits for the PCD construction
     /// 2. Bonding: bonding polynomials
@@ -226,7 +242,9 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// # Errors
     ///
     /// Returns [`Error::CircuitBoundExceeded`] if the total number of
-    /// registered circuits exceeds the rank capacity.
+    /// registered circuits exceeds the rank capacity, or
+    /// [`Error::Initialization`] if no tag was supplied and the test-only
+    /// fallback is disabled.
     pub fn finalize(self) -> Result<Registry<'params, F, R>>
     where
         F: FromUniformBytes<64>,
@@ -262,14 +280,22 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
             floor_plans,
             tag: Tag::default(),
         };
-        registry.tag = Tag::new(registry.compute_registry_tag());
+        registry.tag = Tag::new(registry.compute_registry_tag(self.tag)?);
 
         Ok(registry)
     }
 }
 
-/// Public registry binding tag derived deterministically from the registry
-/// polynomial $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
+/// Public registry binding tag injected into the registry polynomial
+/// $m(W, X, Y)$ to prevent Fiat-Shamir soundness attacks.
+///
+/// **Temporary stopgap for [#78]:** finalization accepts this tag as a setup
+/// parameter while the registry-collision workaround is needed. The consumer
+/// chooses how to obtain it, subject to the sampling requirement below. Wrap
+/// the final field element with [`Tag::new`] and supply it through
+/// [`RegistryBuilder::with_tag`]; [`Tag::from_beacon`] is an optional helper.
+/// Production consumers must not use the fixed tag provided by the
+/// `insecure-test-registry-tag` feature.
 ///
 /// In Fiat-Shamir transformed protocols, common inputs such as the proving
 /// statement (i.e., circuit descriptions) must be included in the transcript
@@ -290,18 +316,18 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// recursive verifier. Ragu avoids preprocessing by design, and does not use
 /// verification keys, which suggests an alternative solution.
 ///
-/// # Binding a polynomial through its evaluation
+/// # Sampling requirement
 ///
-/// Polynomials of bounded degree are overdetermined by their evaluation at a
-/// sufficient number of distinct points. Starting from public constants, we
-/// iteratively evaluate $e_i = m(w_i, x_i, y_i)$ and absorb each evaluation into
-/// a running hash state. Each updated hash state seeds the next evaluation
-/// point $(w_{i+1}, x_{i+1}, y_{i+1})$. The registry tag is a field element
-/// derived from the final hash state.
+/// The registry tag ($\kappa$) must be sampled independently and without bias
+/// after the complete pre-keyed system description has been fixed and publicly
+/// committed, then permanently bound to that description.
 ///
-/// The number of iterations must exceed the degrees of freedom an adversary
-/// could exploit to adaptively modify circuits.
-/// See [#78] for the security argument.
+/// The description includes the code and dependencies, ordered application
+/// and internal circuit manifests, fields and domains, ranks and capacities,
+/// transcript rules and domain-separation tags, features and configuration,
+/// and all public parameters. For an application, it covers both registries.
+/// Changing the description requires new tags. The consumer is responsible
+/// for this contract; the API does not verify the setup procedure.
 ///
 /// # Break self-reference without preprocessing
 ///
@@ -314,7 +340,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
 /// to the Fiat-Shamir transcript without self-reference. The tag randomizes the
 /// wiring polynomial directly.
 ///
-/// The tag is computed during [`RegistryBuilder::finalize`] and used during
+/// The tag is installed during [`RegistryBuilder::finalize`] and used during
 /// polynomial evaluations of circuits in the registry.
 ///
 /// [#78]: https://github.com/tachyon-zcash/ragu/issues/78
@@ -328,6 +354,14 @@ impl<F: Field> Default for Tag<F> {
 
 impl<F: Field> Tag<F> {
     /// Creates a new registry tag from a field element.
+    ///
+    /// This wraps an already-derived value without hashing it. The caller
+    /// must satisfy the [sampling requirement](Tag#sampling-requirement).
+    ///
+    /// Zero is intentionally accepted: setup sampling is over the whole field.
+    /// Under independent uniform sampling, zero occurs with probability
+    /// `1 / |F|` per registry. Soundness arguments that assume a nonzero tag
+    /// must include this setup error, summed across registries.
     pub fn new(val: F) -> Self {
         Self(val)
     }
@@ -776,45 +810,9 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
 }
 
 impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
-    /// Compute the registry tag using BLAKE2b.
-    fn compute_registry_tag(&self) -> F {
-        let mut hasher = Params::new().personal(b"ragu_registry___").to_state();
-
-        let field_from_hash = |digest_state: &blake2b_simd::Hash, index: u8| {
-            F::from_uniform_bytes(
-                Params::new()
-                    .personal(b"ragu_registry___")
-                    .to_state()
-                    .update(digest_state.as_bytes())
-                    .update(&[index])
-                    .finalize()
-                    .as_array(),
-            )
-        };
-
-        // Placeholder "nothing-up-my-sleeve challenges" (small primes).
-        let mut w = F::from(2u64);
-        let mut x = F::from(3u64);
-        let mut y = F::from(5u64);
-
-        // FIXME(security): 6 iterations is insufficient to fully bind the registry
-        // polynomial. This should be increased to a value that overdetermines the
-        // polynomial (exceeds the degrees of freedom an adversary could exploit).
-        // Currently limited by registry evaluation performance; See #78 and #316.
-        for _ in 0..6 {
-            let eval = self.wxy(w, x, y);
-            hasher.update(eval.to_repr().as_ref());
-
-            let digest_state = hasher.finalize();
-            w = field_from_hash(&digest_state, 0);
-            x = field_from_hash(&digest_state, 1);
-            y = field_from_hash(&digest_state, 2);
-
-            hasher = Params::new().personal(b"ragu_registry___").to_state();
-            hasher.update(digest_state.as_bytes());
-        }
-
-        field_from_hash(&hasher.finalize(), 0)
+    /// Use the caller's beacon tag through the temporary replacement.
+    fn compute_registry_tag(&self, tag: Option<Tag<F>>) -> Result<F> {
+        crate::beacon::registry_tag(tag)
     }
 }
 

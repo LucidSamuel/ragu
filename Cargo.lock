@@ -868,6 +868,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ragu_ceremony"
+version = "0.0.0"
+dependencies = [
+ "ragu_arithmetic",
+ "ragu_pasta",
+ "ragu_pcd",
+]
+
+[[package]]
 name = "ragu_circuits"
 version = "0.0.0"
 dependencies = [

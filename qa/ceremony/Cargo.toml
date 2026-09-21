@@ -1,0 +1,20 @@
+[package]
+name = "ragu_ceremony"
+version.workspace = true
+authors.workspace = true
+description = "Derives Ragu registry tags from recorded ceremony inputs"
+license.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "registry_tags"
+path = "registry_tags.rs"
+
+[dependencies]
+ragu_arithmetic = { path = "../../crates/ragu_arithmetic", version = "0.0.0" }
+ragu_pasta = { path = "../../crates/ragu_pasta", version = "0.0.0" }
+ragu_pcd = { path = "../../crates/ragu_pcd", version = "0.0.0" }
