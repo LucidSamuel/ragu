@@ -275,10 +275,11 @@ fn stage_values<'source, F: Field, R: Rank, S: Stage<F, R> + Default>(
     Ok(values)
 }
 
-/// The unified element slots a circuit covers, as instance positions, read
-/// off the `Coverage` the circuit reports after one execution of its witness
-/// on a wireless emulator.
-fn covered_elements<'w, F: Field, Cir: Circuit<F>>(
+/// The unified slots a circuit covers, as instance positions, read off the
+/// `Coverage` the circuit reports after one execution of its witness on a
+/// wireless emulator; `coverage` turns that report into positions (see
+/// [`covered_positions`]).
+fn covered_outputs<'w, F: Field, Cir: Circuit<F>>(
     circuit: &Cir,
     witness: Cir::Witness<'w>,
     coverage: impl FnOnce(Cir::Aux<'w>) -> Vec<usize>,
@@ -289,54 +290,44 @@ fn covered_elements<'w, F: Field, Cir: Circuit<F>>(
     Ok(coverage(aux.take()))
 }
 
-/// The positions, in the unified output's $k(Y)$ order, of the covered
-/// *element* slots of `coverage`: the values the covering circuit derives
-/// in-circuit (`Slot::provide`) or receives and checks (`Slot::receive`).
-/// Covered *point* slots are received commitments, which no circuit derives,
-/// so they are omitted; a point writes two wires and an element one, which is
-/// how the two are told apart.
+/// The positions, in a unified output's $k(Y)$ order, of every wire of the
+/// slots `slots` reports covered, less the `absorbed` slots.
 ///
-/// This is a circuit's output declaration for the harness: with every other
-/// instance wire pinned, these are the wires its constraints must determine.
-fn covered_element_positions(coverage: &native::unified::Coverage) -> Vec<usize> {
+/// A covered slot is one the circuit derives (`Slot::provide`) or receives
+/// and checks (`Slot::receive`), so every wire it writes is an output under
+/// the pinned-input oracle: an element one wire, a point both coordinates.
+/// The exception is a received commitment the circuit only absorbs into its
+/// transcript. Nothing determines that point from the circuit's other wires,
+/// so it is an input, and the caller names it in `absorbed`; naming a slot
+/// the circuit does not cover, or one that is not a slot, is a stale list
+/// and panics.
+///
+/// Both unified instances report their slots through this, so a circuit that
+/// receives a point slot and pins it to a stage is declared without a
+/// hand-written list, and one that only absorbs a point fails the harness's
+/// forcing check loudly until it is named here.
+fn covered_positions(
+    slots: impl FnOnce(&mut dyn FnMut(&'static str, bool, usize)),
+    absorbed: &[&str],
+) -> Vec<usize> {
     let mut positions = Vec::new();
     let mut position = 0;
-    coverage.for_each_slot(|_, covered, wires| {
-        if wires == 1 && covered {
-            positions.push(position);
-        }
-        position += wires;
-    });
-    positions
-}
-
-/// The positions, in the native unified output's $k(Y)$ order, of the wires
-/// of the slot named `name`.
-fn unified_slot_positions(name: &str) -> Vec<usize> {
-    let mut positions = Vec::new();
-    let mut position = 0;
-    native::unified::Coverage::default().for_each_slot(|slot, _, wires| {
-        if slot == name {
+    let mut seen = alloc::vec![false; absorbed.len()];
+    slots(&mut |name, covered, wires| {
+        if let Some(i) = absorbed.iter().position(|&a| a == name) {
+            assert!(
+                covered,
+                "absorbed slot `{name}` is not covered by this circuit"
+            );
+            seen[i] = true;
+        } else if covered {
             positions.extend(position..position + wires);
         }
         position += wires;
     });
-    assert!(!positions.is_empty(), "no unified slot named {name}");
-    positions
-}
-
-/// Every wire of the covered nested unified slots, in $k(Y)$ order.
-/// The exported points are checked against stage values, so both coordinates
-/// of every point are outputs alongside the covered field elements.
-fn covered_nested_positions(coverage: &nested::unified::Coverage) -> Vec<usize> {
-    let mut positions = Vec::new();
-    let mut position = 0;
-    coverage.for_each_slot(|_, covered, wires| {
-        if covered {
-            positions.extend(position..position + wires);
-        }
-        position += wires;
-    });
+    for (name, seen) in absorbed.iter().zip(seen) {
+        assert!(seen, "no unified slot named `{name}`");
+    }
     positions
 }
 
@@ -687,8 +678,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                     coverage: Default::default(),
                 })
             };
-        let coverage = |unified: native::unified::Instance<C>| -> Vec<usize> {
-            covered_element_positions(&unified.coverage)
+        // The hash circuits receive the bridge commitments only to absorb
+        // them, so those are inputs; every other covered slot is an output.
+        let coverage = |absorbed: &'static [&'static str]| {
+            move |unified: native::unified::Instance<C>| -> Vec<usize> {
+                covered_positions(|f| unified.coverage.for_each_slot(f), absorbed)
+            }
         };
 
         type OuterError<C, R, const HEADER_SIZE: usize> =
@@ -743,27 +738,35 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         let hashes_1_spec = CircuitSpec {
             name: "hashes_1".into(),
-            outputs: covered_elements(&hashes_1, hashes_1_witness()?, coverage)?
+            outputs: covered_outputs(
+                &hashes_1,
+                hashes_1_witness()?,
+                coverage(&[
+                    "bridge_preamble_commitment",
+                    "bridge_s_prime_commitment",
+                    "bridge_inner_error_commitment",
+                ]),
+            )?
+            .into_iter()
+            .map(OutputRef::Instance)
+            .chain(
+                stage_wire_indices::<_, R, OuterError<C, R, HEADER_SIZE>>(|stage| {
+                    let mut wires: Vec<_> = stage
+                        .sponge_state
+                        .into_elements()
+                        .iter()
+                        .map(|e| *e.wire())
+                        .collect();
+                    for child in [&stage.left, &stage.right] {
+                        wires.extend(wires_of(&child.unified)?);
+                        wires.extend(wires_of(&child.unified_bridge)?);
+                    }
+                    Ok(wires)
+                })?
                 .into_iter()
-                .map(OutputRef::Instance)
-                .chain(
-                    stage_wire_indices::<_, R, OuterError<C, R, HEADER_SIZE>>(|stage| {
-                        let mut wires: Vec<_> = stage
-                            .sponge_state
-                            .into_elements()
-                            .iter()
-                            .map(|e| *e.wire())
-                            .collect();
-                        for child in [&stage.left, &stage.right] {
-                            wires.extend(wires_of(&child.unified)?);
-                            wires.extend(wires_of(&child.unified_bridge)?);
-                        }
-                        Ok(wires)
-                    })?
-                    .into_iter()
-                    .map(OutputRef::Stage),
-                )
-                .collect(),
+                .map(OutputRef::Stage),
+            )
+            .collect(),
         };
         visitor.visit(
             &hashes_1_spec,
@@ -789,10 +792,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         let hashes_2_spec = CircuitSpec {
             name: "hashes_2".into(),
-            outputs: covered_elements(&hashes_2, hashes_2_witness()?, coverage)?
-                .into_iter()
-                .map(OutputRef::Instance)
-                .collect(),
+            outputs: covered_outputs(
+                &hashes_2,
+                hashes_2_witness()?,
+                coverage(&[
+                    "bridge_outer_error_commitment",
+                    "bridge_ab_commitment",
+                    "bridge_query_commitment",
+                    "bridge_f_commitment",
+                    "bridge_eval_commitment",
+                ]),
+            )?
+            .into_iter()
+            .map(OutputRef::Instance)
+            .collect(),
         };
         visitor.visit(
             &hashes_2_spec,
@@ -856,7 +869,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let outer_collapse_covered = if base_case {
             Vec::new()
         } else {
-            covered_elements(&outer_collapse, outer_collapse_witness()?, coverage)?
+            covered_outputs(&outer_collapse, outer_collapse_witness()?, coverage(&[]))?
         };
         let outer_collapse_spec = CircuitSpec {
             name: "outer_collapse".into(),
@@ -895,7 +908,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         let compute_v_spec = CircuitSpec {
             name: "compute_v".into(),
-            outputs: covered_elements(&compute_v, compute_v_witness()?, coverage)?
+            outputs: covered_outputs(&compute_v, compute_v_witness()?, coverage(&[]))?
                 .into_iter()
                 .map(OutputRef::Instance)
                 .collect(),
@@ -921,11 +934,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                     eval_witness: &eval_witness,
                 })
             };
-            let outputs = if k + 1 == native::NUM_BINDERS {
-                unified_slot_positions("nested_challenges_partial")
-                    .into_iter()
-                    .map(OutputRef::Instance)
-                    .collect()
+            // The partial the circuit checks, for all but the last: that one
+            // covers the instance's partial binding, which its coverage
+            // declares.
+            let partial: Vec<OutputRef> = if k + 1 == native::NUM_BINDERS {
+                Vec::new()
             } else {
                 stage_wire_indices::<_, R, Eval<C, R, HEADER_SIZE>>(|stage| {
                     wires_of(&stage.partials[k])
@@ -934,11 +947,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
                 .map(OutputRef::Stage)
                 .collect()
             };
-            let bind_spec = CircuitSpec {
-                name: format!("bind_challenges_{k}"),
-                outputs,
-            };
             crate::with_binder!(k, C, R, HEADER_SIZE, self.params, |circuit| {
+                let bind_spec = CircuitSpec {
+                    name: format!("bind_challenges_{k}"),
+                    outputs: covered_outputs(&circuit, bind_witness()?, coverage(&[]))?
+                        .into_iter()
+                        .map(OutputRef::Instance)
+                        .chain(partial.iter().copied())
+                        .collect(),
+                };
                 visitor.visit(
                     &bind_spec,
                     &circuit,
@@ -1020,15 +1037,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             .into_iter()
             .map(OutputRef::Stage)
             .chain(
-                [
-                    "nested_p_commitment",
-                    "nested_a_commitment",
-                    "nested_b_commitment",
-                    "nested_registry_xy_commitment",
-                ]
-                .into_iter()
-                .flat_map(unified_slot_positions)
-                .map(OutputRef::Instance),
+                covered_outputs(&bind_endoscalar, bind_endoscalar_witness()?, coverage(&[]))?
+                    .into_iter()
+                    .map(OutputRef::Instance),
             )
             .collect(),
         };
@@ -1186,7 +1197,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             })
         };
         let nested_coverage = |instance: nested::unified::Instance<C::HostCurve>| -> Vec<usize> {
-            covered_nested_positions(&instance.coverage)
+            covered_positions(|f| instance.coverage.for_each_slot(f), &[])
         };
 
         // export copies the instance's x, y, u (and its commitments) from
@@ -1194,7 +1205,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let export = MultiStage::new(nested::circuits::export::Circuit::<C::HostCurve, R>::new());
         let export_spec = CircuitSpec {
             name: "nested_export".into(),
-            outputs: covered_elements(&export, nested_witness()?, nested_coverage)?
+            outputs: covered_outputs(&export, nested_witness()?, nested_coverage)?
                 .into_iter()
                 .map(OutputRef::Instance)
                 .collect(),
@@ -1208,7 +1219,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let collapse_covered = if base_case {
             Vec::new()
         } else {
-            covered_elements(&collapse, nested_witness()?, nested_coverage)?
+            covered_outputs(&collapse, nested_witness()?, nested_coverage)?
         };
         let collapse_spec = CircuitSpec {
             name: "nested_collapse".into(),
@@ -1235,7 +1246,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             MultiStage::new(nested::circuits::compute_v::Circuit::<C::HostCurve, R>::new());
         let compute_v_spec = CircuitSpec {
             name: "nested_compute_v".into(),
-            outputs: covered_elements(&compute_v, nested_witness()?, nested_coverage)?
+            outputs: covered_outputs(&compute_v, nested_witness()?, nested_coverage)?
                 .into_iter()
                 .map(OutputRef::Instance)
                 .collect(),

@@ -12,10 +12,15 @@
 //! All steps are uniform: step N initializes from `interstitials[N-1]` (or
 //! `initial` for step 0) and iterates over `inputs[E*N..E*(N+1)]`.
 //!
-//! This component is reused for both fields in the curve cycle. Because they
-//! vary in the number of steps and points, and in how many endoscalings a
-//! step can afford beside the stages it reserves, the code is generic over
+//! The step counting and points layout serve both walks of the curve cycle,
+//! which differ in their number of points and in how many endoscalings a
+//! step can afford beside the stages it reserves, so they are generic over
 //! the curve type, the number of points and the endoscalings per step `E`.
+//! The step circuit here is the nested walk's, reading the endoscalar and
+//! points stages; the native walk reads its points from several stages and
+//! has its own step in [`native::circuits::endoscaling_step`].
+//!
+//! [`native::circuits::endoscaling_step`]: crate::internal::native::circuits::endoscaling_step
 
 use alloc::vec;
 
@@ -364,7 +369,7 @@ mod tests {
         drivers::emulator::{Emulator, Wired},
         maybe::Maybe,
     };
-    use ragu_pasta::{Ep, EpAffine, Fp, Fq};
+    use ragu_pasta::{Ep, EpAffine, EqAffine, Fp, Fq};
     use ragu_primitives::{Endoscalar, vec::Len};
     use ragu_testing::registry::TestRegistryBuilder;
 
@@ -375,6 +380,7 @@ mod tests {
         EndoscalarStage, EndoscalingStep, EndoscalingStepWitness, InputsLen, NumStepsLen,
         PointsStage, PointsWitness,
     };
+    use crate::internal::{nested, tests::assert_stage_values};
 
     type R = polynomials::ProductionRank;
 
@@ -751,5 +757,16 @@ mod tests {
         check::<11>();
         check::<13>();
         check::<14>();
+    }
+
+    #[test]
+    fn stage_values_matches_wire_count() {
+        assert_stage_values::<Fq, R, _>(&EndoscalarStage);
+        // The nested walk's points stage as registered, then the layouts the
+        // tests above use: a single point, whole steps, a partial last step.
+        assert_stage_values::<_, R, _>(&nested::PointsStage::<EqAffine>::default());
+        assert_stage_values::<_, R, _>(&PointsStage::<EpAffine, 1, E>::default());
+        assert_stage_values::<_, R, _>(&PointsStage::<EpAffine, 13, E>::default());
+        assert_stage_values::<_, R, _>(&PointsStage::<EpAffine, 14, E>::default());
     }
 }
