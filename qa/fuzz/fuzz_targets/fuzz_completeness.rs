@@ -1,5 +1,5 @@
 //! Completeness (over-constraint) fuzzing: a correct circuit accepts every
-//! valid witness, not just the honest one (issues #728, #793).
+//! valid witness, not just the honest one.
 //!
 //! The rest of the patcher family chases *soundness* — a witness ragu
 //! wrongly accepts. This is the dual: an *over-constrained* gadget wrongly

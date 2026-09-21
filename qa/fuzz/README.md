@@ -160,7 +160,7 @@ see the "Shared substrate" note at the bottom.
 ### Soundness / patcher targets
 
 Constraint-side under-constraint oracles over generated
-[`ragu_testing_fuzz::substrate`] circuits (issues #728, #793, #796). Each starts
+[`ragu_testing_fuzz::substrate`] circuits. Each starts
 from a satisfying witness, introduces a prover-style cheat, and demands the
 constraint system reject it. The no-execution front end is described in
 [Circuit source lint](#circuit-source-lint).
@@ -170,7 +170,7 @@ constraint system reject it. The no-execution front end is described in
 | `fuzz_witness_pinning` | Mutates one occupied coefficient of the assembled trace polynomial and demands the revdot identity reject it. The generated circuit is made fully-pinned (an `Anchor` per element) so every live coefficient is constrained — a survivor means the constraint system fails to pin that wire. |
 | `fuzz_circuit_cheat` | Mutates one witness input, re-traces, and asserts the assembled constraint-identity verdict matches an independent native oracle (with a Simulator cross-check). The operational patcher whose "repair" is re-tracing. |
 | `fuzz_advice_patcher` | Captures the emitted constraint graph through a recording driver, mutates free advice wires, and **repairs through the captured constraints** (not gadget logic) before comparing to the native shadow — catches under-constrained *advice* that re-trace-based repair masks. `PATCHER_SELFTEST=1` proves the oracle fires on a planted bug. |
-| `fuzz_internal_circuits` | The patcher aimed at the **production internal recursion circuits**. Captures all five native circuits and the nested endoscaling steps from real fuses at four points — the Bootstrap base case, leaves, nodes, and a lopsided tree — paid once in libFuzzer's `init`. Before mutation, witness-free source-shape linting must match concrete synthesis; connectivity rejects isolated/floating subgraphs; bounded component rank checks reject movable derived wires with explicit skipped coverage; and `forced_by` requires the declared outputs to be constrained. A `Prepared` probe then pins declared inputs, mutates other free advice, and repairs through captured constraints. Any moved output is replayed through fresh synthesis and becomes a soundness signal only if that synthesis accepts the candidate witness. |
+| `fuzz_internal_circuits` | The patcher aimed at the **production internal recursion circuits**. Captures native and nested circuits from real fuses at four points — the Bootstrap base case, leaves, nodes, and a lopsided tree — paid once in libFuzzer's `init`. Every captured honest witness must pass fresh-synthesis playback. Before mutation, witness-free source-shape linting must match concrete synthesis; connectivity rejects isolated/floating subgraphs; bounded component rank checks reject movable derived wires with explicit skipped coverage; and `forced_by` requires the declared outputs to be constrained. A `Prepared` probe then pins declared inputs, mutates other free advice, and repairs through captured constraints. Any moved output is replayed through fresh synthesis and becomes a soundness signal only if that synthesis accepts the candidate witness. |
 | `fuzz_completeness` | Runs arbitrary witnesses through anchorless, value-infallible generated circuits; every such witness must be accepted, so rejection is an over-constraint signal independent of the patcher's bounded repair search. |
 
 ### Gadget-API property and identity targets
@@ -220,8 +220,7 @@ built with `seed`/`fuse` and checked to verify before anything is corrupted.
 
 Higher-layer targets that drive full `Circuit::witness` → `trace::eval` →
 `Registry::assemble_with_alpha` pipelines rather than calling gadgets
-directly through `Simulator`. These close issue #709's Layer 1, 2, and 4
-gaps.
+directly through `Simulator`.
 
 | Target | What it catches |
 |---|---|
@@ -289,9 +288,24 @@ Three workflows in `.github/workflows/`:
 - **`rust.yml`** runs `cargo test --lib` and `cargo check --bins` from this
   directory on every PR. This executes the substrate self-tests (the patcher
   engine's own tests, including its planted-bug selftest, run with the
-  workspace in `ragu_testing`), then catches bitrot in every target without
-  running libFuzzer. Cache keys include `Cargo.toml`, `fuzz_targets/**/*.rs`,
-  and `bin/**/*.rs`.
+  workspace in `ragu_testing`). The same Linux PR job explicitly runs
+  `src/internal_patcher_regression.rs`, an ignored library-test module,
+  in release mode with default and all features. This preserves the fixed
+  circuit census and full single-wire sweeps, and adds two generated cases
+  per configuration. Each generated case covers all four tree shapes with
+  varied witnesses, proof seeds, and supported registry sizes, probing one
+  native and one nested circuit per shape with up to eight wire mutations.
+  `src/internal_patcher.rs` shares capture/replay, output-binding checks, and
+  mutation handling with the fuzz target. The job also catches bitrot in
+  every target without running libFuzzer. Cache keys include `Cargo.toml`,
+  `fuzz_targets/**/*.rs`, and `bin/**/*.rs`.
+
+  Run the patcher suite locally, or increase its generated-case budget:
+
+  ```sh
+  PROPTEST_CASES=8 cargo +nightly-2026-05-23 test --release --locked \
+    --all-features --lib internal_patcher::tests -- --include-ignored
+  ```
 
 - **`fuzz-cron.yml`** runs every target via matrix-parallel for 5 hours
   each on Sundays, Wednesdays, and Fridays at 00:00 UTC. Each target
@@ -413,18 +427,17 @@ changes, mirror the change here too — otherwise the fuzz build
 resolves different versions than the rest of the workspace and ABI-
 mismatches at link time.
 
-## Background reading
+## Background
 
-- **PR #559** — original fuzz framework (8 targets).
-- **PR #708** — extended framework: witness-mutation soundness, driver
+- Original fuzz framework (8 targets).
+- Extended framework: witness-mutation soundness, driver
   metamorphic, coverage augmentation, algebraic identities, field-
   element dictionary, plus housekeeping (`AllocRaw`, expanded
   `special_value`, `-max_len`, weekly cron).
-- **PR #794** (issues #728/#793/#796) — the patcher technique
+- The patcher technique
   (`fuzz_witness_pinning`, `fuzz_circuit_cheat`, `fuzz_advice_patcher`)
   and the shared `ragu_testing_fuzz::substrate`: all op-stream targets migrated
   onto it, and the constraint-level targets generalized from the two fixed
   dummy circuits to arbitrary generated ones.
-- Talks/papers referenced in the PR descriptions for technique
-  attribution (Aztec BigField, Aztec Noir/Brillig, TU Vienna Circus,
-  zksecurity "Towards Fuzzing Zero-Knowledge Proof Circuits").
+- Technique references include Aztec BigField, Aztec Noir/Brillig, TU Vienna Circus,
+  and zksecurity "Towards Fuzzing Zero-Knowledge Proof Circuits".

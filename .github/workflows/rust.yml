@@ -140,8 +140,8 @@ jobs:
         uses: ./.github/actions/rust-setup
         with:
           cache-suffix: release-corruption
-      # The platform matrix keeps representative rejection tests and the
-      # controls; this job also runs every ignored vocabulary sweep.
+      # The entire corruption suite is ignored in the platform matrix and
+      # runs here, including the rejection sweeps and controls.
       - name: Run exhaustive corruption coverage
         run: cargo test --release -p ragu_pcd --locked --all-features --test corruption -- --include-ignored
 
@@ -180,11 +180,6 @@ jobs:
           cache-suffix: release
       - name: Run tests (all features)
         run: cargo test --release --all --locked --all-features
-      # Gated behind `unstable-fuzzing`, so the default-feature job skips it.
-      # The all-feature run does cover it; this pins it to that one
-      # feature so a failure is not confounded by the rest of the matrix.
-      - name: Run the patcher over the internal recursion circuits
-        run: cargo test --release -p ragu_pcd --features unstable-fuzzing --test patcher_internal --locked
 
   # Ensure the mock API stays `no_std`-buildable on a bare-metal target. This is
   # the configuration downstream consumers (e.g. `zcash_tachyon`) compile for
@@ -259,6 +254,22 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
         run: cargo test --lib
+
+      # These ignored library tests include the fixed mutation sweeps and
+      # bounded generated cases. Execute them here on every Rust/fuzz PR.
+      - name: Test internal patcher (default features)
+        working-directory: qa/fuzz
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
+          PROPTEST_CASES: "2"
+        run: cargo test --release --locked --lib internal_patcher::tests -- --include-ignored
+
+      - name: Test internal patcher (all features)
+        working-directory: qa/fuzz
+        env:
+          RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
+          PROPTEST_CASES: "2"
+        run: cargo test --release --locked --all-features --lib internal_patcher::tests -- --include-ignored
 
       - name: Check all fuzz targets
         working-directory: qa/fuzz

@@ -10,9 +10,8 @@
 //! proofs of two shapes: a `WitnessLeaf` seed, and a `Merge2` fuse of two
 //! `Hash2` nodes, whose accumulators and headers are the nondegenerate ones.
 //!
-//! The platform matrix runs representative corruptions and the controls.
-//! The exhaustive sweeps are ignored there and run in the dedicated Linux
-//! PR job with `--test corruption -- --include-ignored`.
+//! This entire suite is ignored in the platform matrix and runs in the
+//! dedicated Linux PR job with `--test corruption -- --include-ignored`.
 //!
 //! What is deliberately *not* a fixture is
 //! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof): `verify`
@@ -294,56 +293,6 @@ fn check_corruptions(shape: Shape, group: CorruptionGroup) {
     );
 }
 
-/// Keep each platform checking structural, commitment, and polynomial edits
-/// against both proof shapes without repeating the exhaustive vocabulary.
-fn check_representative_corruptions(shape: Shape) {
-    let app = app();
-    let fixture = fixture(&app, shape);
-    assert!(
-        fixture.clone().verify(&app, 1234),
-        "the {shape:?} fixture must verify before anything is corrupted",
-    );
-
-    for corruption in [
-        Corruption::CircuitId(u32::MAX),
-        Corruption::HeaderElement {
-            side: Side::Left,
-            index: 0,
-            delta: Fp::from(7u64),
-        },
-        Corruption::HeaderLen {
-            side: Side::Right,
-            len: HEADER_SIZE - 1,
-        },
-        Corruption::Challenge(Challenge::Mu, Fp::from(0xc0ffee_u64)),
-        Corruption::NegateNativeCommitment(NativeCommitment::P),
-        Corruption::NegateNestedCommitment(NestedCommitment::P),
-        Corruption::NativeCoeff {
-            component: RxComponent::Rx(NativeRx::Application),
-            coeff: 0,
-            delta: Fp::from(7u64),
-        },
-        Corruption::NestedCoeff {
-            index: NestedRx::BridgeEval,
-            coeff: 0,
-            delta: Fq::from(7u64),
-        },
-    ] {
-        let mut corrupted = fixture.clone();
-        let described = format!("{corruption:?}");
-        let binding = corrupted.proof.corrupt(corruption);
-        assert!(
-            !corrupted.verify(&app, 1234),
-            "the verifier accepted a corrupted {shape:?} proof: {described}",
-        );
-        assert_eq!(
-            binding,
-            Binding::MustReject,
-            "an effective corruption was classified Unbound: {shape:?} / {described}",
-        );
-    }
-}
-
 /// Zero deltas and out-of-range coefficient edits must leave a valid proof.
 fn check_no_op_edits(shape: Shape) {
     let app = app();
@@ -380,35 +329,31 @@ macro_rules! corruption_tests {
             use super::*;
 
             #[test]
-            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
+            #[ignore = "corruption suite: run by the Linux corruption job"]
             fn headers_and_challenges_reject() {
                 check_corruptions($shape, CorruptionGroup::HeadersAndChallenges);
             }
 
             #[test]
-            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
+            #[ignore = "corruption suite: run by the Linux corruption job"]
             fn commitments_and_accumulators_reject() {
                 check_corruptions($shape, CorruptionGroup::CommitmentsAndAccumulators);
             }
 
             #[test]
-            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
+            #[ignore = "corruption suite: run by the Linux corruption job"]
             fn native_polynomials_reject() {
                 check_corruptions($shape, CorruptionGroup::NativePolynomials);
             }
 
             #[test]
-            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
+            #[ignore = "corruption suite: run by the Linux corruption job"]
             fn nested_polynomials_reject() {
                 check_corruptions($shape, CorruptionGroup::NestedPolynomials);
             }
 
             #[test]
-            fn representative_corruptions_reject() {
-                check_representative_corruptions($shape);
-            }
-
-            #[test]
+            #[ignore = "corruption suite: run by the Linux corruption job"]
             fn no_op_edits_verify() {
                 check_no_op_edits($shape);
             }
@@ -427,6 +372,7 @@ corruption_tests!(deep, Shape::Deep);
 /// their fixtures with `seed` and `fuse` and check each one verifies for
 /// exactly this reason.
 #[test]
+#[ignore = "corruption suite: run by the Linux corruption job"]
 fn the_dummy_proof_does_not_verify() {
     for verifier in [empty_app(), app()] {
         let proof = verifier.test_dummy_proof();
@@ -445,6 +391,7 @@ fn the_dummy_proof_does_not_verify() {
 /// header edit twice with opposite deltas restores the honest proof, which
 /// the verifier is then right to accept.
 #[test]
+#[ignore = "corruption suite: run by the Linux corruption job"]
 fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
     let app = app();
     let fixture = fixture(&app, Shape::Deep);

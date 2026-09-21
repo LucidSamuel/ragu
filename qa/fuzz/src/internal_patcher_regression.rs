@@ -1,5 +1,4 @@
-//! Aiming the patcher engine at the production internal recursion circuits
-//! (issue #793).
+//! Patcher regression tests for the production internal recursion circuits.
 //!
 //! [`capture_internal_circuits`] hands every native and nested internal circuit its
 //! [`CircuitSpec`] and its honest witness, which exist only mid-fuse, to a
@@ -43,12 +42,16 @@
 //! Capture and playback use one sequential proof tree. The static checks and
 //! complete sweeps run in parallel over its recorded circuits at each point.
 //!
-//! Gated behind `unstable-fuzzing` and run with
-//! `cargo test -p ragu_pcd --features unstable-fuzzing --test patcher_internal`.
+//! Run by the PR fuzz harness job with
+//! `cargo test --release --lib internal_patcher::tests -- --include-ignored`.
 
 use std::time::{Duration, Instant};
 
-use ragu_arithmetic::{Cycle, ff::PrimeFieldBits};
+use proptest::prelude::*;
+use ragu_arithmetic::{
+    Cycle,
+    ff::{Field, PrimeFieldBits},
+};
 use ragu_circuits::{Circuit, polynomials::ProductionRank};
 use ragu_core::Result;
 use ragu_pasta::{Fp, Pasta};
@@ -60,14 +63,15 @@ use ragu_pcd::{
     },
 };
 use ragu_testing::{
-    patcher::{
-        Capture, Prepared, ProbeOutcome, capture_with_stage_values, constraints_hold,
-        determinism_probe, discover_free_advice, forced_by, playback,
-    },
+    patcher::{Capture, Prepared, ProbeOutcome, determinism_probe, forced_by, playback},
     pcd::nontrivial::{Hash2, Merge2, WitnessLeaf},
 };
 use rand::{SeedableRng, rngs::StdRng};
 use rayon::prelude::*;
+
+use crate::internal_patcher::{
+    CaptureCase, Mutation, Point, capture_checked, check_binding, probe_mutations,
+};
 
 /// One circuit's census at one capture point.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,28 +109,14 @@ fn capture_check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 ) -> Result<Check> {
     let name = spec.name.as_str();
 
-    let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)
-        .unwrap_or_else(|e| panic!("{name}@{point}: capture must succeed, got {e:?}"));
+    let (cap, resolution) = capture_checked(
+        &format!("{name}@{point}"),
+        spec,
+        circuit,
+        stage_values,
+        &make_witness,
+    )?;
     let rec = &cap.recorder;
-    assert_eq!(
-        cap.stage_wires.len(),
-        stage_values.len(),
-        "{name}@{point}: one stage wire per supplied stage value",
-    );
-    assert!(
-        constraints_hold(&rec.events, &rec.values),
-        "{name}@{point}: the capture must satisfy the recorded constraints",
-    );
-    assert!(
-        playback(circuit, make_witness()?, rec.values.clone())?,
-        "{name}@{point}: an independent playback must re-accept the captured witness",
-    );
-
-    let resolution = spec.resolve(&cap.instance, &cap.stage_wires)?;
-    assert!(
-        !resolution.outputs.is_empty(),
-        "{name}@{point}: a circuit with nothing to watch would make the oracle vacuous",
-    );
 
     // The binding circuits must reject a different curve point in every
     // bound slot. Negating y preserves curve membership, so this exercises
@@ -179,34 +169,9 @@ fn check<F: PrimeFieldBits>(
     let name = spec.name.as_str();
     let rec = &cap.recorder;
 
-    // The static check, two tiers (see the module docs).
-    let free = discover_free_advice(&rec.events, &rec.values);
-    let mut granted = resolution.inputs.clone();
-    granted.extend(
-        free.iter()
-            .copied()
-            .filter(|w| !resolution.outputs.contains(w)),
-    );
-    let weakly = forced_by(&rec.events, &rec.values, &granted);
-    let strongly = forced_by(&rec.events, &rec.values, &resolution.inputs);
-    let mut strongly_forced = 0;
-    for output in &spec.outputs {
-        let wire = match *output {
-            OutputRef::Instance(i) => cap.instance[i],
-            OutputRef::Stage(i) => cap.stage_wires[i],
-        };
-        if resolution.demoted.contains(&wire) {
-            continue;
-        }
-        assert!(
-            weakly.binary_search(&wire).is_ok(),
-            "{name}@{point}: declared output {output:?} (wire {wire}) is not forced even \
-             with every hint granted — the circuit never constrains it",
-        );
-        if strongly.binary_search(&wire).is_ok() {
-            strongly_forced += 1;
-        }
-    }
+    let binding = check_binding(&format!("{name}@{point}"), cap, resolution);
+    let free = binding.free;
+    let strongly_forced = binding.strongly_forced;
 
     // A wrong spec must be refused: hashes_1's first instance wire is a
     // coordinate of the received preamble commitment, which the circuit
@@ -378,13 +343,6 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
         stage_values: &[C::ScalarField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
-        if spec.name == "nested_export" {
-            assert_eq!(
-                spec.outputs,
-                (2..33).map(OutputRef::Instance).collect::<Vec<_>>(),
-                "nested export must declare x, y, u and every exported point coordinate",
-            );
-        }
         self.checks.push(capture_check(
             self.point,
             spec,
@@ -475,6 +433,7 @@ fn expected(name: &str, point: &str) -> Census {
 /// Real fuses at three points of a small tree, with the patcher capturing
 /// every internal circuit as its honest witness is built.
 #[test]
+#[ignore = "internal patcher suite: run by the PR fuzz harness job"]
 fn patcher_captures_internal_circuits() -> Result<()> {
     let pasta = Pasta::baked();
     let leaf_step = || WitnessLeaf {
@@ -655,4 +614,147 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         drifted.join("\n")
     );
     Ok(())
+}
+
+/// Sample one native and one nested circuit per generated tree. Full sweeps
+/// remain in the fixed regression; these cases spend their budget on varying
+/// honest witnesses, blinding, registry width, and coordinated mutations.
+struct GeneratedChecker<'a> {
+    native: &'static str,
+    nested: &'static str,
+    mutations: &'a [(u16, Mutation)],
+    checked: usize,
+}
+
+impl GeneratedChecker<'_> {
+    fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
+        &mut self,
+        spec: &CircuitSpec,
+        circuit: &Cir,
+        stage_values: &[F],
+        make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
+    ) -> Result<()> {
+        let (cap, resolution) =
+            capture_checked(&spec.name, spec, circuit, stage_values, &make_witness)?;
+        let binding = check_binding(&spec.name, &cap, &resolution);
+        let cheatable: Vec<_> = binding
+            .free
+            .into_iter()
+            .filter(|wire| !resolution.inputs.contains(wire))
+            .collect();
+        assert!(
+            !cheatable.is_empty(),
+            "{}: no mutation candidates",
+            spec.name
+        );
+        let prepared = Prepared::new(
+            cap.recorder.events,
+            cap.recorder.values,
+            resolution.inputs,
+            resolution.outputs,
+        );
+        probe_mutations(
+            &spec.name,
+            &prepared,
+            &cheatable,
+            self.mutations,
+            |witness| {
+                Some(
+                    playback(
+                        circuit,
+                        make_witness().expect("honest witness"),
+                        witness.to_vec(),
+                    )
+                    .expect("replay must not error"),
+                )
+            },
+        );
+        self.checked += 1;
+        Ok(())
+    }
+}
+
+impl<C: Cycle> InternalCircuitVisitor<C> for GeneratedChecker<'_> {
+    fn visit<'w, Cir: Circuit<C::CircuitField>>(
+        &mut self,
+        spec: &CircuitSpec,
+        circuit: &Cir,
+        stage_values: &[C::CircuitField],
+        make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
+    ) -> Result<()> {
+        if spec.name == self.native {
+            self.check(spec, circuit, stage_values, make_witness)?;
+        }
+        Ok(())
+    }
+
+    fn visit_nested<'w, Cir: Circuit<C::ScalarField>>(
+        &mut self,
+        spec: &CircuitSpec,
+        circuit: &Cir,
+        stage_values: &[C::ScalarField],
+        make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
+    ) -> Result<()> {
+        if spec.name == self.nested {
+            self.check(spec, circuit, stage_values, make_witness)?;
+        }
+        Ok(())
+    }
+}
+
+fn witness_strategy() -> impl Strategy<Value = Fp> {
+    prop_oneof![
+        1 => Just(Fp::ZERO), 1 => Just(Fp::ONE), 1 => Just(-Fp::ONE),
+        3 => any::<u64>().prop_map(Fp::from),
+    ]
+}
+
+fn mutation_strategy() -> impl Strategy<Value = Mutation> {
+    prop_oneof![
+        any::<u64>().prop_map(Mutation::AddSmall),
+        any::<u64>().prop_map(Mutation::MulSmall),
+        Just(Mutation::Negate),
+        Just(Mutation::Zero),
+        any::<u16>().prop_map(Mutation::CopyFrom),
+    ]
+}
+
+fn generated_config() -> ProptestConfig {
+    let mut config = ProptestConfig::default();
+    if std::env::var_os("PROPTEST_CASES").is_none() {
+        config.cases = 2;
+    }
+    config.max_shrink_iters = 16;
+    config
+}
+
+proptest! {
+    #![proptest_config(generated_config())]
+
+    #[test]
+    #[ignore = "internal patcher suite: run by the PR fuzz harness job"]
+    fn generated_captures_keep_outputs_bound(
+        rng_seed in any::<u64>(),
+        witnesses in prop::array::uniform6(witness_strategy()),
+        extra_steps in any::<u8>(),
+        native in prop::sample::select(vec![
+            "hashes_1", "hashes_2", "inner_collapse", "outer_collapse", "compute_v",
+            "bind_challenges_0", "bind_beta", "bind_endoscalar", "native_endoscaling_step_0",
+        ]),
+        nested in prop::sample::select(vec![
+            "nested_export", "nested_collapse", "nested_compute_v", "endoscaling_step_0",
+        ]),
+        mutations in prop::collection::vec((any::<u16>(), mutation_strategy()), 0..=8),
+    ) {
+        for point in Point::ALL {
+            let minimum = point.minimum_steps();
+            let case = CaptureCase {
+                point, steps: minimum + usize::from(extra_steps) % (4 - minimum),
+                rng_seed, witnesses,
+            };
+            let mut checker = GeneratedChecker { native, nested, mutations: &mutations, checked: 0 };
+            case.capture(&mut checker).unwrap_or_else(|error| panic!("{case:?}: {error:?}"));
+            prop_assert_eq!(checker.checked, 2, "case {:?}", case);
+        }
+    }
 }

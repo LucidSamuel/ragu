@@ -1,6 +1,6 @@
-# cargo-fuzz harness. Self-contained: the generated-program substrate and the
-# patcher engine live in this crate's own library (`src/`), which the targets
-# under `fuzz_targets/` depend on.
+# cargo-fuzz harness. The generated-program substrate and PCD patcher checks
+# live in this crate's library (`src/`), which the targets depend on. The
+# shared patcher engine is provided by `ragu_testing`.
 #
 # Deliberately excluded from the top-level workspace (see `members` in the
 # repo-root Cargo.toml). Fuzz targets require nightly toolchain + libfuzzer
@@ -24,6 +24,14 @@ edition = "2024"
 
 [package.metadata]
 cargo-fuzz = true
+
+[features]
+# Preserve the PCD configurations exercised by the moved patcher regressions.
+multicore = ["ragu_pcd/multicore"]
+native-msm = ["ragu_pcd/native-msm"]
+
+[dev-dependencies]
+rayon = "1.11.0"
 
 [dependencies]
 libfuzzer-sys = "0.4"
@@ -105,7 +113,7 @@ test = false
 doc = false
 bench = false
 
-# The "patcher" technique (issue #728): mutate one witness input, repair
+# The "patcher" technique: mutate one witness input, repair
 # every downstream wire by re-tracing, and assert the assembled constraint
 # identity matches an independent native oracle over a generated substrate
 # program (real enforce_zero anchors, full grammar minus value-fallible ops).
@@ -118,7 +126,7 @@ test = false
 doc = false
 bench = false
 
-# The patcher with a real repair engine (issues #728, #793, #796): a
+# The patcher with a real repair engine: a
 # recording Driver captures the constraint graph ragu emits for a
 # generated substrate program, then mutations to free advice wires are
 # repaired by propagating through the *captured* constraints (not by
@@ -133,7 +141,7 @@ test = false
 doc = false
 bench = false
 
-# Completeness / over-constraint fuzzing (issues #728, #793): the dual of
+# Completeness / over-constraint fuzzing: the dual of
 # the patcher. For an anchorless program over the infallible vocabulary
 # every preamble witness is valid, so ragu's real Simulator must accept all
 # of them; a rejection is an over-constrained gadget (a completeness bug).
@@ -144,7 +152,7 @@ test = false
 doc = false
 bench = false
 
-# Staging pipeline (issue #709 Layer 4): the same revdot identity as
+# Staging pipeline: the same revdot identity as
 # fuzz_circuit_revdot_identity, but applied to MultiStage-as-Circuit
 # instances. Exercises StageBuilder wire reservation, StageGuard wire
 # injection, MultiStage::witness adapter, and skip_gates recursion that
