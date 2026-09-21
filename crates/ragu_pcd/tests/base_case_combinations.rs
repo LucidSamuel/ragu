@@ -554,6 +554,7 @@ fn check_proof_guards(
 }
 
 #[test]
+#[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
 fn nested_collapse_uses_challenge_stage_y_even_in_bootstrap() -> Result<()> {
     support::with_app(|app| {
         let bootstrap = app.bootstrap_pcd();
@@ -699,6 +700,7 @@ fn check_guards(
 }
 
 #[test]
+#[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
 fn noncanonical_unit_children_reject_through_two_generations() {
     let app = ApplicationBuilder::<C, R, HEADER_SIZE>::new()
         .register(UnitStep)
@@ -765,11 +767,13 @@ proptest! {
     #![proptest_config(support::config())]
 
     #[test]
+    #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
     fn mixed_headers_bind_the_base_case_sign(inputs in support::inputs()) {
         support::with_app(|app| check_signs(app, &inputs)).unwrap();
     }
 
     #[test]
+    #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
     fn both_collapse_guards_confine_the_base_case_to_bootstrap(
         inputs in support::inputs(),
         native_delta in strategies::nonzero_prime_field_element::<Fp>(),

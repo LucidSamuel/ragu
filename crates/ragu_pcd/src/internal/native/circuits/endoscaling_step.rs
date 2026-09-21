@@ -147,6 +147,9 @@ impl<C: Cycle, R: Rank> MultiStageCircuit<C::CircuitField, R> for Circuit<C, R> 
         })?;
         acc.enforce_equal(dr, &interstitials[self.step])?;
 
-        Ok(WithAux::new(WithSuffix::new((), Element::zero(dr)), D::unit()))
+        Ok(WithAux::new(
+            WithSuffix::new((), Element::zero(dr)),
+            D::unit(),
+        ))
     }
 }

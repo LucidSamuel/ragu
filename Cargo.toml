@@ -93,4 +93,5 @@ proptest = "1.11.0"
 gungraun = "0.17.0"
 blake2b_simd = { version = "1.0", default-features = false }
 maybe-rayon = { package = "tachyon-maybe-rayon", version = "0.1.2", default-features = false }
+rayon = "1.11.0"
 criterion = { version = "0.5", default-features = false }

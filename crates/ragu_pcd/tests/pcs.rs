@@ -772,15 +772,18 @@ mod child_openings {
     //! A root's native `compute_v` reads each child's claimed opening
     //! $p_c(u_c) = v_c$ off the preamble stage and $p_c(u)$ off the eval
     //! stage, and the decider never reads those wires directly. They are
-    //! bound all the same: the eval stage is committed before $\beta$ is
-    //! squeezed and $P$ is the walk over the constituent commitments, so
-    //! opening the root's $p$ pins every eval wire to the real evaluation of
-    //! its committed polynomial, the children's included.
+    //! bound all the same: each stage reaches the transcript through its
+    //! bridge before the next challenge is squeezed, the preamble before $w$
+    //! and the eval stage before $\beta$, and $P$ is the walk over the
+    //! constituent commitments, so opening the root's $p$ pins every eval
+    //! wire to the real evaluation of its committed polynomial, the
+    //! children's included.
     //!
-    //! Each edit here repairs every cache it invalidates, so a rejection
-    //! comes from the binding rather than from a stale commitment: editing
-    //! any of the four wires is rejected, and editing an eval wire is still
-    //! rejected once the eval bridge slot is repaired too. A child that never
+    //! Each wire is edited twice. Recommitting only its stage leaves the
+    //! bridge's copy of that commitment stale, which is rejected on its own.
+    //! Repairing the bridge copy too leaves no cache or copy stale, only the
+    //! transcript that absorbed the old bridge, so that rejection comes from
+    //! the binding rather than from a stale commitment. A child that never
     //! ran, presented as an application child, is the forgery those wires
     //! would have to cover; the honest pipeline sets them for it and the root
     //! is still rejected.
@@ -791,7 +794,7 @@ mod child_openings {
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
 
-    use super::support::{self, C, ChildWire, R, Value, dummy_as_value, repair_bridge_eval_slot};
+    use super::support::{self, C, ChildWire, R, Value, dummy_as_value};
     use crate::Proof;
 
     fn check(app: &support::App, inputs: &support::Inputs, delta: Fp) -> Result<()> {
@@ -809,18 +812,15 @@ mod child_openings {
             let mut proof = parent.proof().clone();
             wire.bump(app, &mut proof, delta, true)?;
             assert!(
-                rejected(proof)?,
+                rejected(proof.clone())?,
                 "{wire:?}: an edited child opening wire must be rejected"
             );
+            wire.repair_bridge(app, &mut proof)?;
+            assert!(
+                rejected(proof)?,
+                "{wire:?}: the stage is transcript-bound once its bridge copy is repaired"
+            );
         }
-
-        let mut proof = parent.proof().clone();
-        ChildWire::EvalLeftP.bump(app, &mut proof, delta, true)?;
-        repair_bridge_eval_slot(app, &mut proof)?;
-        assert!(
-            rejected(proof)?,
-            "the eval stage is transcript-bound before beta"
-        );
 
         let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(2));
         let root = app

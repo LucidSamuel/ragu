@@ -270,6 +270,7 @@ mod registry {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn same_sized_registries_reject_foreign_proofs_through_two_generations(
             inputs in support::inputs(),
             extra in extra_steps(),
@@ -279,6 +280,7 @@ mod registry {
         }
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn circuit_slots_reject_application_bonding_and_unassigned_substitutions(
             inputs in support::inputs(),
             selector in any::<usize>(),
@@ -413,10 +415,16 @@ mod stages {
                     wires_of(&stage.interstitials)
                 })?,
                 stage_wire_indices::<_, R, nested::PointsStage<EqAffine>>(|stage| {
-                    wires_of(&stage)
+                    wires_of(&stage.interstitials)
                 })?,
             ),
         };
+        // Each walk's endpoint, the last interstitial, is its field's P.
+        let native_endpoint = stage_wire_indices::<_, R, nested::PointsStage<EqAffine>>(|stage| {
+            wires_of(stage.interstitials.last().unwrap())
+        })?;
+        let nested_endpoint =
+            stage_wire_indices::<_, R, WalkStage<EpAffine>>(|stage| wires_of(stage.p()))?;
 
         for (native, nested) in [(false, false), (true, false), (false, true), (true, true)] {
             let (mut changed, data) = honest.clone().into_parts();
@@ -470,13 +478,23 @@ mod stages {
                     }
                 }
             }
+            let walked = StageReader::new(&changed.native_points_walk_rx);
             assert_eq!(
-                changed.native_p_commitment(),
-                honest.proof().native_p_commitment()
+                nested_endpoint
+                    .iter()
+                    .map(|&wire| walked.read(wire))
+                    .collect::<Vec<_>>(),
+                support::coordinates(honest.proof().nested_p_commitment()),
+                "{mutation:?}: the native walk must still end at the committed P_n"
             );
+            let walked = StageReader::new(&changed.nested_points_rx);
             assert_eq!(
-                changed.nested_p_commitment(),
-                honest.proof().nested_p_commitment()
+                native_endpoint
+                    .iter()
+                    .map(|&wire| walked.read(wire))
+                    .collect::<Vec<_>>(),
+                support::coordinates(honest.proof().native_p_commitment()),
+                "{mutation:?}: the nested walk must still end at the committed P"
             );
             assert!(crate::verify::nested_points_match(&changed)?);
             let child = changed.carry::<Value>(data);
@@ -501,6 +519,7 @@ mod stages {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn same_lift_bit_substitutions_reject_through_two_generations(
             inputs in support::inputs(),
             pair in (0usize..63).prop_flat_map(|first| (Just(first), first + 1..64)),
@@ -511,6 +530,7 @@ mod stages {
         }
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn off_curve_walk_points_reject_through_two_generations(
             inputs in support::inputs(),
             selector in any::<usize>(),

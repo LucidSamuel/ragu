@@ -60,6 +60,8 @@ ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
 gungraun = { workspace = true }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 proptest = { workspace = true }
+# Parallel test cases also exercise the prover without its multicore feature.
+rayon = { workspace = true }
 
 [[bench]]
 name = "gungraun"
@@ -73,6 +75,11 @@ harness = false
 [[bench]]
 name = "criterion_registry"
 path = "benches/criterion/registry.rs"
+harness = false
+
+[[bench]]
+name = "criterion_verify"
+path = "benches/criterion/verify.rs"
 harness = false
 
 [[test]]

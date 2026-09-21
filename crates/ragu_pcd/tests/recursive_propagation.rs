@@ -9,6 +9,7 @@ pub(crate) mod support {
 
     use alloc::{format, string::String, sync::Arc, vec, vec::Vec};
     use core::marker::PhantomData;
+    use std::sync::Mutex;
 
     use proptest::prelude::*;
     use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
@@ -28,6 +29,7 @@ pub(crate) mod support {
     };
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
+    use rayon::prelude::*;
 
     pub(crate) type C = Pasta;
     pub(crate) type R = ProductionRank;
@@ -137,21 +139,149 @@ pub(crate) mod support {
             .finalize(C::baked())
     }
 
+    /// Reuse the deterministic registries and bootstrap proof between test
+    /// threads. Each thread owns its application for the entire property test;
+    /// the lock only protects checkout and return, never proof construction.
+    struct AppPool(Mutex<Vec<App>>);
+
+    impl AppPool {
+        const fn new() -> Self {
+            Self(Mutex::new(Vec::new()))
+        }
+
+        fn checkout(&self) -> AppLease<'_> {
+            let app = self.0.lock().unwrap().pop();
+            AppLease {
+                pool: self,
+                app: Some(app.unwrap_or_else(|| {
+                    build_app().expect("the property-test application must build")
+                })),
+            }
+        }
+    }
+
+    struct AppLease<'a> {
+        pool: &'a AppPool,
+        app: Option<App>,
+    }
+
+    impl AppLease<'_> {
+        fn app(&self) -> &App {
+            self.app.as_ref().unwrap()
+        }
+    }
+
+    impl Drop for AppLease<'_> {
+        fn drop(&mut self) {
+            let mut app = self.app.take().unwrap();
+            // This cache consumes the caller's RNG on its first use. Reset it
+            // so a later test sees exactly the same state as a fresh app, while
+            // successive cases and shrinking within one test still share it.
+            app.seeded_trivial.take();
+            self.pool.0.lock().unwrap().push(app);
+        }
+    }
+
+    static APP_POOL: AppPool = AppPool::new();
+
     std::thread_local! {
-        static APP: App = build_app().expect("the property-test application must build");
+        static APP: AppLease<'static> = APP_POOL.checkout();
     }
 
     pub(crate) fn with_app<T>(f: impl FnOnce(&App) -> T) -> T {
-        APP.with(f)
+        APP.with(|lease| f(lease.app()))
+    }
+
+    /// Run independent mutations after their shared honest control. Each case
+    /// gets its own application with the control's already initialized neutral
+    /// proof, preserving the prover RNG consumption of the sequential checks.
+    /// A test-only worker pool runs the cases without enabling additional
+    /// prover features, including when the library's `multicore` feature is off.
+    pub(crate) fn for_each_case<T: Send>(
+        app: &App,
+        cases: impl IntoParallelIterator<Item = T>,
+        check: impl Fn(&App, T) -> Result<()> + Send + Sync,
+    ) -> Result<()> {
+        let neutral = app
+            .seeded_trivial
+            .get()
+            .expect("run the rerandomized honest control before its mutations")
+            .clone();
+        let native_tag = app.native_registry.tag();
+        let nested_tag = app.nested_registry.tag();
+        cases.into_par_iter().try_for_each(|case| {
+            let lease = APP_POOL.checkout();
+            let app = lease.app();
+            assert_eq!(app.native_registry.tag(), native_tag);
+            assert_eq!(app.nested_registry.tag(), nested_tag);
+            assert!(app.seeded_trivial.set(neutral.clone()).is_ok());
+            check(app, case)
+        })
+    }
+
+    #[test]
+    #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
+    fn reused_application_preserves_proofs_and_rng_consumption() {
+        use rand::RngExt;
+
+        // Isolate the pool so another test cannot check out the returned app.
+        let pool = AppPool::new();
+        let lease = pool.checkout();
+        let mut first_rng = StdRng::seed_from_u64(873);
+        let first = lease
+            .app()
+            .rerandomize(lease.app().bootstrap_pcd(), &mut first_rng)
+            .unwrap();
+        assert!(lease.app().seeded_trivial.get().is_some());
+        drop(lease);
+        assert_eq!(pool.0.lock().unwrap().len(), 1);
+
+        let lease = pool.checkout();
+        assert!(lease.app().seeded_trivial.get().is_none());
+        let mut second_rng = StdRng::seed_from_u64(873);
+        let second = lease
+            .app()
+            .rerandomize(lease.app().bootstrap_pcd(), &mut second_rng)
+            .unwrap();
+        assert_eq!(first.proof().test_mismatch(second.proof()), None);
+        assert_eq!(
+            first_rng.random::<[u64; 4]>(),
+            second_rng.random::<[u64; 4]>()
+        );
+        assert!(
+            lease
+                .app()
+                .verify(&second, StdRng::seed_from_u64(874))
+                .unwrap()
+        );
+
+        // A mutation following its control must inherit the initialized cache,
+        // without consuming the random bytes used to create it a second time.
+        let mut expected_rng = StdRng::seed_from_u64(875);
+        let expected = lease
+            .app()
+            .rerandomize(lease.app().bootstrap_pcd(), &mut expected_rng)
+            .unwrap();
+        let expected_rng = expected_rng.random::<[u64; 4]>();
+        for_each_case(lease.app(), [0, 1], |app, _| {
+            let mut rng = StdRng::seed_from_u64(875);
+            let proof = app.rerandomize(app.bootstrap_pcd(), &mut rng)?;
+            assert_eq!(expected.proof().test_mismatch(proof.proof()), None);
+            assert_eq!(expected_rng, rng.random::<[u64; 4]>());
+            Ok(())
+        })
+        .unwrap();
     }
 
     /// Each recursive case checks all child positions over two generations.
-    /// PROPTEST_CASES can increase the four-case default for longer campaigns.
+    /// PROPTEST_CASES can change the four-case default for longer campaigns;
+    /// zero is ignored, since a run with no cases would pass vacuously.
     pub(crate) fn config() -> ProptestConfig {
         let mut config = ProptestConfig::with_cases(4);
         if let Some(cases) = std::env::var("PROPTEST_CASES")
             .ok()
             .and_then(|value| value.parse().ok())
+            .filter(|&cases: &u32| cases > 0)
         {
             config.cases = cases;
         }
@@ -496,6 +626,7 @@ pub(crate) mod support {
     pub(crate) enum Cache {
         NativePreamble,
         NativeEval,
+        BridgePreamble,
         BridgeEval,
         NestedChallenges,
     }
@@ -516,6 +647,9 @@ pub(crate) mod support {
             }
             Cache::NativeEval => {
                 proof.native_eval_commitment.0 = native_commit(app, &proof.native_eval_rx);
+            }
+            Cache::BridgePreamble => {
+                proof.bridge_preamble_commitment = nested_commit(app, &proof.bridge_preamble_rx);
             }
             Cache::BridgeEval => {
                 proof.bridge_eval_commitment = nested_commit(app, &proof.bridge_eval_rx);
@@ -593,6 +727,37 @@ pub(crate) mod support {
             }
             Ok(())
         }
+
+        /// Copies the stage commitment that [`bump`](Self::bump) recommitted
+        /// into the bridge stage that carries it and recommits that bridge,
+        /// so that no cache or copy is stale and only the transcript, which
+        /// absorbed the old bridge, is left inconsistent.
+        pub(crate) fn repair_bridge(self, app: &App, proof: &mut Proof<C, R>) -> Result<()> {
+            match self {
+                Self::EvalLeftP | Self::EvalRightP => repair_bridge_eval_slot(app, proof),
+                Self::PreambleLeftV | Self::PreambleLeftU => {
+                    repair_bridge_preamble_slot(app, proof)
+                }
+            }
+        }
+    }
+
+    /// Copies the native preamble commitment into the `preamble` bridge
+    /// stage's `native_preamble` slot and recommits the bridge, the preamble
+    /// counterpart of [`repair_bridge_eval_slot`]. What remains inconsistent
+    /// is the transcript: `w` was squeezed over the old bridge commitment.
+    pub(crate) fn repair_bridge_preamble_slot(app: &App, proof: &mut Proof<C, R>) -> Result<()> {
+        let [x, y] = coordinates(proof.native_rx_commitment(native::RxIndex::Preamble));
+        let wires = stage_wire_indices::<Fq, R, preamble::Stage<EqAffine, R>>(|out| {
+            wires_of(&out.native_preamble)
+        })?;
+        set_wires(
+            Arc::make_mut(&mut proof.bridge_preamble_rx),
+            &wires,
+            &[x, y],
+        );
+        recommit(app, proof, Cache::BridgePreamble);
+        Ok(())
     }
 
     /// Copies the native eval commitment into the `eval` bridge stage's
@@ -744,6 +909,7 @@ mod accumulator {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn rescaled_accumulators_reject_through_parent_and_grandparent(
             inputs in support::inputs(),
             native_scale in strategies::nonzero_prime_field_element::<Fp>()
@@ -893,6 +1059,7 @@ mod endpoints {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn coordinated_endpoints_reject_through_parent_and_grandparent(
             inputs in support::inputs(),
             native_positions in support::positions(),
@@ -1156,6 +1323,7 @@ mod timing {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn later_witnesses_cannot_replace_transcript_bound_points(
             inputs in support::inputs(),
             point_scale in strategies::nonzero_prime_field_element::<Fq>()
@@ -1454,6 +1622,7 @@ mod commitments {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn nested_commitments_bind_challenges_and_walks(
             inputs in support::inputs(),
             delta in strategies::nonzero_prime_field_element::<Fq>(),

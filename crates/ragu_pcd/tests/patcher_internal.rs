@@ -40,6 +40,8 @@
 //! census — wire counts, declarations, cheatable wires, sweep tallies — is
 //! pinned per circuit and point, so a change that adds or removes hints,
 //! stage wires or instance wires is noticed here.
+//! Capture and playback use one sequential proof tree. The static checks and
+//! complete sweeps run in parallel over its recorded circuits at each point.
 //!
 //! Gated behind `unstable-fuzzing` and run with
 //! `cargo test -p ragu_pcd --features unstable-fuzzing --test patcher_internal`.
@@ -53,18 +55,19 @@ use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
     fuzzing::patcher::{
-        CircuitSpec, InternalCircuitVisitor, OutputRef, capture_internal_circuits,
+        CircuitSpec, InternalCircuitVisitor, OutputRef, Resolution, capture_internal_circuits,
         capture_internal_circuits_bootstrap,
     },
 };
 use ragu_testing::{
     patcher::{
-        Prepared, ProbeOutcome, capture_with_stage_values, constraints_hold, determinism_probe,
-        discover_free_advice, forced_by, playback,
+        Capture, Prepared, ProbeOutcome, capture_with_stage_values, constraints_hold,
+        determinism_probe, discover_free_advice, forced_by, playback,
     },
     pcd::nontrivial::{Hash2, Merge2, WitnessLeaf},
 };
 use rand::{SeedableRng, rngs::StdRng};
+use rayon::prelude::*;
 
 /// One circuit's census at one capture point.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,14 +92,17 @@ struct Census {
     rejected: usize,
 }
 
-/// Captures one circuit and runs every check, returning its census.
-fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
+type Check = Box<dyn FnOnce() -> Result<Census> + Send>;
+
+/// Capture and independently replay while the circuit's witness is available.
+/// The remaining checks own their recording and can run on another thread.
+fn capture_check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
     point: &str,
     spec: &CircuitSpec,
     circuit: &Cir,
     stage_values: &[F],
     make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
-) -> Result<Census> {
+) -> Result<Check> {
     let name = spec.name.as_str();
 
     let cap = capture_with_stage_values(circuit, make_witness()?, stage_values)
@@ -157,6 +163,21 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
             );
         }
     }
+
+    let point = point.to_owned();
+    let spec = spec.clone();
+    Ok(Box::new(move || check(&point, &spec, &cap, &resolution)))
+}
+
+/// Run the same static checks and full sweeps against a recorded circuit.
+fn check<F: PrimeFieldBits>(
+    point: &str,
+    spec: &CircuitSpec,
+    cap: &Capture<F>,
+    resolution: &Resolution,
+) -> Result<Census> {
+    let name = spec.name.as_str();
+    let rec = &cap.recorder;
 
     // The static check, two tiers (see the module docs).
     let free = discover_free_advice(&rec.events, &rec.values);
@@ -315,7 +336,21 @@ fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 #[derive(Default)]
 struct CaptureChecker {
     point: &'static str,
+    checks: Vec<Check>,
     census: Vec<Census>,
+}
+
+impl CaptureChecker {
+    fn finish(&mut self) -> Result<()> {
+        // Indexed collection preserves the capture order despite parallel
+        // completion. Drain each point before building the next tree level,
+        // bounding the recordings retained in memory.
+        self.census = core::mem::take(&mut self.checks)
+            .into_par_iter()
+            .map(|check| check())
+            .collect::<Result<_>>()?;
+        Ok(())
+    }
 }
 
 impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
@@ -326,8 +361,13 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
         stage_values: &[C::CircuitField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
-        let census = check(self.point, spec, circuit, stage_values, make_witness)?;
-        self.census.push(census);
+        self.checks.push(capture_check(
+            self.point,
+            spec,
+            circuit,
+            stage_values,
+            make_witness,
+        )?);
         Ok(())
     }
 
@@ -345,8 +385,13 @@ impl<C: Cycle> InternalCircuitVisitor<C> for CaptureChecker {
                 "nested export must declare x, y, u and every exported point coordinate",
             );
         }
-        let census = check(self.point, spec, circuit, stage_values, make_witness)?;
-        self.census.push(census);
+        self.checks.push(capture_check(
+            self.point,
+            spec,
+            circuit,
+            stage_values,
+            make_witness,
+        )?);
         Ok(())
     }
 }
@@ -370,12 +415,14 @@ fn expected(name: &str, point: &str) -> Census {
         bind if bind.starts_with("bind_challenges_") => (438, 7514, 40, 2, 0, 2, 726),
         "bind_beta" => (528, 7692, 40, 52, 0, 52, 794),
         "bind_endoscalar" => (376, 2540, 40, 136, 0, 136, 442),
-        "native_endoscaling_step_24" => (376, 5724, 0, 2, 0, 2, 187),
-        step if step.starts_with("native_endoscaling_step_") => (376, 10692, 0, 2, 0, 2, 187),
+        // The native steps end their output in the internal suffix, a constant
+        // zero element, which adds one wire and one instance wire.
+        "native_endoscaling_step_24" => (376, 5725, 1, 2, 0, 2, 187),
+        step if step.starts_with("native_endoscaling_step_") => (376, 10693, 1, 2, 0, 2, 187),
         step if step.starts_with("endoscaling_step_") => (410, 10760, 0, 2, 0, 2, 204),
         "nested_export" => (1574, 4939, 33, 31, 0, 31, 789),
         "nested_collapse" if point == "bootstrap" => (1574, 6448, 33, 12, 0, 12, 801),
-        "nested_collapse" => (1574, 6448, 33, 13, 0, 13, 799),
+        "nested_collapse" => (1574, 6448, 33, 13, 0, 13, 800),
         "nested_compute_v" => (1574, 7586, 33, 1, 0, 1, 789),
         other => panic!("no census pinned for {other}"),
     };
@@ -391,23 +438,23 @@ fn expected(name: &str, point: &str) -> Census {
         (bind, _) if bind.starts_with("bind_challenges_") => (14, 712),
         ("bind_beta", _) => (102, 692),
         ("bind_endoscalar", "bootstrap") => (50, 392),
-        ("bind_endoscalar", "leaves") => (49, 393),
-        ("bind_endoscalar", "nodes") => (50, 392),
+        ("bind_endoscalar", "leaves") => (50, 392),
+        ("bind_endoscalar", "nodes") => (44, 398),
         (step, "bootstrap") if step.starts_with("native_endoscaling_step_") => (49, 138),
-        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (48, 139),
-        (step, "nodes") if step.starts_with("native_endoscaling_step_") => (49, 138),
+        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (49, 138),
+        (step, "nodes") if step.starts_with("native_endoscaling_step_") => (43, 144),
         ("nested_export", "bootstrap") => (87, 702),
-        ("nested_export", "leaves") => (89, 700),
-        ("nested_export", "nodes") => (90, 699),
+        ("nested_export", "leaves") => (90, 699),
+        ("nested_export", "nodes") => (84, 705),
         ("nested_collapse", "bootstrap") => (88, 713),
-        ("nested_collapse", "leaves") => (89, 710),
-        ("nested_collapse", "nodes") => (90, 709),
+        ("nested_collapse", "leaves") => (90, 710),
+        ("nested_collapse", "nodes") => (84, 716),
         ("nested_compute_v", "bootstrap") => (86, 703),
-        ("nested_compute_v", "leaves") => (88, 701),
-        ("nested_compute_v", "nodes") => (89, 700),
+        ("nested_compute_v", "leaves") => (89, 700),
+        ("nested_compute_v", "nodes") => (83, 706),
         (_, "bootstrap") => (49, 155),
-        (_, "leaves") => (48, 156),
-        (_, "nodes") => (49, 155),
+        (_, "leaves") => (49, 155),
+        (_, "nodes") => (43, 161),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {
@@ -451,6 +498,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
         ..Default::default()
     };
     capture_internal_circuits_bootstrap(&app, &mut rng, &mut bootstrap)?;
+    bootstrap.finish()?;
 
     // Level one: two leaves.
     let leaf = |rng: &mut StdRng| {
@@ -463,6 +511,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
     };
     let (l, r) = (leaf(&mut rng)?, leaf(&mut rng)?);
     capture_internal_circuits(&app, &mut rng, hash2(), (), l, r, &mut leaves)?;
+    leaves.finish()?;
 
     // Level two: two nodes, each a real fuse of two leaves.
     let node = |rng: &mut StdRng| -> Result<_> {
@@ -475,6 +524,7 @@ fn patcher_captures_internal_circuits() -> Result<()> {
     };
     let (l, r) = (node(&mut rng)?, node(&mut rng)?);
     capture_internal_circuits(&app, &mut rng, merge2(), (), l, r, &mut nodes)?;
+    nodes.finish()?;
 
     let native = [
         "hashes_1",
@@ -571,6 +621,10 @@ fn patcher_captures_internal_circuits() -> Result<()> {
 
     // Only hashes_2 has demoted slots (mu and nu, the resumed sponge state);
     // every output is forced by the inputs alone; and the pinned census.
+    // The sweep tallies follow the captured witness values, so a circuit
+    // change upstream moves several pins at once: report every drift
+    // together rather than one per run.
+    let mut drifted = Vec::new();
     for checker in [&bootstrap, &leaves, &nodes] {
         for census in &checker.census {
             assert!(census.outputs > 0, "{}: watched outputs", census.name);
@@ -585,14 +639,19 @@ fn patcher_captures_internal_circuits() -> Result<()> {
                 "{}@{}: outputs forced by the declared inputs alone",
                 census.name, checker.point,
             );
-            assert_eq!(
-                *census,
-                expected(&census.name, checker.point),
-                "{}@{}: census drifted",
-                census.name,
-                checker.point,
-            );
+            let pinned = expected(&census.name, checker.point);
+            if *census != pinned {
+                drifted.push(format!(
+                    "{}@{}: expected {pinned:?}, found {census:?}",
+                    census.name, checker.point,
+                ));
+            }
         }
     }
+    assert!(
+        drifted.is_empty(),
+        "census drifted:\n{}",
+        drifted.join("\n")
+    );
     Ok(())
 }

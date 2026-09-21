@@ -18,8 +18,9 @@
 
 mod nontrivial_support;
 
+use std::sync::OnceLock;
+
 use nontrivial_support::{C, HEADER_SIZE, R, app};
-use ragu_core::Result;
 use ragu_pasta::{Fp, Fq, Pasta};
 use ragu_pcd::{
     Application, ApplicationBuilder, Proof,
@@ -39,6 +40,7 @@ enum Shape {
     Deep,
 }
 
+#[derive(Clone)]
 struct Fixture {
     shape: Shape,
     proof: Proof<C, R>,
@@ -46,13 +48,17 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn verify(&self, app: &Application<'_, C, R, HEADER_SIZE>, seed: u64) -> Result<bool> {
-        let proof = self.proof.clone();
+    /// The verifier's verdict. A corrupted proof must be rejected, not make
+    /// the verifier fail, so an error fails the test rather than counting as
+    /// a rejection.
+    fn verify(self, app: &Application<'_, C, R, HEADER_SIZE>, seed: u64) -> bool {
+        let proof = self.proof;
         let rng = StdRng::seed_from_u64(seed);
         match self.shape {
             Shape::Leaf => app.verify(&proof.carry::<LeafNode>(self.data), rng),
             Shape::Deep => app.verify(&proof.carry::<InternalNode>(self.data), rng),
         }
+        .expect("verify must not error")
     }
 }
 
@@ -65,25 +71,25 @@ fn empty_app() -> Application<'static, C, R, HEADER_SIZE> {
         .expect("the empty application must build")
 }
 
-/// A leaf and a fuse of two fuses, in the application that registers the
-/// steps they use.
-fn fixtures(app: &Application<'_, C, R, HEADER_SIZE>) -> Vec<Fixture> {
-    let mut rng = StdRng::seed_from_u64(0x1eaf);
-    let (leaf_proof, leaf_data) = nontrivial_support::leaf(app, &mut rng, 42).into_parts();
-    let (deep_proof, deep_data) = nontrivial_support::deep(app).into_parts();
-
-    vec![
-        Fixture {
-            shape: Shape::Leaf,
-            proof: leaf_proof,
-            data: leaf_data,
-        },
-        Fixture {
-            shape: Shape::Deep,
-            proof: deep_proof,
-            data: deep_data,
-        },
-    ]
+/// Each test uses the same application and deterministic honest fixtures.
+/// Share the proofs across groups, and only ever corrupt private clones.
+fn fixture(app: &Application<'_, C, R, HEADER_SIZE>, shape: Shape) -> &'static Fixture {
+    static LEAF: OnceLock<Fixture> = OnceLock::new();
+    static DEEP: OnceLock<Fixture> = OnceLock::new();
+    let cache = match shape {
+        Shape::Leaf => &LEAF,
+        Shape::Deep => &DEEP,
+    };
+    cache.get_or_init(|| {
+        let (proof, data) = match shape {
+            Shape::Leaf => {
+                let mut rng = StdRng::seed_from_u64(0x1eaf);
+                nontrivial_support::leaf(app, &mut rng, 42).into_parts()
+            }
+            Shape::Deep => nontrivial_support::deep(app).into_parts(),
+        };
+        Fixture { shape, proof, data }
+    })
 }
 
 /// Every corruption the vocabulary can express, at the coefficient indices
@@ -185,91 +191,170 @@ fn vocabulary() -> Vec<Corruption<C>> {
     out
 }
 
-/// Honest proofs and no-op edits verify. Effective coefficient edits must be
-/// classified `MustReject`, and every `MustReject` edit must be rejected.
-#[test]
-fn corruptions_that_bind_the_verifier_are_rejected() {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CorruptionGroup {
+    HeadersAndChallenges,
+    CommitmentsAndAccumulators,
+    NativePolynomials,
+    NestedPolynomials,
+}
+
+impl CorruptionGroup {
+    /// Every vocabulary entry belongs to exactly one independently run group.
+    fn of(corruption: &Corruption<C>) -> Self {
+        match corruption {
+            Corruption::CircuitId(_)
+            | Corruption::HeaderElement { .. }
+            | Corruption::HeaderLen { .. }
+            | Corruption::SwapHeaders
+            | Corruption::Challenge(..) => Self::HeadersAndChallenges,
+            Corruption::NegateBridgeCommitment(_)
+            | Corruption::NegateChallengesPartial
+            | Corruption::NegateNativeCommitment(_)
+            | Corruption::NegateNestedCommitment(_)
+            | Corruption::RescaleNativeAccumulator(_)
+            | Corruption::RescaleNestedAccumulator(_) => Self::CommitmentsAndAccumulators,
+            Corruption::NativeCoeff { .. }
+            | Corruption::RegistryXyCoeff { .. }
+            | Corruption::PCoeff { .. } => Self::NativePolynomials,
+            Corruption::NestedCoeff { .. }
+            | Corruption::NestedAccumulatorCoeff { .. }
+            | Corruption::NestedRegistryXyCoeff { .. }
+            | Corruption::NestedPCoeff { .. } => Self::NestedPolynomials,
+        }
+    }
+}
+
+/// Effective coefficient edits must be classified `MustReject`, and every
+/// `MustReject` edit must be rejected, with an honest control in each group.
+fn check_corruptions(shape: Shape, group: CorruptionGroup) {
     let app = app();
-    let cases = fixtures(&app);
+    let fixture = fixture(&app, shape);
     let vocabulary = vocabulary();
 
+    assert!(
+        fixture.clone().verify(&app, 1234),
+        "the {shape:?} fixture must verify before anything is corrupted",
+    );
+
     let mut bound = 0usize;
-    for fixture in &cases {
+    for corruption in vocabulary
+        .iter()
+        .filter(|corruption| CorruptionGroup::of(corruption) == group)
+    {
+        let mut corrupted = Fixture {
+            shape: fixture.shape,
+            proof: fixture.proof.clone(),
+            data: fixture.data,
+        };
+        let described = format!("{corruption:?}");
+        let binding = corrupted.proof.corrupt(clone_corruption(corruption));
+        // These coefficient edits all have nonzero deltas and in-range
+        // indices. Require rejection even if the classifier says they
+        // are unbound, then check the classification itself.
+        let coefficient_edit = matches!(
+            corruption,
+            Corruption::NativeCoeff { .. }
+                | Corruption::RegistryXyCoeff { .. }
+                | Corruption::PCoeff { .. }
+                | Corruption::NestedCoeff { .. }
+                | Corruption::NestedAccumulatorCoeff { .. }
+                | Corruption::NestedRegistryXyCoeff { .. }
+                | Corruption::NestedPCoeff { .. }
+        );
+        if !coefficient_edit && binding != Binding::MustReject {
+            continue;
+        }
+        bound += 1;
         assert!(
-            matches!(fixture.verify(&app, 1234), Ok(true)),
-            "the {:?} fixture must verify before anything is corrupted",
+            !corrupted.verify(&app, 1234),
+            "the verifier accepted a corrupted {:?} proof: {described}",
             fixture.shape,
         );
+        assert_eq!(
+            binding,
+            Binding::MustReject,
+            "a coefficient edit with a stale commitment was classified Unbound: {described}",
+        );
+    }
 
-        for corruption in &vocabulary {
-            let mut corrupted = Fixture {
+    // Retain the sweep's non-vacuity check in each polynomial group and
+    // require the smaller structural groups to exercise a rejection too.
+    let minimum = match group {
+        CorruptionGroup::NativePolynomials | CorruptionGroup::NestedPolynomials => 20,
+        _ => 0,
+    };
+    assert!(
+        bound > minimum,
+        "only {bound} corruptions bound the verifier for {shape:?} / {group:?}",
+    );
+}
+
+/// Zero deltas and out-of-range coefficient edits must leave a valid proof.
+fn check_no_op_edits(shape: Shape) {
+    let app = app();
+    let fixture = fixture(&app, shape);
+    assert!(fixture.clone().verify(&app, 1234));
+
+    for (coeff, delta) in [(0, 0u64), (Proof::<C, R>::num_coeffs(), 7), (usize::MAX, 7)] {
+        for corruption in [
+            Corruption::NativeCoeff {
+                component: RxComponent::Rx(NativeRx::Application),
+                coeff,
+                delta: Fp::from(delta),
+            },
+            Corruption::NestedCoeff {
+                index: NestedRx::BridgeEval,
+                coeff,
+                delta: Fq::from(delta),
+            },
+        ] {
+            let mut unchanged = Fixture {
                 shape: fixture.shape,
                 proof: fixture.proof.clone(),
                 data: fixture.data,
             };
-            let described = format!("{corruption:?}");
-            let binding = corrupted.proof.corrupt(clone_corruption(corruption));
-            // These coefficient edits all have nonzero deltas and in-range
-            // indices. Require rejection even if the classifier says they
-            // are unbound, then check the classification itself.
-            let coefficient_edit = matches!(
-                corruption,
-                Corruption::NativeCoeff { .. }
-                    | Corruption::RegistryXyCoeff { .. }
-                    | Corruption::PCoeff { .. }
-                    | Corruption::NestedCoeff { .. }
-                    | Corruption::NestedAccumulatorCoeff { .. }
-                    | Corruption::NestedRegistryXyCoeff { .. }
-                    | Corruption::NestedPCoeff { .. }
-            );
-            if !coefficient_edit && binding != Binding::MustReject {
-                continue;
-            }
-            bound += 1;
-            assert!(
-                !matches!(corrupted.verify(&app, 1234), Ok(true)),
-                "the verifier accepted a corrupted {:?} proof: {described}",
-                fixture.shape,
-            );
-            assert_eq!(
-                binding,
-                Binding::MustReject,
-                "a coefficient edit with a stale commitment was classified Unbound: {described}",
-            );
-        }
-
-        for (coeff, delta) in [(0, 0u64), (Proof::<C, R>::num_coeffs(), 7), (usize::MAX, 7)] {
-            for corruption in [
-                Corruption::NativeCoeff {
-                    component: RxComponent::Rx(NativeRx::Application),
-                    coeff,
-                    delta: Fp::from(delta),
-                },
-                Corruption::NestedCoeff {
-                    index: NestedRx::BridgeEval,
-                    coeff,
-                    delta: Fq::from(delta),
-                },
-            ] {
-                let mut unchanged = Fixture {
-                    shape: fixture.shape,
-                    proof: fixture.proof.clone(),
-                    data: fixture.data,
-                };
-                assert_eq!(unchanged.proof.corrupt(corruption), Binding::Unbound);
-                assert!(matches!(unchanged.verify(&app, 1234), Ok(true)));
-            }
+            assert_eq!(unchanged.proof.corrupt(corruption), Binding::Unbound);
+            assert!(unchanged.verify(&app, 1234));
         }
     }
-
-    // A sweep that classified nothing would pass vacuously.
-    assert!(
-        bound > cases.len() * 20,
-        "only {bound} corruptions bound the verifier across {} fixtures — the sweep is \
-         near-vacuous and proves little",
-        cases.len(),
-    );
 }
+
+macro_rules! corruption_tests {
+    ($module:ident, $shape:expr) => {
+        mod $module {
+            use super::*;
+
+            #[test]
+            fn headers_and_challenges_reject() {
+                check_corruptions($shape, CorruptionGroup::HeadersAndChallenges);
+            }
+
+            #[test]
+            fn commitments_and_accumulators_reject() {
+                check_corruptions($shape, CorruptionGroup::CommitmentsAndAccumulators);
+            }
+
+            #[test]
+            fn native_polynomials_reject() {
+                check_corruptions($shape, CorruptionGroup::NativePolynomials);
+            }
+
+            #[test]
+            fn nested_polynomials_reject() {
+                check_corruptions($shape, CorruptionGroup::NestedPolynomials);
+            }
+
+            #[test]
+            fn no_op_edits_verify() {
+                check_no_op_edits($shape);
+            }
+        }
+    };
+}
+
+corruption_tests!(leaf, Shape::Leaf);
+corruption_tests!(deep, Shape::Deep);
 
 /// The synthesized dummy the Bootstrap base case consumes is not a proof
 /// `verify` accepts — in the empty application or any other.
@@ -283,10 +368,9 @@ fn the_dummy_proof_does_not_verify() {
     for verifier in [empty_app(), app()] {
         let proof = verifier.test_dummy_proof();
         assert!(
-            !matches!(
-                verifier.verify(&proof.carry::<()>(()), StdRng::seed_from_u64(1234)),
-                Ok(true)
-            ),
+            !verifier
+                .verify(&proof.carry::<()>(()), StdRng::seed_from_u64(1234))
+                .expect("verify must not error"),
             "the dummy proof verified — corrupting it would then be a meaningful test, \
              and the fuzz targets should be pointed back at it",
         );
@@ -300,10 +384,7 @@ fn the_dummy_proof_does_not_verify() {
 #[test]
 fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
     let app = app();
-    let fixture = fixtures(&app)
-        .into_iter()
-        .find(|f| f.shape == Shape::Deep)
-        .expect("the deep fixture must be built");
+    let fixture = fixture(&app, Shape::Deep);
 
     let mut both = Fixture {
         shape: fixture.shape,
@@ -321,7 +402,7 @@ fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
     assert_eq!(first, Binding::MustReject);
     assert_eq!(second, Binding::MustReject);
     assert!(
-        !matches!(both.verify(&app, 99), Ok(true)),
+        !both.verify(&app, 99),
         "the verifier accepted a proof with two independent corruptions",
     );
 
@@ -341,7 +422,7 @@ fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
         delta: -Fp::from(3u64),
     });
     assert!(
-        matches!(cancelled.verify(&app, 99), Ok(true)),
+        cancelled.verify(&app, 99),
         "two cancelling edits leave an honest proof, which must still verify — this is \
          why the fuzz harnesses deduplicate corruptions by target",
     );

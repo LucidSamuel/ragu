@@ -226,6 +226,7 @@ mod challenge_binding {
         )?;
         let beta_generator = C::nested_generators(app.params).g()
             [native::circuits::bind_beta::generator_index::<C, R>()];
+        let mut mutations = Vec::new();
         for case in ["partial", "pre_beta", "pre_beta_with_compensating_partial"] {
             let (mut proof, data) = honest.clone().into_parts();
             if case == "partial" {
@@ -235,7 +236,19 @@ mod challenge_binding {
             } else {
                 let old_beta = nested::challenge::<C>(proof.pre_beta())?;
                 let old_bits = extract_endoscalar(proof.pre_beta())?;
-                proof.pre_beta = Fp::from_u128(old_bits ^ (1u128 << bit));
+                // Flip one bit of pre_beta itself, keeping its upper bits. A
+                // challenge sits below 2^254 < p, so adding or subtracting the
+                // bit's power of two never wraps.
+                let flip = Fp::from_u128(1u128 << bit);
+                proof.pre_beta = if (old_bits >> bit) & 1 == 0 {
+                    proof.pre_beta + flip
+                } else {
+                    proof.pre_beta - flip
+                };
+                assert_eq!(
+                    extract_endoscalar(proof.pre_beta())?,
+                    old_bits ^ (1u128 << bit)
+                );
                 let new_beta = nested::challenge::<C>(proof.pre_beta())?;
                 assert_ne!(new_beta, old_beta);
                 if case == "pre_beta_with_compensating_partial" {
@@ -259,23 +272,18 @@ mod challenge_binding {
                     .iter_coeffs()
                     .eq(honest.proof().nested_challenges_rx.iter_coeffs())
             );
-            check_descendants(
-                app,
-                inputs,
-                &proof.carry::<Value>(data),
-                &sibling,
-                false,
-                reblind_first,
-                case,
-            )?;
+            mutations.push((case, proof.carry::<Value>(data)));
         }
-        Ok(())
+        support::for_each_case(app, mutations, |app, (case, proof)| {
+            check_descendants(app, inputs, &proof, &sibling, false, reblind_first, case)
+        })
     }
 
     proptest! {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn repaired_lifts_reject_through_parent_and_grandparent(
             inputs in support::inputs(),
             slot in 0usize..challenges::NUM,
@@ -286,6 +294,7 @@ mod challenge_binding {
         }
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn partial_and_pre_beta_substitutions_reject_through_two_generations(
             inputs in support::inputs(),
             bit in 0u32..128,
@@ -377,6 +386,16 @@ fn native_instance(proof: &Proof<C, R>) -> native::unified::Instance<C> {
 /// Preserve each stage's blinding while rebuilding the walk and its real circuit
 /// traces. Merely changing input coordinates would leave stale arithmetic in the
 /// endoscaling steps and would not exercise a Horner-preserving substitution.
+/// The endpoint the proof's native walk stage ends at, read from the stage
+/// polynomial itself rather than from the cached `P_n` commitment, which no
+/// mutation here writes.
+fn walked_endpoint(proof: &Proof<C, R>) -> Result<Vec<Fp>> {
+    let wires =
+        stage_wire_indices::<_, R, points::WalkStage<EpAffine>>(|stage| wires_of(stage.p()))?;
+    let reader = StageReader::new(&proof.native_points_walk_rx);
+    Ok(wires.iter().map(|&wire| reader.read(wire)).collect())
+}
+
 fn install_walk(
     app: &support::App,
     proof: &mut Proof<C, R>,
@@ -509,6 +528,7 @@ mod walk_binding {
             ("registry_xy", nested::RxIndex::NUM + 2),
             ("P_n", nested::RxIndex::NUM + 3),
         ];
+        let mut mutations = Vec::new();
         for (name, position) in cases {
             let index = offset + position;
             let mut points = original.clone();
@@ -526,20 +546,15 @@ mod walk_binding {
             install_walk(app, &mut proof, &changed_inputs, &mut rng)?;
             assert_eq!(proof.nested_v()?, honest.proof().nested_v()?);
             assert_eq!(
-                proof.nested_p_commitment(),
-                honest.proof().nested_p_commitment()
+                walked_endpoint(&proof)?,
+                support::coordinates(honest.proof().nested_p_commitment()),
+                "{name}: the rebuilt walk must still end at the committed P_n"
             );
-            check_descendants(
-                app,
-                inputs,
-                &proof.carry::<Value>(data),
-                &sibling,
-                false,
-                reblind_first,
-                name,
-            )?;
+            mutations.push((name, proof.carry::<Value>(data)));
         }
-        Ok(())
+        support::for_each_case(app, mutations, |app, (name, proof)| {
+            check_descendants(app, inputs, &proof, &sibling, false, reblind_first, name)
+        })
     }
 
     fn check_registry(
@@ -622,8 +637,9 @@ mod walk_binding {
         )?;
         assert_eq!(proof.nested_v()?, honest.proof().nested_v()?);
         assert_eq!(
-            proof.nested_p_commitment(),
-            honest.proof().nested_p_commitment()
+            walked_endpoint(&proof)?,
+            support::coordinates(honest.proof().nested_p_commitment()),
+            "the rebuilt walk must still end at the committed P_n"
         );
         check_descendants(
             app,
@@ -640,6 +656,7 @@ mod walk_binding {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn substituted_walk_inputs_reject_with_the_same_horner_endpoint(
             inputs in support::inputs(),
             bridge in 0usize..nested::RxIndex::BRIDGES.len(),
@@ -651,6 +668,7 @@ mod walk_binding {
         }
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn late_registry_substitution_rejects_with_openings_and_endpoint_preserved(
             inputs in support::inputs(),
             offset in any::<usize>(),
@@ -868,48 +886,59 @@ mod claim_values {
             reblind_first,
             "honest",
         )?;
-        check_bootstrap(
-            app,
-            inputs,
-            bootstrap.clone(),
-            &sibling,
-            true,
-            reblind_first,
-            "honest",
-        )?;
-        for (label, native, nested) in [
+        enum ChildKind {
+            Fused,
+            Bootstrap,
+        }
+
+        let mutations = [
             ("c", Some(native_delta), None),
             ("c_n", None, Some(nested_delta)),
             ("c and c_n", Some(native_delta), Some(nested_delta)),
-        ] {
-            let proof = changed(app, honest.proof(), native, nested, selector)?;
-            check_descendants(
-                app,
-                inputs,
-                &proof.carry::<Value>(*honest.data()),
-                &sibling,
-                false,
-                reblind_first,
-                label,
-            )?;
-            let proof = changed(app, bootstrap.proof(), native, nested, selector)?;
-            check_bootstrap(
-                app,
-                inputs,
-                proof.carry::<()>(()),
-                &sibling,
-                false,
-                reblind_first,
-                label,
-            )?;
-        }
-        Ok(())
+        ]
+        .into_iter()
+        .flat_map(|case| [(ChildKind::Fused, case), (ChildKind::Bootstrap, case)]);
+
+        // The fused honest control has initialized the neutral proof. Each
+        // remaining chain starts its own RNG and can share that cache, so the
+        // two child kinds need not run consecutively on the same worker.
+        let cases = core::iter::once((ChildKind::Bootstrap, ("honest", None, None)))
+            .chain(mutations)
+            .collect::<Vec<_>>();
+        support::for_each_case(
+            app,
+            cases,
+            |app, (kind, (label, native, nested))| match kind {
+                ChildKind::Fused => {
+                    let proof = changed(app, honest.proof(), native, nested, selector)?;
+                    check_descendants(
+                        app,
+                        inputs,
+                        &proof.carry::<Value>(*honest.data()),
+                        &sibling,
+                        false,
+                        reblind_first,
+                        label,
+                    )
+                }
+                ChildKind::Bootstrap => {
+                    let expected = native.is_none() && nested.is_none();
+                    let child = if expected {
+                        bootstrap.clone()
+                    } else {
+                        changed(app, bootstrap.proof(), native, nested, selector)?.carry::<()>(())
+                    };
+                    check_bootstrap(app, inputs, child, &sibling, expected, reblind_first, label)
+                }
+            },
+        )
     }
 
     proptest! {
         #![proptest_config(support::config())]
 
         #[test]
+        #[ignore = "recursion regression suite: run by the scheduled heavy-tests workflow"]
         fn independent_c_and_c_n_substitutions_reject_with_both_base_case_signs(
             inputs in support::inputs(),
             native_delta in strategies::nonzero_prime_field_element::<Fp>(),

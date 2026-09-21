@@ -826,6 +826,21 @@ mod tests {
             .expect("failed to create test application")
     }
 
+    /// The bootstrap proof, checked to verify first, so that the one field a
+    /// rejection test then corrupts is the only reason it can be rejected.
+    fn verifying_proof(
+        app: &crate::Application<'static, Pasta, TestR, HEADER_SIZE>,
+        rng: &mut StdRng,
+    ) -> Proof<Pasta, TestR> {
+        let bootstrap = app.bootstrap_pcd();
+        assert!(
+            app.verify(&bootstrap, &mut *rng)
+                .expect("verify should not error"),
+            "the uncorrupted bootstrap proof must verify"
+        );
+        bootstrap.into_parts().0
+    }
+
     /// A seed step with no predicate that outputs `()`.
     struct UnitSeed;
 
@@ -926,8 +941,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a synthesized dummy proof
-        let mut proof = app.dummy_proof();
+        let mut proof = verifying_proof(&app, &mut rng);
 
         // Corrupt the circuit_id to be outside the registry domain
         proof.circuit_id = CircuitIndex::new(u32::MAX as usize);
@@ -942,8 +956,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a synthesized dummy proof
-        let mut proof = app.dummy_proof();
+        let mut proof = verifying_proof(&app, &mut rng);
 
         // Corrupt left_header to have wrong size
         proof.left_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE + 1];
@@ -958,8 +971,7 @@ mod tests {
         let app = create_test_app();
         let mut rng = StdRng::seed_from_u64(1234);
 
-        // Create a synthesized dummy proof
-        let mut proof = app.dummy_proof();
+        let mut proof = verifying_proof(&app, &mut rng);
 
         // Corrupt right_header to have wrong size
         proof.right_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE - 1];
