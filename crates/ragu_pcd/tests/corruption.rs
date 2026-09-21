@@ -10,6 +10,10 @@
 //! proofs of two shapes: a `WitnessLeaf` seed, and a `Merge2` fuse of two
 //! `Hash2` nodes, whose accumulators and headers are the nondegenerate ones.
 //!
+//! The platform matrix runs representative corruptions and the controls.
+//! The exhaustive sweeps are ignored there and run in the dedicated Linux
+//! PR job with `--test corruption -- --include-ignored`.
+//!
 //! What is deliberately *not* a fixture is
 //! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof): `verify`
 //! rejects it outright, so asserting that a corrupted copy is rejected asserts
@@ -290,6 +294,56 @@ fn check_corruptions(shape: Shape, group: CorruptionGroup) {
     );
 }
 
+/// Keep each platform checking structural, commitment, and polynomial edits
+/// against both proof shapes without repeating the exhaustive vocabulary.
+fn check_representative_corruptions(shape: Shape) {
+    let app = app();
+    let fixture = fixture(&app, shape);
+    assert!(
+        fixture.clone().verify(&app, 1234),
+        "the {shape:?} fixture must verify before anything is corrupted",
+    );
+
+    for corruption in [
+        Corruption::CircuitId(u32::MAX),
+        Corruption::HeaderElement {
+            side: Side::Left,
+            index: 0,
+            delta: Fp::from(7u64),
+        },
+        Corruption::HeaderLen {
+            side: Side::Right,
+            len: HEADER_SIZE - 1,
+        },
+        Corruption::Challenge(Challenge::Mu, Fp::from(0xc0ffee_u64)),
+        Corruption::NegateNativeCommitment(NativeCommitment::P),
+        Corruption::NegateNestedCommitment(NestedCommitment::P),
+        Corruption::NativeCoeff {
+            component: RxComponent::Rx(NativeRx::Application),
+            coeff: 0,
+            delta: Fp::from(7u64),
+        },
+        Corruption::NestedCoeff {
+            index: NestedRx::BridgeEval,
+            coeff: 0,
+            delta: Fq::from(7u64),
+        },
+    ] {
+        let mut corrupted = fixture.clone();
+        let described = format!("{corruption:?}");
+        let binding = corrupted.proof.corrupt(corruption);
+        assert!(
+            !corrupted.verify(&app, 1234),
+            "the verifier accepted a corrupted {shape:?} proof: {described}",
+        );
+        assert_eq!(
+            binding,
+            Binding::MustReject,
+            "an effective corruption was classified Unbound: {shape:?} / {described}",
+        );
+    }
+}
+
 /// Zero deltas and out-of-range coefficient edits must leave a valid proof.
 fn check_no_op_edits(shape: Shape) {
     let app = app();
@@ -326,23 +380,32 @@ macro_rules! corruption_tests {
             use super::*;
 
             #[test]
+            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
             fn headers_and_challenges_reject() {
                 check_corruptions($shape, CorruptionGroup::HeadersAndChallenges);
             }
 
             #[test]
+            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
             fn commitments_and_accumulators_reject() {
                 check_corruptions($shape, CorruptionGroup::CommitmentsAndAccumulators);
             }
 
             #[test]
+            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
             fn native_polynomials_reject() {
                 check_corruptions($shape, CorruptionGroup::NativePolynomials);
             }
 
             #[test]
+            #[ignore = "exhaustive corruption sweep: run by the Linux corruption job"]
             fn nested_polynomials_reject() {
                 check_corruptions($shape, CorruptionGroup::NestedPolynomials);
+            }
+
+            #[test]
+            fn representative_corruptions_reject() {
+                check_representative_corruptions($shape);
             }
 
             #[test]

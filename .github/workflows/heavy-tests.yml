@@ -9,10 +9,8 @@ name: Heavy tests
 # This workflow runs them with `--ignored`, one job per suite, at eight
 # cases per property. The suites assert proof bindings, which depend on
 # neither the platform nor the prover's scheduling, so they run once, with
-# every feature on, on x86-64 Linux; the 32-bit job in `rust.yml` remains the
-# portability gate for the limb arithmetic and `usize` boundaries, and the
-# serial trace evaluator keeps its own unit tests and the PR gate's
-# default-features pass.
+# every feature on, on x86-64 Linux. The serial trace evaluator keeps its
+# own unit tests and the PR gate's default-features pass.
 
 on:
   # Daily at 02:00 UTC, after the fuzzing campaigns have had their window.
