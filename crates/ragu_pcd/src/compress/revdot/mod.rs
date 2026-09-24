@@ -78,6 +78,26 @@ pub(crate) struct Witness<F> {
 }
 
 impl<F: Field> Witness<F> {
+    /// The openings the verifier will require of `reduction` over
+    /// `commitments`, the components' in order, as [`verify_native`] and
+    /// [`verify_nested`] list them, with $p(0)$ read off $p$.
+    pub(crate) fn openings<C: CurveAffine<ScalarExt = F>>(
+        &self,
+        commitments: Vec<C>,
+        reduction: &Reduction<C>,
+        z: F,
+    ) -> Result<Openings<C>> {
+        let inverse_r = invert(self.r)?;
+        Ok(openings(
+            commitments,
+            reduction,
+            self.r,
+            z,
+            inverse_r,
+            self.p[0],
+        ))
+    }
+
     /// The polynomials behind an [`Openings`]' commitments, in its order:
     /// `committed` in component order, then $p$, then $q$.
     pub(crate) fn polys<'a, R: Rank>(
@@ -142,6 +162,55 @@ pub(crate) fn nested_position(component: nested::RxComponent) -> usize {
                 .position(|&listed| listed == index)
                 .expect("every nested index is listed")
         }
+    }
+}
+
+/// The opening claims a reduction leaves over `commitments`, the
+/// components' in order: each committed polynomial at $r$ and $rz$, $p$ at
+/// $1/r$, $q$ at $r$, and $p$ at $0$, where it must equal `target`.
+fn openings<C: CurveAffine>(
+    mut commitments: Vec<C>,
+    reduction: &Reduction<C>,
+    r: C::Scalar,
+    z: C::Scalar,
+    inverse_r: C::Scalar,
+    target: C::Scalar,
+) -> Openings<C> {
+    let rz = r * z;
+    let (p, q) = (commitments.len(), commitments.len() + 1);
+    let mut claims = Vec::with_capacity(2 * commitments.len() + 3);
+    for (poly, opened) in reduction.openings.iter().enumerate() {
+        claims.push(OpeningClaim {
+            poly,
+            point: r,
+            value: opened.at_r,
+        });
+        claims.push(OpeningClaim {
+            poly,
+            point: rz,
+            value: opened.at_rz,
+        });
+    }
+    claims.push(OpeningClaim {
+        poly: p,
+        point: inverse_r,
+        value: reduction.p_at_inverse_r,
+    });
+    claims.push(OpeningClaim {
+        poly: q,
+        point: r,
+        value: reduction.q_at_r,
+    });
+    claims.push(OpeningClaim {
+        poly: p,
+        point: C::Scalar::ZERO,
+        value: target,
+    });
+    commitments.push(reduction.p);
+    commitments.push(reduction.q);
+    Openings {
+        commitments,
+        claims,
     }
 }
 

@@ -11,8 +11,8 @@ use ragu_circuits::{
 use ragu_core::{Error, Result};
 
 use super::{
-    OpeningClaim, Openings, Reduction, invert, native_components, native_position,
-    nested_components, nested_position,
+    Openings, Reduction, invert, native_components, native_position, nested_components,
+    nested_position, openings,
 };
 use crate::{
     compress::claims::{self, Evaluated, Masked, Opened},
@@ -68,43 +68,14 @@ fn verify<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
         return Ok(None);
     }
 
-    let rz = r * z;
-    let (p, q) = (commitments.len(), commitments.len() + 1);
-    let mut claims = Vec::with_capacity(2 * commitments.len() + 3);
-    for (poly, opened) in reduction.openings.iter().enumerate() {
-        claims.push(OpeningClaim {
-            poly,
-            point: r,
-            value: opened.at_r,
-        });
-        claims.push(OpeningClaim {
-            poly,
-            point: rz,
-            value: opened.at_rz,
-        });
-    }
-    claims.push(OpeningClaim {
-        poly: p,
-        point: inverse_r,
-        value: reduction.p_at_inverse_r,
-    });
-    claims.push(OpeningClaim {
-        poly: q,
-        point: r,
-        value: reduction.q_at_r,
-    });
-    claims.push(OpeningClaim {
-        poly: p,
-        point: C::Scalar::ZERO,
-        value: target,
-    });
-    let mut commitments = commitments;
-    commitments.push(reduction.p);
-    commitments.push(reduction.q);
-    Ok(Some(Openings {
+    Ok(Some(openings(
         commitments,
-        claims,
-    }))
+        reduction,
+        r,
+        z,
+        inverse_r,
+        target,
+    )))
 }
 
 /// The verifier's native side: `commitment` gives each component's

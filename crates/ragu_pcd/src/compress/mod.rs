@@ -1,17 +1,173 @@
 //! Proof compression: the decider's checks restated over commitments and
 //! openings, ending in one IPA opening per curve.
 //!
-//! Built up in stages. The [`claims`] module evaluates the revdot claims
-//! from openings, [`revdot`] reduces them to polynomial openings, and
-//! [`batch`] combines every opening into the one claim the IPA proves, and
-//! [`instance`] carries what the verifier reads besides polynomials and
-//! restates the decider's remaining checks over it; the compressed proof
-//! itself follows.
+//! [`Application::verify`](crate::Application::verify) holds every polynomial of a proof. A compressed
+//! proof carries none: its [`Instance`] holds the commitments, the headers
+//! and the scalars the decider derives or reads off polynomials, and the
+//! prover's messages of three reductions on each curve stand in for the
+//! polynomials. The verifier rederives the fuse's challenges from the
+//! bridge commitments, recomputes the two nested stages the decider
+//! recomputes, samples its own challenges from a transcript over the
+//! instance and the output header, and then, on each curve:
+//!
+//! - [`revdot`] reduces the revdot claims, the decider's and the wire
+//!   bindings that pin the instance's wires to the stage commitments, to
+//!   openings of the committed polynomials at a point $r$ and its
+//!   dilation $rz$;
+//! - [`batch`] combines those openings with the registry restriction's, the
+//!   batch polynomial's and the accumulator's into one claim;
+//! - the [`ipa`](crate::ipa) proves it.
+//!
+//! The [`claims`] module evaluates the revdot claims from the openings, and
+//! [`instance`] carries the instance and restates the decider's remaining
+//! checks over it. Both curves run on one transcript, the native side first
+//! at each step. What the decider checks by recomputing commitments from
+//! polynomials needs no counterpart: every commitment the compressed
+//! verifier reads is opened through the IPA.
+//!
+//! Like an uncompressed proof, a compressed proof is not hiding: the
+//! openings it carries are evaluations of the witness polynomials.
 
-// Consumed by the compressed prover and verifier once they land.
-#![cfg_attr(not(test), allow(dead_code, unused_imports))]
+use ragu_arithmetic::{CurveAffine, Cycle};
+use ragu_circuits::polynomials::Rank;
+use ragu_core::Result;
+
+use self::{
+    batch::Batch,
+    instance::Instance,
+    revdot::{Reduction, native_components, nested_components},
+};
+use crate::{
+    header::Header,
+    ipa::{CycleTranscript, IPA_TAG, IpaProof, IpaTranscript},
+};
 
 pub(crate) mod batch;
 pub(crate) mod claims;
 pub(crate) mod instance;
+mod prover;
 pub(crate) mod revdot;
+mod verifier;
+
+/// The prover's messages of the compression on one curve.
+#[derive(Clone, Debug)]
+pub(crate) struct Messages<P: CurveAffine> {
+    /// The revdot reduction's.
+    pub reduction: Reduction<P>,
+    /// The batch's.
+    pub batch: Batch<P>,
+    /// The IPA opening of the batched claim.
+    pub opening: IpaProof<P>,
+}
+
+/// A compressed proof: the instance and the prover's messages on each
+/// curve. Produced by [`Application::compress`](crate::Application::compress)
+/// and checked by
+/// [`Application::verify_compressed`](crate::Application::verify_compressed).
+#[derive(Clone, Debug)]
+pub struct CompressedProof<C: Cycle> {
+    pub(crate) instance: Instance<C>,
+    pub(crate) native: Messages<C::HostCurve>,
+    pub(crate) nested: Messages<C::NestedCurve>,
+}
+
+impl<C: Cycle> CompressedProof<C> {
+    /// Attaches the data the proof attests, producing [`CompressedPcd`].
+    pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data) -> CompressedPcd<C, H> {
+        CompressedPcd { proof: self, data }
+    }
+
+    /// Whether the messages have the shape the verifier reads: one
+    /// commitment and one pair of openings per component, one value per
+    /// batched polynomial and one IPA round per bit of the rank.
+    fn well_formed<R: Rank>(&self) -> bool {
+        fn side<P: CurveAffine, R: Rank>(commitments: &[P], messages: &Messages<P>) -> bool {
+            let components = commitments.len();
+            // The batch covers the components, the reduction's p and q, the
+            // registry restriction and the batch polynomial.
+            messages.reduction.openings.len() == components
+                && messages.batch.evaluations.len() == components + 4
+                && messages.opening.rounds.len() == R::RANK as usize
+        }
+        self.instance.native.len() == native_components().count()
+            && self.instance.nested.len() == nested_components().count()
+            && side::<_, R>(&self.instance.native, &self.native)
+            && side::<_, R>(&self.instance.nested, &self.nested)
+    }
+}
+
+/// Compressed proof-carrying data: a [`CompressedProof`] with the data it
+/// attests, as [`Pcd`](crate::Pcd) pairs a proof with its data.
+pub struct CompressedPcd<C: Cycle, H: Header<C::CircuitField>> {
+    proof: CompressedProof<C>,
+    data: H::Data,
+}
+
+impl<C: Cycle, H: Header<C::CircuitField>> CompressedPcd<C, H> {
+    /// Returns a reference to the data that the proof accompanies.
+    pub fn data(&self) -> &H::Data {
+        &self.data
+    }
+
+    /// Returns a reference to the compressed proof.
+    pub fn proof(&self) -> &CompressedProof<C> {
+        &self.proof
+    }
+
+    /// Consumes the compressed proof-carrying data and returns the proof and
+    /// data separately.
+    pub fn into_parts(self) -> (CompressedProof<C>, H::Data) {
+        (self.proof, self.data)
+    }
+}
+
+impl<C: Cycle, H: Header<C::CircuitField>> Clone for CompressedPcd<C, H> {
+    fn clone(&self) -> Self {
+        CompressedPcd {
+            proof: self.proof.clone(),
+            data: self.data.clone(),
+        }
+    }
+}
+
+/// The challenges the verifier samples on one curve once the statement is
+/// absorbed: $w$ for the registry restriction, $y$ and $z$ for the claims
+/// and $\sigma$ for the wire bindings.
+struct Sampled<F> {
+    w: F,
+    y: F,
+    z: F,
+    sigma: F,
+}
+
+impl<F> Sampled<F> {
+    fn squeeze<P: CurveAffine<ScalarExt = F>, T: IpaTranscript<P>>(
+        transcript: &mut T,
+    ) -> Result<Self> {
+        Ok(Sampled {
+            w: transcript.squeeze_challenge()?,
+            y: transcript.squeeze_challenge()?,
+            z: transcript.squeeze_challenge()?,
+            sigma: transcript.squeeze_challenge()?,
+        })
+    }
+}
+
+/// The compression's transcript with the statement absorbed: the instance,
+/// then the output header.
+fn transcript<'params, C: Cycle>(
+    params: &'params C::Params,
+    instance: &Instance<C>,
+    output_header: &[C::CircuitField],
+) -> Result<CycleTranscript<'params, C>> {
+    let mut transcript = CycleTranscript::<C>::new(params, IPA_TAG)?;
+    instance.absorb(&mut transcript)?;
+    for &element in output_header {
+        transcript.host().write_scalar(element)?;
+    }
+    Ok(transcript)
+}
+
+#[cfg(test)]
+#[path = "../../tests/compress.rs"]
+mod tests;

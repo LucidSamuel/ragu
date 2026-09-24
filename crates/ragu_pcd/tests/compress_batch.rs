@@ -48,9 +48,9 @@ struct Proved<C: CurveAffine> {
     opening: IpaProof<C>,
 }
 
-/// The prover's side past the reduction: the batch over `openings`, then
-/// the IPA opening of the batched claim, which the prover derives the same
-/// way the verifier will, on its own copy of the transcript.
+/// The batch over `openings`, then the IPA opening of the batched claim,
+/// which the prover derives the same way the verifier will, on its own copy
+/// of the transcript.
 fn prove<C, R, T>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     openings: &Openings<C>,
@@ -65,7 +65,8 @@ where
     R: Rank,
     T: IpaTranscript<C>,
 {
-    let (messages, p) = batch::<C, R, _>(polys, &openings.claims, generators, transcript).unwrap();
+    let (messages, witness) =
+        batch::<C, R, _>(polys, &openings.claims, generators, transcript).unwrap();
     let claim = verify(
         &openings.commitments,
         &openings.claims,
@@ -73,26 +74,27 @@ where
         verifier_transcript,
     )
     .unwrap();
+    assert_eq!(claim.point, witness.u);
     let params = Params::new(generators);
     let opening = ipa::create_proof(
         &params,
         &mut *rng,
         transcript,
-        &p,
+        &witness.p,
         Blind(C::Scalar::ZERO),
-        claim.point,
+        witness.u,
     )
     .unwrap();
     Proved {
         batch: messages,
-        p,
+        p: witness.p,
         claim,
         opening,
     }
 }
 
-/// The verifier's side past the reduction: derives the batched claim from
-/// `messages` and checks `opening` against it with the IPA.
+/// Derives the batched claim from `messages` and checks `opening` against it
+/// with the IPA.
 fn check<C, T>(
     openings: &Openings<C>,
     messages: &Batch<C>,

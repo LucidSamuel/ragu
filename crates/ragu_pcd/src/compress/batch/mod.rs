@@ -42,6 +42,14 @@ pub(crate) struct Batched<C: CurveAffine> {
     pub value: C::Scalar,
 }
 
+/// What the prover keeps to open the batched claim.
+pub(crate) struct Witness<F> {
+    /// $p$, the polynomial the IPA opens, with $n$ coefficients.
+    pub p: Vec<F>,
+    /// The point $u$ it opens it at.
+    pub u: F,
+}
+
 #[cfg(test)]
 #[path = "../../../tests/compress_batch.rs"]
 mod tests;
