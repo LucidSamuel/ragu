@@ -15,7 +15,7 @@ use super::{
     nested_components, nested_position,
 };
 use crate::{
-    compress::claims::{self, Evaluated, Opened},
+    compress::claims::{self, Evaluated, Masked, Opened},
     internal::{
         ky::{NativeKy, NestedKy},
         native, nested,
@@ -117,6 +117,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     y: C::CircuitField,
     z: C::CircuitField,
     targets: &NativeKy<C::CircuitField>,
+    masked: &[Masked<native::RxComponent, C::CircuitField>],
     reduction: &Reduction<C::HostCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::HostCurve>>> {
@@ -130,6 +131,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
                 |component| openings[native_position(component)],
                 |circuit| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r),
                 targets,
+                masked,
             )
         },
         commitments,
@@ -146,6 +148,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     y: C::ScalarField,
     z: C::ScalarField,
     targets: &NestedKy<C::ScalarField>,
+    masked: &[Masked<nested::RxComponent, C::ScalarField>],
     reduction: &Reduction<C::NestedCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::NestedCurve>>> {
@@ -158,6 +161,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
                 |component| openings[nested_position(component)],
                 |circuit| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r),
                 targets,
+                masked,
             )
         },
         commitments,

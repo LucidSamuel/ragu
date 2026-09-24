@@ -107,7 +107,7 @@ pub(crate) fn native_components() -> impl Iterator<Item = native::RxComponent> {
 }
 
 /// The position of a native component in [`native_components`].
-fn native_position(component: native::RxComponent) -> usize {
+pub(crate) fn native_position(component: native::RxComponent) -> usize {
     match component {
         native::RxComponent::AbA => 0,
         native::RxComponent::AbB => 1,
@@ -132,7 +132,7 @@ pub(crate) fn nested_components() -> impl Iterator<Item = nested::RxComponent> {
 }
 
 /// The position of a nested component in [`nested_components`].
-fn nested_position(component: nested::RxComponent) -> usize {
+pub(crate) fn nested_position(component: nested::RxComponent) -> usize {
     match component {
         nested::RxComponent::AbA => 0,
         nested::RxComponent::AbB => 1,

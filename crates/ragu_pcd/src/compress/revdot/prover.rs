@@ -15,7 +15,7 @@ use ragu_core::Result;
 use super::{Reduction, Witness, invert, native_components, nested_components};
 use crate::{
     Proof,
-    compress::claims::{NativePolys, NestedPolys, Opened},
+    compress::claims::{Masked, NativePolys, NestedPolys, Opened},
     internal::{claims::Builder, native, nested},
     ipa::IpaTranscript,
 };
@@ -91,6 +91,7 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     generators: &C::HostGenerators,
     y: C::CircuitField,
     z: C::CircuitField,
+    masked: &[Masked<native::RxComponent, C::CircuitField>],
     transcript: &mut T,
 ) -> Result<(Reduction<C::HostCurve>, Witness<C::CircuitField>)> {
     let mut builder = Builder::<_, C::CircuitField, R, B>::new(registry, y, z);
@@ -98,17 +99,20 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     let committed: Vec<_> = native_components()
         .map(|component| &proof[component])
         .collect();
-    reduce::<_, R, _>(
-        builder
-            .a
-            .iter()
-            .zip(&builder.b)
-            .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect())),
-        &committed,
-        generators,
-        z,
-        transcript,
-    )
+    let claims = builder
+        .a
+        .iter()
+        .zip(&builder.b)
+        .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect()))
+        .chain(masked.iter().map(|masked| {
+            let mut a = proof[masked.poly].clone();
+            a.sub_assign(&masked.expected::<R>());
+            (
+                a.iter_coeffs().collect(),
+                masked.mask::<R>().iter_coeffs().collect(),
+            )
+        }));
+    reduce::<_, R, _>(claims, &committed, generators, z, transcript)
 }
 
 /// The prover's nested reduction of `proof`'s claims at the nested `y` and
@@ -119,6 +123,7 @@ pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     generators: &C::NestedGenerators,
     y: C::ScalarField,
     z: C::ScalarField,
+    masked: &[Masked<nested::RxComponent, C::ScalarField>],
     transcript: &mut T,
 ) -> Result<(Reduction<C::NestedCurve>, Witness<C::ScalarField>)> {
     let mut builder = Builder::<_, C::ScalarField, R, B>::new(registry, y, z);
@@ -126,15 +131,18 @@ pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     let committed: Vec<_> = nested_components()
         .map(|component| &proof[component])
         .collect();
-    reduce::<_, R, _>(
-        builder
-            .a
-            .iter()
-            .zip(&builder.b)
-            .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect())),
-        &committed,
-        generators,
-        z,
-        transcript,
-    )
+    let claims = builder
+        .a
+        .iter()
+        .zip(&builder.b)
+        .map(|(a, b)| (a.iter_coeffs().collect(), b.iter_coeffs().collect()))
+        .chain(masked.iter().map(|masked| {
+            let mut a = proof[masked.poly].clone();
+            a.sub_assign(&masked.expected::<R>());
+            (
+                a.iter_coeffs().collect(),
+                masked.mask::<R>().iter_coeffs().collect(),
+            )
+        }));
+    reduce::<_, R, _>(claims, &committed, generators, z, transcript)
 }

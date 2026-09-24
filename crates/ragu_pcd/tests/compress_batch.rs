@@ -137,6 +137,7 @@ fn native_verifier(
         y,
         z,
         targets,
+        &[],
         reduction,
         &mut t.host(),
     )
@@ -166,6 +167,7 @@ fn native_batch_opens_through_the_ipa() {
         generators,
         y,
         z,
+        &[],
         &mut prover.host(),
     )
     .unwrap();
@@ -274,6 +276,7 @@ fn nested_batch_opens_through_the_ipa() {
         generators,
         y,
         z,
+        &[],
         &mut prover.nested(),
     )
     .unwrap();
@@ -285,6 +288,7 @@ fn nested_batch_opens_through_the_ipa() {
             y,
             z,
             &targets,
+            &[],
             &reduction,
             &mut t.nested(),
         )
