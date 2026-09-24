@@ -19,9 +19,10 @@
 //! The transcript is assumed to have seen the commitments the claims are
 //! over, and $y$ and $z$ to have been squeezed from it.
 
-use alloc::vec::Vec;
+use alloc::{borrow::Cow, vec::Vec};
 
 use ragu_arithmetic::{CurveAffine, ff::Field};
+use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Error, Result};
 
 use super::claims::Opened;
@@ -74,6 +75,24 @@ pub(crate) struct Witness<F> {
     pub p: Vec<F>,
     /// $q$, padded to $n$ coefficients.
     pub q: Vec<F>,
+}
+
+impl<F: Field> Witness<F> {
+    /// The polynomials behind an [`Openings`]' commitments, in its order:
+    /// `committed` in component order, then $p$, then $q$.
+    pub(crate) fn polys<'a, R: Rank>(
+        &'a self,
+        committed: impl IntoIterator<Item = &'a sparse::Polynomial<F, R>>,
+    ) -> Vec<Cow<'a, sparse::Polynomial<F, R>>> {
+        committed
+            .into_iter()
+            .map(Cow::Borrowed)
+            .chain([
+                Cow::Owned(sparse::Polynomial::from_coeffs(self.p.clone())),
+                Cow::Owned(sparse::Polynomial::from_coeffs(self.q.clone())),
+            ])
+            .collect()
+    }
 }
 
 /// The native components in the order their openings are listed.
