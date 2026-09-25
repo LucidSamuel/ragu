@@ -48,10 +48,10 @@ use ragu_circuits::{
     staging::{StageExt, StageReader, stage_wire_indices, wires_of},
 };
 use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{Element, GadgetExt as _, Point, extract_endoscalar};
+use ragu_primitives::{Element, EndoscalarRangeError, GadgetExt as _, Point, extract_endoscalar};
 
 use crate::{
-    Application, Pcd, Proof, RAGU_TAG, SelectableBackend,
+    Application, CompressedProof, Pcd, Proof, RAGU_TAG, SelectableBackend,
     header::Header,
     internal::{
         claims,
@@ -392,6 +392,36 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             && transcript_claim
             && ab_bridge_claim
             && mesh_claim)
+    }
+
+    /// Verifies a [`CompressedProof`] for the provided [`Header`].
+    ///
+    /// The proof is [expanded](Self::expand) first, so the challenges and
+    /// the two derived stages the decider checks are ones this application
+    /// computed, never ones the encoder supplied; the expanded proof then
+    /// goes through [`verify`](Self::verify) unchanged, including its
+    /// structural checks.
+    ///
+    /// Returns `Ok(false)` when a squeezed challenge has no lift, which marks
+    /// the proof as malformed rather than an internal error, as in `verify`.
+    pub fn verify_compressed<RNG: CryptoRng, H: Header<C::CircuitField>>(
+        &self,
+        proof: CompressedProof<C, R>,
+        data: H::Data,
+        rng: RNG,
+    ) -> Result<bool> {
+        let proof = match self.expand(proof) {
+            Ok(proof) => proof,
+            Err(error)
+                if error
+                    .invalid_witness_source::<EndoscalarRangeError>()
+                    .is_some() =>
+            {
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        };
+        self.verify(&proof.carry::<H>(data), rng)
     }
 
     /// The native mesh claim: see [`verify`](Self::verify).
