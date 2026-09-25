@@ -2,6 +2,7 @@
 
 use ragu_pcd::CompressedProof;
 use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
+use ragu_testing::pcd::nontrivial::LeafNode;
 use rand::{SeedableRng, rngs::StdRng};
 
 mod nontrivial_support;
@@ -28,6 +29,22 @@ fn fused_proof_round_trips() {
     let app = app();
     let (proof, _) = deep(&app).into_parts();
     assert_round_trip(&proof.compress().to_bytes());
+}
+
+#[test]
+fn decoded_proof_expands_and_verifies() {
+    let app = app();
+    let mut rng = StdRng::seed_from_u64(0x5eed);
+    let (proof, data) = leaf(&app, &mut rng, 7).into_parts();
+    let bytes = proof.compress().to_bytes();
+    let decoded = CompressedProof::<C, R>::from_bytes(&bytes, Limits::default()).unwrap();
+    let expanded = app.expand(decoded).unwrap();
+    // The recomputed derived fields agree with the prover's, byte for byte.
+    assert_eq!(expanded.compress().to_bytes(), bytes);
+    assert!(
+        app.verify(&expanded.carry::<LeafNode>(data), &mut rng)
+            .unwrap()
+    );
 }
 
 #[test]

@@ -29,13 +29,17 @@ fn retain_generated_attrs(attrs: &mut Vec<Attribute>) {
     });
 }
 
+fn mentions(tokens: TokenStream, name: &str) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(id) => id == name,
+        TokenTree::Group(group) => mentions(group.stream(), name),
+        TokenTree::Punct(_) | TokenTree::Literal(_) => false,
+    })
+}
+
 // Self would refer to different types in the source and generated structs.
 fn contains_self(tokens: TokenStream) -> bool {
-    tokens.into_iter().any(|token| match token {
-        TokenTree::Ident(id) => id == "Self",
-        TokenTree::Group(group) => contains_self(group.stream()),
-        _ => false,
-    })
+    mentions(tokens, "Self")
 }
 
 pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStream> {
@@ -43,23 +47,29 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     let visibility = &input.vis;
     let wire = quote!(#path::wire);
     let mut compressed_name = None;
+    let mut derived_name = None;
     for attr in input.attrs.iter().filter(|a| a.path().is_ident("ragu")) {
         attr.parse_nested_meta(|meta| {
-            if !meta.path.is_ident("compressed") {
+            let slot = if meta.path.is_ident("compressed") {
+                &mut compressed_name
+            } else if meta.path.is_ident("derived") {
+                &mut derived_name
+            } else {
                 return skip_foreign(meta);
+            };
+            if slot.is_some() {
+                return Err(meta.error("duplicate name"));
             }
-            if compressed_name.is_some() {
-                return Err(meta.error("duplicate compressed name"));
-            }
-            compressed_name = Some(meta.value()?.parse::<Ident>()?);
+            *slot = Some(meta.value()?.parse::<Ident>()?);
             Ok(())
         })?;
     }
     let compressed_name = compressed_name.unwrap_or_else(|| format_ident!("{}Compressed", name));
-    if compressed_name == *name {
+    let derived_name = derived_name.unwrap_or_else(|| format_ident!("{}Derived", name));
+    if compressed_name == *name || derived_name == *name || compressed_name == derived_name {
         return Err(Error::new(
             name.span(),
-            "compressed name must differ from the source struct",
+            "the source, compressed and derived names must all differ",
         ));
     }
     let Data::Struct(data) = &input.data else {
@@ -77,6 +87,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     let mut fields = Vec::new();
     let mut codecs = Vec::<Type>::new();
     let mut omitted = Vec::new();
+    let mut derived_fields = Vec::new();
     // (batch, partner, partner type, field)
     let mut checked = Vec::<(Option<Ident>, Ident, Type, Ident)>::new();
     for field in &named.named {
@@ -147,6 +158,9 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
                 ));
             }
             omitted.push(format!("`{id}`"));
+            let mut field = field.clone();
+            retain_generated_attrs(&mut field.attrs);
+            derived_fields.push(field);
             continue;
         }
         let codec = codec.unwrap_or_else(|| parse_quote!(#wire::DefaultEncoding));
@@ -193,6 +207,41 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         };
         retain_generated_attrs(attrs);
     }
+    let derived_docs = format!(
+        "The fields of [`{name}`] marked `derived`, recomputed from a [`{compressed_name}`] to expand it."
+    );
+    let derived_ids: Vec<_> = derived_fields
+        .iter()
+        .map(|f| f.ident.as_ref().unwrap())
+        .collect();
+    // A parameter no derived field mentions still has to appear in the
+    // derived struct; a `fn` pointer phantom neither adds bounds nor
+    // changes auto traits or variance.
+    let derived_types = derived_fields
+        .iter()
+        .map(|f| f.ty.to_token_stream())
+        .collect::<TokenStream>();
+    let unused: Vec<TokenStream> = generics
+        .params
+        .iter()
+        .filter_map(|param| match param {
+            GenericParam::Type(p) => {
+                (!mentions(derived_types.clone(), &p.ident.to_string())).then(|| {
+                    let id = &p.ident;
+                    quote!(#id)
+                })
+            }
+            GenericParam::Lifetime(p) => {
+                (!mentions(derived_types.clone(), &p.lifetime.ident.to_string())).then(|| {
+                    let lt = &p.lifetime;
+                    quote!(&#lt ())
+                })
+            }
+            GenericParam::Const(_) => None,
+        })
+        .collect();
+    let derived_marker = (!unused.is_empty())
+        .then(|| quote!(__ragu_unused: ::core::marker::PhantomData<fn() -> (#(#unused,)*)>,));
     let ids: Vec<_> = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect();
     let types: Vec<_> = fields.iter().map(|f| &f.ty).collect();
     let cfg: Vec<_> = input
@@ -282,11 +331,26 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         }
         #(#visitors)*
         #(#cfg)*
+        #[doc = #derived_docs]
+        // Plumbing for expansion; a consumer that never expands leaves it unused.
+        #[allow(dead_code)]
+        #visibility struct #derived_name #generics #compressed_where {
+            #(#derived_fields,)*
+            #derived_marker
+        }
+        #(#cfg)*
         #[automatically_derived]
         impl #clone_impl #wire::Compress for #name #source_args #clone_where {
             type Compressed = #compressed_name #compressed_args;
+            type Derived = #derived_name #compressed_args;
             fn compress(&self) -> Self::Compressed {
                 #compressed_name { #(#ids: ::core::clone::Clone::clone(&self.#ids),)* }
+            }
+            fn expand(compressed: Self::Compressed, derived: Self::Derived) -> Self {
+                Self {
+                    #(#ids: compressed.#ids,)*
+                    #(#derived_ids: derived.#derived_ids,)*
+                }
             }
         }
         #(#cfg)*
