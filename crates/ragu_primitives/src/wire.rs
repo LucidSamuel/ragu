@@ -14,7 +14,7 @@
 //! codec, or `<Vec<F> as Decode<Sequence<Scalar>>>::from_bytes(bytes, limits)`
 //! for field elements. Custom decoders must use the reader's reservation helper to participate in its resource budgets.
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{marker::PhantomData, mem::size_of};
 
 use ragu_arithmetic::{ff::PrimeField, group::GroupEncoding};
@@ -451,5 +451,21 @@ impl<T: Decode<C>, C> Decode<Sequence<C>> for Vec<T> {
             values.push(T::decode(reader)?);
         }
         Ok(values)
+    }
+}
+
+// An `Arc` is its value on the wire. Only the ordinary codec: a blanket over
+// every codec would overlap the scalar and point impls in coherence's eyes.
+impl<T: Encode> Encode for Arc<T> {
+    fn encode(&self, output: &mut Vec<u8>) {
+        T::encode(self, output);
+    }
+}
+impl<T: Decode> Decode for Arc<T> {
+    fn min_encoded_len() -> usize {
+        T::min_encoded_len()
+    }
+    fn decode<'a>(reader: &mut Reader<'a>) -> Result<Self, Error<'a>> {
+        T::decode(reader).map(Arc::new)
     }
 }
