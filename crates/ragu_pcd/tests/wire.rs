@@ -48,6 +48,30 @@ fn decoded_proof_expands_and_verifies() {
 }
 
 #[test]
+fn compressed_proof_verifies_and_a_tampered_one_does_not() {
+    let app = app();
+    let mut rng = StdRng::seed_from_u64(0x5eed);
+    let (proof, data) = leaf(&app, &mut rng, 7).into_parts();
+    let bytes = proof.compress().to_bytes();
+    let decoded = CompressedProof::<C, R>::from_bytes(&bytes, Limits::default()).unwrap();
+    assert!(
+        app.verify_compressed::<_, LeafNode>(decoded, data, &mut rng)
+            .unwrap()
+    );
+
+    // Another bridge alpha decodes fine, but the `ab` stage rebuilt from it
+    // no longer matches the shipped commitment.
+    let mut tampered = bytes;
+    tampered[1..33].fill(0);
+    tampered[1] = 2;
+    let decoded = CompressedProof::<C, R>::from_bytes(&tampered, Limits::default()).unwrap();
+    assert!(
+        !app.verify_compressed::<_, LeafNode>(decoded, data, &mut rng)
+            .unwrap()
+    );
+}
+
+#[test]
 fn truncated_proof_bytes_are_rejected() {
     let app = app();
     let mut rng = StdRng::seed_from_u64(0x5eed);
