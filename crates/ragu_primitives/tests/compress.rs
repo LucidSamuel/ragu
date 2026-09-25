@@ -1,4 +1,4 @@
-use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
+use ragu_primitives::wire::{Checked, Compress, Decode, Encode, Limits};
 
 // Neither Clone nor a byte codec is required of the omitted type.
 struct Cache;
@@ -61,4 +61,49 @@ fn nested_structs_have_only_one_envelope() {
     let decoded = OuterCompressed::from_bytes(&bytes, Limits::default()).unwrap();
     assert_eq!(decoded.inner.value, 5);
     assert_eq!(decoded.tail, 9);
+}
+
+#[derive(Compress)]
+struct Committed {
+    #[ragu(provided)]
+    poly: Vec<u8>,
+    #[ragu(checked = poly, batch = host)]
+    commitment: u64,
+    #[ragu(provided)]
+    other_poly: Vec<u8>,
+    #[ragu(checked = other_poly, batch = nested)]
+    other_commitment: u64,
+}
+
+// Sums each polynomial's bytes and records it beside the claimed commitment.
+#[derive(Default)]
+struct Sums(Vec<(u64, u64)>);
+
+impl<'a> Checked<'a, Vec<u8>, u64> for Sums {
+    fn check(&mut self, poly: &'a Vec<u8>, commitment: &u64) {
+        self.0
+            .push((poly.iter().map(|&b| u64::from(b)).sum(), *commitment));
+    }
+}
+
+#[test]
+fn checked_fields_ship_and_visit_their_batch() {
+    let committed = Committed {
+        poly: vec![1, 2, 3],
+        commitment: 6,
+        other_poly: vec![4],
+        other_commitment: 9,
+    };
+    // Checked fields stay on the wire, in declaration order.
+    let bytes = committed.compress().to_bytes();
+    let decoded = CommittedCompressed::from_bytes(&bytes, Limits::default()).unwrap();
+    assert_eq!(decoded.commitment, 6);
+    assert_eq!(decoded.other_commitment, 9);
+    // Each batch visits only its own pairs.
+    let mut host = Sums::default();
+    committed.for_each_checked_host(&mut host);
+    assert_eq!(host.0, [(6, 6)]);
+    let mut nested = Sums::default();
+    committed.for_each_checked_nested(&mut nested);
+    assert_eq!(nested.0, [(4, 9)]);
 }

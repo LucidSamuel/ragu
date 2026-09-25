@@ -96,6 +96,18 @@ pub trait Compress {
     fn compress(&self) -> Self::Compressed;
 }
 
+/// Receives a `checked` field together with the field it is checked against.
+///
+/// `#[derive(Compress)]` generates `for_each_checked`, which visits every
+/// `#[ragu(checked = partner)]` field through this trait, so a verifier's
+/// batch of "does this commitment match this polynomial" pairs is the
+/// declaration, not a hand-maintained list.
+pub trait Checked<'a, P, Q> {
+    /// Records that `checked` must be consistent with `provided`, which may
+    /// be retained for the lifetime of the visited value.
+    fn check(&mut self, provided: &'a P, checked: &Q);
+}
+
 /// Paths used by generated code, including in `no_std` consumers.
 #[doc(hidden)]
 pub mod __private {

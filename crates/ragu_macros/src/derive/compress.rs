@@ -77,23 +77,39 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     let mut fields = Vec::new();
     let mut codecs = Vec::<Type>::new();
     let mut omitted = Vec::new();
+    // (batch, partner, partner type, field)
+    let mut checked = Vec::<(Option<Ident>, Ident, Type, Ident)>::new();
     for field in &named.named {
         let id = field.ident.as_ref().unwrap();
         let mut provided = None;
+        let mut partner = None;
+        let mut batch = None;
         let mut codec = None;
         for attr in field.attrs.iter().filter(|a| a.path().is_ident("ragu")) {
             attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("provided") || meta.path.is_ident("derived") {
+                if meta.path.is_ident("provided")
+                    || meta.path.is_ident("derived")
+                    || meta.path.is_ident("checked")
+                {
                     if provided.is_some() {
-                        return Err(meta
-                            .error("field requires exactly one provided/derived classification"));
+                        return Err(meta.error(
+                            "field requires exactly one provided/derived/checked classification",
+                        ));
                     }
-                    provided = Some(meta.path.is_ident("provided"));
+                    provided = Some(!meta.path.is_ident("derived"));
+                    if meta.path.is_ident("checked") {
+                        partner = Some(meta.value()?.parse::<Ident>()?);
+                    }
                 } else if meta.path.is_ident("codec") {
                     if codec.is_some() {
                         return Err(meta.error("duplicate codec"));
                     }
                     codec = Some(meta.value()?.parse::<Type>()?);
+                } else if meta.path.is_ident("batch") {
+                    if batch.is_some() {
+                        return Err(meta.error("duplicate batch"));
+                    }
+                    batch = Some(meta.value()?.parse::<Ident>()?);
                 } else {
                     return skip_foreign(meta);
                 }
@@ -103,9 +119,26 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         let provided = provided.ok_or_else(|| {
             Error::new(
                 field.span(),
-                "field requires #[ragu(provided)] or #[ragu(derived)]",
+                "field requires #[ragu(provided)], #[ragu(derived)] or #[ragu(checked = field)]",
             )
         })?;
+        match (partner, batch) {
+            (Some(partner), batch) => {
+                let partner_ty = named
+                    .named
+                    .iter()
+                    .find(|f| f.ident.as_ref() == Some(&partner))
+                    .map(|f| f.ty.clone())
+                    .ok_or_else(|| {
+                        Error::new(partner.span(), "checked against an unknown field")
+                    })?;
+                checked.push((batch, partner, partner_ty, id.clone()));
+            }
+            (None, Some(batch)) => {
+                return Err(Error::new(batch.span(), "batch requires checked = field"));
+            }
+            (None, None) => {}
+        }
         if !provided {
             if codec.is_some() {
                 return Err(Error::new(
@@ -134,6 +167,19 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         docs.push_str(&format!(
             "\n\nFields marked `derived` and omitted: {}.",
             omitted.join(", ")
+        ));
+    }
+    if !checked.is_empty() {
+        let pairs: Vec<_> = checked
+            .iter()
+            .map(|(batch, partner, _, id)| match batch {
+                Some(batch) => format!("`{id}` against `{partner}` ({batch})"),
+                None => format!("`{id}` against `{partner}`"),
+            })
+            .collect();
+        docs.push_str(&format!(
+            "\n\nFields marked `checked`, retained and visited by `for_each_checked`: {}.",
+            pairs.join(", ")
         ));
     }
     // Preserve the source's parameters and bounds. Parameters used only by
@@ -174,6 +220,55 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     }
     let (clone_impl, source_args, clone_where) = clone_generics.split_for_impl();
     let (encode_impl, _, encode_where) = encode_generics.split_for_impl();
+    let (source_impl, _, source_where) = input.generics.split_for_impl();
+    // One visitor per batch: a sink is typed by the batch it collects, and
+    // a single sink over every batch would need impls coherence cannot separate.
+    let mut batches: Vec<Option<Ident>> = Vec::new();
+    for (batch, ..) in &checked {
+        if !batches.contains(batch) {
+            batches.push(batch.clone());
+        }
+    }
+    let visitors: Vec<TokenStream> = batches
+        .iter()
+        .map(|batch| {
+            let members: Vec<_> = checked.iter().filter(|(b, ..)| b == batch).collect();
+            let field_ty: Vec<_> = members
+                .iter()
+                .map(|(_, _, _, id)| &fields.iter().find(|f| f.ident.as_ref() == Some(id)).unwrap().ty)
+                .collect();
+            let partner: Vec<_> = members.iter().map(|(_, p, _, _)| p).collect();
+            let partner_ty: Vec<_> = members.iter().map(|(_, _, ty, _)| ty).collect();
+            let id: Vec<_> = members.iter().map(|(_, _, _, id)| id).collect();
+            let method = match batch {
+                Some(batch) => format_ident!("for_each_checked_{}", batch),
+                None => format_ident!("for_each_checked"),
+            };
+            let doc = match batch {
+                Some(batch) => format!(
+                    "Hands every field of the `{batch}` batch marked `checked` to `sink` with the field it is checked against, in declaration order."
+                ),
+                None => String::from(
+                    "Hands every field marked `checked` to `sink` with the field it is checked against, in declaration order.",
+                ),
+            };
+            quote! {
+                #(#cfg)*
+                #[automatically_derived]
+                impl #source_impl #name #source_args #source_where {
+                    #[doc = #doc]
+                    pub(crate) fn #method<'__ragu_checked, __Sink>(
+                        &'__ragu_checked self,
+                        sink: &mut __Sink,
+                    ) where
+                        __Sink: #(#wire::Checked<'__ragu_checked, #partner_ty, #field_ty>)+*,
+                    {
+                        #(<__Sink as #wire::Checked<'__ragu_checked, #partner_ty, #field_ty>>::check(sink, &self.#partner, &self.#id);)*
+                    }
+                }
+            }
+        })
+        .collect();
     let (decode_impl, _, decode_where) = decode_generics.split_for_impl();
     let mut lifetime = syn::Lifetime::new("'__ragu_wire", name.span());
     while generics.lifetimes().any(|p| p.lifetime == lifetime) {
@@ -185,6 +280,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         #visibility struct #compressed_name #generics #compressed_where {
             #(#fields,)*
         }
+        #(#visitors)*
         #(#cfg)*
         #[automatically_derived]
         impl #clone_impl #wire::Compress for #name #source_args #clone_where {
@@ -285,6 +381,15 @@ mod tests {
                     }
                 ),
                 "duplicate codec",
+            ),
+            (
+                parse_quote!(
+                    struct Unknown {
+                        #[ragu(checked = missing)]
+                        x: u64,
+                    }
+                ),
+                "unknown field",
             ),
             (
                 parse_quote!(
