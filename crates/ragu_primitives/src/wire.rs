@@ -88,12 +88,18 @@ pub struct Sequence<C>(PhantomData<C>);
 /// ```
 pub use ragu_macros::Compress;
 
-/// Projects a working representation onto explicitly provided fields.
+/// Projects a working representation onto explicitly provided fields, and
+/// rebuilds it from them once the derived fields have been recomputed.
 pub trait Compress {
     /// Representation that excludes fields classified as derived.
     type Compressed;
+    /// The derived fields alone, as recomputed by the type's own rules.
+    type Derived;
     /// Clones only the provided fields into the compressed representation.
     fn compress(&self) -> Self::Compressed;
+    /// Reassembles the working representation. The computation of `derived`
+    /// is the caller's; this only moves fields into place.
+    fn expand(compressed: Self::Compressed, derived: Self::Derived) -> Self;
 }
 
 /// Receives a `checked` field together with the field it is checked against.
