@@ -84,8 +84,10 @@ use crate::{
 /// Wraps a value that can be recomputed from primary proof data. Used to
 /// distinguish commitment caches from primary polynomial fields at the type
 /// level. Immutable once constructed.
+// Nameable across the crate so batch collectors can be typed over it; the
+// wrapped value stays reachable only here.
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Cached<T>(T);
+pub(crate) struct Cached<T>(T);
 
 /// Represents proof-carrying data, a recursive proof for the correctness of
 /// some accompanying data.
@@ -293,35 +295,35 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) nested_compute_v_rx: sparse::Polynomial<C::ScalarField, R>,
 
     // Nested endoscaling commitment caches
-    #[ragu(provided, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = nested_endoscaling_step_rxs, batch = nested, codec = wire::Sequence<CachedPoint>)]
     nested_endoscaling_step_commitments: Vec<Cached<C::NestedCurve>>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_endoscalar_rx, batch = nested, codec = CachedPoint)]
     nested_endoscalar_commitment: Cached<C::NestedCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_points_rx, batch = nested, codec = CachedPoint)]
     nested_points_commitment: Cached<C::NestedCurve>,
 
     // Nested accumulator commitment caches
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_a_poly, batch = nested, codec = CachedPoint)]
     nested_a_commitment: Cached<C::NestedCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_b_poly, batch = nested, codec = CachedPoint)]
     nested_b_commitment: Cached<C::NestedCurve>,
 
     // Nested batch commitment caches
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_registry_xy_poly, batch = nested, codec = CachedPoint)]
     nested_registry_xy_commitment: Cached<C::NestedCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_p_poly, batch = nested, codec = CachedPoint)]
     nested_p_commitment: Cached<C::NestedCurve>,
 
     // Nested challenge stage commitment cache
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_challenges_rx, batch = nested, codec = CachedPoint)]
     nested_challenges_commitment: Cached<C::NestedCurve>,
 
     // Nested instance circuit commitment caches
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_export_rx, batch = nested, codec = CachedPoint)]
     nested_export_commitment: Cached<C::NestedCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_collapse_rx, batch = nested, codec = CachedPoint)]
     nested_collapse_commitment: Cached<C::NestedCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = nested_compute_v_rx, batch = nested, codec = CachedPoint)]
     nested_compute_v_commitment: Cached<C::NestedCurve>,
 
     // Challenges
@@ -349,75 +351,75 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) pre_beta: C::CircuitField,
 
     // Native commitment caches
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_application_rx, batch = native, codec = CachedPoint)]
     native_application_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_preamble_rx, batch = native, codec = CachedPoint)]
     native_preamble_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_inner_error_rx, batch = native, codec = CachedPoint)]
     native_inner_error_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_outer_error_rx, batch = native, codec = CachedPoint)]
     native_outer_error_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_a_poly, batch = native, codec = CachedPoint)]
     native_a_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_b_poly, batch = native, codec = CachedPoint)]
     native_b_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_query_rx, batch = native, codec = CachedPoint)]
     native_query_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_registry_xy_poly, batch = native, codec = CachedPoint)]
     native_registry_xy_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_eval_rx, batch = native, codec = CachedPoint)]
     native_eval_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_p_poly, batch = native, codec = CachedPoint)]
     native_p_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_hashes_1_rx, batch = native, codec = CachedPoint)]
     native_hashes_1_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_hashes_2_rx, batch = native, codec = CachedPoint)]
     native_hashes_2_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_inner_collapse_rx, batch = native, codec = CachedPoint)]
     native_inner_collapse_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_outer_collapse_rx, batch = native, codec = CachedPoint)]
     native_outer_collapse_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_compute_v_rx, batch = native, codec = CachedPoint)]
     native_compute_v_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = native_bind_challenges_rxs, batch = native, codec = wire::Sequence<CachedPoint>)]
     native_bind_challenges_commitments: Vec<Cached<C::HostCurve>>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_bind_beta_rx, batch = native, codec = CachedPoint)]
     native_bind_beta_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_bind_endoscalar_rx, batch = native, codec = CachedPoint)]
     native_bind_endoscalar_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = native_endoscaling_step_rxs, batch = native, codec = wire::Sequence<CachedPoint>)]
     native_endoscaling_step_commitments: Vec<Cached<C::HostCurve>>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_binding_rx, batch = native, codec = CachedPoint)]
     native_points_binding_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_children_rx, batch = native, codec = CachedPoint)]
     native_points_children_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_registry_wx_rx, batch = native, codec = CachedPoint)]
     native_points_registry_wx_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_ab_rx, batch = native, codec = CachedPoint)]
     native_points_ab_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_f_rx, batch = native, codec = CachedPoint)]
     native_points_f_commitment: Cached<C::HostCurve>,
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = native_points_walk_rx, batch = native, codec = CachedPoint)]
     native_points_walk_commitment: Cached<C::HostCurve>,
 
     // Bridge commitments (non-cached)
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_preamble_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_preamble_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_s_prime_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_s_prime_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_inner_error_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_inner_error_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_outer_error_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_outer_error_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_query_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_query_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_f_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_f_commitment: C::NestedCurve,
-    #[ragu(provided, codec = wire::Point)]
+    #[ragu(checked = bridge_eval_rx, batch = nested, codec = wire::Point)]
     pub(crate) bridge_eval_commitment: C::NestedCurve,
 
     // Bridge commitment (cached, derived from the cached bridge rx)
-    #[ragu(provided, codec = CachedPoint)]
+    #[ragu(checked = bridge_ab_rx, batch = nested, codec = CachedPoint)]
     bridge_ab_commitment: Cached<C::NestedCurve>,
 }
 
@@ -439,6 +441,72 @@ impl<G: Decode<wire::Point>> Decode<CachedPoint> for Cached<G> {
 
     fn decode<'a>(reader: &mut wire::Reader<'a>) -> core::result::Result<Self, wire::Error<'a>> {
         <G as Decode<wire::Point>>::decode(reader).map(Cached)
+    }
+}
+
+/// One curve's batch of `checked` commitments and the polynomials they must
+/// commit to, collected through the `for_each_checked_*` visitors so every
+/// tagged field lands in exactly one batch.
+pub(crate) struct CommitmentBatch<'p, F, G, R: Rank> {
+    pub(crate) polys: Vec<&'p sparse::Polynomial<F, R>>,
+    pub(crate) points: Vec<G>,
+}
+
+impl<F, G, R: Rank> Default for CommitmentBatch<'_, F, G, R> {
+    fn default() -> Self {
+        Self {
+            polys: Vec::new(),
+            points: Vec::new(),
+        }
+    }
+}
+
+impl<'p, F, G: Copy, R: Rank> wire::Checked<'p, sparse::Polynomial<F, R>, Cached<G>>
+    for CommitmentBatch<'p, F, G, R>
+{
+    fn check(&mut self, poly: &'p sparse::Polynomial<F, R>, point: &Cached<G>) {
+        self.polys.push(poly);
+        self.points.push(point.0);
+    }
+}
+
+impl<'p, F, G: Copy, R: Rank> wire::Checked<'p, Vec<sparse::Polynomial<F, R>>, Vec<Cached<G>>>
+    for CommitmentBatch<'p, F, G, R>
+{
+    fn check(&mut self, polys: &'p Vec<sparse::Polynomial<F, R>>, points: &Vec<Cached<G>>) {
+        // Equal lengths are part of a well-formed proof; `verify` rejects the
+        // rest before batching.
+        for (poly, point) in polys.iter().zip(points) {
+            self.polys.push(poly);
+            self.points.push(point.0);
+        }
+    }
+}
+
+impl<'p, F, G: Copy, R: Rank> wire::Checked<'p, Arc<sparse::Polynomial<F, R>>, Cached<G>>
+    for CommitmentBatch<'p, F, G, R>
+{
+    fn check(&mut self, poly: &'p Arc<sparse::Polynomial<F, R>>, point: &Cached<G>) {
+        self.polys.push(poly);
+        self.points.push(point.0);
+    }
+}
+
+impl<'p, F, G: Copy, R: Rank> wire::Checked<'p, Arc<sparse::Polynomial<F, R>>, G>
+    for CommitmentBatch<'p, F, G, R>
+{
+    fn check(&mut self, poly: &'p Arc<sparse::Polynomial<F, R>>, point: &G) {
+        self.polys.push(poly);
+        self.points.push(*point);
+    }
+}
+
+impl<'p, F, G: Copy, R: Rank> wire::Checked<'p, Cached<Arc<sparse::Polynomial<F, R>>>, Cached<G>>
+    for CommitmentBatch<'p, F, G, R>
+{
+    fn check(&mut self, poly: &'p Cached<Arc<sparse::Polynomial<F, R>>>, point: &Cached<G>) {
+        self.polys.push(&poly.0);
+        self.points.push(point.0);
     }
 }
 
