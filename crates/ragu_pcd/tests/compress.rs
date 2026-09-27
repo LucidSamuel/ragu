@@ -14,7 +14,7 @@ use ragu_circuits::{
     registry::CircuitIndex,
 };
 use ragu_core::{
-    Result,
+    Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
@@ -28,9 +28,9 @@ use ragu_primitives::{
 use super::{CompressedPcd, CompressedProof};
 use crate::{
     Application, ApplicationBuilder, Pcd, Proof,
-    compress::revdot::nested_position,
+    compress::revdot::{native_position, nested_position},
     header::{Header, Suffix},
-    internal::nested,
+    internal::{native, nested},
     step::{Encoded, Index, Step},
 };
 
@@ -198,6 +198,106 @@ fn stored_challenges_are_not_part_of_the_instance() {
     let pcd = proof.carry::<()>(());
     assert!(!decides(&app, &pcd, 2));
     assert!(accepts(&app, &compress(&app, &pcd, 3)));
+}
+
+#[test]
+fn rejects_malformed_messages_without_error() {
+    let app = app();
+    let compressed = compress(&app, &app.bootstrap_pcd(), 462);
+    assert!(accepts(&app, &compressed));
+    let (proof, ()) = compressed.into_parts();
+    let corruptions: &[(&str, fn(&mut CompressedProof<Pasta>))] = &[
+        ("native IPA identity S", |p| {
+            p.native.opening.s_commitment = Default::default()
+        }),
+        ("nested IPA identity S", |p| {
+            p.nested.opening.s_commitment = Default::default()
+        }),
+        ("zero nested IPA coefficient", |p| {
+            p.nested.opening.c = Fq::ZERO
+        }),
+        ("zero nested instance c", |p| p.instance.nested_c = Fq::ZERO),
+        ("native reduction identity p", |p| {
+            p.native.reduction.p = Default::default()
+        }),
+        ("identity fuse bridge", |p| {
+            let bridge = nested_position(nested::RxComponent::Rx(nested::RxIndex::BridgePreamble));
+            p.instance.nested[bridge] = Default::default();
+        }),
+        ("identity native accumulator", |p| {
+            p.instance.native[native_position(native::RxComponent::AbA)] = Default::default()
+        }),
+        ("identity native registry restriction", |p| {
+            p.instance.native_registry_xy = Default::default()
+        }),
+        ("identity nested accumulator", |p| {
+            p.instance.nested[nested_position(nested::RxComponent::AbA)] = Default::default()
+        }),
+        ("nested reduction identity p", |p| {
+            p.nested.reduction.p = Default::default()
+        }),
+        ("native batch identity quotient", |p| {
+            p.native.batch.f = Default::default()
+        }),
+        ("nested batch identity quotient", |p| {
+            p.nested.batch.f = Default::default()
+        }),
+        ("native IPA identity L", |p| {
+            p.native.opening.rounds[0].0 = Default::default()
+        }),
+        ("nested IPA identity R", |p| {
+            p.nested.opening.rounds[0].1 = Default::default()
+        }),
+        ("zero nested reduction opening", |p| {
+            p.nested.reduction.openings[0].at_r = Fq::ZERO
+        }),
+        ("zero nested batched value", |p| {
+            p.nested.batch.evaluations[0] = Fq::ZERO
+        }),
+        ("zero nested IPA blinding", |p| {
+            p.nested.opening.f = Fq::ZERO
+        }),
+    ];
+    for &(case, edit) in corruptions {
+        let mut tampered = proof.clone();
+        edit(&mut tampered);
+        let result = app.verify_compressed(&tampered.carry::<()>(()));
+        assert!(matches!(result, Ok(false)), "{case}: {result:?}");
+    }
+}
+
+#[test]
+fn propagates_header_encoding_errors() {
+    struct FailingHeader<const LEGACY_ERROR: bool>;
+
+    impl<const LEGACY_ERROR: bool> Header<Fp> for FailingHeader<LEGACY_ERROR> {
+        const SUFFIX: Suffix = Suffix::new(1);
+        type Data = ();
+        type Output = ();
+
+        fn encode<'dr, D: Driver<'dr, F = Fp>, A: Allocator<'dr, D>>(
+            _: &mut D,
+            _: &mut A,
+            _: DriverValue<D, ()>,
+        ) -> Result<()> {
+            Err(if LEGACY_ERROR {
+                Error::InvalidWitness("header encoding failed".into())
+            } else {
+                Error::Initialization("header encoding failed".into())
+            })
+        }
+    }
+
+    let app = app();
+    let (proof, ()) = compress(&app, &app.bootstrap_pcd(), 1).into_parts();
+    assert!(matches!(
+        app.verify_compressed(&proof.clone().carry::<FailingHeader<true>>(())),
+        Err(Error::InvalidWitness(_))
+    ));
+    assert!(matches!(
+        app.verify_compressed(&proof.carry::<FailingHeader<false>>(())),
+        Err(Error::Initialization(_))
+    ));
 }
 
 #[test]

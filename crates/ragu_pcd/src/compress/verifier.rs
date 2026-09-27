@@ -2,7 +2,7 @@
 
 use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, ff::Field};
 use ragu_circuits::polynomials::Rank;
-use ragu_core::Result;
+use ragu_core::{Error, Result};
 
 use super::{
     CompressedPcd, Sampled,
@@ -57,6 +57,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         &self,
         pcd: &CompressedPcd<C, H>,
     ) -> Result<bool> {
+        // These checks report malformed proof messages and unusable
+        // transcript challenges as InvalidWitness. Translate only those
+        // proof-dependent failures: header encoding and static circuit
+        // computations can use the same variant for internal errors.
+        macro_rules! proof_check {
+            ($result:expr) => {
+                match $result {
+                    Ok(value) => value,
+                    Err(Error::InvalidWitness(_)) => return Ok(false),
+                    Err(error) => return Err(error),
+                }
+            };
+        }
+
         let proof = pcd.proof();
         let instance = &proof.instance;
 
@@ -74,22 +88,22 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // The fuse's challenges, from the bridge commitments in the fuse's
         // schedule, with pre_beta in the endoscalar range; and the nested
         // stages the decider recomputes from public data.
-        let Some(challenges) =
-            instance.challenges(&mut CycleTranscript::<C>::new(self.params, RAGU_TAG)?)?
-        else {
+        let Some(challenges) = proof_check!(
+            instance.challenges(&mut CycleTranscript::<C>::new(self.params, RAGU_TAG)?)
+        ) else {
             return Ok(false);
         };
-        if !instance.stages_match::<R, Verifier<B>, HEADER_SIZE>(
+        if !proof_check!(instance.stages_match::<R, Verifier<B>, HEADER_SIZE>(
             &challenges,
             C::nested_generators(self.params),
-        )? {
+        )) {
             return Ok(false);
         }
 
         let output_header = ky::output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?;
-        let mut transcript = transcript(self.params, instance, &output_header)?;
-        let native_sampled = Sampled::squeeze(&mut transcript.host())?;
-        let nested_sampled = Sampled::squeeze(&mut transcript.nested())?;
+        let mut transcript = proof_check!(transcript(self.params, instance, &output_header));
+        let native_sampled = proof_check!(Sampled::squeeze(&mut transcript.host()));
+        let nested_sampled = proof_check!(Sampled::squeeze(&mut transcript.nested()));
         let (native_targets, nested_targets) = instance.targets::<HEADER_SIZE>(
             &challenges,
             &output_header,
@@ -105,7 +119,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 registry,
                 sigma,
             )?;
-            let Some(mut openings) = revdot::verify_native::<C, R, Verifier<B>, _>(
+            let Some(mut openings) = proof_check!(revdot::verify_native::<C, R, Verifier<B>, _>(
                 instance.circuit_id,
                 |component| instance.native_commitment(component),
                 registry,
@@ -115,8 +129,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &masked,
                 &proof.native.reduction,
                 &mut transcript.host(),
-            )?
-            else {
+            )) else {
                 return Ok(false);
             };
             let (commitments, claims) = instance.native_openings::<R, Verifier<B>>(
@@ -127,13 +140,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             );
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            check::<_, R, _>(
+            proof_check!(check::<_, R, _>(
                 &openings,
                 &proof.native.batch,
                 &proof.native.opening,
                 C::host_generators(self.params),
                 &mut transcript.host(),
-            )?
+            ))
         };
         if !native {
             return Ok(false);
@@ -144,7 +157,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             let Sampled { w, y, z, sigma } = nested_sampled;
             let masked =
                 instance.nested_bindings::<R, Verifier<B>>(&challenges, registry, sigma)?;
-            let Some(mut openings) = revdot::verify_nested::<C, R, Verifier<B>, _>(
+            let Some(mut openings) = proof_check!(revdot::verify_nested::<C, R, Verifier<B>, _>(
                 |component| instance.nested_commitment(component),
                 registry,
                 y,
@@ -153,8 +166,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &masked,
                 &proof.nested.reduction,
                 &mut transcript.nested(),
-            )?
-            else {
+            )) else {
                 return Ok(false);
             };
             let (commitments, claims) = instance.nested_openings::<R, Verifier<B>>(
@@ -165,13 +177,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             )?;
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            check::<_, R, _>(
+            proof_check!(check::<_, R, _>(
                 &openings,
                 &proof.nested.batch,
                 &proof.nested.opening,
                 C::nested_generators(self.params),
                 &mut transcript.nested(),
-            )?
+            ))
         };
         Ok(nested)
     }
