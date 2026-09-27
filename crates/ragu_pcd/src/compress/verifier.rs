@@ -50,9 +50,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// (an invalid circuit id, a malformed proof, a rejected reduction or
     /// opening), or `Err` if an internal computation error occurs.
     ///
-    /// The computational kernels are those of the sealed
-    /// [`SelectableBackend::Verifier`] of the selected backend, as for
-    /// [`verify`](Self::verify).
+    /// The registry and polynomial evaluations and the recomputed stage
+    /// commitments go through the sealed [`SelectableBackend::Verifier`] of
+    /// the selected backend, as in [`verify`](Self::verify). The batch's
+    /// commitment combination and the IPA's multiscalar multiplications do
+    /// not: they call [`ragu_arithmetic::msm`] directly, the reference kernel
+    /// every backend must agree with, so no backend can alter them either.
     pub fn verify_compressed<H: Header<C::CircuitField>>(
         &self,
         pcd: &CompressedPcd<C, H>,

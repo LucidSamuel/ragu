@@ -25,6 +25,17 @@
 //! polynomials needs no counterpart: every commitment the compressed
 //! verifier reads is opened through the IPA.
 //!
+//! The transcript squeezes circuit-field elements. The host curve's
+//! challenges are those squeezes; the nested curve's are their endoscalar
+//! lifts, as in the fuse, and so carry 128 bits of entropy. Every check
+//! that holds at a random challenge, the reduction's identity, the batch's
+//! quotient relation and the IPA's rounds among them, therefore lets a
+//! false claim through with probability about its degree over $2^{128}$ on
+//! the nested curve: the reduction's identity has degree below $2N$, so
+//! about $2^{-114}$ at the production rank. This is the bound the fuse's
+//! nested side has as well; the compressed verifier is where it becomes the
+//! final one.
+//!
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.
 

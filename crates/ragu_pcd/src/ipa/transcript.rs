@@ -117,7 +117,8 @@ impl<C: Cycle> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C> {
 /// A [`CycleTranscript`] as the nested-curve IPA sees it: a point's
 /// coordinates are in the circuit field, so it is absorbed directly; a scalar
 /// is in the scalar field, so it is bridged; and a challenge is the lift of
-/// the squeeze, as the fuse's nested challenges are.
+/// the squeeze, as the fuse's nested challenges are, carrying 128 of the
+/// squeeze's bits.
 pub struct NestedSide<'a, 'dr, C: Cycle>(&'a mut CycleTranscript<'dr, C>);
 
 impl<C: Cycle> IpaTranscript<C::NestedCurve> for NestedSide<'_, '_, C> {

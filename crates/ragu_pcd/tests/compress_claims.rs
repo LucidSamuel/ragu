@@ -17,7 +17,7 @@ use ragu_circuits::{
 };
 use ragu_pasta::{Fp, Fq, Pasta};
 
-use super::{Evaluated, NativePolys, NestedPolys, Opened};
+use super::{Evaluated, Masked, NativePolys, NestedPolys, Opened};
 use crate::{
     Application, ApplicationBuilder,
     internal::{
@@ -136,4 +136,21 @@ fn nested_evaluations_match_the_decider() {
     .unwrap();
 
     check(&evaluated, &builder.a, &builder.b, r);
+}
+
+#[test]
+#[should_panic(expected = "one value per wire")]
+fn binding_rejects_a_missing_value() {
+    let _ = Masked::<(), Fp>::new((), alloc::vec![0, 1], alloc::vec![Fp::ONE], Fp::ONE);
+}
+
+#[test]
+#[should_panic(expected = "lists degree 3 twice")]
+fn binding_rejects_a_repeated_degree() {
+    let _ = Masked::<(), Fp>::new(
+        (),
+        alloc::vec![3, 3],
+        alloc::vec![Fp::ONE, Fp::ONE],
+        Fp::ONE,
+    );
 }

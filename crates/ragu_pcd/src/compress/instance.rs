@@ -509,10 +509,8 @@ impl<C: Cycle> Instance<C> {
         let (w, x, y, u) = (challenges.w, challenges.x, challenges.y, challenges.u);
         let m = |w, x, y| B::registry_wxy(registry, w, x, y);
         let (l, r) = (self.left, self.right);
-        let claim = |poly, degrees: Vec<usize>, values: Vec<F<C>>| Masked {
-            poly,
-            wires: degrees.into_iter().zip(values).collect(),
-            sigma,
+        let claim = |poly, degrees: Vec<usize>, values: Vec<F<C>>| {
+            Masked::new(poly, degrees, values, sigma)
         };
 
         let preamble = degrees::<_, R, NativePreamble<C, R, HEADER_SIZE>>(|out| {
@@ -618,10 +616,8 @@ impl<C: Cycle> Instance<C> {
         let u = nested_challenge::<C>(challenges.u)?;
         let m = |w, x, y| B::registry_wxy(registry, w, x, y);
         let (l, r) = (self.nested_left, self.nested_right);
-        let claim = |poly, degrees: Vec<usize>, values: Vec<F<C>>| Masked {
-            poly,
-            wires: degrees.into_iter().zip(values).collect(),
-            sigma,
+        let claim = |poly, degrees: Vec<usize>, values: Vec<F<C>>| {
+            Masked::new(poly, degrees, values, sigma)
         };
 
         let preamble = degrees::<_, R, NestedPreamble<C, R>>(|out| {

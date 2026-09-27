@@ -201,6 +201,62 @@ fn wire_bindings_hold() {
     assert_ne!(a.revdot(&eval.mask::<TestR>()), Fp::ZERO);
 }
 
+/// Every wire a binding lists is pinned from the polynomial's side: with
+/// the instance left honest, raising the stage polynomial at that wire's
+/// degree makes the binding's revdot nonzero, so a prover cannot move a
+/// bound wire without moving the value the instance carries or the
+/// registry gives. This is what the length and distinctness checks in
+/// [`Masked::new`] protect: a wire dropped from the list would pass here.
+fn check_pinned<F, Id, R>(masked: &[Masked<Id, F>], poly: impl Fn(Id) -> sparse::Polynomial<F, R>)
+where
+    F: ragu_arithmetic::ff::PrimeField + ragu_arithmetic::DeferredField,
+    Id: Copy + core::fmt::Debug,
+    R: Rank,
+{
+    for claim in masked {
+        let mask = claim.mask::<R>();
+        for &(degree, _) in &claim.wires {
+            let mut bump = alloc::vec![F::ZERO; R::num_coeffs()];
+            bump[degree] = F::ONE;
+            let mut a = poly(claim.poly);
+            a.add_assign(&sparse::Polynomial::from_coeffs(bump));
+            a.sub_assign(&claim.expected::<R>());
+            assert_ne!(
+                a.revdot(&mask),
+                F::ZERO,
+                "the wire at degree {degree} of {:?} is not pinned",
+                claim.poly
+            );
+        }
+    }
+}
+
+#[test]
+fn every_bound_wire_is_pinned() {
+    let (app, pcd, instance) = setup();
+    let proof = pcd.proof();
+    let challenges = replay(&instance);
+    let mut rng = StdRng::seed_from_u64(4);
+
+    let native = instance
+        .native_bindings::<TestR, ReferenceBackend, HEADER_SIZE>(
+            &challenges,
+            &app.native_registry,
+            Fp::random(&mut rng),
+        )
+        .unwrap();
+    check_pinned(&native, |component| proof[component].clone());
+
+    let nested = instance
+        .nested_bindings::<TestR, ReferenceBackend>(
+            &challenges,
+            &app.nested_registry,
+            Fq::random(&mut rng),
+        )
+        .unwrap();
+    check_pinned(&nested, |component| proof[component].clone());
+}
+
 #[test]
 fn extra_openings_hold() {
     let (app, pcd, instance) = setup();

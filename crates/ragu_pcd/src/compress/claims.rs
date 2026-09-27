@@ -60,6 +60,37 @@ pub(crate) struct Masked<Id, F> {
 }
 
 impl<Id, F: Field> Masked<Id, F> {
+    /// A claim over `poly` pinning the wire at each of `degrees` to the
+    /// value at the same position of `values`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the lists differ in length or a degree repeats. Both lists
+    /// come from the verifier's own code, the degrees from the stage layouts
+    /// and the values from the instance and the registry, so either is a
+    /// programming error rather than a malformed proof: zipping would
+    /// silently drop the tail of the longer list, and a repeated degree
+    /// would make [`mask`](Self::mask) overwrite the weight that
+    /// [`mask_at`](Self::mask_at) sums.
+    pub(crate) fn new(poly: Id, degrees: Vec<usize>, values: Vec<F>, sigma: F) -> Self {
+        assert_eq!(
+            degrees.len(),
+            values.len(),
+            "a wire binding needs one value per wire"
+        );
+        for (i, degree) in degrees.iter().enumerate() {
+            assert!(
+                !degrees[..i].contains(degree),
+                "a wire binding lists degree {degree} twice"
+            );
+        }
+        Masked {
+            poly,
+            wires: degrees.into_iter().zip(values).collect(),
+            sigma,
+        }
+    }
+
     /// $E(r)$.
     pub(crate) fn expected_at(&self, r: F) -> F {
         self.wires.iter().fold(F::ZERO, |acc, &(degree, expected)| {

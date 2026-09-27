@@ -12,6 +12,7 @@ use ragu_arithmetic::{
 use ragu_circuits::{
     polynomials::{ProductionRank, sparse},
     registry::CircuitIndex,
+    staging::{StageReader, stage_wire_indices, wires_of},
 };
 use ragu_core::{
     Error, Result,
@@ -31,12 +32,14 @@ use crate::{
     compress::revdot::{native_position, nested_position},
     header::{Header, Suffix},
     internal::{native, nested},
+    proof::recursive_propagation_tests::support::{self, Cache},
     step::{Encoded, Index, Step},
 };
 
 type TestR = ProductionRank;
 const HEADER_SIZE: usize = 4;
 type App = Application<'static, Pasta, TestR, HEADER_SIZE>;
+type NativeEval = native::stages::eval::Stage<Pasta, TestR, HEADER_SIZE>;
 
 /// A header carrying one field element.
 struct Value;
@@ -156,23 +159,38 @@ fn rejects_what_the_decider_rejects() {
     let (seeded, ()) = app
         .seed(&mut StdRng::seed_from_u64(1), Seed, Fp::from(7))
         .expect("seed");
-    let edited = |edit: fn(&mut Proof<Pasta, TestR>)| {
+    let edited = |edit: fn(&App, &mut Proof<Pasta, TestR>)| {
         let (mut proof, data) = seeded.clone().into_parts();
-        edit(&mut proof);
+        edit(&app, &mut proof);
         proof.carry::<Value>(data)
     };
-    let corruptions: [(&str, fn(&mut Proof<Pasta, TestR>)); 5] = [
-        ("circuit id out of the domain", |p| {
+    let corruptions: [(&str, fn(&App, &mut Proof<Pasta, TestR>)); 6] = [
+        ("circuit id out of the domain", |_, p| {
             p.circuit_id = CircuitIndex::new(u32::MAX as usize)
         }),
-        ("left header too long", |p| p.left_header.push(Fp::ZERO)),
-        ("right header too short", |p| {
+        ("left header too long", |_, p| p.left_header.push(Fp::ZERO)),
+        ("right header too short", |_, p| {
             p.right_header.pop();
         }),
-        ("left header element", |p| p.left_header[0] += Fp::ONE),
-        ("polynomial with a stale commitment", |p| {
+        ("left header element", |_, p| p.left_header[0] += Fp::ONE),
+        ("polynomial with a stale commitment", |_, p| {
             p.native_a_poly
                 .add_assign(&sparse::Polynomial::from_coeffs(vec![Fp::ONE]))
+        }),
+        // The eval stage's m(w, u, y) wire, which the instance does not
+        // carry, with the stage recommitted: every commitment stays
+        // consistent with its polynomial, so every opening holds and the
+        // claims reject the proof instead, through the eval stage's wire
+        // binding and through the export claim over the stale copy of the
+        // eval commitment that the bridge still holds.
+        ("stage wire with a refreshed commitment", |app, p| {
+            let wire = stage_wire_indices::<Fp, TestR, NativeEval>(|out| {
+                wires_of(&out.evaluations.registry_wy)
+            })
+            .expect("the eval stage lays out")[0];
+            let held = StageReader::<Fp, TestR>::new(&p.native_eval_rx).read(wire);
+            support::set_wires(&mut p.native_eval_rx, &[wire], &[held + Fp::ONE]);
+            support::recommit(app, p, Cache::NativeEval);
         }),
     ];
     for (case, edit) in corruptions {
@@ -186,12 +204,13 @@ fn rejects_what_the_decider_rejects() {
 }
 
 #[test]
-fn stored_challenges_are_not_part_of_the_instance() {
-    // The decider holds a proof's stored challenges to its transcript. The
-    // instance carries no challenges: the compressed verifier rederives
-    // them from the bridge commitments, so a proof whose stored challenge
-    // disagrees with its transcript compresses into a proof of the honest
-    // instance.
+fn accepts_a_stale_stored_challenge_the_decider_rejects() {
+    // Intended: the decider holds a proof's stored challenges to its
+    // transcript, but the stored challenges are not part of the statement.
+    // The instance carries none, and the compressed verifier rederives them
+    // from the bridge commitments, so a proof whose polynomials were built
+    // under the transcript's challenges compresses into a proof of the
+    // honest instance whatever the proof stores beside them.
     let app = app();
     let (mut proof, ()) = app.bootstrap_pcd().into_parts();
     proof.mu += Fp::ONE;
