@@ -11,6 +11,11 @@
 //! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
 //! - [`pasta`] — Ragu's fixed generators, derived and embedded at build time
 //!   with the `baked` feature.
+//! - [`CompressedProof`] — the wire representation, verified with
+//!   [`Application::verify_compressed`]. The optional `serde` feature encodes it
+//!   as a byte string. Serde decoding limits encoded input to 64 MiB and uses
+//!   [`ragu_primitives::wire::Limits::default`] for decoded storage; direct
+//!   [`ragu_primitives::wire::Decode::from_bytes`] calls accept caller-supplied limits.
 
 #![no_std]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]

@@ -3,6 +3,7 @@
 use ragu_pcd::CompressedProof;
 use ragu_primitives::wire::{Compress, Encode};
 use rand::{SeedableRng, rngs::StdRng};
+use serde::{Deserialize, de::value::BorrowedBytesDeserializer};
 
 #[allow(dead_code)]
 mod nontrivial_support;
@@ -20,6 +21,17 @@ fn json_carries_the_wire_bytes() {
     assert_eq!(json, expected);
     let decoded: CompressedProof<C, R> = serde_json::from_str(&json).unwrap();
     assert_eq!(decoded.to_bytes(), compressed.to_bytes());
+
+    let bytes = compressed.to_bytes();
+    let borrowed = BorrowedBytesDeserializer::<serde::de::value::Error>::new(&bytes);
+    let decoded = CompressedProof::<C, R>::deserialize(borrowed).unwrap();
+    assert_eq!(decoded.to_bytes(), bytes);
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    for malformed in [&bytes[..bytes.len() - 1], &trailing] {
+        let json = serde_json::to_string(malformed).unwrap();
+        assert!(serde_json::from_str::<CompressedProof<C, R>>(&json).is_err());
+    }
 }
 
 #[test]
