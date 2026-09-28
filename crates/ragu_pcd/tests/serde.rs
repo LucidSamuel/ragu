@@ -1,0 +1,35 @@
+//! A compressed proof serializes as its wire bytes in every serde format.
+
+use ragu_pcd::CompressedProof;
+use ragu_primitives::wire::{Compress, Encode};
+use rand::{SeedableRng, rngs::StdRng};
+
+#[allow(dead_code)]
+mod nontrivial_support;
+use nontrivial_support::{C, R, app, leaf};
+
+#[test]
+fn json_carries_the_wire_bytes() {
+    let app = app();
+    let mut rng = StdRng::seed_from_u64(0x5eed);
+    let (proof, _) = leaf(&app, &mut rng, 7).into_parts();
+    let compressed = proof.compress();
+    let json = serde_json::to_string(&compressed).unwrap();
+    // JSON has no bytes type; the array of numbers is the wire string.
+    let expected = serde_json::to_string(&compressed.to_bytes()).unwrap();
+    assert_eq!(json, expected);
+    let decoded: CompressedProof<C, R> = serde_json::from_str(&json).unwrap();
+    assert_eq!(decoded.to_bytes(), compressed.to_bytes());
+}
+
+#[test]
+fn malformed_bytes_are_a_serde_error() {
+    let json = serde_json::to_string(&[7u8, 1, 2, 3]).unwrap();
+    let Err(error) = serde_json::from_str::<CompressedProof<C, R>>(&json) else {
+        panic!("a bad version byte must not decode")
+    };
+    assert!(
+        error.to_string().contains("unsupported wire version"),
+        "{error}"
+    );
+}

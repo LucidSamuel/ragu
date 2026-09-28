@@ -11,6 +11,8 @@
 
 pub(crate) mod builder;
 mod expand;
+#[cfg(feature = "serde")]
+mod serialize;
 // These regression suites edit proof fields directly. Keep their sources
 // grouped by subject in tests/ and their access confined to the test build.
 // Their properties prove tens of production-rank proofs each, so they are
