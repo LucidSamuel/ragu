@@ -13,6 +13,9 @@ pub(crate) mod builder;
 mod expand;
 #[cfg(feature = "serde")]
 mod serialize;
+#[cfg(test)]
+#[path = "../../tests/wire_validation.rs"]
+mod wire_validation_tests;
 // These regression suites edit proof fields directly. Keep their sources
 // grouped by subject in tests/ and their access confined to the test build.
 // Their properties prove tens of production-rank proofs each, so they are
@@ -590,6 +593,17 @@ impl<C: Cycle, R: Rank> core::ops::Index<nested::RxComponent> for Proof<C, R> {
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
+    /// Whether the decoded vectors have the lengths required by the protocol.
+    /// Check both sides of each commitment pair before indexing or batching.
+    pub(crate) fn has_valid_vector_lengths(&self) -> bool {
+        self.native_bind_challenges_rxs.len() == native::NUM_BINDERS
+            && self.native_bind_challenges_commitments.len() == native::NUM_BINDERS
+            && self.native_endoscaling_step_rxs.len() == native::NUM_ENDOSCALING_STEPS
+            && self.native_endoscaling_step_commitments.len() == native::NUM_ENDOSCALING_STEPS
+            && self.nested_endoscaling_step_rxs.len() == NumStepsLen::len()
+            && self.nested_endoscaling_step_commitments.len() == NumStepsLen::len()
+    }
+
     /// Augment a recursive proof with some data, described by a [`Header`].
     pub fn carry<H: Header<C::CircuitField>>(self, data: H::Data) -> Pcd<C, R, H> {
         Pcd { proof: self, data }

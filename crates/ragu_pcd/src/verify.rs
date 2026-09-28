@@ -96,6 +96,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
+        // Wire lengths are untrusted. Every indexed protocol entry must exist,
+        // and commitment batching must not discard unmatched vector entries.
+        if !pcd.proof().has_valid_vector_lengths() {
+            return Ok(false);
+        }
+
         // Sample verification challenges w, y, and z.
         let w = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
         let y = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
@@ -262,7 +268,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
         // Check every `checked` commitment against its polynomial in one
         // batch per curve, including P = Com(p) and P_n = Com(p_n); the pairs
-        // come from the field tags on `Proof`, so none can be left out here. The endoscaling
+        // come from the field tags on `Proof`. The endoscaling
         // walks' staged inputs and endpoints are tied to these commitments by
         // `nested_points_claim` below and by the circuits that pin each walk
         // (`bind_endoscalar` and `bind_beta` for P_n, the nested `export` and

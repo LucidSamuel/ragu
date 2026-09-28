@@ -2,7 +2,7 @@
 
 use ragu_pcd::CompressedProof;
 use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
-use ragu_testing::pcd::nontrivial::LeafNode;
+use ragu_testing::pcd::nontrivial::{InternalNode, LeafNode};
 use rand::{SeedableRng, rngs::StdRng};
 
 mod nontrivial_support;
@@ -27,8 +27,14 @@ fn seed_proof_round_trips() {
 #[ignore]
 fn fused_proof_round_trips() {
     let app = app();
-    let (proof, _) = deep(&app).into_parts();
-    assert_round_trip(&proof.compress().to_bytes());
+    let (proof, data) = deep(&app).into_parts();
+    let bytes = proof.compress().to_bytes();
+    assert_round_trip(&bytes);
+    let decoded = CompressedProof::<C, R>::from_bytes(&bytes, Limits::default()).unwrap();
+    assert!(
+        app.verify_compressed::<_, InternalNode>(decoded, data, StdRng::seed_from_u64(0xdec1de))
+            .unwrap()
+    );
 }
 
 #[test]
@@ -39,7 +45,8 @@ fn decoded_proof_expands_and_verifies() {
     let bytes = proof.compress().to_bytes();
     let decoded = CompressedProof::<C, R>::from_bytes(&bytes, Limits::default()).unwrap();
     let expanded = app.expand(decoded).unwrap();
-    // The recomputed derived fields agree with the prover's, byte for byte.
+    // Expansion preserves the retained fields. The unit tests compare the
+    // derived fields too, through the semantic proof comparison helper.
     assert_eq!(expanded.compress().to_bytes(), bytes);
     assert!(
         app.verify(&expanded.carry::<LeafNode>(data), &mut rng)
@@ -72,7 +79,7 @@ fn compressed_proof_verifies_and_a_tampered_one_does_not() {
 }
 
 #[test]
-fn truncated_proof_bytes_are_rejected() {
+fn malformed_proof_bytes_are_rejected() {
     let app = app();
     let mut rng = StdRng::seed_from_u64(0x5eed);
     let (proof, _) = leaf(&app, &mut rng, 7).into_parts();
@@ -83,4 +90,10 @@ fn truncated_proof_bytes_are_rejected() {
             .err()
             .expect("truncated proof");
     }
+    let mut trailing = bytes.clone();
+    trailing.push(0);
+    assert!(CompressedProof::<C, R>::from_bytes(&trailing, Limits::default()).is_err());
+    let mut wrong_version = bytes;
+    wrong_version[0] = ragu_primitives::wire::VERSION.wrapping_add(1);
+    assert!(CompressedProof::<C, R>::from_bytes(&wrong_version, Limits::default()).is_err());
 }
