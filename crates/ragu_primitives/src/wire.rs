@@ -1,4 +1,4 @@
-//! Canonical byte encoding for the proof-format prototype (#191 / #660).
+//! Canonical byte encoding for compressed proof data.
 //!
 //! This is separate from the in-circuit element stream in [`crate::io`].
 //! [`Encode::encode`] and [`Decode::decode`] compose payloads; [`Encode::to_bytes`]
@@ -12,7 +12,8 @@
 //! When more than one codec applies, select it explicitly, for example
 //! `<Vec<u64> as Decode>::from_bytes(bytes, limits)` for the ordinary vector
 //! codec, or `<Vec<F> as Decode<Sequence<Scalar>>>::from_bytes(bytes, limits)`
-//! for field elements. Custom decoders must use the reader's reservation helper to participate in its resource budgets.
+//! for field elements. Custom decoders must use the reader's reservation helper
+//! to participate in its resource budgets.
 
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{marker::PhantomData, mem::size_of};
@@ -36,19 +37,26 @@ pub struct Sequence<C>(PhantomData<C>);
 
 /// Generates a compressed struct and its ordered byte codecs.
 ///
-/// Every field requires `#[ragu(provided)]` or `#[ragu(derived)]`. Provided
-/// fields may select `#[ragu(provided, codec = Scalar)]` (or another codec).
+/// Every field requires one classification:
+///
+/// - `#[ragu(provided)]` retains the field on the wire.
+/// - `#[ragu(derived)]` omits the field and places it in `<Name>Derived`.
+/// - `#[ragu(checked = partner)]` retains the field and visits it together
+///   with `partner` through [`Checked`]. `batch = name` selects the generated
+///   `for_each_checked_name` visitor; without it, the visitor is `for_each_checked`.
+///
+/// Retained fields may select `codec = Scalar` (or another codec).
 /// The default name is `<Name>Compressed`; override it with
 /// `#[ragu(compressed = Name)]` on the struct. Only named-field structs are
 /// supported. Source generic parameters and bounds are preserved; type and
 /// lifetime parameters must also be used by retained fields.
-/// Compression clones provided fields, never derived fields.
+/// Compression clones provided and checked fields, never derived fields.
 /// Expansion remains a handwritten, domain-specific computation.
 /// The annotations declare the access boundary; the derive does not establish
 /// the mathematical correctness of a field's classification.
 /// Generated fields retain documentation, configuration (`cfg` / `cfg_attr`),
 /// and lint attributes. Helper attributes for other derives are not copied;
-/// only `provided` / `derived` control which fields the wire codec includes.
+/// only the field's classification controls whether the wire codec includes it.
 /// Other keys in the shared `ragu` namespace are ignored.
 ///
 /// ```
@@ -88,14 +96,14 @@ pub struct Sequence<C>(PhantomData<C>);
 /// ```
 pub use ragu_macros::Compress;
 
-/// Projects a working representation onto explicitly provided fields, and
+/// Projects a working representation onto provided and checked fields, and
 /// rebuilds it from them once the derived fields have been recomputed.
 pub trait Compress {
     /// Representation that excludes fields classified as derived.
     type Compressed;
     /// The derived fields alone, as recomputed by the type's own rules.
     type Derived;
-    /// Clones only the provided fields into the compressed representation.
+    /// Clones the provided and checked fields into the compressed representation.
     fn compress(&self) -> Self::Compressed;
     /// Reassembles the working representation. The computation of `derived`
     /// is the caller's; this only moves fields into place.

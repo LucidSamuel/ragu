@@ -35,6 +35,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// None of these is read from the input, so an expanded proof carries
     /// only values this application would derive itself.
     ///
+    /// Expansion does not validate the provided fields or their commitments.
+    /// Use [`verify_compressed`](Self::verify_compressed) to verify an untrusted
+    /// compressed proof before using it in another proof.
+    ///
     /// # Errors
     ///
     /// Returns an error if a squeezed challenge has no lift, which an honest

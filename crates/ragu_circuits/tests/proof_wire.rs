@@ -1,4 +1,4 @@
-//! Test-only demonstration of #191/#660 using the polynomial and wire codecs.
+//! Compression and expansion using the polynomial and wire codecs.
 
 use ragu_arithmetic::{
     Cycle,
@@ -24,8 +24,7 @@ struct ExpandedToyProof {
     evaluation: verifier::Derived,
 }
 
-// Exercise the associated-type/generic shape used by the eventual real proof,
-// without changing or serializing that proof.
+// Exercise cycle-associated types and ranks independently of PCD verification.
 #[derive(Compress)]
 struct GenericToy<C: Cycle, R: Rank> {
     #[ragu(provided, codec = wire::Scalar)]
