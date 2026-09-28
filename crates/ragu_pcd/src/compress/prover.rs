@@ -10,13 +10,13 @@ use super::{
     CompressedPcd, CompressedProof, Messages, Sampled,
     batch::{self, Batch},
     instance::Instance,
-    revdot::{self, Openings, native_components, nested_components},
+    revdot::{self, Openings},
     transcript,
 };
 use crate::{
     Application, Pcd, SelectableBackend,
     header::Header,
-    internal::ky,
+    internal::{ky, native, nested},
     ipa::{self, Blind, IpaProof, IpaTranscript, Params},
 };
 
@@ -82,14 +82,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &masked,
                 &mut transcript.host(),
             )?;
-            let mut openings = witness.openings(instance.native.clone(), &reduction, z)?;
-            let mut polys = witness.polys(native_components().map(|component| &proof[component]));
+            let mut openings = witness.openings(&reduction, z)?;
+            let mut polys = witness.polys();
             let (commitments, claims) =
                 instance.native_openings::<R, B>(&challenges, registry, w, polys.len());
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
             polys.extend(
-                [proof.native_registry_xy_poly(), proof.native_p_poly()].map(Cow::Borrowed),
+                [
+                    proof.native_registry_xy_poly(),
+                    proof.native_p_poly(),
+                    &proof[native::RxComponent::AbA],
+                    &proof[native::RxComponent::AbB],
+                ]
+                .map(Cow::Borrowed),
             );
             let (batch, opening) =
                 open::<_, R, _, _>(&polys, &openings, generators, &mut transcript.host(), rng)?;
@@ -114,14 +120,20 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &masked,
                 &mut transcript.nested(),
             )?;
-            let mut openings = witness.openings(instance.nested.clone(), &reduction, z)?;
-            let mut polys = witness.polys(nested_components().map(|component| &proof[component]));
+            let mut openings = witness.openings(&reduction, z)?;
+            let mut polys = witness.polys();
             let (commitments, claims) =
                 instance.nested_openings::<R, B>(&challenges, registry, w, polys.len())?;
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
             polys.extend(
-                [proof.nested_registry_xy_poly(), proof.nested_p_poly()].map(Cow::Borrowed),
+                [
+                    proof.nested_registry_xy_poly(),
+                    proof.nested_p_poly(),
+                    &proof[nested::RxComponent::AbA],
+                    &proof[nested::RxComponent::AbB],
+                ]
+                .map(Cow::Borrowed),
             );
             let (batch, opening) =
                 open::<_, R, _, _>(&polys, &openings, generators, &mut transcript.nested(), rng)?;

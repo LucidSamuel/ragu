@@ -1,21 +1,23 @@
-//! The revdot claims evaluated from openings.
+//! The revdot claims as the compressed verifier sees them: by shape.
 //!
 //! The decider builds each claim's $a$ and $b$ as polynomials through
 //! [`claims::Builder`] and checks $\operatorname{revdot}(a, b) = k(y)$. The
-//! compressed verifier holds no polynomials, only each committed
-//! polynomial's openings at a point $r$ and at $rz$, so this module runs
-//! the same [`native::claims::build`] and [`nested::claims::build`] with a
-//! processor over those openings, producing each claim's $(a(r), b(r))$
-//! and its target: $a(r)$ sums the openings at $r$, and $b(r)$ is either a
-//! committed polynomial's own opening, the openings at $rz$ plus the
-//! circuit's wiring restriction and $t(z)$ at $r$, or that restriction
-//! alone. The compressor, holding the polynomials, uses the builder itself;
-//! both sides enumerate the claims through the same `build`, so the order
-//! and the targets line up.
+//! compressed verifier holds no polynomials, only the components'
+//! commitments, so this module runs the same [`native::claims::build`] and
+//! [`nested::claims::build`] with a processor that records each claim's
+//! [`Shape`]: which components its $a$ sums, with what weights, and what
+//! [`Kind`] of $b$ goes with it, a committed polynomial of its own, the
+//! dilated $a$ plus the circuit's wiring restriction and $t(z, X)$, or that
+//! restriction alone. The [`fold`](super::revdot::fold) derives the
+//! commitments it opens from the shapes, and the verifier evaluates the
+//! public parts itself. The compressor, holding the polynomials, uses the
+//! builder for the claims and the shapes for their kinds; both sides
+//! enumerate the claims through the same `build`, so the order and the
+//! targets line up.
 //!
 //! [`claims::Builder`]: crate::internal::claims::Builder
 
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::iter::{empty, once};
 
 use ragu_arithmetic::{Cycle, ff::Field};
@@ -27,21 +29,8 @@ use ragu_core::Result;
 
 use crate::{
     Proof,
-    internal::{
-        claims::Source,
-        ky::{NativeKy, NestedKy},
-        native, nested,
-    },
+    internal::{claims::Source, native, nested},
 };
-
-/// A committed polynomial's openings at the query point and at its dilation.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Opened<F> {
-    /// The value at $r$.
-    pub at_r: F,
-    /// The value at $rz$.
-    pub at_rz: F,
-}
 
 /// A claim pinning wires of a committed stage polynomial $Q$ to expected
 /// values: with $E = \sum_j e_j X^{d_j}$ over the wires' degrees and
@@ -140,6 +129,30 @@ pub(crate) struct Evaluated<F> {
     pub k: F,
 }
 
+/// What a claim's $b$ is, beside the committed components its shape lists.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum Kind {
+    /// $b$ is the committed polynomial the shape's `b` lists; $k = c$.
+    Raw,
+    /// $b = a(zX) + s(X, y) + t(z, X)$ for the circuit's wiring restriction
+    /// $s$.
+    Circuit(CircuitIndex),
+    /// $b = s(X, y)$; $k = 0$.
+    Bonding(CircuitIndex),
+    /// The wire binding at this position of the verifier's list: $a = Q -
+    /// E$ over the stage polynomial the shape's `a` lists, $b = M$, $k = 0$.
+    Masked(usize),
+}
+
+/// A claim's committed structure: $a$, and a raw claim's $b$, as weighted
+/// sums of components.
+#[derive(Clone, Debug)]
+pub(crate) struct Shape<Id, F> {
+    pub kind: Kind,
+    pub a: Vec<(F, Id)>,
+    pub b: Vec<(F, Id)>,
+}
+
 /// The decider's polynomial [`Source`] over one proof, the raw accumulator
 /// claim included: what the compressor feeds
 /// [`claims::Builder`](crate::internal::claims::Builder).
@@ -176,19 +189,18 @@ impl<'a, C: Cycle, R: Rank> Source for NestedPolys<'a, C, R> {
     }
 }
 
-/// A [`Source`] over one proof's native openings.
-struct NativeOpenings<G> {
+/// A [`Source`] over one proof's native components, by identity.
+struct NativeIds {
     circuit_id: CircuitIndex,
-    open: G,
 }
 
-impl<F, G: Fn(native::RxComponent) -> Opened<F>> Source for NativeOpenings<&G> {
+impl Source for NativeIds {
     type RxComponent = native::RxComponent;
-    type Rx = Opened<F>;
+    type Rx = native::RxComponent;
     type AppCircuitId = CircuitIndex;
 
-    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Opened<F>> {
-        once((self.open)(component))
+    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = native::RxComponent> {
+        once(component)
     }
 
     fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
@@ -196,18 +208,16 @@ impl<F, G: Fn(native::RxComponent) -> Opened<F>> Source for NativeOpenings<&G> {
     }
 }
 
-/// A [`Source`] over one proof's nested openings.
-struct NestedOpenings<G> {
-    open: G,
-}
+/// A [`Source`] over one proof's nested components, by identity.
+struct NestedIds;
 
-impl<F, G: Fn(nested::RxComponent) -> Opened<F>> Source for NestedOpenings<&G> {
+impl Source for NestedIds {
     type RxComponent = nested::RxComponent;
-    type Rx = Opened<F>;
+    type Rx = nested::RxComponent;
     type AppCircuitId = ();
 
-    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Opened<F>> {
-        once((self.open)(component))
+    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = nested::RxComponent> {
+        once(component)
     }
 
     fn app_circuits(&self) -> impl Iterator<Item = ()> {
@@ -215,62 +225,56 @@ impl<F, G: Fn(nested::RxComponent) -> Opened<F>> Source for NestedOpenings<&G> {
     }
 }
 
-/// The processor over openings: the evaluation counterpart of
+/// The processor over component identities: the structural counterpart of
 /// [`claims::Builder`](crate::internal::claims::Builder).
-struct Evaluator<F, S> {
+struct Shaper<Id, F> {
     z: F,
-    /// $t(z, X)$ at $r$.
-    tz: F,
-    /// A circuit's wiring restriction $s(X, y)$ at $r$.
-    restriction: S,
-    claims: Vec<Evaluated<F>>,
+    shapes: Vec<Shape<Id, F>>,
 }
 
-impl<F: Field, S: Fn(CircuitIndex) -> F> Evaluator<F, S> {
-    fn push(&mut self, a: F, b: F) {
-        self.claims.push(Evaluated { a, b, k: F::ZERO });
+impl<Id, F: Field> Shaper<Id, F> {
+    fn push(&mut self, kind: Kind, a: Vec<(F, Id)>, b: Vec<(F, Id)>) {
+        self.shapes.push(Shape { kind, a, b });
     }
 
-    /// A circuit claim over the sum of `rxs`: $b = a(zX) + s(X, y) + t(z, X)$.
-    fn circuit(&mut self, circuit: CircuitIndex, rxs: impl Iterator<Item = Opened<F>>) {
-        let (a, dilated) = rxs.fold((F::ZERO, F::ZERO), |(a, dilated), rx| {
-            (a + rx.at_r, dilated + rx.at_rz)
-        });
-        let b = dilated + (self.restriction)(circuit) + self.tz;
-        self.push(a, b);
+    /// A circuit claim over the sum of `rxs`.
+    fn circuit(&mut self, circuit: CircuitIndex, rxs: impl Iterator<Item = Id>) {
+        let a = rxs.map(|rx| (F::ONE, rx)).collect();
+        self.push(Kind::Circuit(circuit), a, Vec::new());
     }
 
     /// A bonding claim over the Horner fold of per-group sums under $z$, as
     /// [`sparse::Polynomial::fold`](ragu_circuits::polynomials::sparse::Polynomial::fold)
-    /// weights it: $b = s(X, y)$.
+    /// weights it.
     fn bonding(
         &mut self,
         circuit: CircuitIndex,
-        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+        groups: impl Iterator<Item = impl Iterator<Item = Id>>,
     ) {
-        let a = groups.fold(F::ZERO, |acc, group| {
-            acc * self.z + group.fold(F::ZERO, |sum, rx| sum + rx.at_r)
-        });
-        let b = (self.restriction)(circuit);
-        self.push(a, b);
+        let mut a: Vec<(F, Id)> = Vec::new();
+        for group in groups {
+            for (weight, _) in &mut a {
+                *weight *= self.z;
+            }
+            a.extend(group.map(|rx| (F::ONE, rx)));
+        }
+        self.push(Kind::Bonding(circuit), a, Vec::new());
     }
 }
 
-impl<F: Field, S: Fn(CircuitIndex) -> F> native::claims::Processor<Opened<F>, CircuitIndex>
-    for Evaluator<F, S>
-{
-    fn raw_claim(&mut self, a: Opened<F>, b: Opened<F>) {
-        self.push(a.at_r, b.at_r);
+impl<Id, F: Field> native::claims::Processor<Id, CircuitIndex> for Shaper<Id, F> {
+    fn raw_claim(&mut self, a: Id, b: Id) {
+        self.push(Kind::Raw, vec![(F::ONE, a)], vec![(F::ONE, b)]);
     }
 
-    fn circuit_claim(&mut self, circuit_id: CircuitIndex, rx: Opened<F>) {
+    fn circuit_claim(&mut self, circuit_id: CircuitIndex, rx: Id) {
         self.circuit(circuit_id, once(rx));
     }
 
     fn internal_circuit_claim(
         &mut self,
         id: native::InternalCircuitIndex,
-        rxs: impl Iterator<Item = Opened<F>>,
+        rxs: impl Iterator<Item = Id>,
     ) {
         self.circuit(id.circuit_index(), rxs);
     }
@@ -278,22 +282,22 @@ impl<F: Field, S: Fn(CircuitIndex) -> F> native::claims::Processor<Opened<F>, Ci
     fn grouped_bonding_claim(
         &mut self,
         id: native::InternalCircuitIndex,
-        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+        groups: impl Iterator<Item = impl Iterator<Item = Id>>,
     ) -> Result<()> {
         self.bonding(id.circuit_index(), groups);
         Ok(())
     }
 }
 
-impl<F: Field, S: Fn(CircuitIndex) -> F> nested::claims::Processor<Opened<F>> for Evaluator<F, S> {
-    fn raw_claim(&mut self, a: Opened<F>, b: Opened<F>) {
-        self.push(a.at_r, b.at_r);
+impl<Id, F: Field> nested::claims::Processor<Id> for Shaper<Id, F> {
+    fn raw_claim(&mut self, a: Id, b: Id) {
+        self.push(Kind::Raw, vec![(F::ONE, a)], vec![(F::ONE, b)]);
     }
 
     fn internal_circuit_claim(
         &mut self,
         id: nested::InternalCircuitIndex,
-        rxs: impl Iterator<Item = Opened<F>>,
+        rxs: impl Iterator<Item = Id>,
     ) {
         self.circuit(id.circuit_index(), rxs);
     }
@@ -301,83 +305,54 @@ impl<F: Field, S: Fn(CircuitIndex) -> F> nested::claims::Processor<Opened<F>> fo
     fn grouped_bonding_claim(
         &mut self,
         id: nested::InternalCircuitIndex,
-        groups: impl Iterator<Item = impl Iterator<Item = Opened<F>>>,
+        groups: impl Iterator<Item = impl Iterator<Item = Id>>,
     ) -> Result<()> {
         self.bonding(id.circuit_index(), groups);
         Ok(())
     }
 }
 
-/// The native claims of a proof whose application circuit is `circuit_id`,
-/// evaluated at `r` from `open`, the openings of each committed polynomial,
-/// and `restriction`, each circuit's wiring restriction $s(X, y)$ at `r`;
-/// then the `masked` wire claims, in their order.
-pub(crate) fn native<R: Rank, F: Field>(
+/// The wire bindings' shapes, after the decider's claims.
+fn with_masked<Id: Copy, F: Field>(
+    mut shapes: Vec<Shape<Id, F>>,
+    masked: &[Masked<Id, F>],
+) -> Vec<Shape<Id, F>> {
+    shapes.extend(masked.iter().enumerate().map(|(m, masked)| Shape {
+        kind: Kind::Masked(m),
+        a: vec![(F::ONE, masked.poly)],
+        b: Vec::new(),
+    }));
+    shapes
+}
+
+/// The shapes of the native claims of a proof whose application circuit is
+/// `circuit_id`, in the decider's order, then the `masked` wire claims in
+/// theirs.
+pub(crate) fn native_shapes<F: Field>(
     circuit_id: CircuitIndex,
-    r: F,
     z: F,
-    open: impl Fn(native::RxComponent) -> Opened<F>,
-    restriction: impl Fn(CircuitIndex) -> F,
-    targets: &NativeKy<F>,
     masked: &[Masked<native::RxComponent, F>],
-) -> Result<Vec<Evaluated<F>>> {
-    let mut evaluator = Evaluator {
+) -> Result<Vec<Shape<native::RxComponent, F>>> {
+    let mut shaper = Shaper {
         z,
-        tz: R::tz(z).eval(r),
-        restriction,
-        claims: Vec::new(),
+        shapes: Vec::new(),
     };
-    native::claims::build(
-        &NativeOpenings {
-            circuit_id,
-            open: &open,
-        },
-        &mut evaluator,
-    )?;
-    let mut claims = with_targets(evaluator.claims, native::claims::ky_values(targets));
-    claims.extend(masked.iter().map(|masked| Evaluated {
-        a: open(masked.poly).at_r - masked.expected_at(r),
-        b: masked.mask_at::<R>(r),
-        k: F::ZERO,
-    }));
-    Ok(claims)
+    native::claims::build(&NativeIds { circuit_id }, &mut shaper)?;
+    Ok(with_masked(shaper.shapes, masked))
 }
 
-/// The nested claims of a proof, evaluated at `r` from `open` and
-/// `restriction` as [`native()`] takes them, then the `masked` wire claims.
-pub(crate) fn nested<R: Rank, F: Field>(
-    r: F,
+/// The shapes of the nested claims of a proof, as [`native_shapes`] lists
+/// them.
+pub(crate) fn nested_shapes<F: Field>(
     z: F,
-    open: impl Fn(nested::RxComponent) -> Opened<F>,
-    restriction: impl Fn(CircuitIndex) -> F,
-    targets: &NestedKy<F>,
     masked: &[Masked<nested::RxComponent, F>],
-) -> Result<Vec<Evaluated<F>>> {
-    let mut evaluator = Evaluator {
+) -> Result<Vec<Shape<nested::RxComponent, F>>> {
+    let mut shaper = Shaper {
         z,
-        tz: R::tz(z).eval(r),
-        restriction,
-        claims: Vec::new(),
+        shapes: Vec::new(),
     };
-    nested::claims::build(&NestedOpenings { open: &open }, &mut evaluator)?;
-    let mut claims = with_targets(evaluator.claims, nested::claims::ky_values(targets));
-    claims.extend(masked.iter().map(|masked| Evaluated {
-        a: open(masked.poly).at_r - masked.expected_at(r),
-        b: masked.mask_at::<R>(r),
-        k: F::ZERO,
-    }));
-    Ok(claims)
-}
-
-/// Pairs the evaluated claims with their targets, in claim order.
-fn with_targets<F>(
-    mut claims: Vec<Evaluated<F>>,
-    targets: impl Iterator<Item = F>,
-) -> Vec<Evaluated<F>> {
-    for (claim, k) in claims.iter_mut().zip(targets) {
-        claim.k = k;
-    }
-    claims
+    nested::claims::build(&NestedIds, &mut shaper)?;
+    Ok(with_masked(shaper.shapes, masked))
 }
 
 #[cfg(test)]

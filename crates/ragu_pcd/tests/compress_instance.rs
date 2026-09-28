@@ -4,8 +4,6 @@
 //! stages and evaluates from openings to what the polynomials give, and the
 //! extra openings hold against the polynomials.
 
-use alloc::vec::Vec;
-
 use ragu_arithmetic::{
     Cycle,
     ff::Field,
@@ -19,8 +17,8 @@ use super::Instance;
 use crate::{
     Application, ApplicationBuilder, Pcd, RAGU_TAG,
     compress::{
-        claims::{self, Masked, Opened},
-        revdot::{Witness, native_components, nested_components},
+        claims::{self, Kind, Masked},
+        revdot::fold::Derived,
     },
     internal::{ky, native, nested},
     ipa::CycleTranscript,
@@ -152,34 +150,15 @@ fn wire_bindings_hold() {
     assert_eq!(nested.len(), 3);
     check_bindings(&nested, |component| proof[component].clone(), nested_r);
 
-    // The evaluator appends the bindings after the decider's claims, as
-    // (a(r), b(r), 0).
-    let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
-    let header = ky::output_header::<Pasta, (), HEADER_SIZE>(()).unwrap();
-    let targets = instance
-        .targets::<HEADER_SIZE>(&challenges, &header, y, Fq::ONE)
-        .unwrap()
-        .0;
-    let evaluated = claims::native::<TestR, _>(
-        instance.circuit_id,
-        r,
-        z,
-        |component| Opened {
-            at_r: proof[component].eval(r),
-            at_rz: proof[component].eval(r * z),
-        },
-        |circuit| app.native_registry.circuit_y(circuit, y).eval(r),
-        &targets,
-        &native,
-    )
-    .unwrap();
-    let tail = &evaluated[evaluated.len() - native.len()..];
-    for (claim, masked) in tail.iter().zip(&native) {
-        let mut a = proof[masked.poly].clone();
-        a.sub_assign(&masked.expected::<TestR>());
-        assert_eq!(claim.a, a.eval(r));
-        assert_eq!(claim.b, masked.mask::<TestR>().eval(r));
-        assert_eq!(claim.k, Fp::ZERO);
+    // The shapes append the bindings after the decider's claims, each over
+    // its stage polynomial alone.
+    let z = Fp::random(&mut rng);
+    let shapes = claims::native_shapes(instance.circuit_id, z, &native).unwrap();
+    let tail = &shapes[shapes.len() - native.len()..];
+    for ((m, shape), masked) in tail.iter().enumerate().zip(&native) {
+        assert_eq!(shape.kind, Kind::Masked(m));
+        assert_eq!(shape.a, alloc::vec![(Fp::ONE, masked.poly)]);
+        assert!(shape.b.is_empty());
     }
 
     // A wrong supplied wire breaks its binding.
@@ -264,35 +243,36 @@ fn extra_openings_hold() {
     let challenges = replay(&instance);
     let mut rng = StdRng::seed_from_u64(3);
     let (w, nested_w) = (Fp::random(&mut rng), Fq::random(&mut rng));
+    let base = Derived::ALL.len() + 2;
 
-    let base = native_components().count() + 2;
     let (polys, claims) = instance.native_openings::<TestR, ReferenceBackend>(
         &challenges,
         &app.native_registry,
         w,
         base,
     );
+    let (a, b) = (native::RxComponent::AbA, native::RxComponent::AbB);
     assert_eq!(polys[0], proof.native_registry_xy_commitment());
     assert_eq!(polys[1], proof.native_p_commitment());
-    let value = |claim: &crate::compress::revdot::OpeningClaim<Fp>| match claim.poly {
-        p if p == base => proof.native_registry_xy_poly().eval(claim.point),
-        p if p == base + 1 => proof.native_p_poly().eval(claim.point),
-        p => native_components()
-            .nth(p)
-            .map(|c| proof[c].eval(claim.point))
-            .unwrap(),
-    };
-    for claim in &claims {
+    assert_eq!(polys[2], proof.native_commitment(a));
+    assert_eq!(polys[3], proof.native_commitment(b));
+    let opened = [
+        proof.native_registry_xy_poly(),
+        proof.native_p_poly(),
+        &proof[a],
+        &proof[b],
+    ];
+    assert_eq!(claims.len(), opened.len());
+    for (i, claim) in claims.iter().enumerate() {
+        assert_eq!(claim.poly, base + i);
         assert_eq!(
             claim.value,
-            value(claim),
-            "native opening at {:?}",
-            claim.point
+            opened[i].eval(claim.point),
+            "native opening {i}"
         );
     }
     assert_eq!(claims[1].value, proof.v());
 
-    let base = nested_components().count() + 2;
     let (polys, claims) = instance
         .nested_openings::<TestR, ReferenceBackend>(
             &challenges,
@@ -301,24 +281,25 @@ fn extra_openings_hold() {
             base,
         )
         .unwrap();
+    let (a, b) = (nested::RxComponent::AbA, nested::RxComponent::AbB);
     assert_eq!(polys[0], proof.nested_registry_xy_commitment());
     assert_eq!(polys[1], proof.nested_p_commitment());
-    let value = |claim: &crate::compress::revdot::OpeningClaim<Fq>| match claim.poly {
-        p if p == base => proof.nested_registry_xy_poly().eval(claim.point),
-        p if p == base + 1 => proof.nested_p_poly().eval(claim.point),
-        p => nested_components()
-            .nth(p)
-            .map(|c| proof[c].eval(claim.point))
-            .unwrap(),
-    };
-    for claim in &claims {
+    assert_eq!(polys[2], proof.nested_a_commitment());
+    assert_eq!(polys[3], proof.nested_b_commitment());
+    let opened = [
+        proof.nested_registry_xy_poly(),
+        proof.nested_p_poly(),
+        &proof[a],
+        &proof[b],
+    ];
+    assert_eq!(claims.len(), opened.len());
+    for (i, claim) in claims.iter().enumerate() {
+        assert_eq!(claim.poly, base + i);
         assert_eq!(
             claim.value,
-            value(claim),
-            "nested opening at {:?}",
-            claim.point
+            opened[i].eval(claim.point),
+            "nested opening {i}"
         );
     }
     assert_eq!(claims[1].value, proof.nested_v().unwrap());
-    let _: Vec<Witness<Fp>> = Vec::new();
 }

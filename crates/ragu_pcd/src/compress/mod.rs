@@ -10,31 +10,32 @@
 //! recomputes, samples its own challenges from a transcript over the
 //! instance and the output header, and then, on each curve:
 //!
-//! - [`revdot`] reduces the revdot claims, the decider's and the wire
+//! - [`revdot`] folds the revdot claims, the decider's and the wire
 //!   bindings that pin the instance's wires to the stage commitments, to
-//!   openings of the committed polynomials at a point $r$ and its
-//!   dilation $rz$;
+//!   three, committing the fold's error terms, and reduces those to
+//!   openings of five polynomials the verifier derives from the instance's
+//!   commitments and the fold's, at a point $r$ or its dilation $rz$;
 //! - [`batch`] combines those openings with the registry restriction's, the
 //!   batch polynomial's and the accumulator's into one claim;
 //! - the [`ipa`](crate::ipa) proves it.
 //!
-//! The [`claims`] module evaluates the revdot claims from the openings, and
-//! [`instance`] carries the instance and restates the decider's remaining
-//! checks over it. Both curves run on one transcript, the native side first
-//! at each step. What the decider checks by recomputing commitments from
-//! polynomials needs no counterpart: every commitment the compressed
-//! verifier reads is opened through the IPA.
+//! The [`claims`] module records the revdot claims' shapes, what the fold
+//! derives its commitments from, and [`instance`] carries the instance and
+//! restates the decider's remaining checks over it. Both curves run on one
+//! transcript, the native side first at each step. What the decider checks
+//! by recomputing commitments from polynomials needs no counterpart: every
+//! commitment the compressed verifier reads is opened through the IPA.
 //!
 //! The transcript squeezes circuit-field elements. The host curve's
 //! challenges are those squeezes; the nested curve's are their endoscalar
 //! lifts, as in the fuse, and so carry 128 bits of entropy. Every check
-//! that holds at a random challenge, the reduction's identity, the batch's
-//! quotient relation and the IPA's rounds among them, therefore lets a
-//! false claim through with probability about its degree over $2^{128}$ on
-//! the nested curve: the reduction's identity has degree below $2N$, so
-//! about $2^{-114}$ at the production rank. This is the bound the fuse's
-//! nested side has as well; the compressed verifier is where it becomes the
-//! final one.
+//! that holds at a random challenge, the fold's layers, the reduction's
+//! identity, the batch's quotient relation and the IPA's rounds among
+//! them, therefore lets a false claim through with probability about its
+//! degree over $2^{128}$ on the nested curve: the reduction's identity has
+//! degree below $2N$, so about $2^{-114}$ at the production rank. This is
+//! the bound the fuse's nested side has as well; the compressed verifier is
+//! where it becomes the final one.
 //!
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.
@@ -46,7 +47,7 @@ use ragu_core::Result;
 use self::{
     batch::Batch,
     instance::Instance,
-    revdot::{Reduction, native_components, nested_components},
+    revdot::{Reduction, fold::Derived, native_components, nested_components},
 };
 use crate::{
     header::Header,
@@ -89,21 +90,21 @@ impl<C: Cycle> CompressedProof<C> {
     }
 
     /// Whether the messages have the shape the verifier reads: one
-    /// commitment and one pair of openings per component, one value per
-    /// batched polynomial and one IPA round per bit of the rank.
+    /// commitment per component, one opening per derived polynomial, one
+    /// value per batched polynomial and one IPA round per bit of the rank.
     fn well_formed<R: Rank>(&self) -> bool {
-        fn side<P: CurveAffine, R: Rank>(commitments: &[P], messages: &Messages<P>) -> bool {
-            let components = commitments.len();
-            // The batch covers the components, the reduction's p and q, the
-            // registry restriction and the batch polynomial.
-            messages.reduction.openings.len() == components
-                && messages.batch.evaluations.len() == components + 4
+        fn side<P: CurveAffine, R: Rank>(messages: &Messages<P>) -> bool {
+            let derived = Derived::ALL.len();
+            // The batch covers the derived polynomials, the reduction's p
+            // and q, and the four the instance opens.
+            messages.reduction.openings.len() == derived
+                && messages.batch.evaluations.len() == derived + 2 + instance::OPENED
                 && messages.opening.rounds.len() == R::RANK as usize
         }
         self.instance.native.len() == native_components().count()
             && self.instance.nested.len() == nested_components().count()
-            && side::<_, R>(&self.instance.native, &self.native)
-            && side::<_, R>(&self.instance.nested, &self.nested)
+            && side::<_, R>(&self.native)
+            && side::<_, R>(&self.nested)
     }
 }
 

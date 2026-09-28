@@ -1,7 +1,5 @@
 //! The verifier's side of the reduction.
 
-use alloc::vec::Vec;
-
 use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
 use ragu_backend::Backend;
 use ragu_circuits::{
@@ -11,11 +9,12 @@ use ragu_circuits::{
 use ragu_core::{Error, Result};
 
 use super::{
-    Openings, Reduction, invert, native_components, native_position, nested_components,
-    nested_position, openings,
+    Openings, Reduction,
+    fold::{self, Derived, Layout},
+    invert, openings,
 };
 use crate::{
-    compress::claims::{self, Evaluated, Masked, Opened},
+    compress::claims::{self, Evaluated, Kind, Masked, Shape},
     internal::{
         ky::{NativeKy, NestedKy},
         native, nested,
@@ -23,39 +22,76 @@ use crate::{
     ipa::IpaTranscript,
 };
 
-/// The verifier's side on one curve: `evaluate` gives the claims at $r$ from
-/// the claimed openings, and `commitments` are the committed polynomials in
-/// component order. Returns the opening claims the batch must prove, or
-/// `None` if the reduction does not hold.
-fn verify<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
-    evaluate: impl FnOnce(C::Scalar, &[Opened<C::Scalar>]) -> Result<Vec<Evaluated<C::Scalar>>>,
-    commitments: Vec<C>,
+/// The verifier's side on one curve: `shapes` are the claims' shapes and
+/// `targets` their $k(y)$, in claim order; `commitment` gives each
+/// component's commitment and `public` each kind of claim's public parts
+/// of $a$ and $b$ at a point. Returns the opening claims the batch must
+/// prove, or `None` if the reduction does not hold.
+fn verify<C: CurveAffine, R: Rank, Id: Copy, T: IpaTranscript<C>>(
+    shapes: &[Shape<Id, C::Scalar>],
+    targets: impl Iterator<Item = C::Scalar>,
+    commitment: impl Fn(Id) -> C,
+    public: impl Fn(Kind, C::Scalar) -> (C::Scalar, C::Scalar),
     reduction: &Reduction<C>,
     z: C::Scalar,
     transcript: &mut T,
 ) -> Result<Option<Openings<C>>> {
     let n = R::num_coeffs();
-    if reduction.openings.len() != commitments.len() {
+    if reduction.openings.len() != Derived::ALL.len() {
         return Err(Error::InvalidWitness(
-            "one pair of openings per committed polynomial".into(),
+            "one opening per derived polynomial".into(),
         ));
     }
+
+    // The fold: its messages, weights and the commitments it derives.
+    let layout = Layout::new(shapes.len());
+    let weights = reduction.fold.replay(transcript)?;
+    let commitments = fold::commitments(shapes, &weights, commitment, &reduction.fold);
 
     let rho = transcript.squeeze_challenge()?;
     transcript.write_point(reduction.p)?;
     transcript.write_point(reduction.q)?;
     let r = transcript.squeeze_challenge()?;
     let inverse_r = invert(r)?;
-    for opened in &reduction.openings {
-        transcript.write_scalar(opened.at_r)?;
-        transcript.write_scalar(opened.at_rz)?;
+    for &opened in &reduction.openings {
+        transcript.write_scalar(opened)?;
     }
     transcript.write_scalar(reduction.p_at_inverse_r)?;
     transcript.write_scalar(reduction.q_at_r)?;
 
+    // The folded claims at r: (A, B) from the derived openings and the
+    // public parts, and each layer's (E, W) from its opening, the weights
+    // and the sent epsilon.
+    let opened = |which: Derived| reduction.openings[which as usize];
+    let (mut a_public, mut b_public, mut target) =
+        (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ZERO);
+    for ((i, shape), k) in shapes.iter().enumerate().zip(targets) {
+        let (a, b) = public(shape.kind, r);
+        a_public += weights.a(i) * a;
+        b_public += weights.b(i) * b;
+        target += weights.a(i) * weights.b(i) * k;
+    }
+    let messages = &reduction.fold;
+    let evaluated = [
+        Evaluated {
+            a: opened(Derived::A) + a_public,
+            b: opened(Derived::B) + opened(Derived::Dilated) + b_public,
+            k: target + messages.inner_epsilon + messages.outer_epsilon,
+        },
+        Evaluated {
+            a: opened(Derived::Inner),
+            b: weights.inner::<R>(&layout).eval(r),
+            k: messages.inner_epsilon,
+        },
+        Evaluated {
+            a: opened(Derived::Outer),
+            b: weights.outer::<R>(&layout).eval(r),
+            k: messages.outer_epsilon,
+        },
+    ];
+
     // \sum_i \rho^i a_i(r) b_i(r) against the split, and the target p(0)
     // must take.
-    let evaluated = evaluate(r, &reduction.openings)?;
     let (mut combined, mut target, mut weight) = (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ONE);
     for claim in &evaluated {
         combined += weight * claim.a * claim.b;
@@ -78,6 +114,25 @@ fn verify<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
     )))
 }
 
+/// A claim's public parts of $a$ and $b$ at `r`, by kind: a wire binding
+/// subtracts its expected values from $a$ and has its mask for $b$, a
+/// circuit claim's $b$ holds the restriction and $t(z, X)$, a bonding
+/// claim's the restriction alone.
+fn public<F: Field, R: Rank, Id>(
+    kind: Kind,
+    r: F,
+    z: F,
+    restriction: &impl Fn(CircuitIndex) -> F,
+    masked: &[Masked<Id, F>],
+) -> (F, F) {
+    match kind {
+        Kind::Raw => (F::ZERO, F::ZERO),
+        Kind::Circuit(circuit) => (F::ZERO, restriction(circuit) + R::tz(z).eval(r)),
+        Kind::Bonding(circuit) => (F::ZERO, restriction(circuit)),
+        Kind::Masked(m) => (-masked[m].expected_at(r), masked[m].mask_at::<R>(r)),
+    }
+}
+
 /// The verifier's native side: `commitment` gives each component's
 /// commitment, `registry` the native registry, and `targets` the claims'
 /// $k(y)$ values; the registry is read through the backend `B`.
@@ -92,20 +147,13 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     reduction: &Reduction<C::HostCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::HostCurve>>> {
-    let commitments: Vec<_> = native_components().map(commitment).collect();
-    verify::<_, R, _>(
-        |r, openings| {
-            claims::native::<R, _>(
-                circuit_id,
-                r,
-                z,
-                |component| openings[native_position(component)],
-                |circuit| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r),
-                targets,
-                masked,
-            )
-        },
-        commitments,
+    let shapes = claims::native_shapes(circuit_id, z, masked)?;
+    let restriction = |circuit, r| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r);
+    verify::<_, R, _, _>(
+        &shapes,
+        native::claims::ky_values(targets),
+        commitment,
+        |kind, r| public::<_, R, _>(kind, r, z, &|circuit| restriction(circuit, r), masked),
         reduction,
         z,
         transcript,
@@ -123,19 +171,13 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     reduction: &Reduction<C::NestedCurve>,
     transcript: &mut T,
 ) -> Result<Option<Openings<C::NestedCurve>>> {
-    let commitments: Vec<_> = nested_components().map(commitment).collect();
-    verify::<_, R, _>(
-        |r, openings| {
-            claims::nested::<R, _>(
-                r,
-                z,
-                |component| openings[nested_position(component)],
-                |circuit| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r),
-                targets,
-                masked,
-            )
-        },
-        commitments,
+    let shapes = claims::nested_shapes(z, masked)?;
+    let restriction = |circuit, r| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r);
+    verify::<_, R, _, _>(
+        &shapes,
+        nested::claims::ky_values(targets),
+        commitment,
+        |kind, r| public::<_, R, _>(kind, r, z, &|circuit| restriction(circuit, r), masked),
         reduction,
         z,
         transcript,

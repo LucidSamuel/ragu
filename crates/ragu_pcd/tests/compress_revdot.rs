@@ -1,11 +1,10 @@
 //! The revdot reduction on the bootstrap proof, both curves: an honest
 //! reduction verifies and yields opening claims the prover's witness
-//! satisfies, and a tampered opening or commitment is rejected.
-
-use alloc::vec::Vec;
+//! satisfies over the commitments the verifier derives, and a tampered
+//! message is rejected.
 
 use ragu_arithmetic::{
-    CurveAffine, Cycle, eval,
+    CurveAffine, Cycle, FixedGenerators, eval,
     ff::{Field, PrimeField},
     rand::{SeedableRng, rngs::StdRng},
 };
@@ -14,8 +13,9 @@ use ragu_circuits::polynomials::{ProductionRank, sparse};
 use ragu_pasta::{EqAffine, Fp, Fq, Pasta};
 
 use super::{
-    Openings, Reduction, Witness, native_components, nested_components, reduce_native,
-    reduce_nested, verify_native, verify_nested,
+    Openings, Reduction, Witness,
+    fold::{Derived, GROUP, Layout},
+    reduce_native, reduce_nested, verify_native, verify_nested,
 };
 use crate::{
     Application, ApplicationBuilder, Pcd, Proof,
@@ -41,38 +41,51 @@ fn transcript() -> CycleTranscript<'static, Pasta> {
 }
 
 /// The openings of an honest reduction hold against the prover's witness:
-/// the components' openings are the polynomials' values, $p$ and $q$ open
-/// as claimed, and $p(0)$ is the combined target.
+/// the commitments are the derived polynomials', which the verifier
+/// derived independently, each opening is the polynomial's value at its
+/// point, $p$ and $q$ open as claimed, and $p(0)$ is the combined target.
 fn check_openings<F, C>(
     openings: &Openings<C>,
     reduction: &Reduction<C>,
-    witness: &Witness<F>,
-    polys: &[&sparse::Polynomial<F, TestR>],
+    witness: &Witness<C, TestR>,
+    generators: &impl FixedGenerators<C>,
     z: F,
 ) where
     F: PrimeField,
     C: CurveAffine<ScalarExt = F>,
 {
     let claims = &openings.claims;
-    assert_eq!(openings.commitments.len(), polys.len() + 2);
-    assert_eq!(claims.len(), 2 * polys.len() + 3);
+    let derived = Derived::ALL.len();
+    assert_eq!(witness.derived.len(), derived);
+    assert_eq!(openings.commitments.len(), derived + 2);
+    assert_eq!(claims.len(), derived + 3);
     let r = witness.r;
-    for (i, poly) in polys.iter().enumerate() {
-        assert_eq!(claims[2 * i].poly, i);
-        assert_eq!(claims[2 * i + 1].poly, i);
-        assert_eq!(claims[2 * i].point, r);
-        assert_eq!(claims[2 * i + 1].point, r * z);
-        assert_eq!(claims[2 * i].value, poly.eval(r), "component {i} at r");
+    for (i, (which, poly)) in Derived::ALL.iter().zip(&witness.derived).enumerate() {
         assert_eq!(
-            claims[2 * i + 1].value,
-            poly.eval(r * z),
-            "component {i} at rz"
+            openings.commitments[i],
+            poly.commit_to_affine(generators),
+            "{which:?} derives as committed"
+        );
+        assert_eq!(claims[i].poly, i);
+        assert_eq!(claims[i].point, which.point(r, z));
+        assert_eq!(
+            claims[i].value,
+            poly.eval(claims[i].point),
+            "{which:?} at its point"
         );
     }
-    let (p, q) = (polys.len(), polys.len() + 1);
+    assert_eq!(
+        openings.commitments[Derived::Inner as usize],
+        reduction.fold.inner
+    );
+    assert_eq!(
+        openings.commitments[Derived::Outer as usize],
+        reduction.fold.outer
+    );
+    let (p, q) = (derived, derived + 1);
     assert_eq!(openings.commitments[p], reduction.p);
     assert_eq!(openings.commitments[q], reduction.q);
-    let [at_inverse_r, q_at_r, at_zero] = &claims[2 * polys.len()..] else {
+    let [at_inverse_r, q_at_r, at_zero] = &claims[derived..] else {
         unreachable!()
     };
     assert_eq!(at_inverse_r.poly, p);
@@ -96,7 +109,7 @@ struct NativeRound {
     y: Fp,
     z: Fp,
     reduction: Reduction<EqAffine>,
-    witness: Witness<Fp>,
+    witness: Witness<EqAffine, TestR>,
     targets: NativeKy<Fp>,
 }
 
@@ -153,9 +166,14 @@ fn native_reduction_verifies() {
     let round = native_round(&app, 1);
     let openings =
         verify_native_round(&app, &round, &round.reduction).expect("the honest reduction holds");
-    let polys: Vec<_> = native_components().map(|c| &round.proof[c]).collect();
-    check_openings(&openings, &round.reduction, &round.witness, &polys, round.z);
     let generators = Pasta::host_generators(Pasta::baked());
+    check_openings(
+        &openings,
+        &round.reduction,
+        &round.witness,
+        generators,
+        round.z,
+    );
     assert_eq!(
         round.reduction.p,
         sparse::Polynomial::<Fp, TestR>::from_coeffs(round.witness.p.clone())
@@ -168,8 +186,19 @@ fn native_reduction_rejects_tampering() {
     let app = create_test_app();
     let round = native_round(&app, 2);
 
+    // A wrong weighted error sum moves the folded target.
     let mut tampered = round.reduction.clone();
-    tampered.openings[5].at_rz += Fp::ONE;
+    tampered.fold.inner_epsilon += Fp::ONE;
+    assert!(verify_native_round(&app, &round, &tampered).is_none());
+
+    // A different error commitment moves the weights, so the folded
+    // openings no longer match.
+    let mut tampered = round.reduction.clone();
+    tampered.fold.outer = tampered.fold.inner;
+    assert!(verify_native_round(&app, &round, &tampered).is_none());
+
+    let mut tampered = round.reduction.clone();
+    tampered.openings[Derived::Dilated as usize] += Fp::ONE;
     assert!(verify_native_round(&app, &round, &tampered).is_none());
 
     let mut tampered = round.reduction.clone();
@@ -180,6 +209,19 @@ fn native_reduction_rejects_tampering() {
     let mut tampered = round.reduction.clone();
     tampered.q = tampered.p;
     assert!(verify_native_round(&app, &round, &tampered).is_none());
+}
+
+#[test]
+fn layout_groups_the_claims() {
+    let layout = Layout::new(2 * GROUP + 3);
+    assert_eq!(layout.groups(), 3);
+    assert_eq!(layout.members(0), 0..GROUP);
+    assert_eq!(layout.members(2), 2 * GROUP..2 * GROUP + 3);
+    assert_eq!(layout.inner().count(), 2 * GROUP * (GROUP - 1) + 3 * 2);
+    assert_eq!(layout.outer().count(), 6);
+    assert_eq!(layout.inner().next(), Some((0, 0, 1)));
+    assert_eq!(layout.inner().nth(GROUP - 1), Some((0, 1, 0)));
+    assert_eq!(layout.outer().last(), Some((2, 1)));
 }
 
 #[test]
@@ -228,10 +270,9 @@ fn nested_reduction_verifies() {
     };
 
     let openings = verify(&reduction).expect("the honest reduction holds");
-    let polys: Vec<_> = nested_components().map(|c| &proof[c]).collect();
-    check_openings(&openings, &reduction, &witness, &polys, z);
+    check_openings(&openings, &reduction, &witness, generators, z);
 
     let mut tampered = reduction;
-    tampered.openings[0].at_r += Fq::ONE;
+    tampered.openings[Derived::A as usize] += Fq::ONE;
     assert!(verify(&tampered).is_none());
 }

@@ -59,6 +59,10 @@ pub(crate) struct NestedChild<F> {
     pub y: F,
 }
 
+/// How many polynomials [`Instance::native_openings`] and
+/// [`Instance::nested_openings`] open beyond the reduction's.
+pub(crate) const OPENED: usize = 4;
+
 /// The instance of a proof: its commitments, its headers and the scalars
 /// the decider would derive or read off polynomials.
 #[derive(Clone, Debug)]
@@ -689,27 +693,32 @@ impl<C: Cycle> Instance<C> {
         Ok(vec![preamble, query, eval])
     }
 
-    /// The native openings beyond the revdot reduction's, over two more
-    /// polynomials appended at `base`: the registry restriction at a fresh
-    /// `w`, where it must equal $m(w, x, y)$, and the accumulator's batch
-    /// polynomial at $u$, where it must equal $v$; and the accumulator's $a$
-    /// and $b$ at $u$, where they must equal the eval stage's wires.
+    /// The native openings beyond the revdot reduction's, over [`OPENED`]
+    /// more polynomials appended at `base`: the registry restriction at a
+    /// fresh `w`, where it must equal $m(w, x, y)$, the accumulator's batch
+    /// polynomial at $u$, where it must equal $v$, and the accumulator's
+    /// $a$ and $b$ at $u$, where they must equal the eval stage's wires.
     pub(crate) fn native_openings<R: Rank, B: Backend>(
         &self,
         challenges: &nested::Challenges<C::CircuitField>,
         registry: &Registry<'_, C::CircuitField, R>,
         w: C::CircuitField,
         base: usize,
-    ) -> ([C::HostCurve; 2], Vec<OpeningClaim<C::CircuitField>>) {
+    ) -> ([C::HostCurve; OPENED], Vec<OpeningClaim<C::CircuitField>>) {
         let (x, y, u) = (challenges.x, challenges.y, challenges.u);
         let claim = |poly, point, value| OpeningClaim { poly, point, value };
         (
-            [self.native_registry_xy, self.native_p],
+            [
+                self.native_registry_xy,
+                self.native_p,
+                self.native_commitment(native::RxComponent::AbA),
+                self.native_commitment(native::RxComponent::AbB),
+            ],
             vec![
                 claim(base, w, B::registry_wxy(registry, w, x, y)),
                 claim(base + 1, u, self.v),
-                claim(native_position(native::RxComponent::AbA), u, self.a_at_u),
-                claim(native_position(native::RxComponent::AbB), u, self.b_at_u),
+                claim(base + 2, u, self.a_at_u),
+                claim(base + 3, u, self.b_at_u),
             ],
         )
     }
@@ -722,26 +731,23 @@ impl<C: Cycle> Instance<C> {
         registry: &Registry<'_, C::ScalarField, R>,
         w: C::ScalarField,
         base: usize,
-    ) -> Result<([C::NestedCurve; 2], Vec<OpeningClaim<C::ScalarField>>)> {
+    ) -> Result<([C::NestedCurve; OPENED], Vec<OpeningClaim<C::ScalarField>>)> {
         let x = nested_challenge::<C>(challenges.x)?;
         let y = nested_challenge::<C>(challenges.y)?;
         let u = nested_challenge::<C>(challenges.u)?;
         let claim = |poly, point, value| OpeningClaim { poly, point, value };
         Ok((
-            [self.nested_registry_xy, self.nested_p],
+            [
+                self.nested_registry_xy,
+                self.nested_p,
+                self.nested_commitment(nested::RxComponent::AbA),
+                self.nested_commitment(nested::RxComponent::AbB),
+            ],
             vec![
                 claim(base, w, B::registry_wxy(registry, w, x, y)),
                 claim(base + 1, u, self.nested_v),
-                claim(
-                    nested_position(nested::RxComponent::AbA),
-                    u,
-                    self.nested_a_at_u,
-                ),
-                claim(
-                    nested_position(nested::RxComponent::AbB),
-                    u,
-                    self.nested_b_at_u,
-                ),
+                claim(base + 2, u, self.nested_a_at_u),
+                claim(base + 3, u, self.nested_b_at_u),
             ],
         ))
     }

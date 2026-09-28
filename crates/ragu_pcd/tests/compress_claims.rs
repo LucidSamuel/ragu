@@ -1,30 +1,25 @@
-//! The claims evaluated from openings against the decider's claim builder on
-//! the bootstrap proof: the same claims in the same order, each landing on
-//! the builder's polynomials evaluated at the query point, and each holding
-//! against its target.
+//! The claims' shapes against the decider's claim builder on the bootstrap
+//! proof: the same claims in the same order, each shape's weighted sum of
+//! components landing on the builder's $a$, and each kind giving the
+//! builder's $b$ from that $a$ and the public parts.
 
-use alloc::borrow::Cow;
+use alloc::{borrow::Cow, vec::Vec};
 
 use ragu_arithmetic::{
-    DeferredField,
     ff::{Field, PrimeField},
     rand::{SeedableRng, rngs::StdRng},
 };
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
-    polynomials::{ProductionRank, sparse},
-    registry::{CircuitIndex, Registry},
+    polynomials::{ProductionRank, Rank, sparse},
+    registry::Registry,
 };
 use ragu_pasta::{Fp, Fq, Pasta};
 
-use super::{Evaluated, Masked, NativePolys, NestedPolys, Opened};
+use super::{Kind, Masked, NativePolys, NestedPolys, Shape};
 use crate::{
     Application, ApplicationBuilder,
-    internal::{
-        claims::Builder,
-        ky::{self, NativeKy, NestedKy},
-        native, nested,
-    },
+    internal::{claims::Builder, native, nested},
 };
 
 type TestR = ProductionRank;
@@ -36,106 +31,131 @@ fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
         .expect("failed to create test application")
 }
 
-/// Holds the evaluated claims to the builder's polynomials at `r` and to
-/// the targets.
-fn check<F: PrimeField + DeferredField>(
-    evaluated: &[Evaluated<F>],
+fn coeffs<F: PrimeField>(poly: &sparse::Polynomial<F, TestR>) -> Vec<F> {
+    poly.iter_coeffs().collect()
+}
+
+/// The weighted sum of components a shape's side lists.
+fn sum<F: PrimeField, Id: Copy>(
+    side: &[(F, Id)],
+    poly: &impl Fn(Id) -> sparse::Polynomial<F, TestR>,
+) -> sparse::Polynomial<F, TestR> {
+    let mut acc = sparse::Polynomial::default();
+    for &(weight, id) in side {
+        let mut term = poly(id);
+        term.scale(weight);
+        acc.add_assign(&term);
+    }
+    acc
+}
+
+/// Holds the shapes to the builder's polynomials: each $a$ is the shape's
+/// sum, and each $b$ follows from the kind.
+fn check<F: PrimeField, Id: Copy>(
+    shapes: &[Shape<Id, F>],
+    poly: impl Fn(Id) -> sparse::Polynomial<F, TestR>,
+    registry: &Registry<'_, F, TestR>,
+    y: F,
+    z: F,
     builder_a: &[Cow<'_, sparse::Polynomial<F, TestR>>],
     builder_b: &[Cow<'_, sparse::Polynomial<F, TestR>>],
-    r: F,
 ) {
-    assert_eq!(evaluated.len(), builder_a.len());
-    for (i, (claim, (a, b))) in evaluated
+    assert_eq!(shapes.len(), builder_a.len());
+    for (i, (shape, (a, b))) in shapes
         .iter()
         .zip(builder_a.iter().zip(builder_b))
         .enumerate()
     {
-        assert_eq!(claim.a, a.eval(r), "a of claim {i} at r");
-        assert_eq!(claim.b, b.eval(r), "b of claim {i} at r");
-        assert_eq!(claim.k, a.revdot(b), "target of claim {i}");
+        let shaped = sum(&shape.a, &poly);
+        assert_eq!(coeffs(&shaped), coeffs(a), "a of claim {i}");
+        let expected = match shape.kind {
+            Kind::Raw => sum(&shape.b, &poly),
+            Kind::Circuit(circuit) => {
+                assert!(shape.b.is_empty());
+                let mut b = shaped;
+                b.dilate(z);
+                b.add_assign(&registry.circuit_y(circuit, y));
+                b.add_assign(&TestR::tz(z));
+                b
+            }
+            Kind::Bonding(circuit) => {
+                assert!(shape.b.is_empty());
+                registry.circuit_y(circuit, y)
+            }
+            Kind::Masked(_) => panic!("the builder lists no wire bindings"),
+        };
+        assert_eq!(coeffs(&expected), coeffs(b), "b of claim {i}");
     }
-}
-
-/// The openings of `poly` at `r` and at `rz`.
-fn open<F: PrimeField>(poly: &sparse::Polynomial<F, TestR>, r: F, z: F) -> Opened<F> {
-    Opened {
-        at_r: poly.eval(r),
-        at_rz: poly.eval(r * z),
-    }
-}
-
-/// A circuit's wiring restriction $s(X, y)$ at `r`.
-fn restriction<F: PrimeField>(
-    registry: &Registry<'_, F, TestR>,
-    y: F,
-    r: F,
-) -> impl Fn(CircuitIndex) -> F {
-    move |circuit| registry.circuit_y(circuit, y).eval(r)
 }
 
 #[test]
-fn native_evaluations_match_the_decider() {
+fn native_shapes_match_the_decider() {
     let app = create_test_app();
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(1);
-    let (y, z, r) = (
-        Fp::random(&mut rng),
-        Fp::random(&mut rng),
-        Fp::random(&mut rng),
-    );
+    let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
 
     let mut builder = Builder::<_, Fp, TestR, ReferenceBackend>::new(&app.native_registry, y, z);
     native::claims::build(&NativePolys(proof), &mut builder).unwrap();
 
-    let targets = NativeKy {
-        c: Some(proof.native_c()),
-        ..ky::native_ky::<Pasta, TestR, (), HEADER_SIZE>(&pcd, y).unwrap()
-    };
-    let evaluated = super::native::<TestR, _>(
-        proof.circuit_id(),
-        r,
+    let shapes = super::native_shapes(proof.circuit_id(), z, &[]).unwrap();
+    assert_eq!(shapes[0].kind, Kind::Raw);
+    assert_eq!(shapes[1].kind, Kind::Circuit(proof.circuit_id()));
+    check(
+        &shapes,
+        |component| proof[component].clone(),
+        &app.native_registry,
+        y,
         z,
-        |component| open(&proof[component], r, z),
-        restriction(&app.native_registry, y, r),
-        &targets,
-        &[],
-    )
-    .unwrap();
-
-    check(&evaluated, &builder.a, &builder.b, r);
+        &builder.a,
+        &builder.b,
+    );
 }
 
 #[test]
-fn nested_evaluations_match_the_decider() {
+fn nested_shapes_match_the_decider() {
     let app = create_test_app();
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(2);
-    let (y, z, r) = (
-        Fq::random(&mut rng),
-        Fq::random(&mut rng),
-        Fq::random(&mut rng),
-    );
+    let (y, z) = (Fq::random(&mut rng), Fq::random(&mut rng));
 
     let mut builder = Builder::<_, Fq, TestR, ReferenceBackend>::new(&app.nested_registry, y, z);
     nested::claims::build(&NestedPolys(proof), &mut builder).unwrap();
 
-    let targets = NestedKy {
-        c: proof.nested_c(),
-        unified: ky::nested_ky(proof, y).unwrap(),
-    };
-    let evaluated = super::nested::<TestR, _>(
-        r,
+    let shapes = super::nested_shapes(z, &[]).unwrap();
+    assert_eq!(shapes[0].kind, Kind::Raw);
+    check(
+        &shapes,
+        |component| proof[component].clone(),
+        &app.nested_registry,
+        y,
         z,
-        |component| open(&proof[component], r, z),
-        restriction(&app.nested_registry, y, r),
-        &targets,
-        &[],
-    )
-    .unwrap();
+        &builder.a,
+        &builder.b,
+    );
+}
 
-    check(&evaluated, &builder.a, &builder.b, r);
+#[test]
+fn wire_bindings_follow_the_claims() {
+    let app = create_test_app();
+    let proof = app.bootstrap_pcd().into_parts().0;
+    let z = Fp::from(3);
+    let poly = native::RxComponent::Rx(native::RxIndex::Eval);
+    let masked = [Masked::new(
+        poly,
+        alloc::vec![2, 5],
+        alloc::vec![Fp::ONE, Fp::ZERO],
+        Fp::from(7),
+    )];
+    let shapes = super::native_shapes(proof.circuit_id(), z, &masked).unwrap();
+    let unmasked = super::native_shapes(proof.circuit_id(), z, &[]).unwrap();
+    assert_eq!(shapes.len(), unmasked.len() + 1);
+    let last = shapes.last().unwrap();
+    assert_eq!(last.kind, Kind::Masked(0));
+    assert_eq!(last.a, alloc::vec![(Fp::ONE, poly)]);
+    assert!(last.b.is_empty());
 }
 
 #[test]

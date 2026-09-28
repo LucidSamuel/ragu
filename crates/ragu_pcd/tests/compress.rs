@@ -268,7 +268,10 @@ fn rejects_malformed_messages_without_error() {
             p.nested.opening.rounds[0].1 = Default::default()
         }),
         ("zero nested reduction opening", |p| {
-            p.nested.reduction.openings[0].at_r = Fq::ZERO
+            p.nested.reduction.openings[0] = Fq::ZERO
+        }),
+        ("native fold identity E", |p| {
+            p.native.reduction.fold.inner = Default::default()
         }),
         ("zero nested batched value", |p| {
             p.nested.batch.evaluations[0] = Fq::ZERO
@@ -374,6 +377,18 @@ fn rejects_tampered_messages() {
     });
 
     // The reduction.
+    tamper("error commitment", &|p| {
+        p.native.reduction.fold.inner = p.native.reduction.fold.outer
+    });
+    tamper("nested error commitment", &|p| {
+        p.nested.reduction.fold.outer = p.nested.reduction.fold.inner
+    });
+    tamper("weighted error terms", &|p| {
+        p.native.reduction.fold.inner_epsilon += Fp::ONE
+    });
+    tamper("nested weighted error terms", &|p| {
+        p.nested.reduction.fold.outer_epsilon += Fq::ONE
+    });
     tamper("p commitment", &|p| {
         p.native.reduction.p = p.native.reduction.q
     });
@@ -381,10 +396,10 @@ fn rejects_tampered_messages() {
         p.nested.reduction.q = p.nested.reduction.p
     });
     tamper("an opening at r", &|p| {
-        p.native.reduction.openings[0].at_r += Fp::ONE
+        p.native.reduction.openings[0] += Fp::ONE
     });
     tamper("a nested opening at rz", &|p| {
-        p.nested.reduction.openings[2].at_rz += Fq::ONE
+        p.nested.reduction.openings[1] += Fq::ONE
     });
     tamper("p at 1/r", &|p| {
         p.native.reduction.p_at_inverse_r += Fp::ONE

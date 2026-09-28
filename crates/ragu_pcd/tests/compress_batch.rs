@@ -17,7 +17,7 @@ use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
 use super::{Batch, Batched, batch, verify};
 use crate::{
     Application, ApplicationBuilder, Proof,
-    compress::revdot::{self, Openings, Reduction, native_components, nested_components},
+    compress::revdot::{self, Openings, Reduction},
     internal::{
         ky::{self, NativeKy, NestedKy},
         nested,
@@ -176,7 +176,7 @@ fn native_batch_opens_through_the_ipa() {
     let (mut verifier, openings) = native_verifier(&app, proof, y, z, &targets, &reduction);
 
     // The batch and the IPA.
-    let polys = witness.polys(native_components().map(|component| &proof[component]));
+    let polys = witness.polys();
     let proved = prove::<EqAffine, TestR, _>(
         &polys,
         &openings,
@@ -300,7 +300,7 @@ fn nested_batch_opens_through_the_ipa() {
     };
     let (mut verifier, openings) = nested_verifier();
 
-    let polys = witness.polys(nested_components().map(|component| &proof[component]));
+    let polys = witness.polys();
     let proved = prove::<EpAffine, TestR, _>(
         &polys,
         &openings,
