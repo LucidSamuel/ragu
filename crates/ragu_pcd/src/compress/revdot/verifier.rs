@@ -1,5 +1,7 @@
 //! The verifier's side of the reduction.
 
+use alloc::vec::Vec;
+
 use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
 use ragu_backend::Backend;
 use ragu_circuits::{
@@ -23,7 +25,7 @@ use crate::{
 };
 
 /// The verifier's side on one curve: `shapes` are the claims' shapes and
-/// `targets` their $k(y)$, in claim order; `commitment` gives each
+/// `targets` their $k(y)$, one per claim in claim order; `commitment` gives each
 /// component's commitment and `public` each kind of claim's public parts
 /// of $a$ and $b$ at a point. Returns the opening claims the batch must
 /// prove, or `None` if the reduction does not hold.
@@ -63,13 +65,23 @@ fn verify<C: CurveAffine, R: Rank, Id: Copy, T: IpaTranscript<C>>(
     // public parts, and each layer's (E, W) from its opening, the weights
     // and the sent epsilon.
     let opened = |which: Derived| reduction.openings[which as usize];
+    // One target per claim, materialized: a target stream that ran short
+    // would otherwise end the loop early and drop the trailing claims'
+    // public parts and targets without a word.
+    let targets: Vec<_> = targets.take(shapes.len()).collect();
+    if targets.len() != shapes.len() {
+        return Err(Error::VectorLengthMismatch {
+            expected: shapes.len(),
+            actual: targets.len(),
+        });
+    }
     let (mut a_public, mut b_public, mut target) =
         (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ZERO);
-    for ((i, shape), k) in shapes.iter().enumerate().zip(targets) {
+    for (i, shape) in shapes.iter().enumerate() {
         let (a, b) = public(shape.kind, r);
         a_public += weights.a(i) * a;
         b_public += weights.b(i) * b;
-        target += weights.a(i) * weights.b(i) * k;
+        target += weights.a(i) * weights.b(i) * targets[i];
     }
     let messages = &reduction.fold;
     let evaluated = [

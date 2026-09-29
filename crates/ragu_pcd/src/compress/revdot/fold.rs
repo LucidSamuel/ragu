@@ -18,8 +18,8 @@
 //! split proves $(E, W, \varepsilon)$ beside $(A, B)$. Both sides use the
 //! fuse's error-term order, group by group and row by row.
 //!
-//! The verifier never sees the error terms. It holds $[E]$ and $\varepsilon$
-//! and derives $[A]$ from the instance's commitments, as the diagonal's
+//! The verifier never sees the error terms. It holds $\[E\]$ and $\varepsilon$
+//! and derives $\[A\]$ from the instance's commitments, as the diagonal's
 //! weights $\mu^i \nu^i$ and the off-diagonal's $\mu^i \nu^j$ are distinct
 //! monomials: with $E$ fixed before $\mu, \nu$ exist, a false $k_i$ makes
 //! the folded identity a nonzero polynomial in the challenges, which
@@ -134,7 +134,15 @@ pub(crate) struct Layout {
 }
 
 impl Layout {
+    /// # Panics
+    ///
+    /// Panics unless the claims fill more than one group: with one, the
+    /// second layer has no error terms, so its commitment is the identity,
+    /// which the transcript refuses. The claim count is fixed by the
+    /// protocol on each curve, so this is a programming error rather than
+    /// a malformed proof.
     pub(crate) fn new(claims: usize) -> Self {
+        assert!(claims > GROUP, "the fold needs at least two groups");
         Layout { claims }
     }
 
@@ -224,7 +232,7 @@ fn mirrored<F: Field, R: Rank>(weights: impl Iterator<Item = F>) -> sparse::Poly
 
 /// The commitments to the [`Derived`] polynomials, in order, from the
 /// claims' `shapes`, each component's `commitment` and the fold's
-/// messages: $[A]$ sums every claim's $a$ under its $A$ weight, the dilated
+/// messages: $\[A\]$ sums every claim's $a$ under its $A$ weight, the dilated
 /// polynomial the circuit claims' $a$ under their $B$ weights, and the raw
 /// polynomial the raw claims' $b$ likewise.
 pub(crate) fn commitments<C: CurveAffine, Id: Copy>(

@@ -24,7 +24,9 @@
 //! restates the decider's remaining checks over it. Both curves run on one
 //! transcript, the native side first at each step. What the decider checks
 //! by recomputing commitments from polynomials needs no counterpart: every
-//! commitment the compressed verifier reads is opened through the IPA.
+//! commitment the compressed verifier reads is opened through the IPA, the
+//! stage commitments inside the fold's challenge-weighted combinations of
+//! them.
 //!
 //! The transcript squeezes circuit-field elements. The host curve's
 //! challenges are those squeezes; the nested curve's are their endoscalar
