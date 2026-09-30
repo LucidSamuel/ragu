@@ -37,6 +37,12 @@ fn open<P: CurveAffine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
         rng,
         transcript,
         &witness.p,
+        // Input commitments and the batch quotient have no separate Pedersen
+        // blinds, so their batched opening uses zero.
+        // TODO: If Pedersen blinding is added for hiding, propagate those blinds
+        // through the reductions and batching; a fresh blind here would not
+        // match the batched commitment.
+        // This is the honest prover's input blind, not a verifier constraint.
         Blind(P::Scalar::ZERO),
         witness.u,
     )?;
