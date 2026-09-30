@@ -2,6 +2,7 @@
 //! representation by comparing their canonical coordinates with the original.
 
 use ragu_core::{Cycle, FixedGenerators, pasta::Pasta};
+use ragu_pcd::ipa::IpaCycle;
 use udon::{curve::Affine, field::Field};
 
 #[test]
@@ -26,5 +27,29 @@ fn baked_points_match_original_parameters() {
     assert_eq!(
         digest.to_hex().as_str(),
         "f5b1146e2b607c83dcfd8630d117af24c8ea12593395a764100d81efca818ef2"
+    );
+}
+
+/// The IPA's generators are hash-to-curve outputs on the message `2`, after
+/// the vector generators' `0 || i` and the blinding generator's `1`, so
+/// their canonical coordinates are pinned the same way.
+#[test]
+fn baked_ipa_generators_are_pinned() {
+    fn append<C: Affine<Base: Field>>(out: &mut Vec<u8>, point: &C) {
+        let (x, y) = point.coordinates().expect("nonidentity generator");
+        out.extend_from_slice(x.to_bytes().as_ref());
+        out.extend_from_slice(y.to_bytes().as_ref());
+    }
+
+    let params = ragu_pcd::pasta::baked();
+    let mut loaded = Vec::new();
+    append(&mut loaded, Pasta::nested_u(params));
+    append(&mut loaded, Pasta::host_u(params));
+    assert_eq!(loaded.len(), 2 * 64);
+
+    let digest = blake2b_simd::Params::new().hash_length(32).hash(&loaded);
+    assert_eq!(
+        digest.to_hex().as_str(),
+        "53ae67b2466d46ac35933f2e2f8ada4e66b67b88bfba180473eaab3cfca7e3ae"
     );
 }
