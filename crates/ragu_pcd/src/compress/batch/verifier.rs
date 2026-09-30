@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use ragu_core::{Error, Result};
 use udon::{curve::Affine, field::Field};
 
-use super::{Batch, Batched};
+use super::{Batch, Batched, check_claims};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
 
 /// The verifier's batch: `commitments` are the polynomials the `claims`
@@ -13,8 +13,9 @@ use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
 ///
 /// # Errors
 ///
-/// Fails if the batch does not carry one value per polynomial, or if $u$
-/// lands on a query point, which happens with negligible probability.
+/// Fails if claims assign different values to the same polynomial at the
+/// same point, if the batch does not carry one value per polynomial, or if
+/// $u$ lands on a query point, which happens with negligible probability.
 pub(crate) fn verify<C: Affine, T: IpaTranscript<C>>(
     commitments: &[C],
     claims: &[OpeningClaim<C::Scalar>],
@@ -27,6 +28,7 @@ pub(crate) fn verify<C: Affine, T: IpaTranscript<C>>(
         ));
     }
 
+    check_claims(claims)?;
     let alpha = transcript.squeeze_challenge()?;
     transcript.write_point(batch.f)?;
     let u = transcript.squeeze_challenge()?;

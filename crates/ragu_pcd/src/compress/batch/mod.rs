@@ -14,7 +14,10 @@
 
 use alloc::vec::Vec;
 
-use udon::curve::Affine;
+use ragu_core::{Error, Result};
+use udon::{curve::Affine, field::Field};
+
+use super::revdot::OpeningClaim;
 
 mod prover;
 mod verifier;
@@ -48,6 +51,24 @@ pub(crate) struct Witness<F> {
     pub p: Vec<F>,
     /// The point $u$ it opens it at.
     pub u: F,
+}
+
+/// Rejects conflicting values for the same polynomial index and point.
+/// Identical claims remain in the batch, and distinct polynomial indices
+/// remain distinct even if their commitments happen to be equal.
+fn check_claims<F: Field>(claims: &[OpeningClaim<F>]) -> Result<()> {
+    for (i, claim) in claims.iter().enumerate() {
+        if claims[..i].iter().any(|previous| {
+            previous.poly == claim.poly
+                && previous.point == claim.point
+                && previous.value != claim.value
+        }) {
+            return Err(Error::InvalidWitness(
+                "conflicting opening values for the same polynomial and point".into(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

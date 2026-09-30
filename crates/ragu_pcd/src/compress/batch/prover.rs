@@ -6,17 +6,23 @@ use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{FixedGenerators, Result};
 use udon::{curve::Affine, field::Field, polynomial::divide_linear_rev};
 
-use super::{Batch, Witness};
+use super::{Batch, Witness, check_claims};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
 
 /// The prover's batch: `polys` are the committed polynomials the `claims`
 /// refer to, in the order their commitments are listed.
+///
+/// # Errors
+///
+/// Fails if claims assign different values to the same polynomial at the
+/// same point, or if a transcript operation fails.
 pub(crate) fn batch<C: Affine, R: Rank, T: IpaTranscript<C>>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     claims: &[OpeningClaim<C::Scalar>],
     generators: &impl FixedGenerators<C>,
     transcript: &mut T,
 ) -> Result<(Batch<C>, Witness<C::Scalar>)> {
+    check_claims(claims)?;
     let alpha = transcript.squeeze_challenge()?;
 
     // f: the quotients of every claim, batched under alpha.

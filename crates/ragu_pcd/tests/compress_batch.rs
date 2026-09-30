@@ -3,12 +3,12 @@
 //! commitment and value of the prover's $p$, the IPA proves it, and a
 //! tampered message breaks the proof.
 
-use alloc::{borrow::Cow, vec::Vec};
+use alloc::{borrow::Cow, vec, vec::Vec};
 
 use ragu_backend::ReferenceBackend;
-use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
+use ragu_circuits::polynomials::{ProductionRank, Rank, TestRank, sparse};
 use ragu_core::{
-    Cycle, FixedGenerators,
+    Cycle, Error, FixedGenerators, Result,
     pasta::{Fp, Fq, Pasta},
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -20,7 +20,7 @@ type EqAffine = <Pasta as Cycle>::HostCurve;
 use super::{Batch, Batched, batch, verify};
 use crate::{
     Application, ApplicationBuilder, Proof,
-    compress::revdot::{self, Openings, Reduction},
+    compress::revdot::{self, OpeningClaim, Openings, Reduction},
     internal::{
         ky::{self, NativeKy, NestedKy},
         nested,
@@ -40,6 +40,118 @@ fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
 
 fn transcript() -> CycleTranscript<'static, Pasta> {
     CycleTranscript::new(crate::pasta::baked(), TAG).unwrap()
+}
+
+/// Fixes alpha to one so contradictory duplicate claims can cancel. Tracks
+/// transcript operations to require rejection before any challenge or message.
+struct BatchTranscript<F> {
+    challenges: core::array::IntoIter<F, 3>,
+    writes: usize,
+}
+
+impl<F: Field> BatchTranscript<F> {
+    fn new() -> Self {
+        Self {
+            challenges: [F::ONE, F::from(7), F::from(11)].into_iter(),
+            writes: 0,
+        }
+    }
+
+    fn assert_unused(&self) {
+        assert_eq!(self.challenges.len(), 3);
+        assert_eq!(self.writes, 0);
+    }
+}
+
+impl<C: Affine> IpaTranscript<C> for BatchTranscript<C::Scalar> {
+    fn write_point(&mut self, _: C) -> Result<()> {
+        self.writes += 1;
+        Ok(())
+    }
+
+    fn write_scalar(&mut self, _: C::Scalar) -> Result<()> {
+        self.writes += 1;
+        Ok(())
+    }
+
+    fn squeeze_challenge(&mut self) -> Result<C::Scalar> {
+        Ok(self.challenges.next().expect("three batch challenges"))
+    }
+}
+
+fn duplicate_claims<C: Affine>(generators: &impl FixedGenerators<C>) {
+    let polys = [
+        sparse::Polynomial::<C::Scalar, TestRank>::from_coeffs(vec![
+            C::Scalar::ONE,
+            C::Scalar::ONE,
+        ]),
+        sparse::Polynomial::<C::Scalar, TestRank>::from_coeffs(vec![
+            C::Scalar::from(3),
+            C::Scalar::from(5),
+        ]),
+    ];
+    let commitments = polys
+        .each_ref()
+        .map(|poly| poly.commit_to_affine(generators));
+    let polys = polys.each_ref().map(Cow::Borrowed);
+    let claim = |poly: usize, point| OpeningClaim {
+        poly,
+        point,
+        value: polys[poly].eval(point),
+    };
+    let repeated = claim(0, C::Scalar::from(2));
+    // Identical duplicates are allowed, as are different points on the same
+    // polynomial and different polynomials at the same point.
+    let claims = [
+        repeated,
+        claim(0, C::Scalar::from(3)),
+        claim(1, repeated.point),
+        repeated,
+    ];
+    let (messages, witness) =
+        batch::<C, TestRank, _>(&polys, &claims, generators, &mut BatchTranscript::new()).unwrap();
+    let batched = verify(
+        &commitments,
+        &claims,
+        &messages,
+        &mut BatchTranscript::new(),
+    )
+    .unwrap();
+    assert_eq!(batched.point, witness.u);
+    assert_eq!(batched.value, evaluate_iter(&witness.p, witness.u));
+    assert_eq!(
+        batched.commitment,
+        sparse::Polynomial::<_, TestRank>::from_coeffs(witness.p).commit_to_affine(generators)
+    );
+
+    // These nonadjacent errors cancel at alpha = 1, so without the
+    // consistency check the same batch still gives the correct IPA claim.
+    let mut conflicting = claims;
+    conflicting[0].value += C::Scalar::ONE;
+    conflicting[3].value -= C::Scalar::ONE;
+    let mut verifier = BatchTranscript::new();
+    assert!(matches!(
+        verify(&commitments, &conflicting, &messages, &mut verifier),
+        Err(Error::InvalidWitness(_))
+    ));
+    verifier.assert_unused();
+
+    let mut prover = BatchTranscript::new();
+    assert!(matches!(
+        batch::<C, TestRank, _>(&polys, &conflicting, generators, &mut prover),
+        Err(Error::InvalidWitness(_))
+    ));
+    prover.assert_unused();
+}
+
+#[test]
+fn native_duplicate_claims() {
+    duplicate_claims::<EqAffine>(Pasta::host_generators(crate::pasta::baked()));
+}
+
+#[test]
+fn nested_duplicate_claims() {
+    duplicate_claims::<EpAffine>(Pasta::nested_generators(crate::pasta::baked()));
 }
 
 /// The prover's batch and IPA opening after an accepted reduction, with the
