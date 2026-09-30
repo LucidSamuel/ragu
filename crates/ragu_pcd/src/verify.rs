@@ -83,8 +83,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     ///
     /// Returns `Ok(true)` if all verification checks pass, `Ok(false)` if
     /// any check fails (e.g., invalid circuit ID, header size mismatch,
-    /// corrupted commitments or evaluations), or `Err` if an internal
-    /// computation error occurs.
+    /// malformed proof structure, corrupted commitments or evaluations),
+    /// or `Err` if an internal computation error occurs.
     ///
     /// The computational kernels used here are those of the sealed
     /// [`SelectableBackend::Verifier`] of the selected backend: the reference
@@ -96,12 +96,6 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
-        // Wire lengths are untrusted. Every indexed protocol entry must exist,
-        // and commitment batching must not discard unmatched vector entries.
-        if !pcd.proof().has_valid_vector_lengths() {
-            return Ok(false);
-        }
-
         // Sample verification challenges w, y, and z.
         let w = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
         let y = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
@@ -131,6 +125,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         if pcd.proof().left_header().len() != HEADER_SIZE
             || pcd.proof().right_header().len() != HEADER_SIZE
         {
+            return Ok(false);
+        }
+
+        if !pcd.proof().is_well_formed() {
             return Ok(false);
         }
 
