@@ -3,11 +3,9 @@
 use alloc::borrow::Cow;
 
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::FixedGenerators;
-use ragu_core::Result;
+use ragu_core::{FixedGenerators, Result};
 use rand::CryptoRng;
-use udon::curve::Affine;
-use udon::field::Field;
+use udon::{curve::Affine, field::Field};
 
 use super::{
     CompressedPcd, CompressedProof, Messages, Sampled,

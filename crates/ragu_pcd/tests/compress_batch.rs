@@ -7,13 +7,12 @@ use alloc::{borrow::Cow, vec::Vec};
 
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
-use ragu_core::Cycle;
-use ragu_core::FixedGenerators;
-use ragu_core::pasta::{Fp, Fq, Pasta};
+use ragu_core::{
+    Cycle, FixedGenerators,
+    pasta::{Fp, Fq, Pasta},
+};
 use rand::{Rng, SeedableRng, rngs::StdRng};
-use udon::curve::Affine;
-use udon::field::Field;
-use udon::polynomial::evaluate_iter;
+use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 
 type EpAffine = <Pasta as Cycle>::NestedCurve;
 type EqAffine = <Pasta as Cycle>::HostCurve;

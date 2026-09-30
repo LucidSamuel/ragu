@@ -4,9 +4,10 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
-use udon::curve::Affine;
-use udon::curve::Projective;
-use udon::field::Field;
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 use super::Params;
 

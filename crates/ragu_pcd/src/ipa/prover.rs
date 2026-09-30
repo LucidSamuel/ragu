@@ -4,15 +4,16 @@
 
 use alloc::vec::Vec;
 
-use crate::multicore::parallelize;
 use ragu_core::Result;
 use rand::CryptoRng;
-use udon::curve::Affine;
-use udon::curve::Projective;
-use udon::field::Field;
-use udon::polynomial::evaluate_iter;
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+    polynomial::evaluate_iter,
+};
 
 use super::{Blind, IpaProof, IpaTranscript, Params};
+use crate::multicore::parallelize;
 
 /// Create a polynomial commitment opening proof for the polynomial defined
 /// by the coefficients `px`, the blinding factor `blind` used for the

@@ -7,10 +7,8 @@ use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, Registry},
 };
-use ragu_core::Cycle;
-use ragu_core::{Error, Result};
-use udon::curve::Affine;
-use udon::field::Field;
+use ragu_core::{Cycle, Error, Result};
+use udon::{curve::Affine, field::Field};
 
 use super::{
     Openings, Reduction,

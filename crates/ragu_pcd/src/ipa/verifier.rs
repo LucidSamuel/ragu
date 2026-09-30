@@ -5,9 +5,10 @@
 use alloc::{vec, vec::Vec};
 
 use ragu_core::{Error, Result};
-use udon::curve::Affine;
-use udon::curve::Projective;
-use udon::field::Field;
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 use super::{IpaProof, IpaTranscript, MSM, Params};
 

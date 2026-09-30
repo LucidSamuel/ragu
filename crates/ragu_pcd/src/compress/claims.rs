@@ -24,8 +24,7 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::Cycle;
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use udon::field::Field;
 
 use crate::{

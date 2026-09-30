@@ -43,8 +43,7 @@
 //! openings it carries are evaluations of the witness polynomials.
 
 use ragu_circuits::polynomials::Rank;
-use ragu_core::Cycle;
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use udon::curve::Affine;
 
 use self::{

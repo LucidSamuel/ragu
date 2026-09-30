@@ -19,10 +19,9 @@ macro_rules! par_join {
     }};
 }
 
-pub(crate) use par_join;
-
 #[cfg(feature = "multicore")]
 use maybe_rayon::current_num_threads;
+pub(crate) use par_join;
 
 /// One thread, as a build without `multicore` runs.
 #[cfg(not(feature = "multicore"))]

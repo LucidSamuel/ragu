@@ -10,12 +10,12 @@ use ragu_circuits::{
     registry::CircuitIndex,
     staging::{StageReader, stage_wire_indices, wires_of},
 };
-use ragu_core::pasta::{Fp, Fq, Pasta};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    pasta::{Fp, Fq, Pasta},
 };
 use ragu_primitives::{
     Element,

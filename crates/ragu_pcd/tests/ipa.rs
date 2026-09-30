@@ -405,8 +405,7 @@ ipa_tests!(
 /// side's next challenge, and vice versa.
 #[test]
 fn sides_share_one_transcript() {
-    use ragu_core::Cycle;
-    use ragu_core::FixedGenerators;
+    use ragu_core::{Cycle, FixedGenerators};
 
     use crate::ipa::IpaTranscript;
 

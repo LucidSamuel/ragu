@@ -8,8 +8,7 @@
 use alloc::vec::Vec;
 
 use ragu_core::{Cycle, FixedGenerators};
-use udon::curve::Affine;
-use udon::field::Field;
+use udon::{curve::Affine, field::Field};
 
 mod msm;
 mod prover;

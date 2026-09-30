@@ -3,8 +3,7 @@
 use alloc::vec::Vec;
 
 use ragu_core::{Error, Result};
-use udon::curve::Affine;
-use udon::field::Field;
+use udon::{curve::Affine, field::Field};
 
 use super::{Batch, Batched};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};

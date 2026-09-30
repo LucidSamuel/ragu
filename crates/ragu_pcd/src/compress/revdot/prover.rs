@@ -7,12 +7,8 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::Registry,
 };
-use ragu_core::Cycle;
-use ragu_core::FixedGenerators;
-use ragu_core::Result;
-use udon::curve::Affine;
-use udon::field::Field;
-use udon::polynomial::evaluate_iter;
+use ragu_core::{Cycle, FixedGenerators, Result};
+use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 
 use super::{
     Reduction, Witness,

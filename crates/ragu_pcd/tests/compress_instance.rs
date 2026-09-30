@@ -6,8 +6,10 @@
 
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
-use ragu_core::Cycle;
-use ragu_core::pasta::{Fp, Fq, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Fq, Pasta},
+};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use udon::field::Field;
 

@@ -11,16 +11,13 @@
 //! curve are the raw squeeze, and challenges for the nested curve are its
 //! lifts, as in the fuse.
 
-use ragu_core::Cycle;
-use ragu_core::FixedGenerators;
 use ragu_core::{
-    Result,
+    Cycle, FixedGenerators, Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Element, GadgetExt, Point};
-use udon::curve::Affine;
-use udon::curve::Projective;
+use udon::curve::{Affine, Projective};
 
 use crate::internal::{nested, transcript::Transcript};
 

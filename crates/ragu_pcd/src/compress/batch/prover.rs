@@ -3,11 +3,8 @@
 use alloc::{borrow::Cow, vec::Vec};
 
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::FixedGenerators;
-use ragu_core::Result;
-use udon::curve::Affine;
-use udon::field::Field;
-use udon::polynomial::divide_linear_rev;
+use ragu_core::{FixedGenerators, Result};
+use udon::{curve::Affine, field::Field, polynomial::divide_linear_rev};
 
 use super::{Batch, Witness};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};

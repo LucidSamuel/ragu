@@ -22,8 +22,7 @@ use alloc::{borrow::Cow, vec::Vec};
 
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Error, Result};
-use udon::curve::Affine;
-use udon::field::Field;
+use udon::{curve::Affine, field::Field};
 
 use self::fold::{Derived, Fold};
 use crate::internal::{native, nested};

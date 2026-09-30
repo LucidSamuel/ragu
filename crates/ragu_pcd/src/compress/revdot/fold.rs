@@ -37,8 +37,7 @@ use alloc::{vec, vec::Vec};
 
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::Result;
-use udon::curve::Affine;
-use udon::field::Field;
+use udon::{curve::Affine, field::Field};
 
 use crate::{
     compress::claims::{Kind, Shape},

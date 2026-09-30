@@ -1,10 +1,8 @@
 //! The verifier's side of the compression: [`Application::verify_compressed`].
 
 use ragu_circuits::polynomials::Rank;
-use ragu_core::FixedGenerators;
-use ragu_core::{Error, Result};
-use udon::curve::Affine;
-use udon::field::Field;
+use ragu_core::{Error, FixedGenerators, Result};
+use udon::{curve::Affine, field::Field};
 
 use super::{
     CompressedPcd, Sampled,

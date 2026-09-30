@@ -21,12 +21,9 @@ use ragu_circuits::{
     registry::{CircuitIndex, Registry},
     staging::{StageExt, StageReader, stage_wire_indices, wire_degree, wires_of},
 };
-use ragu_core::Cycle;
-use ragu_core::{Error, Result};
+use ragu_core::{Cycle, Error, Result};
 use ragu_primitives::extract_endoscalar;
-use udon::curve::Affine;
-use udon::fft::bit_reverse;
-use udon::field::Field;
+use udon::{curve::Affine, fft::bit_reverse, field::Field};
 
 use super::{
     claims::Masked,
