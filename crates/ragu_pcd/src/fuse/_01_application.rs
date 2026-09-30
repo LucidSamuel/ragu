@@ -4,9 +4,9 @@
 //! the step witness. This sets the application fields on the [`ProofBuilder`]
 //! and returns the child proofs along with the output data from the step circuit.
 
-use ragu_arithmetic::{Cycle, rand::CryptoRng};
 use ragu_circuits::{CircuitExt, polynomials::Rank};
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
+use rand::CryptoRng;
 
 use crate::{
     Application, Header, Pcd, Proof,

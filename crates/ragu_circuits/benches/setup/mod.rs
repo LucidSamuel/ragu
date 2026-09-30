@@ -1,11 +1,11 @@
-use ff::Field;
 use ragu_circuits::{
     polynomials::{ProductionRank, TestRank, sparse},
     registry::{Registry, RegistryBuilder},
 };
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 pub trait SetupRng<Out> {
     fn setup(self, rng: &mut StdRng) -> Out;
@@ -50,7 +50,7 @@ pub fn setup_with_rng<T, Fns: SetupRng<S>, S>(other: T, fns: Fns) -> (T, S) {
 }
 
 pub fn f<F: Field>(rng: &mut StdRng) -> F {
-    F::random(rng)
+    F::random(|bytes| rng.fill_bytes(bytes))
 }
 
 pub fn rand_sparse_poly(rng: &mut StdRng) -> sparse::Polynomial<Fp, ProductionRank> {

@@ -1,5 +1,6 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Element, NonzeroBank};
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
@@ -26,7 +27,7 @@ impl<const K: usize> CircuitInstance for NonzeroBankScopeInstance<K> {
         // lemma circuit: every fold mul gate + the final discharge. The Lean
         // reimpl spec is that every input factor is nonzero — i.e., the
         // multiplicative-integrality lemma at this `K`.
-        let element_template = Element::constant(dr, Fp::zero());
+        let element_template = Element::constant(dr, Fp::ZERO);
 
         let mut factors = Vec::with_capacity(K);
         for _ in 0..K {

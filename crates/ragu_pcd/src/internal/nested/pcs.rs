@@ -12,10 +12,10 @@
 //!
 //! [`compute_v`]: super::circuits::compute_v
 
-use ragu_arithmetic::{Cycle, ff::PrimeField};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use ragu_primitives::vec::ConstLen;
+use udon::field::Field;
 
 use super::{InternalCircuitIndex, RxComponent, RxIndex, challenge};
 use crate::Proof;
@@ -124,7 +124,7 @@ pub struct ChildChallenges<F> {
     pub u: F,
 }
 
-impl<F: PrimeField> ChildChallenges<F> {
+impl<F: Field> ChildChallenges<F> {
     /// Derives a child's nested $x$, $y$ and $u$ (see [`challenge`]).
     pub fn of<C: Cycle<ScalarField = F>, R: Rank>(proof: &Proof<C, R>) -> Result<Self> {
         Ok(Self {

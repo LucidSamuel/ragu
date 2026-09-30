@@ -10,17 +10,18 @@
 //! terms and its layer-1 folded claim values ride inside the `outer_error`
 //! bridge stage, so they are committed before $\mu'$ and $\nu'$ are squeezed.
 
-use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging::{Stage as StageTrait, StageExt},
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, emulator::Emulator},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, vec::FixedVec};
+use rand::CryptoRng;
+use udon::field::Field;
 
 use super::{
     NestedFuseEmulator,
@@ -210,7 +211,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     ) -> Result<()> {
         let rx =
             native::stages::outer_error::Stage::<C, R, HEADER_SIZE, native::RevdotParameters>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 native_outer_error_witness,
             )?;
 
@@ -337,7 +338,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             collapsed,
         };
         let bridge_rx = nested::stages::outer_error::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::random(&mut *rng),
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
             &bridge,
         )?;
         let bridge_commitment =

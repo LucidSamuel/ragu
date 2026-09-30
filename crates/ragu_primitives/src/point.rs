@@ -6,13 +6,13 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Coeff, CurveAffine, ff::WithSmallOrderMulGroup};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::Gadget,
     maybe::Maybe,
 };
+use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 use crate::{
     Boolean, Element, Nonzero, NonzeroBank, comparison::GadgetEquals, consistent::Consistent,
@@ -31,7 +31,7 @@ use crate::{
 ///
 /// As a result, the $x$ and $y$ coordinates are nonzero for every affine point.
 #[derive(Gadget, Write, GadgetEquals)]
-pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Point<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     x: Nonzero<'dr, D>,
     #[ragu(gadget)]
@@ -40,7 +40,7 @@ pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     _marker: PhantomData<C>,
 }
 
-impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
+impl<'dr, D: Driver<'dr, F = C::Base>, C: Affine> Point<'dr, D, C> {
     /// Creates a new `Point` from the given coordinates without enforcing that
     /// the provided $x, y$ satisfy the curve equation.
     ///
@@ -75,20 +75,20 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     /// Returns a witness-generation error if witness input is the identity.
     pub fn alloc(dr: &mut D, p: DriverValue<D, C>) -> Result<Self> {
         let coordinates = D::try_just(|| {
-            let coordinates = p.take().coordinates().into_option();
+            let coordinates = p.take().coordinates();
             coordinates.ok_or_else(|| {
                 Error::InvalidWitness("point at infinity cannot be witnessed".into())
             })
         })?;
 
-        let (x, x2) = Element::alloc_square(dr, coordinates.as_ref().map(|p| *p.x()))?;
+        let (x, x2) = Element::alloc_square(dr, coordinates.as_ref().map(|(x, _)| *x))?;
         let x3 = x.mul(dr, &x2)?;
-        let (y, y2) = Element::alloc_square(dr, coordinates.as_ref().map(|p| *p.y()))?;
+        let (y, y2) = Element::alloc_square(dr, coordinates.as_ref().map(|(_, y)| *y))?;
 
         // Enforce x³ + b - y² = 0
         dr.enforce_zero(|lc| {
             lc.add(x3.wire())
-                .add_term(&D::ONE, Coeff::Arbitrary(C::b()))
+                .add_term(&D::ONE, Coeff::Arbitrary(C::B))
                 .sub(y2.wire())
         })?;
 
@@ -104,9 +104,9 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     ///
     /// Returns an input error if `p` is the identity.
     pub fn constant(dr: &mut D, p: C) -> Result<Self> {
-        if let Some(coordinates) = p.coordinates().into_option() {
-            let x = Element::constant(dr, *coordinates.x());
-            let y = Element::constant(dr, *coordinates.y());
+        if let Some(coordinates) = p.coordinates() {
+            let x = Element::constant(dr, coordinates.0);
+            let y = Element::constant(dr, coordinates.1);
 
             Ok(Point::new_unchecked(
                 Nonzero::new_unchecked(x),
@@ -311,7 +311,7 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Point<'dr, D, C> {
     }
 }
 
-impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Consistent<'dr, D> for Point<'dr, D, C> {
+impl<'dr, D: Driver<'dr, F = C::Base>, C: Affine> Consistent<'dr, D> for Point<'dr, D, C> {
     fn enforce_consistent(&self, dr: &mut D) -> Result<()> {
         Self::alloc(dr, self.value())?.enforce_conservative_equal(dr, self)
     }
@@ -321,15 +321,12 @@ impl<'dr, D: Driver<'dr, F = C::Base>, C: CurveAffine> Consistent<'dr, D> for Po
 mod tests {
     use alloc::{vec, vec::Vec};
 
-    use ragu_arithmetic::{
-        CurveExt,
-        group::{CurveAffine as _, Group},
-    };
+    use udon::curve::{Affine, EndomorphismProjective, Projective};
 
     use super::*;
 
-    type F = ragu_pasta::Fp;
-    type C = ragu_pasta::EpAffine;
+    type F = ragu_core::pasta::Fp;
+    type C = ragu_core::pasta::EpAffine;
     type Simulator = crate::Simulator<F>;
 
     #[test]
@@ -356,8 +353,8 @@ mod tests {
                 dr.reset();
                 let q = p.double(dr)?;
                 assert_eq!(
-                    point.take().to_curve().double(),
-                    C::from_xy(*q.x.value().take(), *q.y.value().take())
+                    point.take().to_projective().double(),
+                    <C as Affine>::from_xy(*q.x.value().take(), *q.y.value().take())
                         .unwrap()
                         .into()
                 );
@@ -381,11 +378,11 @@ mod tests {
         let points = vec![
             generator,
             -generator,
-            generator.to_curve().endo().into(),
-            (-generator.to_curve().endo()).into(),
-            generator.to_curve().double().into(),
-            (-generator.to_curve().double()).into(),
-            generator.to_curve().double().endo().into(),
+            generator.to_projective().endomorphism().into(),
+            (-generator.to_projective().endomorphism()).into(),
+            generator.to_projective().double().into(),
+            (-generator.to_projective().double()).into(),
+            generator.to_projective().double().endomorphism().into(),
         ];
 
         for p in &points {
@@ -397,14 +394,17 @@ mod tests {
                     dr.reset();
                     let mut bank = NonzeroBank::new_unchecked();
                     let r_gadget = p_gadget.add_incomplete(dr, &q_gadget, &mut bank)?;
-                    let expected = p.take().to_curve() + q.take().to_curve();
-                    let expected_affine =
-                        C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
+                    let expected = p.take().to_projective() + q.take().to_projective();
+                    let expected_affine = <C as Affine>::from_xy(
+                        *r_gadget.x.value().take(),
+                        *r_gadget.y.value().take(),
+                    )
+                    .unwrap();
                     assert_eq!(expected_affine, expected.into());
                     Ok(())
                 });
 
-                if p.coordinates().unwrap().x() == q.coordinates().unwrap().x() {
+                if p.coordinates().unwrap().0 == q.coordinates().unwrap().0 {
                     assert!(sim.is_err());
                 } else {
                     let sim = sim?;
@@ -423,13 +423,13 @@ mod tests {
 
         let points: Vec<C> = vec![
             generator,
-            generator.to_curve().double().into(),
+            generator.to_projective().double().into(),
             -generator,
-            (-generator.to_curve().double()).into(),
-            (-generator.to_curve().double().double()).into(),
+            (-generator.to_projective().double()).into(),
+            (-generator.to_projective().double().double()).into(),
             generator,
-            generator.to_curve().endo().into(),
-            (-generator.to_curve().endo()).into(),
+            generator.to_projective().endomorphism().into(),
+            (-generator.to_projective().endomorphism()).into(),
         ];
 
         for p in &points {
@@ -441,15 +441,18 @@ mod tests {
                     dr.reset();
                     let mut bank = NonzeroBank::new_unchecked();
                     let r_gadget = p_gadget.double_and_add_incomplete(dr, &q_gadget, &mut bank)?;
-                    let expected = p.take().to_curve().double() + q.take().to_curve();
-                    let expected_affine =
-                        C::from_xy(*r_gadget.x.value().take(), *r_gadget.y.value().take()).unwrap();
+                    let expected = p.take().to_projective().double() + q.take().to_projective();
+                    let expected_affine = <C as Affine>::from_xy(
+                        *r_gadget.x.value().take(),
+                        *r_gadget.y.value().take(),
+                    )
+                    .unwrap();
                     assert_eq!(expected_affine, expected.into());
                     Ok(())
                 });
 
-                if p.coordinates().unwrap().x() == q.coordinates().unwrap().x()
-                    || (p.to_curve().double() + q.to_curve()).is_identity().into()
+                if p.coordinates().unwrap().0 == q.coordinates().unwrap().0
+                    || (p.to_projective().double() + q.to_projective()).is_identity()
                 {
                     assert!(sim.is_err());
                 } else {

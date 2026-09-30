@@ -5,14 +5,13 @@
 use alloc::{format, vec, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::Coeff;
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
+    pasta::Fp,
     routines::{Prediction, Routine},
 };
-use ragu_pasta::Fp;
 use ragu_primitives::allocator::Allocator;
 
 use crate::{Circuit, WithAux, polynomials::TestRank};

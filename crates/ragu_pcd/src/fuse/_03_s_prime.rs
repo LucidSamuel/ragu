@@ -9,9 +9,10 @@
 //! endoscaling walk reads them from, whose commitment the `s_prime` bridge
 //! carries, so they are fixed before $y$ is squeezed.
 
-use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{polynomials::Rank, registry::RegistryAt, staging::StageExt};
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
+use rand::CryptoRng;
+use udon::{curve::Affine, field::Field};
 
 use super::{NativeSPrime, NestedSPrime};
 use crate::{Application, Proof, internal::nested, proof::ProofBuilder};
@@ -47,7 +48,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let bridge_rx = nested::stages::s_prime::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::random(&mut *rng),
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
             &nested::stages::s_prime::Witness {
                 registry_wx0: native.registry_wx0_commitment,
                 registry_wx1: native.registry_wx1_commitment,
@@ -72,11 +73,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let registry_wx0_poly = B::registry_at_x(native_registry, x0);
         let registry_wx1_poly = B::registry_at_x(native_registry, x1);
         let host_gen = C::host_generators(self.params);
-        let [registry_wx0_commitment, registry_wx1_commitment] =
-            ragu_arithmetic::batch_to_affine([
+        let mut commitments = [<C::HostCurve as Affine>::identity(); 2];
+        <C::HostCurve as Affine>::batch_to_affine(
+            &[
                 B::sparse_commit(&registry_wx0_poly, host_gen),
                 B::sparse_commit(&registry_wx1_poly, host_gen),
-            ]);
+            ],
+            &mut commitments,
+        );
+        let [registry_wx0_commitment, registry_wx1_commitment] = commitments;
 
         Ok(NativeSPrime {
             registry_wx0_poly,
@@ -98,11 +103,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let registry_wx0_poly = B::registry_at_x(nested_registry, x0);
         let registry_wx1_poly = B::registry_at_x(nested_registry, x1);
         let nested_gen = C::nested_generators(self.params);
-        let [registry_wx0_commitment, registry_wx1_commitment] =
-            ragu_arithmetic::batch_to_affine([
+        let mut commitments = [<C::NestedCurve as Affine>::identity(); 2];
+        <C::NestedCurve as Affine>::batch_to_affine(
+            &[
                 B::sparse_commit(&registry_wx0_poly, nested_gen),
                 B::sparse_commit(&registry_wx1_poly, nested_gen),
-            ]);
+            ],
+            &mut commitments,
+        );
+        let [registry_wx0_commitment, registry_wx1_commitment] = commitments;
 
         Ok(NestedSPrime {
             registry_wx0_poly,

@@ -1,8 +1,10 @@
 //! Shared proof constructors with nontrivial application headers.
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial::{Hash2, InternalNode, LeafNode, Merge2, WitnessLeaf};
 use rand::{SeedableRng, rngs::StdRng};
@@ -12,7 +14,7 @@ pub(super) type R = ProductionRank;
 pub(super) const HEADER_SIZE: usize = 4;
 
 pub(super) fn app() -> Application<'static, C, R, HEADER_SIZE> {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon = Pasta::circuit_poseidon(pasta);
     ApplicationBuilder::<C, R, HEADER_SIZE>::new()
         .register(WitnessLeaf {
@@ -40,7 +42,7 @@ pub(super) fn leaf(
     app.seed(
         rng,
         WitnessLeaf {
-            poseidon_params: Pasta::circuit_poseidon(Pasta::baked()),
+            poseidon_params: Pasta::circuit_poseidon(ragu_pcd::pasta::baked()),
         },
         Fp::from(witness),
     )
@@ -49,7 +51,7 @@ pub(super) fn leaf(
 }
 
 pub(super) fn deep(app: &Application<'_, C, R, HEADER_SIZE>) -> Pcd<C, R, InternalNode> {
-    let poseidon = Pasta::circuit_poseidon(Pasta::baked());
+    let poseidon = Pasta::circuit_poseidon(ragu_pcd::pasta::baked());
     let node = |rng: &mut StdRng, l: u64, r: u64| {
         let (left, right) = (leaf(app, rng, l), leaf(app, rng, r));
         app.fuse(

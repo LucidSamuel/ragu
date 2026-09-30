@@ -1,4 +1,4 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 
 use crate::{
     instance::{CircuitInstance, InstanceDriver, WireCollector},

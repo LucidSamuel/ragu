@@ -1,7 +1,9 @@
-use ff::{Field, PrimeField};
-use ragu_arithmetic::PoseidonPermutation;
-use ragu_pasta::{Fp, Fq, PoseidonFp, PoseidonFq};
+use ragu_core::{
+    PoseidonPermutation,
+    pasta::{Fp, Fq, PoseidonFp, PoseidonFq},
+};
 use ragu_primitives::{Element, poseidon::Sponge};
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
@@ -170,7 +172,7 @@ impl CircuitInstance for PoseidonInterleavedInstanceFp {
 /// a short tail).
 fn sponge_blocks<
     'dr,
-    F: PrimeField,
+    F: Field,
     D: InstanceDriver<'dr, F = F>,
     P: PoseidonPermutation<F>,
     const N: usize,
@@ -207,7 +209,7 @@ fn sponge_blocks<
 /// fresh sponge and squeezes one element.
 fn sponge_absorb_n<
     'dr,
-    F: PrimeField,
+    F: Field,
     D: InstanceDriver<'dr, F = F>,
     P: PoseidonPermutation<F>,
     const N: usize,

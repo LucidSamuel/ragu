@@ -1,15 +1,17 @@
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{polynomials::ProductionRank, registry::Tag};
-use ragu_core::Result;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle, Result,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::{Application, ApplicationBuilder, RegistryTags};
 use ragu_testing::pcd::nontrivial::{Hash2, WitnessLeaf};
 use rand::{SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 fn application(
     tags: RegistryTags<Pasta>,
 ) -> Result<Application<'static, Pasta, ProductionRank, 4>> {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(WitnessLeaf {
             poseidon_params: Pasta::circuit_poseidon(pasta),
@@ -26,7 +28,7 @@ fn beacon_tags_support_recursive_proofs() -> Result<()> {
     let tags = || RegistryTags::<Pasta>::from_beacon(&[0x42; 32], &[0x24; 20]);
     let app = application(tags())?;
     let mut rng = StdRng::seed_from_u64(1234);
-    let poseidon_params = Pasta::circuit_poseidon(Pasta::baked());
+    let poseidon_params = Pasta::circuit_poseidon(ragu_pcd::pasta::baked());
     let (leaf, _) = app.seed(&mut rng, WitnessLeaf { poseidon_params }, Fp::from(42))?;
     let (node, _) = app.fuse(&mut rng, Hash2 { poseidon_params }, (), leaf.clone(), leaf)?;
     let proof = app.rerandomize(node, &mut rng)?;

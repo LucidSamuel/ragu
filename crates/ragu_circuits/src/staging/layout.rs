@@ -12,9 +12,8 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     convert::WireMap,
     drivers::{
         Driver, DriverTypes,
@@ -23,6 +22,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
     maybe::Empty,
 };
+use udon::field::Field;
 
 use super::Stage;
 use crate::polynomials::{Rank, sparse};

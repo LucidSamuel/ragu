@@ -1,6 +1,7 @@
 use ragu_circuits::horner::Horner;
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Element, io::Buffer};
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
@@ -76,7 +77,7 @@ impl CircuitInstance for HornerKyInstanceN3 {
 fn horner_at_length<'dr, D: InstanceDriver<'dr, F = Fp>, const N: usize, const KY: bool>(
     dr: &mut D,
 ) -> ragu_core::Result<Vec<D::Wire>> {
-    let element_template = Element::constant(dr, Fp::zero());
+    let element_template = Element::constant(dr, Fp::ZERO);
 
     let mut coefficients = Vec::with_capacity(N);
     for _ in 0..N {

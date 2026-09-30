@@ -56,7 +56,7 @@ To confirm that a chain of element multiplications fits inside `R<7>`
 (32 gates) before committing to a rank:
 
 ```rust,ignore
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Element, Simulator, allocator::Standard};
 
 let sim = Simulator::simulate((Fp::from(2u64), Fp::from(3u64)), |dr, witness| {

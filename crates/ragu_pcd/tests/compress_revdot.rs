@@ -3,14 +3,17 @@
 //! satisfies over the commitments the verifier derives, and a tampered
 //! message is rejected.
 
-use ragu_arithmetic::{
-    CurveAffine, Cycle, FixedGenerators, eval,
-    ff::{Field, PrimeField},
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::{ProductionRank, sparse};
-use ragu_pasta::{EqAffine, Fp, Fq, Pasta};
+use ragu_core::Cycle;
+use ragu_core::FixedGenerators;
+use ragu_core::pasta::{Fp, Fq, Pasta};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::curve::Affine;
+use udon::field::Field;
+use udon::polynomial::evaluate_iter;
+
+type EqAffine = <Pasta as Cycle>::HostCurve;
 
 use super::{
     Openings, Reduction, Witness,
@@ -32,12 +35,12 @@ const TAG: &[u8] = b"ragu-test-revdot";
 
 fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .expect("failed to create test application")
 }
 
 fn transcript() -> CycleTranscript<'static, Pasta> {
-    CycleTranscript::new(Pasta::baked(), TAG).unwrap()
+    CycleTranscript::new(crate::pasta::baked(), TAG).unwrap()
 }
 
 /// The openings of an honest reduction hold against the prover's witness:
@@ -51,8 +54,8 @@ fn check_openings<F, C>(
     generators: &impl FixedGenerators<C>,
     z: F,
 ) where
-    F: PrimeField,
-    C: CurveAffine<ScalarExt = F>,
+    F: Field,
+    C: Affine<Scalar = F>,
 {
     let claims = &openings.claims;
     let derived = Derived::ALL.len();
@@ -89,9 +92,12 @@ fn check_openings<F, C>(
         unreachable!()
     };
     assert_eq!(at_inverse_r.poly, p);
-    assert_eq!(at_inverse_r.value, eval(&witness.p, r.invert().unwrap()));
+    assert_eq!(
+        at_inverse_r.value,
+        evaluate_iter(&witness.p, r.invert().unwrap())
+    );
     assert_eq!(q_at_r.poly, q);
-    assert_eq!(q_at_r.value, eval(&witness.q, r));
+    assert_eq!(q_at_r.value, evaluate_iter(&witness.q, r));
     assert_eq!(at_zero.poly, p);
     assert_eq!(at_zero.point, F::ZERO);
     assert_eq!(at_zero.value, witness.p[0], "p(0) is the combined target");
@@ -115,7 +121,10 @@ struct NativeRound {
 
 fn native_round(app: &Application<'static, Pasta, TestR, HEADER_SIZE>, seed: u64) -> NativeRound {
     let mut rng = StdRng::seed_from_u64(seed);
-    let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
+    let (y, z) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+    );
     let pcd = app.bootstrap_pcd();
     let targets = native_targets(&pcd, y);
     let proof = pcd.into_parts().0;
@@ -123,7 +132,7 @@ fn native_round(app: &Application<'static, Pasta, TestR, HEADER_SIZE>, seed: u64
     let (reduction, witness) = reduce_native::<Pasta, TestR, ReferenceBackend, _>(
         &proof,
         &app.native_registry,
-        Pasta::host_generators(Pasta::baked()),
+        Pasta::host_generators(crate::pasta::baked()),
         y,
         z,
         &[],
@@ -166,7 +175,7 @@ fn native_reduction_verifies() {
     let round = native_round(&app, 1);
     let openings =
         verify_native_round(&app, &round, &round.reduction).expect("the honest reduction holds");
-    let generators = Pasta::host_generators(Pasta::baked());
+    let generators = Pasta::host_generators(crate::pasta::baked());
     check_openings(
         &openings,
         &round.reduction,
@@ -230,8 +239,11 @@ fn nested_reduction_verifies() {
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(3);
-    let (y, z) = (Fq::random(&mut rng), Fq::random(&mut rng));
-    let generators = Pasta::nested_generators(Pasta::baked());
+    let (y, z) = (
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
+    let generators = Pasta::nested_generators(crate::pasta::baked());
 
     let mut t = transcript();
     let (reduction, witness) = reduce_nested::<Pasta, TestR, ReferenceBackend, _>(

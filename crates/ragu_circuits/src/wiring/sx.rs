@@ -76,14 +76,14 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::Bound,
     maybe::Empty,
     routines::Routine,
 };
+use udon::field::Field;
 
 use crate::{
     DriverScope,
@@ -276,8 +276,8 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
-        let x_pow = self.x.pow_vartime([seg.gate_start as u64]);
-        let x_inv_pow = self.x_inv.pow_vartime([seg.gate_start as u64]);
+        let x_pow = self.x.pow_u64(seg.gate_start as u64);
+        let x_inv_pow = self.x_inv.pow_u64(seg.gate_start as u64);
         let init_scope = SxScope {
             current_a_x: self.base_a_x * x_pow,
             current_b_x: self.base_b_x * x_inv_pow,
@@ -332,13 +332,13 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     } else {
         x.invert().expect("x is not zero")
     };
-    let xn = x.pow_vartime([R::n() as u64]);
+    let xn = x.pow_u64(R::n() as u64);
     let xn2 = xn.square();
     let base_a_x = xn2;
     let base_b_x = xn2 * x_inv;
     let xn4 = xn2.square();
     let base_c_x = xn4 * x_inv;
-    let xn_inv = x_inv.pow_vartime([R::n() as u64]);
+    let xn_inv = x_inv.pow_u64(R::n() as u64);
     let base_a_x_inv = xn_inv.square();
 
     let mut evaluator = Evaluator::<F, R> {

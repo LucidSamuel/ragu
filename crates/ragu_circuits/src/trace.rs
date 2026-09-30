@@ -9,9 +9,8 @@ use alloc::{vec, vec::Vec};
 #[cfg(feature = "multicore")]
 use std::sync::mpsc;
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     convert::{CloneWires, StripWires, WireMap},
     drivers::{Driver, DriverTypes, emulator::Emulator},
     gadgets::Bound,
@@ -19,6 +18,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_primitives::GadgetExt;
+use udon::field::Field;
 
 use super::{Circuit, DriverScope, Rank, floor_planner::ConstraintSegment, sparse};
 use crate::WithAux;
@@ -414,8 +414,7 @@ pub fn eval<'witness, F: Field, C: Circuit<F>>(
 
 #[cfg(test)]
 mod tests {
-    use ragu_core::gadgets::Kind;
-    use ragu_pasta::Fp;
+    use ragu_core::{gadgets::Kind, pasta::Fp};
     use ragu_primitives::{Element, allocator::Standard};
 
     use super::*;
@@ -442,7 +441,7 @@ mod tests {
         element: Element<'dr, D>,
     }
 
-    impl<F: ragu_arithmetic::ff::Field> ragu_primitives::io::Write<F> for Kind![F; @MulOnWrite<'_, _>] {
+    impl<F: Field> ragu_primitives::io::Write<F> for Kind![F; @MulOnWrite<'_, _>] {
         fn write_gadget<'dr, D: Driver<'dr, F = F>, B: ragu_primitives::io::Buffer<'dr, D>>(
             _this: &MulOnWrite<'dr, D>,
             dr: &mut D,

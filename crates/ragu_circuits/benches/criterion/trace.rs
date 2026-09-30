@@ -1,16 +1,16 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use ff::Field;
 use ragu_circuits::{Circuit, CircuitExt, WithAux};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    pasta::Fp,
     routines::{Prediction, Routine},
 };
-use ragu_pasta::Fp;
 use ragu_primitives::{Element, allocator::Standard};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 /// A synthetic routine that does `depth` squarings in `execute()` but
 /// predicts the output cheaply, exercising the `Known` parallel path.
@@ -100,7 +100,7 @@ impl Circuit<Fp> for HeavyRoutineCircuit {
 fn trace_bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("trace_heavy_known");
     let mut rng = StdRng::seed_from_u64(1234);
-    let witness = Fp::random(&mut rng);
+    let witness = Fp::random(|bytes| rng.fill_bytes(bytes));
 
     let depth = 1000;
     for calls in [1, 4, 8] {

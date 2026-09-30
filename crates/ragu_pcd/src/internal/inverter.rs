@@ -3,10 +3,10 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_arithmetic::ff::Field;
 use ragu_circuits::registry::CircuitIndex;
 use ragu_core::{Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::Element;
+use udon::field::Field;
 
 /// Batch inverter for computing denominators.
 ///
@@ -29,7 +29,7 @@ pub(crate) struct Inverter<'dr, D: Driver<'dr>> {
     differences: Vec<Element<'dr, D>>,
 }
 
-impl<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>> Inverter<'dr, D> {
+impl<'dr, D: Driver<'dr>> Inverter<'dr, D> {
     /// Creates a batch inverter with the provided base [`Element`].
     ///
     /// The base represents a fixed evaluation point (e.g., $u$ or $y$
@@ -95,10 +95,7 @@ impl<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>> Inverter<'dr, D> {
                 .collect::<Vec<_>>();
 
             let mut scratch = vec![D::F::ZERO; differences.len()];
-            ragu_arithmetic::ff::BatchInverter::invert_with_external_scratch(
-                &mut differences,
-                &mut scratch,
-            );
+            D::F::batch_invert(&mut differences, &mut scratch);
 
             differences.into_iter()
         });

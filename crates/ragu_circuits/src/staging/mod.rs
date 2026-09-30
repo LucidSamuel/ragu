@@ -65,6 +65,7 @@
 //!
 //! ```rust,ignore
 //! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
+//! use rand::Rng;
 //!
 //! let a = MyStage::rx(alpha, my_stage_witness)?;
 //!
@@ -74,7 +75,7 @@
 //!     .finalize()?;
 //! let mask_index = CircuitIndex::new(0);
 //!
-//! let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+//! let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 //! assert_eq!(a.revdot(&registry.circuit_y(mask_index, y)), Fp::ZERO);
 //! ```
 //!
@@ -83,12 +84,13 @@
 //!
 //! ```rust,ignore
 //! use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
+//! use rand::Rng;
 //!
 //! let a = MyStage::rx(alpha_a, my_stage_witness)?;
 //! let b = MyStage::rx(alpha_b, my_stage_witness)?;
 //!
 //! // Sample random challenge z after committing to `a` and `b`
-//! let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+//! let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 //!
 //! let mut combined = a.clone();
 //! combined.scale(z);
@@ -99,7 +101,7 @@
 //!     .finalize()?;
 //! let mask_index = CircuitIndex::new(0);
 //!
-//! let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+//! let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 //! assert_eq!(combined.revdot(&registry.circuit_y(mask_index, y)), Fp::ZERO);
 //! ```
 //!
@@ -158,9 +160,8 @@ use alloc::boxed::Box;
 
 pub use builder::{StageBuilder, StageGuard};
 pub use layout::{Indexed, StageReader, stage_wire_indices, wire_degree, wires_of};
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue, emulator::Emulator},
     gadgets::{Bound, GadgetKind},
     maybe::{Always, MaybeKind},
@@ -170,6 +171,7 @@ use ragu_primitives::{
     io::Write,
 };
 use rx_driver::RxDriver;
+use udon::field::Field;
 
 use crate::{
     BondingObject, Circuit, WithAux,

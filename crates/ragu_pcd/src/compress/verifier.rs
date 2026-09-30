@@ -1,8 +1,10 @@
 //! The verifier's side of the compression: [`Application::verify_compressed`].
 
-use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, ff::Field};
 use ragu_circuits::polynomials::Rank;
+use ragu_core::FixedGenerators;
 use ragu_core::{Error, Result};
+use udon::curve::Affine;
+use udon::field::Field;
 
 use super::{
     CompressedPcd, Sampled,
@@ -14,7 +16,7 @@ use crate::{
     Application, RAGU_TAG, SelectableBackend,
     header::Header,
     internal::ky,
-    ipa::{self, CycleTranscript, IpaProof, IpaTranscript, MSM, Params},
+    ipa::{self, CycleTranscript, IpaCycle, IpaProof, IpaTranscript, MSM, Params},
 };
 
 /// The backend whose kernels [`Application::verify_compressed`] consults for
@@ -23,15 +25,16 @@ type Verifier<B> = <B as SelectableBackend>::Verifier;
 
 /// Derives the batched claim of `openings` from `batch` and checks `opening`
 /// against it through the IPA, on one curve.
-fn check<P: CurveAffine, R: Rank, T: IpaTranscript<P>>(
+fn check<P: Affine, R: Rank, T: IpaTranscript<P>>(
     openings: &Openings<P>,
     batch: &Batch<P>,
     opening: &IpaProof<P>,
     generators: &impl FixedGenerators<P>,
+    u: P,
     transcript: &mut T,
 ) -> Result<bool> {
     let claim = batch::verify(&openings.commitments, &openings.claims, batch, transcript)?;
-    let params = Params::with_k(generators, R::RANK);
+    let params = Params::with_k(generators, u, R::RANK);
     let mut msm = MSM::new(&params);
     msm.append_term(P::Scalar::ONE, claim.commitment);
     Ok(
@@ -41,7 +44,7 @@ fn check<P: CurveAffine, R: Rank, T: IpaTranscript<P>>(
     )
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Verifies some [`CompressedPcd`] for the provided [`Header`].
@@ -54,8 +57,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
     /// the selected backend, as in [`verify`](Self::verify). The batch's
     /// commitment combination and the IPA's multiscalar multiplications do
-    /// not: they call [`ragu_arithmetic::msm`] directly, the reference kernel
-    /// every backend must agree with, so no backend can alter them either.
+    /// not: they call [`Affine::msm`] directly, Udon's kernel every backend
+    /// must agree with, so no backend can alter them either.
     pub fn verify_compressed<H: Header<C::CircuitField>>(
         &self,
         pcd: &CompressedPcd<C, H>,
@@ -148,6 +151,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &proof.native.batch,
                 &proof.native.opening,
                 C::host_generators(self.params),
+                *C::host_u(self.params),
                 &mut transcript.host(),
             ))
         };
@@ -185,6 +189,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 &proof.nested.batch,
                 &proof.nested.opening,
                 C::nested_generators(self.params),
+                *C::nested_u(self.params),
                 &mut transcript.nested(),
             ))
         };

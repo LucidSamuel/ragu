@@ -4,10 +4,9 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
@@ -82,7 +81,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, FP: fold_revdot::Parameters>
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Pasta;
+    use ragu_core::pasta::Pasta;
 
     use super::*;
     use crate::internal::{

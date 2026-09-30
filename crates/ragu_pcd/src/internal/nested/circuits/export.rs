@@ -29,7 +29,6 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
@@ -42,16 +41,17 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{Endoscalar, GadgetExt as _, allocator::Standard, consistent::Consistent};
+use udon::curve::EndomorphismAffine as Affine;
 
 use super::common;
 use crate::internal::nested::{stages, unified};
 
 /// Export circuit pinning the nested unified instance to the stages.
-pub struct Circuit<C: CurveAffine, R: Rank> {
+pub struct Circuit<C: Affine, R: Rank> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> Circuit<C, R> {
+impl<C: Affine, R: Rank> Circuit<C, R> {
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,
@@ -59,7 +59,7 @@ impl<C: CurveAffine, R: Rank> Circuit<C, R> {
     }
 }
 
-impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
+impl<C: Affine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
     type Last = stages::challenges::Stage<C, R>;
     type Instance<'source> = &'source unified::Instance<C>;
     type Witness<'source> = common::Witness<'source, C>;

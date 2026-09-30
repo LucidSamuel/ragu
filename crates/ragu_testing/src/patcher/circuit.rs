@@ -30,13 +30,13 @@
 //! each one. [`capture`] is the entry point for a plain circuit; on a staged
 //! one it fails closed.
 
-use ragu_arithmetic::ff::Field;
 use ragu_circuits::Circuit;
 use ragu_core::{
     Result,
     maybe::{Always, MaybeKind},
 };
 use ragu_primitives::{Element, GadgetExt};
+use udon::field::Field;
 
 use super::{Event, Playback, Recorder};
 
@@ -221,8 +221,8 @@ mod tests {
         drivers::{Driver, DriverValue},
         gadgets::{Bound, Kind},
         maybe::Maybe,
+        pasta::Fp,
     };
-    use ragu_pasta::Fp;
     use ragu_primitives::allocator::Standard;
 
     use super::*;
@@ -443,7 +443,7 @@ mod tests {
         values[1] = Fp::from(5u64);
         repair(&rec.events, &mut values, &free);
         assert!(constraints_hold(&rec.events, &values));
-        assert_eq!(values[cap.instance[0]], Fp::from(5u64).pow([8u64]));
+        assert_eq!(values[cap.instance[0]], Fp::from(5u64).pow_u64(8u64));
         assert!(playback(&circuit, Fp::from(3u64), values)?);
         Ok(())
     }
@@ -586,7 +586,14 @@ mod tests {
         }
     }
 
-    const STAGE: (Fp, Fp) = (Fp::from_raw([3, 0, 0, 0]), Fp::from_raw([5, 0, 0, 0]));
+    const STAGE: (Fp, Fp) = (
+        Fp::new(udon::fp_hex!(
+            "0x0000000000000000000000000000000000000000000000000000000000000003",
+        )),
+        Fp::new(udon::fp_hex!(
+            "0x0000000000000000000000000000000000000000000000000000000000000005",
+        )),
+    );
 
     /// The stage overlay makes a staged capture self-consistent: the raw
     /// recording reads zero on the stage wire the squared output depends on,

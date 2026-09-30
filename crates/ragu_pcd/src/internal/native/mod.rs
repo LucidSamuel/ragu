@@ -16,13 +16,12 @@
 //! points against the children's unified instances.
 
 pub use circuits::bind_challenges::NUM_BINDERS;
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
     staging::StageExt,
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use ragu_primitives::vec::ConstLen;
 
 use crate::{

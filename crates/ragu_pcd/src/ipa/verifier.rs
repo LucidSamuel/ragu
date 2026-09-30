@@ -4,19 +4,16 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_arithmetic::{
-    CurveAffine,
-    ff::{BatchInvert, Field},
-    group::Curve,
-    msm,
-};
 use ragu_core::{Error, Result};
+use udon::curve::Affine;
+use udon::curve::Projective;
+use udon::field::Field;
 
 use super::{IpaProof, IpaTranscript, MSM, Params};
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
-pub struct Guard<'a, C: CurveAffine> {
+pub struct Guard<'a, C: Affine> {
     msm: MSM<'a, C>,
     neg_c: C::Scalar,
     u: Vec<C::Scalar>,
@@ -24,7 +21,7 @@ pub struct Guard<'a, C: CurveAffine> {
 
 /// An accumulator instance consisting of an evaluation claim and a proof.
 #[derive(Debug, Clone)]
-pub struct Accumulator<C: CurveAffine> {
+pub struct Accumulator<C: Affine> {
     /// The claimed output of the linear-time polycommit opening protocol
     pub g: C,
 
@@ -33,7 +30,7 @@ pub struct Accumulator<C: CurveAffine> {
     pub u: Vec<C::Scalar>,
 }
 
-impl<'a, C: CurveAffine> Guard<'a, C> {
+impl<'a, C: Affine> Guard<'a, C> {
     /// Lets caller supply the challenges and obtain an MSM with updated
     /// scalars and points.
     pub fn use_challenges(mut self) -> MSM<'a, C> {
@@ -57,14 +54,14 @@ impl<'a, C: CurveAffine> Guard<'a, C> {
     pub fn compute_g(&self) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
 
-        msm(&s, &self.msm.params.g).to_affine()
+        C::msm(&s, &self.msm.params.g).to_affine()
     }
 }
 
 /// Checks to see if the `proof` is valid, and a point `x` that the polynomial
 /// commitment `P` opens purportedly to the value `v`. The provided `msm`
 /// should evaluate to the commitment `P` being opened.
-pub fn verify_proof<'a, C: CurveAffine, T: IpaTranscript<C>>(
+pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>>(
     params: &'a Params<C>,
     mut msm: MSM<'a, C>,
     transcript: &mut T,
@@ -100,10 +97,12 @@ pub fn verify_proof<'a, C: CurveAffine, T: IpaTranscript<C>>(
         rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
 
-    rounds
-        .iter_mut()
-        .map(|&mut (_, _, _, ref mut u_j)| u_j)
-        .batch_invert();
+    let mut inverses: Vec<_> = rounds.iter().map(|&(_, _, u_j, _)| u_j).collect();
+    let mut scratch = vec![C::Scalar::ZERO; inverses.len()];
+    C::Scalar::batch_invert(&mut inverses, &mut scratch);
+    for (round, inverse) in rounds.iter_mut().zip(inverses) {
+        round.3 = inverse;
+    }
 
     // This is the left-hand side of the verifier equation.
     // P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)

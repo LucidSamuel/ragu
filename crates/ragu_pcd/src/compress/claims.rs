@@ -20,12 +20,13 @@
 use alloc::{vec, vec::Vec};
 use core::iter::{empty, once};
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
+use ragu_core::Cycle;
 use ragu_core::Result;
+use udon::field::Field;
 
 use crate::{
     Proof,
@@ -83,7 +84,7 @@ impl<Id, F: Field> Masked<Id, F> {
     /// $E(r)$.
     pub(crate) fn expected_at(&self, r: F) -> F {
         self.wires.iter().fold(F::ZERO, |acc, &(degree, expected)| {
-            acc + expected * r.pow_vartime([degree as u64])
+            acc + expected * r.pow_u64(degree as u64)
         })
     }
 
@@ -91,7 +92,7 @@ impl<Id, F: Field> Masked<Id, F> {
     pub(crate) fn mask_at<R: Rank>(&self, r: F) -> F {
         let (mut acc, mut weight) = (F::ZERO, F::ONE);
         for &(degree, _) in &self.wires {
-            acc += weight * r.pow_vartime([(R::num_coeffs() - 1 - degree) as u64]);
+            acc += weight * r.pow_u64((R::num_coeffs() - 1 - degree) as u64);
             weight *= self.sigma;
         }
         acc

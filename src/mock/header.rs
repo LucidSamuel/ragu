@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 
-use ragu_pasta::{Ep, Eq, Fp, Fq};
+use ragu_core::pasta::{Ep, Eq, Fp, Fq};
 
 /// Number of internal header suffixes reserved by mock_ragu.
 ///

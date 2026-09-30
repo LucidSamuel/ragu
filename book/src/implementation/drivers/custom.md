@@ -122,12 +122,14 @@ if the default behavior is insufficient.
 ## A Constraint-Enforcing Driver: `Simulator`
 
 The [`Simulator`] shows how a driver can do real work. It assigns field
-values to wires, checks constraints, and counts gates.
+values to wires, checks constraints, and counts gates. Udon's `Field` lets
+`DirectSum` accumulate products before reducing them when `value()` consumes
+the linear expression.
 
 ### Associated Types
 
 ```rust
-impl<F: Field> DriverTypes for Simulator<F> {
+impl<F: udon::field::Field> DriverTypes for Simulator<F> {
     type ImplField = F;
     type ImplWire = F;
     type MaybeKind = Always<()>;

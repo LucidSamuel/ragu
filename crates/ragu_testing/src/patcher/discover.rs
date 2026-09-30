@@ -55,7 +55,7 @@
 //!   substrate by an exactness proptest there (discovery must equal the
 //!   substrate's own allocation list on anchorless programs).
 
-use ragu_arithmetic::ff::{Field, PrimeFieldBits};
+use udon::field::Field;
 
 use super::recorder::{Event, Recorder, deduce, deduce_by_cases};
 
@@ -142,11 +142,7 @@ pub fn allocation_waste<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<(usi
 /// The converse carries the usual solver caveat: a wire *is* forced when the
 /// bounded solver can reach it, so one pinned only through a coupled cluster
 /// wider than its cap is reported unforced even though it is determined.
-pub fn forced_by<F: PrimeFieldBits>(
-    events: &[Event<F>],
-    values: &[F],
-    inputs: &[usize],
-) -> Vec<usize> {
+pub fn forced_by<F: Field>(events: &[Event<F>], values: &[F], inputs: &[usize]) -> Vec<usize> {
     let mut scratch = values.to_vec();
     let mut known = vec![false; scratch.len()];
     known[Recorder::<F>::ONE] = true;
@@ -192,9 +188,11 @@ pub fn discover_free_advice<F: Field>(events: &[Event<F>], values: &[F]) -> Vec<
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::Coeff;
-    use ragu_core::drivers::{Driver, LinearExpression};
-    use ragu_pasta::Fp;
+    use ragu_core::{
+        Coeff,
+        drivers::{Driver, LinearExpression},
+        pasta::Fp,
+    };
     use ragu_primitives::{Boolean, Element};
 
     use super::*;

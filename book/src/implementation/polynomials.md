@@ -5,7 +5,7 @@ circuit descriptions, multiplying them via FFTs, and decomposing their
 products into forms the verifier can check. This chapter covers the
 wiring polynomial that encodes an arithmetic circuit, the synthesis
 process that builds it incrementally, and the low-level polynomial
-utilities in [`ragu_arithmetic`] that support these operations.
+utilities in [`udon`] that support these operations.
 
 ## Wiring Polynomials
 
@@ -63,7 +63,7 @@ $X^i Y^j$.
 ## Polynomial Arithmetic
 
 The synthesis machinery above relies on standard polynomial operations
-provided by the [`ragu_arithmetic`] crate. These operate on coefficient
+provided by the [`udon`] crate. These operate on coefficient
 vectors in ascending
 degree order: the slice $[c_0, c_1, \ldots, c_n]$ represents the
 polynomial
@@ -71,26 +71,16 @@ $c_0 + c_1 X + \cdots + c_n X^n$.
 
 ### Evaluation and Inner Products
 
-[`eval`] evaluates a polynomial at a point using Horner's method.
-[`dot`] computes the inner product $\langle \v{a}, \v{b} \rangle$ of
-two equal-length coefficient vectors. These helpers provide the scalar
-operations underlying polynomial evaluation and inner-product checks.
+[`evaluate_iter`] evaluates a polynomial at a point using Horner's method over
+any `Field`; [`evaluate`] is its Pasta slice counterpart. Generic inner
+products $\langle \v{a}, \v{b} \rangle$ use `Field::sum_of_products_slice`
+for equal-length slices and `Field::sum_of_product_pairs` for reversed or
+noncontiguous inputs; [`dot`] and [`dot_iter`] expose the same Pasta kernels
+directly. These helpers provide the scalar operations underlying polynomial
+evaluation and inner-product checks.
 
-### Polynomial Multiplication
-
-[`poly_mul`] computes the coefficient convolution of two polynomials,
-implemented using FFTs. Given polynomials $a(X)$ of degree $d_a$ and
-$b(X)$ of degree $d_b$, it produces $c(X) = a(X) \cdot b(X)$ of degree
-$d_a + d_b$. Internally, both inputs are zero-padded to a power-of-two
-length, transformed into evaluation form via [`Domain::fft`], multiplied
-pointwise, and transformed back via [`Domain::ifft`].
-
-The output is written into a caller-supplied `&mut Vec<F>` so that
-repeated multiplications can reuse a single allocation.
-
-[`ragu_arithmetic`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/
-[`eval`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.eval.html
-[`dot`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.dot.html
-[`poly_mul`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/fn.poly_mul.html
-[`Domain::fft`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/struct.Domain.html#method.fft
-[`Domain::ifft`]: https://docs.rs/ragu_arithmetic/latest/ragu_arithmetic/struct.Domain.html#method.ifft
+[`udon`]: https://docs.rs/crate/zakura-udon/0.1.0/source/
+[`evaluate`]: https://docs.rs/crate/zakura-udon/0.1.0/source/src/polynomial/evaluation.rs
+[`evaluate_iter`]: https://docs.rs/crate/zakura-udon/0.1.0/source/src/polynomial/evaluation.rs
+[`dot`]: https://docs.rs/crate/zakura-udon/0.1.0/source/src/field/pasta/products/mod.rs
+[`dot_iter`]: https://docs.rs/crate/zakura-udon/0.1.0/source/src/field/pasta/products/mod.rs

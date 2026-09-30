@@ -5,10 +5,9 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Cycle, ff::PrimeField};
 use ragu_circuits::{horner::Horner, polynomials::Rank, staging};
 use ragu_core::{
-    Error, Result,
+    Cycle, Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
@@ -259,10 +258,7 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
 /// `HEADER_SIZE` field elements the application circuit's instance carries.
 pub fn encode_output_header<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize>(
     header_data: DriverValue<D, H::Data>,
-) -> Result<DriverValue<D, FixedVec<D::F, ConstLen<HEADER_SIZE>>>>
-where
-    D::F: PrimeField,
-{
+) -> Result<DriverValue<D, FixedVec<D::F, ConstLen<HEADER_SIZE>>>> {
     D::try_just(|| {
         use ragu_core::drivers::emulator::{Emulator, Wireless};
         let emulator = &mut Emulator::<Wireless<D::MaybeKind, D::F>>::wireless();
@@ -357,7 +353,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Pasta;
+    use ragu_core::pasta::Pasta;
 
     use super::*;
     use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};

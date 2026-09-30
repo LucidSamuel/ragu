@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use ff::Field;
-use ragu_arithmetic::Coeff;
+use ragu_core::Coeff;
+use udon::field::Field;
 
 /// A symbolic expression over wire indices.
 ///

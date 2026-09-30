@@ -2,9 +2,12 @@
 
 use alloc::borrow::Cow;
 
-use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, ff::Field, rand::CryptoRng};
 use ragu_circuits::polynomials::{Rank, sparse};
+use ragu_core::FixedGenerators;
 use ragu_core::Result;
+use rand::CryptoRng;
+use udon::curve::Affine;
+use udon::field::Field;
 
 use super::{
     CompressedPcd, CompressedProof, Messages, Sampled,
@@ -17,21 +20,22 @@ use crate::{
     Application, Pcd, SelectableBackend,
     header::Header,
     internal::{ky, native, nested},
-    ipa::{self, Blind, IpaProof, IpaTranscript, Params},
+    ipa::{self, Blind, IpaCycle, IpaProof, IpaTranscript, Params},
 };
 
 /// Batches `openings` over `polys` and opens the batched claim through the
 /// IPA, on one curve. Returns the batch's messages and the IPA proof.
-fn open<P: CurveAffine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
+fn open<P: Affine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
     polys: &[Cow<'_, sparse::Polynomial<P::Scalar, R>>],
     openings: &Openings<P>,
     generators: &impl FixedGenerators<P>,
+    u: P,
     transcript: &mut T,
     rng: &mut RNG,
 ) -> Result<(Batch<P>, IpaProof<P>)> {
     let (batch, witness) =
         batch::batch::<_, R, _>(polys, &openings.claims, generators, transcript)?;
-    let params = Params::with_k(generators, R::RANK);
+    let params = Params::with_k(generators, u, R::RANK);
     let opening = ipa::create_proof(
         &params,
         rng,
@@ -49,7 +53,7 @@ fn open<P: CurveAffine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
     Ok((batch, opening))
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Compresses `pcd` into a [`CompressedPcd`] over the same data.
@@ -103,8 +107,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 ]
                 .map(Cow::Borrowed),
             );
-            let (batch, opening) =
-                open::<_, R, _, _>(&polys, &openings, generators, &mut transcript.host(), rng)?;
+            let u = *C::host_u(self.params);
+            let (batch, opening) = open::<_, R, _, _>(
+                &polys,
+                &openings,
+                generators,
+                u,
+                &mut transcript.host(),
+                rng,
+            )?;
             Messages {
                 reduction,
                 batch,
@@ -141,8 +152,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 ]
                 .map(Cow::Borrowed),
             );
-            let (batch, opening) =
-                open::<_, R, _, _>(&polys, &openings, generators, &mut transcript.nested(), rng)?;
+            let u = *C::nested_u(self.params);
+            let (batch, opening) = open::<_, R, _, _>(
+                &polys,
+                &openings,
+                generators,
+                u,
+                &mut transcript.nested(),
+                rng,
+            )?;
             Messages {
                 reduction,
                 batch,

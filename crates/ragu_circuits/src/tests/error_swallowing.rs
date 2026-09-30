@@ -12,16 +12,16 @@
 
 use alloc::format;
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    pasta::Fp,
     routines::{Prediction, Routine},
 };
-use ragu_pasta::Fp;
 use ragu_primitives::{Element, allocator::Standard};
+use udon::field::Field;
 
 use crate::{
     Circuit, CircuitExt, WithAux, floor_planner, into_wiring_object, polynomials::TestRank,

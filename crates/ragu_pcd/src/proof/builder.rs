@@ -9,14 +9,13 @@
 use alloc::{sync::Arc, vec::Vec};
 use core::{cell::OnceCell, marker::PhantomData};
 
-use ragu_arithmetic::Cycle;
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
     staging::StageExt,
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 
 use super::{Cached, Proof};
 use crate::internal::nested;

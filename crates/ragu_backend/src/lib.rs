@@ -11,15 +11,14 @@ extern crate alloc;
 use alloc::vec::Vec;
 use core::fmt::Debug;
 
-use ragu_arithmetic::{
-    CurveAffine, DeferredField, FixedGenerators,
-    ff::{Field, PrimeField},
-};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::{CircuitIndex, Registry, RegistryAt},
 };
+use ragu_core::FixedGenerators;
+use udon::{curve::Affine, field::Field};
 
+// TODO: Ragu's MSM and FFT don't use Udon's scratch-buffer APIs.
 /// A statically dispatched implementation of Ragu's computational operations.
 ///
 /// Every method has a correctness-first default. Implementations may override
@@ -48,7 +47,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`sparse::Polynomial::revdot`] exactly.
-    fn sparse_revdot<F: DeferredField, R: Rank>(
+    fn sparse_revdot<F: Field, R: Rank>(
         lhs: &sparse::Polynomial<F, R>,
         rhs: &sparse::Polynomial<F, R>,
     ) -> F {
@@ -64,10 +63,10 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`sparse::Polynomial::commit`] exactly.
-    fn sparse_commit<F: Field, C: CurveAffine<ScalarExt = F>, R: Rank, G: FixedGenerators<C>>(
+    fn sparse_commit<F: Field, C: Affine<Scalar = F>, R: Rank, G: FixedGenerators<C>>(
         poly: &sparse::Polynomial<F, R>,
         generators: &G,
-    ) -> C::Curve {
+    ) -> C::Projective {
         assert!(generators.g().len() >= R::num_coeffs());
         let bases = generators.g();
 
@@ -83,12 +82,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`sparse::Polynomial::commit_to_affine`] exactly.
-    fn sparse_commit_to_affine<
-        F: Field,
-        C: CurveAffine<ScalarExt = F>,
-        R: Rank,
-        G: FixedGenerators<C>,
-    >(
+    fn sparse_commit_to_affine<F: Field, C: Affine<Scalar = F>, R: Rank, G: FixedGenerators<C>>(
         poly: &sparse::Polynomial<F, R>,
         generators: &G,
     ) -> C {
@@ -105,7 +99,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`Registry::xy`] exactly.
-    fn registry_xy<F: PrimeField, R: Rank>(
+    fn registry_xy<F: Field, R: Rank>(
         registry: &Registry<'_, F, R>,
         x: F,
         y: F,
@@ -119,7 +113,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`Registry::wxy_over_domain`] exactly.
-    fn registry_wxy_over_domain<F: PrimeField, R: Rank>(
+    fn registry_wxy_over_domain<F: Field, R: Rank>(
         registry: &Registry<'_, F, R>,
         x: F,
         y: F,
@@ -133,7 +127,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// # Correctness
     ///
     /// Overrides must match [`Registry::interpolate_xy`] exactly.
-    fn registry_interpolate_xy<F: PrimeField, R: Rank>(
+    fn registry_interpolate_xy<F: Field, R: Rank>(
         registry: &Registry<'_, F, R>,
         evals: Vec<F>,
     ) -> sparse::Polynomial<F, R> {
@@ -141,7 +135,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     }
 
     /// Computes the circuit restriction $s_i(X, y)$ selected by `circuit`.
-    fn registry_circuit_y<F: PrimeField, R: Rank>(
+    fn registry_circuit_y<F: Field, R: Rank>(
         registry: &Registry<'_, F, R>,
         circuit: CircuitIndex,
         y: F,
@@ -150,7 +144,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     }
 
     /// Computes the registry restriction $m(w, x, Y)$.
-    fn registry_at_x<F: PrimeField, R: Rank>(
+    fn registry_at_x<F: Field, R: Rank>(
         registry: &RegistryAt<'_, F, R>,
         x: F,
     ) -> sparse::Polynomial<F, R> {
@@ -158,7 +152,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     }
 
     /// Computes the registry restriction $m(w, X, y)$.
-    fn registry_at_y<F: PrimeField, R: Rank>(
+    fn registry_at_y<F: Field, R: Rank>(
         registry: &RegistryAt<'_, F, R>,
         y: F,
     ) -> sparse::Polynomial<F, R> {
@@ -166,7 +160,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     }
 
     /// Evaluates the registry polynomial at $(w, x, y)$.
-    fn registry_wxy<F: PrimeField, R: Rank>(registry: &Registry<'_, F, R>, w: F, x: F, y: F) -> F {
+    fn registry_wxy<F: Field, R: Rank>(registry: &Registry<'_, F, R>, w: F, x: F, y: F) -> F {
         registry.wxy(w, x, y)
     }
 
@@ -175,25 +169,31 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     ///
     /// # Correctness
     ///
-    /// The caller must ensure that `coeffs` and `bases` yield the same number
-    /// of elements. Overrides must match [`ragu_arithmetic::msm`] exactly.
+    /// Inputs are truncated to the shorter iterator. Overrides must match
+    /// [`Affine::msm`] on those paired elements exactly.
     fn msm<
         'a,
-        C: CurveAffine,
+        C: Affine,
         A: IntoIterator<Item = &'a C::Scalar>,
         Bases: IntoIterator<Item = &'a C>,
     >(
         coeffs: A,
         bases: Bases,
-    ) -> C::Curve
+    ) -> C::Projective
     where
         Bases::IntoIter: Clone + Sync,
     {
-        ragu_arithmetic::msm(coeffs, bases)
+        let coeffs: Vec<C::Scalar> = coeffs.into_iter().copied().collect();
+        let bases: Vec<C> = bases.into_iter().copied().collect();
+        let len = coeffs.len().min(bases.len());
+        // TODO: expose reusable Udon MSM scratch and an executor through the
+        // backend; the Pasta trait call uses bounded stack scratch and serial
+        // execution.
+        C::msm(&coeffs[..len], &bases[..len])
     }
 }
 
-/// The correctness-first backend used by default throughout Ragu.
+/// The backend used by default throughout Ragu.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ReferenceBackend;
 

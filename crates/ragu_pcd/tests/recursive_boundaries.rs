@@ -12,15 +12,16 @@ mod registry {
     use alloc::{format, vec, vec::Vec};
 
     use proptest::prelude::*;
-    use ragu_arithmetic::ff::Field;
     use ragu_circuits::registry::{CircuitIndex, Tag};
     use ragu_core::{
         Result,
         drivers::{Driver, DriverValue},
         maybe::Maybe,
+        pasta::{Fp, Fq},
     };
-    use ragu_pasta::{Fp, Fq};
     use ragu_primitives::{Element, allocator::Standard};
+    use rand::Rng;
+    use udon::field::Field;
 
     use super::support::{self, C, HEADER_SIZE, R, Value};
     use crate::{
@@ -86,7 +87,7 @@ mod registry {
             Some(tags) => builder.with_registry_tags(tags),
             None => builder,
         }
-        .finalize(C::baked())
+        .finalize(crate::pasta::baked())
     }
 
     /// Exercise the ordinary size and both sides of a registry-domain expansion.
@@ -102,10 +103,10 @@ mod registry {
         // each different setup its own tags and reuse both for an equivalent
         // setup. These reproducible draws are test fixtures only.
         let mut tag_rng = inputs.prover_rng();
-        let first_native = Fp::random(&mut tag_rng);
-        let first_nested = Fq::random(&mut tag_rng);
-        let second_native = Fp::random(&mut tag_rng);
-        let second_nested = Fq::random(&mut tag_rng);
+        let first_native = Fp::random(|bytes| tag_rng.fill_bytes(bytes));
+        let first_nested = Fq::random(|bytes| tag_rng.fill_bytes(bytes));
+        let second_native = Fp::random(|bytes| tag_rng.fill_bytes(bytes));
+        let second_nested = Fq::random(|bytes| tag_rng.fill_bytes(bytes));
         let tags = |native, nested| {
             Some(RegistryTags {
                 native: Tag::new(native),
@@ -346,25 +347,24 @@ mod stages {
     use alloc::{sync::Arc, vec::Vec};
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{
-        CurveAffine, Cycle,
-        ff::{Field, WithSmallOrderMulGroup},
-    };
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::{
         polynomials::sparse,
         staging::{StageReader, stage_wire_indices, wires_of},
     };
-    use ragu_core::Result;
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
+    use ragu_core::{
+        Cycle, Result,
+        pasta::{EpAffine, EqAffine, Fp, Fq},
+    };
     use ragu_testing::strategies;
+    use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
     use super::support::{self, C, R, Value};
     use crate::internal::{endoscalar::EndoscalarStage, native::stages::points::WalkStage, nested};
 
     /// The algebraic extension of the endoscalar map to arbitrary field wires.
     /// A pair (n, e) contributes (1 - 2n) * (1 + (zeta - 1)e).
-    fn lifted<F: WithSmallOrderMulGroup<3>>(bits: &[F]) -> F {
+    fn lifted<F: Field>(bits: &[F]) -> F {
         assert_eq!(bits.len(), u128::BITS as usize);
         bits.chunks_exact(2)
             .fold((F::ZETA + F::ONE).double(), |acc, pair| {
@@ -374,7 +374,7 @@ mod stages {
 
     /// Change two negate bits and cancel their weighted contributions. Merely
     /// checking the lifted scalar cannot distinguish this malformed assignment.
-    fn same_lift_bits<F: WithSmallOrderMulGroup<3>>(
+    fn same_lift_bits<F: Field>(
         poly: &mut sparse::Polynomial<F, R>,
         wires: &[usize],
         (first, second): (usize, usize),
@@ -394,7 +394,7 @@ mod stages {
 
         let factor = |i| F::ONE + (F::ZETA - F::ONE) * bits[2 * i + 1];
         let compensation = delta
-            * F::from(2).pow_vartime([(second - first) as u64])
+            * F::from(2).pow_u64((second - first) as u64)
             * factor(first)
             * factor(second).invert().unwrap();
         bits[2 * first] += delta;
@@ -406,7 +406,7 @@ mod stages {
 
     /// Keep the last interstitial (the walked commitment) fixed and place an
     /// off-curve coordinate pair into a generated earlier point slot.
-    fn off_curve_point<P: CurveAffine>(
+    fn off_curve_point<P: Affine>(
         poly: &mut sparse::Polynomial<P::Base, R>,
         wires: &[usize],
         selector: usize,
@@ -419,13 +419,13 @@ mod stages {
         let reader = StageReader::new(poly);
         let x = reader.read(wires[0]);
         let y = reader.read(wires[1]);
-        assert!(bool::from(P::from_xy(x, y).is_some()));
+        assert!(P::from_xy(x, y).is_some());
         let mut replacement = y + delta;
         if replacement.square() == y.square() {
             replacement += delta;
         }
         assert_ne!(replacement.square(), y.square());
-        assert!(bool::from(P::from_xy(x, replacement).is_none()));
+        assert!(P::from_xy(x, replacement).is_none());
         support::set_wires(poly, wires, &[x, replacement]);
     }
 

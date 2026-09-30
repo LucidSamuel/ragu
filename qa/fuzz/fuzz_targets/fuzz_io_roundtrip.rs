@@ -27,18 +27,15 @@
 use alloc::vec::Vec;
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::Maybe;
-use ragu_primitives::{
-    Boolean, Element, GadgetExt, Simulator, allocator::Standard,
-};
+use ragu_core::{maybe::Maybe, pasta::Fp};
+use ragu_primitives::{Boolean, Element, GadgetExt, Simulator, allocator::Standard};
+use udon::field::Field;
 
 extern crate alloc;
 
 fn parse_fp(bytes: [u8; 32]) -> Fp {
-    Option::<Fp>::from(Fp::from_repr(bytes)).unwrap_or_else(|| {
+    Fp::from_bytes(bytes).unwrap_or_else(|| {
         Fp::from(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
@@ -75,7 +72,11 @@ fuzz_target!(|input: Input| {
             let e_a = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
             let mut buf: Vec<Element<'_, _>> = Vec::new();
             e_a.write(dr, &mut buf)?;
-            assert_eq!(buf.len(), 1, "Element::write should produce exactly 1 element");
+            assert_eq!(
+                buf.len(),
+                1,
+                "Element::write should produce exactly 1 element"
+            );
             assert_eq!(
                 *buf[0].value().take(),
                 a_val,
@@ -87,7 +88,11 @@ fuzz_target!(|input: Input| {
             let b_bv = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.3))?;
             let mut buf: Vec<Element<'_, _>> = Vec::new();
             b_bv.write(dr, &mut buf)?;
-            assert_eq!(buf.len(), 1, "Boolean::write should produce exactly 1 element");
+            assert_eq!(
+                buf.len(),
+                1,
+                "Boolean::write should produce exactly 1 element"
+            );
             assert_eq!(
                 *buf[0].value().take(),
                 if input.bv1 { Fp::ONE } else { Fp::ZERO },

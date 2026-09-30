@@ -13,15 +13,16 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use ragu_arithmetic::DeferredField;
 use ragu_circuits::polynomials::{
     Rank,
     sparse::{Polynomial, View},
 };
-use ragu_testing_fuzz::params::{FieldChoice, RankChoice};
-use ragu_testing_fuzz::{with_field, with_rank};
+use ragu_testing_fuzz::{
+    params::{FieldChoice, RankChoice},
+    with_field, with_rank,
+};
+use udon::field::Field;
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -35,7 +36,7 @@ struct Input {
     eval_point: u64,
 }
 
-fn build_poly<F: PrimeField, R: Rank>(
+fn build_poly<F: Field, R: Rank>(
     lens: &[u8; 4],
     coeffs: &mut impl Iterator<Item = F>,
 ) -> Polynomial<F, R> {
@@ -73,7 +74,7 @@ fuzz_target!(|input: Input| {
     });
 });
 
-fn run<F: PrimeField + DeferredField, R: Rank>(input: &Input) {
+fn run<F: Field, R: Rank>(input: &Input) {
     let count = ((input.count as usize) % 8).max(1);
     if input.coeffs.len() < count * 8 {
         return;
@@ -89,7 +90,12 @@ fn run<F: PrimeField + DeferredField, R: Rank>(input: &Input) {
         .map(|i| build_poly::<F, R>(input.lens.get(i * 2).unwrap_or(&[0; 4]), &mut coeff_iter))
         .collect();
     let rhs: Vec<_> = (0..count)
-        .map(|i| build_poly::<F, R>(input.lens.get(i * 2 + 1).unwrap_or(&[0; 4]), &mut coeff_iter))
+        .map(|i| {
+            build_poly::<F, R>(
+                input.lens.get(i * 2 + 1).unwrap_or(&[0; 4]),
+                &mut coeff_iter,
+            )
+        })
         .collect();
 
     // --- Invariant 1: fold-then-revdot identity ---

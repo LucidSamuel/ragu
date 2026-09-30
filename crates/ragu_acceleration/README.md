@@ -5,13 +5,14 @@
 # `ragu_acceleration`
 
 This crate provides Ragu's accelerated computational backend. It inherits the
-correctness-first defaults from `ragu_backend` except for individually tested
-overrides.
+defaults from `ragu_backend` except for individually tested overrides, and it
+carries none today: the defaults call Udon's MSM implementation. It is the
+home for the next overrides.
 
-The opt-in `native-msm` feature routes MSMs through Zakura's signed-Booth
-multiexp (`zakura-halo2-proofs`), which is built over the same
-`zakura-pasta-curves` types Ragu uses. The implementation is variable-time and
-must only be used where Ragu's existing variable-time MSM is appropriate.
+It carries no tests of its own: an override arrives with its differential
+test against `ReferenceBackend`, and `ragu_pcd`'s `backend_equivalence` tests
+hold `AcceleratedProver` to the reference end to end, in the `backend
+equivalence` CI lane behind the required `backend-required` check.
 
 ## License
 

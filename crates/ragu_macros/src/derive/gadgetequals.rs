@@ -7,13 +7,13 @@ use syn::{
 
 use crate::{
     helpers::{GenericDriver, attr_is},
-    path_resolution::{RaguArithmeticPath, RaguCorePath, RaguPrimitivesPath},
+    path_resolution::{RaguCorePath, RaguPrimitivesPath, UdonPath},
     substitution::replace_driver_field_in_generic_param,
 };
 
 pub fn derive(
     input: DeriveInput,
-    ragu_arithmetic_path: RaguArithmeticPath,
+    udon_path: UdonPath,
     ragu_core_path: RaguCorePath,
     ragu_primitives_path: RaguPrimitivesPath,
 ) -> Result<proc_macro2::TokenStream> {
@@ -122,7 +122,7 @@ pub fn derive(
         for param in &mut params {
             replace_driver_field_in_generic_param(param, &driver.ident, &driverfield_ident);
         }
-        params.push(parse_quote!( #driverfield_ident: #ragu_arithmetic_path::ff::Field ));
+        params.push(parse_quote!( #driverfield_ident: #udon_path::field::Field ));
 
         parse_quote!( < #( #params ),* >)
     };
@@ -191,7 +191,7 @@ mod tests {
 
         let result = derive(
             input,
-            RaguArithmeticPath::default(),
+            UdonPath::default(),
             RaguCorePath::default(),
             RaguPrimitivesPath::default(),
         )
@@ -201,7 +201,7 @@ mod tests {
             result.to_string(),
             quote!(
                 #[automatically_derived]
-                impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_primitives::comparison::GadgetEquals<DriverField>
+                impl<DriverField: ::udon::field::Field> ::ragu_primitives::comparison::GadgetEquals<DriverField>
                     for MyGadget<'static, ::core::marker::PhantomData<DriverField> >
                 {
                     fn enforce_equal_gadget<
@@ -244,7 +244,7 @@ mod tests {
         assert!(
             derive(
                 input,
-                RaguArithmeticPath::default(),
+                UdonPath::default(),
                 RaguCorePath::default(),
                 RaguPrimitivesPath::default()
             )

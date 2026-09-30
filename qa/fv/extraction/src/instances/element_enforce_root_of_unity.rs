@@ -1,5 +1,6 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
@@ -14,7 +15,7 @@ impl CircuitInstance for ElementEnforceRootOfUnityInstanceK2 {
     {
         let input_wires = dr.alloc_input_wires(1);
 
-        let element_template = Element::constant(dr, Fp::zero());
+        let element_template = Element::constant(dr, Fp::ZERO);
         let input = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
 
         // k = 2: smallest non-trivial case (k = 0 is `self = 1`,
@@ -40,7 +41,7 @@ impl CircuitInstance for ElementEnforceRootOfUnityInstanceK5 {
     {
         let input_wires = dr.alloc_input_wires(1);
 
-        let element_template = Element::constant(dr, Fp::zero());
+        let element_template = Element::constant(dr, Fp::ZERO);
         let input = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
 
         // k = 5: enforce `self^32 = 1`. This matches the production

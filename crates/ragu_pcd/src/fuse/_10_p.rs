@@ -21,10 +21,10 @@
 use alloc::vec::Vec;
 use core::ops::AddAssign;
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use ragu_primitives::{EndoscalarChallenge, lift_endoscalar};
+use udon::field::Field;
 
 use super::{
     NativeF, NativeFuseEmulator, NativeSPrime, NestedF, NestedRegistryWy, NestedSPrime, RegistryWy,
@@ -97,7 +97,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn compute_p<'dr, RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(super) fn compute_p<'dr, RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         pre_beta: &EndoscalarChallenge<'dr, NativeFuseEmulator<C>>,
@@ -150,7 +150,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         Ok((points, native_points, native_walk))
     }
 
-    fn compute_native_p<RNG: ragu_arithmetic::rand::CryptoRng>(
+    fn compute_native_p<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         beta_endo: u128,
@@ -218,8 +218,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         points.push(f.commitment);
         points.extend_from_slice(&commitments);
 
-        let endoscalar_alpha = C::ScalarField::random(&mut *rng);
-        let points_alpha = C::ScalarField::random(&mut *rng);
+        let endoscalar_alpha = C::ScalarField::random(|bytes| rng.fill_bytes(bytes));
+        let points_alpha = C::ScalarField::random(|bytes| rng.fill_bytes(bytes));
         let (p_commitment, points) = self.compute_endoscaling(
             rng,
             beta_endo,
@@ -239,7 +239,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// points: $P_n$ is the walk's last interstitial, which the native steps
     /// enforce and `bind_endoscalar` pins to the unified instance.
     #[allow(clippy::too_many_arguments)]
-    fn compute_nested_p<RNG: ragu_arithmetic::rand::CryptoRng>(
+    fn compute_nested_p<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         beta_endo: u128,

@@ -19,13 +19,13 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Error, Result,
     convert::WireMap,
     drivers::Driver,
     gadgets::{Bound, Gadget, GadgetKind, WireEqualizer},
 };
+use udon::field::Field;
 
 use crate::{
     comparison::GadgetEquals,

@@ -111,12 +111,11 @@
 
 #![no_main]
 
-use arbitrary::Arbitrary;
 use core::marker::PhantomData;
-use ff::Field;
-use ff::PrimeField;
+use std::sync::LazyLock;
+
+use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
 use ragu_circuits::{
     BondingObject, Circuit, CircuitExt, WithAux,
     polynomials::{Rank, TestRank, sparse},
@@ -128,9 +127,10 @@ use ragu_core::{
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
+    pasta::Fp,
 };
 use ragu_primitives::Element;
-use std::sync::LazyLock;
+use udon::field::Field;
 
 // ---------------------------------------------------------------------------
 // Stage definitions. Each stage allocates a fixed number of wires; the
@@ -447,7 +447,9 @@ static CHAIN_REGISTRY: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
 /// the underlying `StageMask` returns) plus the `tag * y^{4n-1}` tag
 /// term — exactly the inputs Invariant A wants for its zero check, after
 /// subtracting the tag term.
-fn build_mask_registry(mask: BondingObject<'static, Fp, TestRank>) -> Option<Registry<'static, Fp, TestRank>> {
+fn build_mask_registry(
+    mask: BondingObject<'static, Fp, TestRank>,
+) -> Option<Registry<'static, Fp, TestRank>> {
     RegistryBuilder::<Fp, TestRank>::new()
         .register_bonding(mask)
         .finalize()
@@ -466,34 +468,38 @@ static MASK_REGISTRY_W4: LazyLock<Option<Registry<'static, Fp, TestRank>>> = Laz
     build_mask_registry(mask)
 });
 
-static MASK_REGISTRY_W4_CHILD: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
-    let mask: BondingObject<'static, Fp, TestRank> =
-        <StageW4Child as StageExt<Fp, TestRank>>::mask().ok()?;
-    build_mask_registry(mask)
-});
+static MASK_REGISTRY_W4_CHILD: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
+    LazyLock::new(|| {
+        let mask: BondingObject<'static, Fp, TestRank> =
+            <StageW4Child as StageExt<Fp, TestRank>>::mask().ok()?;
+        build_mask_registry(mask)
+    });
 
 // Final-mask registries — one per stage type, built from
 // `StageExt::final_mask()` instead of `mask()`. `final_mask` covers
 // `[skip_gates, R::n())` (every gate after the stage's skip), whereas
 // `mask` covers only the stage's own `[skip, skip+num)` slots. Used
 // only for the LAST stage in a variant's chain.
-static MASK_REGISTRY_W2_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
-    let mask: BondingObject<'static, Fp, TestRank> =
-        <StageW2 as StageExt<Fp, TestRank>>::final_mask().ok()?;
-    build_mask_registry(mask)
-});
+static MASK_REGISTRY_W2_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
+    LazyLock::new(|| {
+        let mask: BondingObject<'static, Fp, TestRank> =
+            <StageW2 as StageExt<Fp, TestRank>>::final_mask().ok()?;
+        build_mask_registry(mask)
+    });
 
-static MASK_REGISTRY_W4_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
-    let mask: BondingObject<'static, Fp, TestRank> =
-        <StageW4 as StageExt<Fp, TestRank>>::final_mask().ok()?;
-    build_mask_registry(mask)
-});
+static MASK_REGISTRY_W4_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
+    LazyLock::new(|| {
+        let mask: BondingObject<'static, Fp, TestRank> =
+            <StageW4 as StageExt<Fp, TestRank>>::final_mask().ok()?;
+        build_mask_registry(mask)
+    });
 
-static MASK_REGISTRY_W4_CHILD_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> = LazyLock::new(|| {
-    let mask: BondingObject<'static, Fp, TestRank> =
-        <StageW4Child as StageExt<Fp, TestRank>>::final_mask().ok()?;
-    build_mask_registry(mask)
-});
+static MASK_REGISTRY_W4_CHILD_FINAL: LazyLock<Option<Registry<'static, Fp, TestRank>>> =
+    LazyLock::new(|| {
+        let mask: BondingObject<'static, Fp, TestRank> =
+            <StageW4Child as StageExt<Fp, TestRank>>::final_mask().ok()?;
+        build_mask_registry(mask)
+    });
 
 // ---------------------------------------------------------------------------
 // Input shape — one variant per MultiStageCircuit. Same `Arbitrary` style
@@ -537,7 +543,7 @@ fn special_value(idx: u8) -> Fp {
         0 => Fp::ZERO,
         1 => Fp::ONE,
         2 => -Fp::ONE,
-        3 => Fp::TWO_INV,
+        3 => Fp::TWO_INVERSE,
         4 => Fp::ROOT_OF_UNITY,
         5 => Fp::MULTIPLICATIVE_GENERATOR,
         6 => Fp::from(1u64 << 32),
@@ -568,7 +574,7 @@ fn sy_from_registry(
     let omega_0 = CircuitIndex::new(0).omega_j::<Fp>();
     let mut wy = registry.wy(omega_0, y);
     if y != Fp::ZERO {
-        let y_4n_minus_1 = y.pow_vartime([(4 * TestRank::n() - 1) as u64]);
+        let y_4n_minus_1 = y.pow_u64((4 * TestRank::n() - 1) as u64);
         let mut tag_view = sparse::View::<_, TestRank, _>::wiring();
         tag_view.c.push(registry.tag() * y_4n_minus_1);
         let tag_term = tag_view.build();
@@ -588,7 +594,7 @@ fn sy_from_mask_registry(
 ) -> sparse::Polynomial<Fp, TestRank> {
     let mut wy = mask_registry.circuit_y(CircuitIndex::new(0), y);
     if y != Fp::ZERO {
-        let y_4n_minus_1 = y.pow_vartime([(4 * TestRank::n() - 1) as u64]);
+        let y_4n_minus_1 = y.pow_u64((4 * TestRank::n() - 1) as u64);
         let mut tag_view = sparse::View::<_, TestRank, _>::wiring();
         tag_view.c.push(mask_registry.tag() * y_4n_minus_1);
         let tag_term = tag_view.build();
@@ -877,10 +883,7 @@ fuzz_target!(|input: Input| {
             let child_b = Fp::from(child_b_seed);
             let child_c = Fp::from(child_c_seed);
             let child_d = Fp::from(child_d_seed);
-            let witness = (
-                (parent_a, parent_b),
-                (child_a, child_b, child_c, child_d),
-            );
+            let witness = ((parent_a, parent_b), (child_a, child_b, child_c, child_d));
             let circuit = MultiStage::<Fp, TestRank, _>::new(Chain2x4);
             let instance = Chain2x4::native_instance(witness);
 

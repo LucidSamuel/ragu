@@ -50,18 +50,18 @@ mod access;
 use alloc::{sync::Arc, vec, vec::Vec};
 
 pub(crate) use builder::ProofBuilder;
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
     staging::{MultiStage, StageExt},
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use ragu_primitives::{
     extract_endoscalar, lift_endoscalar,
     vec::{FixedVec, Len},
 };
+use udon::field::Field;
 
 use crate::{
     header::Header,
@@ -143,7 +143,7 @@ pub(crate) fn bridge_alpha_power<F: Field>(bridge_alpha: F, idx: nested::RxIndex
         nested::RxIndex::BridgeAB => 2,
         _ => panic!("not a cached bridge: {idx:?}"),
     };
-    bridge_alpha.pow_vartime([n])
+    bridge_alpha.pow_u64(n)
 }
 
 /// Represents a recursive proof for the correctness of some computation.
@@ -725,7 +725,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Shared by `compute_p` (in `fuse/_10_p.rs`) and by
     /// [`dummy_proof`](Self::dummy_proof), so the nested
     /// endoscaling setup lives in one place.
-    pub(crate) fn compute_endoscaling<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn compute_endoscaling<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         beta_endo: u128,
@@ -776,7 +776,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Commits the native points binding and children stages over the
     /// children's nested commitments, before $w$ is squeezed; the preamble
     /// bridge carries their commitments.
-    pub(crate) fn commit_native_points_children<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn commit_native_points_children<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         left: &Proof<C, R>,
@@ -789,13 +789,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         );
         builder.set_native_points_binding_rx(
             <native_points::BindingStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 &binding,
             )?,
         );
         builder.set_native_points_children_rx(
             <native_points::ChildrenStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 &children,
             )?,
         );
@@ -805,7 +805,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Commits the native points stage holding the nested `registry_wx`
     /// commitments, before $y$ is squeezed; the `s_prime` bridge carries its
     /// commitment.
-    pub(crate) fn commit_native_points_registry_wx<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn commit_native_points_registry_wx<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         registry_wx0: C::NestedCurve,
@@ -818,7 +818,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
         builder.set_native_points_registry_wx_rx(
             <native_points::RegistryWxStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 &witness,
             )?,
         );
@@ -828,7 +828,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Commits the native points stage holding the nested `registry_wy`
     /// commitment, $A_n$ and $B_n$, before $x$ is squeezed; the `ab` bridge
     /// carries its commitment.
-    pub(crate) fn commit_native_points_ab<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn commit_native_points_ab<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         registry_wy: C::NestedCurve,
@@ -841,7 +841,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             C::CircuitField,
             R,
         >>::rx(
-            C::CircuitField::random(&mut *rng), &witness
+            C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
+            &witness,
         )?);
         Ok(())
     }
@@ -849,7 +850,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Commits the native points stage holding the nested `registry_xy`
     /// commitment and $F_n$, before $u$ is squeezed; the `f` bridge carries
     /// its commitment.
-    pub(crate) fn commit_native_points_f<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn commit_native_points_f<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         registry_xy: C::NestedCurve,
@@ -861,14 +862,15 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             C::CircuitField,
             R,
         >>::rx(
-            C::CircuitField::random(&mut *rng), &witness
+            C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
+            &witness,
         )?);
         Ok(())
     }
 
     /// Commits every native points input stage at once, for a proof whose
     /// walk needs no transcript schedule: the dummy proof.
-    fn commit_native_points_stages<RNG: ragu_arithmetic::rand::CryptoRng>(
+    fn commit_native_points_stages<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         inputs: &Inputs<C::NestedCurve>,
@@ -876,13 +878,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     ) -> Result<()> {
         builder.set_native_points_binding_rx(
             <native_points::BindingStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 &inputs.binding,
             )?,
         );
         builder.set_native_points_children_rx(
             <native_points::ChildrenStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-                C::CircuitField::random(&mut *rng),
+                C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                 &inputs.children,
             )?,
         );
@@ -910,7 +912,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     /// Shared by `compute_p` (in `fuse/_10_p.rs`) and
     /// [`dummy_proof`](Self::dummy_proof), like
     /// [`compute_endoscaling`](Self::compute_endoscaling) on the nested side.
-    pub(crate) fn compute_native_endoscaling<RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(crate) fn compute_native_endoscaling<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         beta_endo: u128,
@@ -929,7 +931,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         );
 
         let walk_rx = <WalkStage<C::NestedCurve> as StageExt<C::CircuitField, R>>::rx(
-            C::CircuitField::random(&mut *rng),
+            C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
             &walk,
         )?;
 
@@ -1080,10 +1082,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
         let beta_endo = extract_endoscalar(C::CircuitField::ONE)
             .expect("one should satisfy the endoscalar challenge range");
-        let mut trivial_rng =
-            <ragu_arithmetic::rand::rngs::StdRng as ragu_arithmetic::rand::SeedableRng>::from_seed(
-                [0u8; 32],
-            );
+        let mut trivial_rng = <rand::rngs::StdRng as rand::SeedableRng>::from_seed([0u8; 32]);
 
         // The native walk over placeholder nested-curve points, in the
         // nested batch's order, delegated to the real helpers so this

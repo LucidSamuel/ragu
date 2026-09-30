@@ -6,7 +6,7 @@
 //! Small parameters keep the PR gate quick; one full-size round trip per
 //! curve over the baked generators is `#[ignore]`d for the heavy-tests run.
 
-use ragu_pasta::Pasta;
+use ragu_core::pasta::Pasta;
 
 use super::{CycleTranscript, IPA_TAG};
 
@@ -14,46 +14,52 @@ const K: u32 = 8;
 
 /// A transcript that has seen nothing but the domain tag.
 fn fresh() -> CycleTranscript<'static, Pasta> {
-    CycleTranscript::new(Pasta::baked(), IPA_TAG).unwrap()
+    CycleTranscript::new(crate::pasta::baked(), IPA_TAG).unwrap()
 }
 
 /// The suite for one curve of the cycle, given its scalar field, its
 /// generators accessor on [`Pasta`], and the [`CycleTranscript`] view its
 /// IPA uses.
 macro_rules! ipa_tests {
-    ($name:ident, $curve:ty, $field:ty, $generators_ty:ident, $generators_fn:ident, $side:ident) => {
+    ($name:ident, $curve:ty, $field:ty, $generators_ty:ident, $generators_fn:ident, $u_fn:ident, $side:ident) => {
         mod $name {
             use alloc::vec::Vec;
 
             use proptest::prelude::*;
-            use ragu_arithmetic::{
-                CurveAffine, Cycle, eval,
-                ff::Field,
-                group::Curve,
-                rand::{SeedableRng, rngs::StdRng},
-            };
             use ragu_circuits::polynomials::{Rank, TestRank, sparse};
-            use ragu_pasta::Pasta;
+            use ragu_core::{Cycle, pasta::Pasta};
+            use rand::{Rng, SeedableRng, rngs::StdRng};
+            use udon::{
+                curve::{Affine, Projective},
+                field::Field,
+                polynomial::evaluate_iter,
+            };
 
             use super::{K, fresh};
             use crate::ipa::{
-                Blind, CycleTranscript, Guard, IpaProof, IpaTranscript, MSM, Params, prover,
-                verifier,
+                Blind, CycleTranscript, Guard, IpaCycle, IpaProof, IpaTranscript, MSM, Params,
+                prover, verifier,
             };
 
             type C = $curve;
             type F = $field;
 
             fn generators() -> &'static <Pasta as Cycle>::$generators_ty {
-                Pasta::$generators_fn(Pasta::baked())
+                Pasta::$generators_fn(crate::pasta::baked())
+            }
+
+            fn u() -> C {
+                *Pasta::$u_fn(crate::pasta::baked())
             }
 
             fn params(k: u32) -> Params<C> {
-                Params::with_k(generators(), k)
+                Params::with_k(generators(), u(), k)
             }
 
             fn random_poly(n: usize, rng: &mut StdRng) -> Vec<F> {
-                (0..n).map(|_| F::random(&mut *rng)).collect()
+                (0..n)
+                    .map(|_| F::random(|bytes| rng.fill_bytes(bytes)))
+                    .collect()
             }
 
             /// A transcript that has seen the common inputs: the commitment
@@ -79,7 +85,7 @@ macro_rules! ipa_tests {
                 rng: &mut StdRng,
             ) -> (C, F, IpaProof<C>) {
                 let commitment = params.commit(poly, blind).to_affine();
-                let v = eval(poly.iter(), x);
+                let v = evaluate_iter(poly.iter(), x);
 
                 let mut transcript = transcript_for(commitment, x, v);
                 let proof =
@@ -127,8 +133,8 @@ macro_rules! ipa_tests {
             fn opening(params: &Params<C>, seed: u64) -> (C, F, F, IpaProof<C>) {
                 let mut rng = StdRng::seed_from_u64(seed);
                 let poly = random_poly(1 << K, &mut rng);
-                let blind = Blind(F::random(&mut rng));
-                let x = F::random(&mut rng);
+                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
+                let x = F::random(|bytes| rng.fill_bytes(bytes));
                 let (commitment, v, proof) = open(params, &poly, blind, x, &mut rng);
                 (commitment, x, v, proof)
             }
@@ -145,7 +151,7 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let mut rng = StdRng::seed_from_u64(2);
                 let poly = random_poly(1 << K, &mut rng);
-                let x = F::random(&mut rng);
+                let x = F::random(|bytes| rng.fill_bytes(bytes));
                 let (commitment, v, proof) = open(&params, &poly, Blind(F::ZERO), x, &mut rng);
                 assert!(check(&params, commitment, x, v, &proof));
             }
@@ -180,8 +186,8 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let mut rng = StdRng::seed_from_u64(7);
                 let poly = random_poly(1 << K, &mut rng);
-                let blind = Blind(F::random(&mut rng));
-                let x = F::random(&mut rng);
+                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
+                let x = F::random(|bytes| rng.fill_bytes(bytes));
                 let (commitment, v, _) = open(&params, &poly, blind, x, &mut rng);
 
                 // A proof made under a different blind than the commitment.
@@ -272,7 +278,7 @@ macro_rules! ipa_tests {
             /// the proof system commits to.
             #[test]
             fn commitment_matches_native_commitment() {
-                let params = Params::with_k(generators(), TestRank::RANK);
+                let params = Params::with_k(generators(), u(), TestRank::RANK);
                 assert_eq!(params.g.len(), TestRank::num_coeffs());
                 let mut rng = StdRng::seed_from_u64(13);
                 let coeffs = random_poly(TestRank::num_coeffs(), &mut rng);
@@ -287,10 +293,10 @@ macro_rules! ipa_tests {
             /// $y^2 = x^3 + 5$, so $(-1, 2)$ lies on either.
             #[test]
             fn msm_arithmetic() {
-                type Base = <C as CurveAffine>::Base;
+                type Base = <C as Affine>::Base;
 
                 let base = C::from_xy(-Base::ONE, Base::from(2)).unwrap();
-                let base_viol = (base + base).to_affine();
+                let base_viol = (base.to_projective() + &base.to_projective()).to_affine();
 
                 let params = params(4);
                 let mut a = MSM::new(&params);
@@ -332,11 +338,11 @@ macro_rules! ipa_tests {
             #[test]
             #[ignore]
             fn round_trip_full_size() {
-                let params = Params::new(generators());
+                let params = Params::new(generators(), u());
                 let mut rng = StdRng::seed_from_u64(14);
                 let poly = random_poly(params.n as usize, &mut rng);
-                let blind = Blind(F::random(&mut rng));
-                let x = F::random(&mut rng);
+                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
+                let x = F::random(|bytes| rng.fill_bytes(bytes));
                 let (commitment, v, proof) = open(&params, &poly, blind, x, &mut rng);
                 assert!(check(&params, commitment, x, v, &proof));
                 assert!(!check(&params, commitment, x, v + F::ONE, &proof));
@@ -357,8 +363,8 @@ macro_rules! ipa_tests {
                     let mut rng = StdRng::seed_from_u64(seed);
                     let n = 1usize << k;
                     let poly = random_poly(n, &mut rng);
-                    let blind = Blind(F::random(&mut rng));
-                    let x = F::random(&mut rng);
+                    let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
+                    let x = F::random(|bytes| rng.fill_bytes(bytes));
                     let (commitment, v, proof) = open(&params, &poly, blind, x, &mut rng);
                     prop_assert!(check(&params, commitment, x, v, &proof));
 
@@ -378,18 +384,20 @@ macro_rules! ipa_tests {
 
 ipa_tests!(
     host,
-    ragu_pasta::EqAffine,
-    ragu_pasta::Fp,
+    <Pasta as ragu_core::Cycle>::HostCurve,
+    ragu_core::pasta::Fp,
     HostGenerators,
     host_generators,
+    host_u,
     host
 );
 ipa_tests!(
     nested,
-    ragu_pasta::EpAffine,
-    ragu_pasta::Fq,
+    <Pasta as ragu_core::Cycle>::NestedCurve,
+    ragu_core::pasta::Fq,
     NestedGenerators,
     nested_generators,
+    nested_u,
     nested
 );
 
@@ -397,12 +405,13 @@ ipa_tests!(
 /// side's next challenge, and vice versa.
 #[test]
 fn sides_share_one_transcript() {
-    use ragu_arithmetic::{Cycle, FixedGenerators};
+    use ragu_core::Cycle;
+    use ragu_core::FixedGenerators;
 
     use crate::ipa::IpaTranscript;
 
-    let host_point = Pasta::host_generators(Pasta::baked()).g()[0];
-    let nested_point = Pasta::nested_generators(Pasta::baked()).g()[0];
+    let host_point = Pasta::host_generators(crate::pasta::baked()).g()[0];
+    let nested_point = Pasta::nested_generators(crate::pasta::baked()).g()[0];
 
     let mut a = fresh();
     let nested_after_nothing = a.nested().squeeze_challenge().unwrap();

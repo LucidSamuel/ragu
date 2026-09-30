@@ -5,12 +5,12 @@
 //! an example for exercising this stopgap.
 
 use blake2b_simd::Params;
-use ragu_arithmetic::ff::FromUniformBytes;
 use ragu_core::Result;
+use udon::field::Field;
 
 use crate::registry::Tag;
 
-pub(crate) fn registry_tag<F: FromUniformBytes<64>>(tag: Option<Tag<F>>) -> Result<F> {
+pub(crate) fn registry_tag<F: Field>(tag: Option<Tag<F>>) -> Result<F> {
     if let Some(tag) = tag {
         return Ok(tag.value());
     }
@@ -36,7 +36,7 @@ pub(crate) fn registry_tag<F: FromUniformBytes<64>>(tag: Option<Tag<F>>) -> Resu
     }
 }
 
-impl<F: FromUniformBytes<64>> Tag<F> {
+impl<F: Field> Tag<F> {
     /// Derives a registry tag from a public randomness beacon and a setup
     /// manifest digest.
     ///
@@ -94,9 +94,11 @@ impl<F: FromUniformBytes<64>> Tag<F> {
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::ff::Field;
-    use ragu_core::Result;
-    use ragu_pasta::{Fp, Fq, fp, fq};
+    use ragu_core::{
+        Result,
+        pasta::{Fp, Fq},
+    };
+    use udon::field::Field;
 
     use super::*;
     use crate::{
@@ -110,11 +112,15 @@ mod tests {
         // modulo Fp/Fq using the digest's little-endian integer value.
         assert_eq!(
             Tag::<Fp>::from_beacon(&[0x42; 32], &[0x24; 20], b"ragu_pcd native registry").value(),
-            fp!(0x1c141fc950c9d298c205840012742d12b765e6cb495b9d4dccf775410d779870),
+            Fp::new(udon::fp_hex!(
+                "0x1c141fc950c9d298c205840012742d12b765e6cb495b9d4dccf775410d779870"
+            )),
         );
         assert_eq!(
             Tag::<Fq>::from_beacon(&[0x42; 32], &[0x24; 20], b"ragu_pcd nested registry").value(),
-            fq!(0x0d02d867670856cbd43265aff57b50accb9b3f7179e72859a43336609dd0ac6f),
+            Fq::new(udon::fq_hex!(
+                "0x0d02d867670856cbd43265aff57b50accb9b3f7179e72859a43336609dd0ac6f"
+            )),
         );
     }
 
@@ -165,7 +171,7 @@ mod tests {
             .finalize()?;
         assert_eq!(
             tagged - untagged.wxy(w, x, y),
-            value * (x * y).pow_vartime([(4 * TestRank::n() - 1) as u64]),
+            value * (x * y).pow_u64((4 * TestRank::n() - 1) as u64),
         );
         Ok(())
     }

@@ -2,20 +2,20 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use proptest::{prelude::*, test_runner::TestCaseResult};
 use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     polynomials::{ProductionRank, Rank, sparse},
     registry::CircuitIndex,
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
+    pasta::{Fp, Pasta},
 };
-use ragu_pasta::{Fp, Pasta};
 use ragu_primitives::allocator::Standard;
 use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field_element};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use crate::{
     Application, ApplicationBuilder, Pcd, Proof, SelectableBackend,
@@ -41,13 +41,13 @@ impl TrackingBackend {
 impl Backend for TrackingBackend {
     fn msm<
         'a,
-        C: ragu_arithmetic::CurveAffine,
+        C: udon::curve::Affine,
         A: IntoIterator<Item = &'a C::Scalar>,
         Bases: IntoIterator<Item = &'a C>,
     >(
         coeffs: A,
         bases: Bases,
-    ) -> C::Curve
+    ) -> C::Projective
     where
         Bases::IntoIter: Clone + Sync,
     {
@@ -125,7 +125,7 @@ struct Apps {
 
 impl Apps {
     fn build(dummy_circuits: usize) -> Self {
-        let pasta = Pasta::baked();
+        let pasta = ragu_pcd::pasta::baked();
         let reference = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
             .register(UnitStep)
             .unwrap()
@@ -468,7 +468,7 @@ fn selected_backend_dispatch_reaches_msm() {
         .unwrap()
         .register_dummy_circuits(0)
         .unwrap()
-        .finalize(Pasta::baked())
+        .finalize(ragu_pcd::pasta::baked())
         .unwrap();
     let mut rng = StdRng::seed_from_u64(0);
     let (left, _) = app.seed(&mut rng, UnitStep, ()).unwrap();

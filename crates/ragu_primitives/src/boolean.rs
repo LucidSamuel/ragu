@@ -5,16 +5,13 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{
-    Coeff,
-    ff::{Field, PrimeField, PrimeFieldBits},
-};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
+use udon::field::Field;
 
 use crate::{
     Element, GadgetExt,
@@ -271,7 +268,7 @@ impl<F: Field> Promotion<F> for Kind![F; @Boolean<'_, _>] {
 ///
 /// The number of bits determines the emitted virtual wire expressions. The
 /// length must not be derived from witness input.
-pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
+pub fn multipack<'dr, D: Driver<'dr>>(
     dr: &mut D,
     bits: &[Boolean<'dr, D>],
 ) -> Result<Vec<Element<'dr, D>>> {
@@ -328,15 +325,15 @@ pub fn multipack<'dr, D: Driver<'dr, F: ragu_arithmetic::ff::PrimeField>>(
 /// constraints are unsatisfiable. Over the Pasta fields a uniformly random
 /// element falls outside this range with negligible probability (about
 /// $2^{-129}$).
-pub(crate) fn decompose<'dr, D: Driver<'dr, F: PrimeFieldBits>>(
+pub(crate) fn decompose<'dr, D: Driver<'dr>>(
     dr: &mut D,
     allocator: &mut impl Allocator<'dr, D>,
     elem: &Element<'dr, D>,
 ) -> Result<Vec<Boolean<'dr, D>>> {
-    let le_bits = elem.value().map(|v| v.to_le_bits());
+    let le_bits = elem.value().map(|value| value.to_le_bits());
     let bits = (0..D::F::CAPACITY as usize)
         .map(|i| {
-            let bit = le_bits.as_ref().map(move |le_bits| le_bits[i]);
+            let bit = le_bits.as_ref().map(move |le_bits| le_bits.as_ref()[i]);
             Boolean::alloc(dr, allocator, bit)
         })
         .collect::<Result<Vec<_>>>()?;
@@ -368,7 +365,7 @@ mod tests {
     use super::*;
     use crate::allocator::Standard;
 
-    type F = ragu_pasta::Fp;
+    type F = ragu_core::pasta::Fp;
     type Simulator = crate::Simulator<F>;
 
     #[test]

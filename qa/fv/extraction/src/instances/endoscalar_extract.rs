@@ -1,5 +1,6 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Element, Endoscalar, EndoscalarChallenge};
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
@@ -31,7 +32,7 @@ impl CircuitInstance for EndoscalarExtractInstance {
         D: InstanceDriver<'dr, F = Fp>,
     {
         let input_wires = dr.alloc_input_wires(1);
-        let element_template = Element::constant(dr, Fp::zero());
+        let element_template = Element::constant(dr, Fp::ZERO);
         let elem = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
 
         let challenge = EndoscalarChallenge::from_element(dr, &mut (), elem)?;

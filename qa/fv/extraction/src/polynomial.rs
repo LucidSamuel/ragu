@@ -10,13 +10,12 @@
 #[cfg(test)]
 use std::{collections::HashMap, sync::Arc};
 
-use ff::{FromUniformBytes, PrimeField};
-use ragu_arithmetic::Coeff;
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{DirectSum, Driver, DriverTypes},
     maybe::Empty,
 };
+use udon::field::Field;
 
 #[cfg(test)]
 use crate::expr::{Expr, Op};
@@ -46,7 +45,7 @@ struct ChallengeContext {
 }
 
 impl ChallengeContext {
-    fn new<F: PrimeField>(seed: [u8; 32], instance: &str, point: usize) -> Self {
+    fn new<F: Field>(seed: [u8; 32], instance: &str, point: usize) -> Self {
         Self {
             seed,
             modulus_le: modulus_le::<F>(),
@@ -56,7 +55,7 @@ impl ChallengeContext {
     }
 
     /// Domain-separated 512-bit little-endian integer reduced into `F`.
-    fn base<F: FromUniformBytes<64>>(&self, label: &str) -> F {
+    fn base<F: Field>(&self, label: &str) -> F {
         let mut wide = [0u8; 64];
         for block in 0..2 {
             let mut preimage = Vec::new();
@@ -87,7 +86,7 @@ struct ChallengeBases<F> {
     output_weight: F,
 }
 
-impl<F: FromUniformBytes<64>> ChallengeBases<F> {
+impl<F: Field> ChallengeBases<F> {
     fn new(ctx: &ChallengeContext) -> Self {
         Self {
             input: ctx.base("input"),
@@ -104,8 +103,8 @@ impl<F: FromUniformBytes<64>> ChallengeBases<F> {
     }
 }
 
-fn sequence<F: PrimeField>(base: F, index: usize) -> F {
-    base.pow_vartime([(index as u64) + 1])
+fn sequence<F: Field>(base: F, index: usize) -> F {
+    base.pow_u64((index as u64) + 1)
 }
 
 fn push_len_prefixed(buf: &mut Vec<u8>, bytes: &[u8]) {
@@ -113,8 +112,8 @@ fn push_len_prefixed(buf: &mut Vec<u8>, bytes: &[u8]) {
     buf.extend_from_slice(bytes);
 }
 
-fn modulus_le<F: PrimeField>() -> [u8; 32] {
-    let hex = F::MODULUS.trim_start_matches("0x");
+fn modulus_le<F: Field>() -> [u8; 32] {
+    let hex = modulus_hex::<F>();
     assert_eq!(hex.len(), 64, "expected a 256-bit modulus");
     let mut bytes = [0u8; 32];
     for (i, byte) in bytes.iter_mut().rev().enumerate() {
@@ -123,9 +122,9 @@ fn modulus_le<F: PrimeField>() -> [u8; 32] {
     bytes
 }
 
-fn field_hex<F: PrimeField>(value: F) -> String {
+fn field_hex<F: Field>(value: F) -> String {
     value
-        .to_repr()
+        .to_bytes()
         .as_ref()
         .iter()
         .map(|byte| format!("{byte:02x}"))
@@ -226,7 +225,7 @@ pub struct ExtraWire<F> {
 }
 
 /// `Driver` that directly evaluates the complete four-slot gate relation.
-pub struct EvaluationDriver<F: PrimeField + FromUniformBytes<64>> {
+pub struct EvaluationDriver<F: Field> {
     challenges: ChallengeContext,
     bases: ChallengeBases<F>,
     next_input: usize,
@@ -238,7 +237,7 @@ pub struct EvaluationDriver<F: PrimeField + FromUniformBytes<64>> {
     extra_accumulator: F,
 }
 
-impl<F: PrimeField + FromUniformBytes<64>> EvaluationDriver<F> {
+impl<F: Field> EvaluationDriver<F> {
     pub fn new(seed: [u8; 32], instance: &str, point: usize) -> Self {
         let challenges = ChallengeContext::new::<F>(seed, instance, point);
         let bases = ChallengeBases::new(&challenges);
@@ -263,7 +262,7 @@ impl<F: PrimeField + FromUniformBytes<64>> EvaluationDriver<F> {
 
         let header = Header {
             instance: self.challenges.instance.clone(),
-            modulus: F::MODULUS.trim_start_matches("0x").to_ascii_lowercase(),
+            modulus: modulus_hex::<F>(),
             inputs: self.next_input,
             outputs: outputs.len(),
             gates: self.gates,
@@ -289,7 +288,7 @@ impl<F: PrimeField + FromUniformBytes<64>> EvaluationDriver<F> {
     }
 }
 
-impl<F: PrimeField + FromUniformBytes<64>> DriverTypes for EvaluationDriver<F> {
+impl<F: Field> DriverTypes for EvaluationDriver<F> {
     type ImplField = F;
     type ImplWire = F;
     type MaybeKind = Empty;
@@ -324,7 +323,7 @@ impl<F: PrimeField + FromUniformBytes<64>> DriverTypes for EvaluationDriver<F> {
     }
 }
 
-impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for EvaluationDriver<F> {
+impl<'dr, F: Field> Driver<'dr> for EvaluationDriver<F> {
     type F = F;
     type Wire = F;
 
@@ -347,7 +346,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> Driver<'dr> for EvaluationDriver
     }
 }
 
-impl<'dr, F: PrimeField + FromUniformBytes<64>> InstanceDriver<'dr> for EvaluationDriver<F> {
+impl<'dr, F: Field> InstanceDriver<'dr> for EvaluationDriver<F> {
     fn alloc_input_wires(&mut self, n: usize) -> Vec<F> {
         let start = self.next_input;
         self.next_input += n;
@@ -358,7 +357,7 @@ impl<'dr, F: PrimeField + FromUniformBytes<64>> InstanceDriver<'dr> for Evaluati
 }
 
 #[cfg(test)]
-fn evaluate_expr<F: PrimeField>(
+fn evaluate_expr<F: Field>(
     expr: &Expr<F>,
     bases: &ChallengeBases<F>,
     input_count: usize,
@@ -396,7 +395,7 @@ fn evaluate_expr<F: PrimeField>(
 }
 
 #[cfg(test)]
-fn evaluate_shared<F: PrimeField>(
+fn evaluate_shared<F: Field>(
     expr: &Arc<Expr<F>>,
     bases: &ChallengeBases<F>,
     input_count: usize,
@@ -419,7 +418,7 @@ fn evaluate_shared<F: PrimeField>(
 /// production `D` slot and `C * D` relation, and treats later assertions as
 /// linear constraints exactly as the Lean evaluator does.
 #[cfg(test)]
-pub fn evaluate_extracted_trace<F: PrimeField + FromUniformBytes<64>>(
+pub fn evaluate_extracted_trace<F: Field>(
     instance: &str,
     seed: [u8; 32],
     points: usize,
@@ -461,7 +460,7 @@ pub fn evaluate_extracted_trace<F: PrimeField + FromUniformBytes<64>>(
     let gate_count = gate_assertions.len();
     let header = Header {
         instance: instance.to_owned(),
-        modulus: F::MODULUS.trim_start_matches("0x").to_ascii_lowercase(),
+        modulus: modulus_hex::<F>(),
         inputs: input_count,
         outputs: outputs.len(),
         gates: gate_count,
@@ -531,11 +530,22 @@ pub fn parse_seed(hex: &str) -> core::result::Result<[u8; 32], String> {
     Ok(seed)
 }
 
+/// The field modulus as 64 lowercase hex digits, most significant first.
+fn modulus_hex<F: Field>() -> String {
+    F::MODULUS
+        .as_ref()
+        .iter()
+        .rev()
+        .map(|limb| format!("{limb:016x}"))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use ff::Field;
-    use ragu_core::drivers::{Driver, DriverTypes, LinearExpression};
-    use ragu_pasta::{Fp, Fq};
+    use ragu_core::{
+        drivers::{Driver, DriverTypes, LinearExpression},
+        pasta::{Fp, Fq},
+    };
 
     use super::*;
     use crate::instance::{CircuitInstance, InstanceDriver};

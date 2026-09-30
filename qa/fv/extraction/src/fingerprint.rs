@@ -23,7 +23,7 @@ use std::{
     sync::Arc,
 };
 
-use ff::PrimeField;
+use udon::field::Field;
 
 use crate::{
     expr::{Expr, Op},
@@ -43,9 +43,9 @@ pub type Monomial = Vec<u64>;
 /// A polynomial over wire variables in canonical form: monomials in
 /// lexicographic order (a proper prefix sorts first), no zero coefficients.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Poly<F: PrimeField>(BTreeMap<Monomial, F>);
+pub struct Poly<F: Field>(BTreeMap<Monomial, F>);
 
-impl<F: PrimeField> Poly<F> {
+impl<F: Field> Poly<F> {
     fn zero() -> Self {
         Poly(BTreeMap::new())
     }
@@ -57,7 +57,7 @@ impl<F: PrimeField> Poly<F> {
     }
 
     fn add_term(&mut self, monomial: Monomial, coeff: F) {
-        if bool::from(coeff.is_zero()) {
+        if coeff.is_zero() {
             return;
         }
         match self.0.entry(monomial) {
@@ -66,7 +66,7 @@ impl<F: PrimeField> Poly<F> {
             }
             Entry::Occupied(mut entry) => {
                 let sum = *entry.get() + coeff;
-                if bool::from(sum.is_zero()) {
+                if sum.is_zero() {
                     entry.remove();
                 } else {
                     *entry.get_mut() = sum;
@@ -112,11 +112,11 @@ type Memo<F> = HashMap<*const Expr<F>, Arc<Poly<F>>>;
 
 /// Normalizes an expression into its canonical polynomial.
 #[cfg(test)]
-pub fn normalize<F: PrimeField>(expr: &Expr<F>) -> Poly<F> {
+pub fn normalize<F: Field>(expr: &Expr<F>) -> Poly<F> {
     normalize_with(expr, &mut Memo::new())
 }
 
-fn normalize_with<F: PrimeField>(expr: &Expr<F>, memo: &mut Memo<F>) -> Poly<F> {
+fn normalize_with<F: Field>(expr: &Expr<F>, memo: &mut Memo<F>) -> Poly<F> {
     match expr {
         Expr::Var(index) => {
             let index = *index as u64;
@@ -144,7 +144,7 @@ fn normalize_with<F: PrimeField>(expr: &Expr<F>, memo: &mut Memo<F>) -> Poly<F> 
     }
 }
 
-fn normalize_shared<F: PrimeField>(node: &Arc<Expr<F>>, memo: &mut Memo<F>) -> Arc<Poly<F>> {
+fn normalize_shared<F: Field>(node: &Arc<Expr<F>>, memo: &mut Memo<F>) -> Arc<Poly<F>> {
     let key = Arc::as_ptr(node);
     if let Some(poly) = memo.get(&key) {
         return poly.clone();
@@ -159,17 +159,16 @@ fn push_u64(buf: &mut Vec<u8>, n: u64) {
 }
 
 /// Append the canonical 32-byte little-endian representation of `value`.
-fn push_field_element<F: PrimeField>(buf: &mut Vec<u8>, value: F) {
-    let repr = value.to_repr();
+fn push_field_element<F: Field>(buf: &mut Vec<u8>, value: F) {
+    let repr = value.to_bytes();
     let bytes = repr.as_ref();
     assert_eq!(bytes.len(), 32, "expected a 32-byte field representation");
     buf.extend_from_slice(bytes);
 }
 
-/// Append the field modulus as 32 little-endian bytes, parsed from the
-/// big-endian hex string [`PrimeField::MODULUS`].
-fn push_modulus<F: PrimeField>(buf: &mut Vec<u8>) {
-    let hex = F::MODULUS.trim_start_matches("0x");
+/// Append [`Field::MODULUS`] as 32 little-endian bytes.
+fn push_modulus<F: Field>(buf: &mut Vec<u8>) {
+    let hex = modulus_hex::<F>();
     assert_eq!(hex.len(), 64, "expected a 256-bit modulus");
     let mut bytes = [0u8; 32];
     for (i, byte) in bytes.iter_mut().rev().enumerate() {
@@ -180,7 +179,7 @@ fn push_modulus<F: PrimeField>(buf: &mut Vec<u8>) {
 
 /// Append a polynomial: its term count, then each term as the monomial's
 /// degree, the monomial's variable indices, and the coefficient.
-fn push_poly<F: PrimeField>(buf: &mut Vec<u8>, poly: &Poly<F>) {
+fn push_poly<F: Field>(buf: &mut Vec<u8>, poly: &Poly<F>) {
     push_u64(buf, poly.0.len() as u64);
     for (monomial, coeff) in poly.terms() {
         push_u64(buf, monomial.len() as u64);
@@ -191,7 +190,7 @@ fn push_poly<F: PrimeField>(buf: &mut Vec<u8>, poly: &Poly<F>) {
     }
 }
 
-fn push_op<F: PrimeField>(buf: &mut Vec<u8>, op: &Op<F>, memo: &mut Memo<F>) {
+fn push_op<F: Field>(buf: &mut Vec<u8>, op: &Op<F>, memo: &mut Memo<F>) {
     match op {
         Op::Witness { count } => {
             buf.push(0x01);
@@ -205,7 +204,7 @@ fn push_op<F: PrimeField>(buf: &mut Vec<u8>, op: &Op<F>, memo: &mut Memo<F>) {
 }
 
 /// Build the canonical digest preimage for an extracted trace.
-fn encode_trace<F: PrimeField>(input_len: usize, ops: &[Op<F>], outputs: &[Expr<F>]) -> Vec<u8> {
+fn encode_trace<F: Field>(input_len: usize, ops: &[Op<F>], outputs: &[Expr<F>]) -> Vec<u8> {
     let mut memo = Memo::new();
     let mut buf = Vec::new();
     buf.extend_from_slice(DOMAIN_TAG);
@@ -224,18 +223,30 @@ fn encode_trace<F: PrimeField>(input_len: usize, ops: &[Op<F>], outputs: &[Expr<
 
 /// Compute the canonical fingerprint of an extracted trace, as a lowercase
 /// hex digest.
-pub fn digest_hex<F: PrimeField>(input_len: usize, ops: &[Op<F>], outputs: &[Expr<F>]) -> String {
+pub fn digest_hex<F: Field>(input_len: usize, ops: &[Op<F>], outputs: &[Expr<F>]) -> String {
     let buf = encode_trace(input_len, ops, outputs);
     sha256(&buf).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The field modulus as 64 lowercase hex digits, most significant first.
+fn modulus_hex<F: Field>() -> String {
+    F::MODULUS
+        .as_ref()
+        .iter()
+        .rev()
+        .map(|limb| format!("{limb:016x}"))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use ff::{Field, PrimeField};
-    use ragu_arithmetic::Coeff;
-    use ragu_pasta::{Fp, Fq};
+    use ragu_core::{
+        Coeff,
+        pasta::{Fp, Fq},
+    };
+    use udon::field::Field;
 
     use super::{INPUT_VAR_OFFSET, Poly, encode_trace, normalize};
     use crate::{
@@ -328,7 +339,7 @@ mod tests {
 
     /// Build the AST the decoder is expected to recover from a normalized
     /// polynomial.
-    fn expected_poly<F: PrimeField>(poly: &Poly<F>) -> AstPoly {
+    fn expected_poly<F: Field>(poly: &Poly<F>) -> AstPoly {
         AstPoly(
             poly.terms()
                 .map(|(monomial, coeff)| {
@@ -500,7 +511,7 @@ mod tests {
     /// element representation: `-1` is `modulus - 1`.
     #[test]
     fn modulus_matches_repr() {
-        fn check<F: PrimeField>() {
+        fn check<F: Field>() {
             let mut modulus = Vec::new();
             super::push_modulus::<F>(&mut modulus);
 
@@ -599,6 +610,6 @@ mod tests {
         let terms: Vec<_> = poly.terms().collect();
         assert_eq!(terms.len(), 1);
         assert_eq!(terms[0].0, &vec![0]);
-        assert_eq!(*terms[0].1, Fp::from(2).pow([64]));
+        assert_eq!(*terms[0].1, Fp::from(2).pow_u64(64));
     }
 }

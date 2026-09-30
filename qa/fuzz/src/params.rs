@@ -39,11 +39,11 @@
 //! opts in by wrapping its body rather than by being rewritten.
 
 use arbitrary::{Arbitrary, Unstructured};
-
-#[doc(no_inline)]
-pub use pasta_curves::{Fp, Fq};
 #[doc(no_inline)]
 pub use ragu_circuits::polynomials::{ProductionRank, TestRank};
+#[doc(no_inline)]
+pub use ragu_core::pasta::Fp;
+pub use ragu_core::pasta::Fq;
 
 /// The byte band that selects [`Production`](RankChoice::Production).
 ///
@@ -205,8 +205,9 @@ macro_rules! with_field {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use ragu_circuits::polynomials::Rank;
+
+    use super::*;
 
     /// The skew is the whole point of `RankChoice`; assert it rather than
     /// trusting the range arithmetic to stay right through an edit.
@@ -226,7 +227,10 @@ mod tests {
             }
         }
         assert_eq!(production + test, 256);
-        assert_eq!(production, 16, "the band should be exactly one byte in sixteen");
+        assert_eq!(
+            production, 16,
+            "the band should be exactly one byte in sixteen"
+        );
         assert_eq!(test, 240);
 
         // The band must avoid the two byte values libFuzzer emits most, or

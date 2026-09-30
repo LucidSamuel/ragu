@@ -18,9 +18,8 @@
 //! [`seed`]: crate::Application::seed
 //! [`outer_collapse`]: crate::internal::native::circuits::outer_collapse
 
-use ragu_arithmetic::Cycle;
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
 };
 use ragu_primitives::allocator::Standard;

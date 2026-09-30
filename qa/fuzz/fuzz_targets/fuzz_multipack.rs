@@ -20,11 +20,10 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::Maybe;
+use ragu_core::{maybe::Maybe, pasta::Fp};
 use ragu_primitives::{Boolean, Simulator, allocator::Standard, multipack};
+use udon::field::Field;
 
 #[derive(Arbitrary, Debug)]
 struct Input {

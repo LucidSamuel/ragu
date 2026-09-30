@@ -66,12 +66,11 @@ impl<F: Field> Driver<'_> for core::marker::PhantomData<F> {
 mod tests {
     use core::{cell::Cell, marker::PhantomData};
 
-    use ragu_pasta::Fp;
-
     use crate::{
         Result,
         drivers::{Coeff, Driver},
         maybe::Empty,
+        pasta::Fp,
     };
 
     type F = Fp;

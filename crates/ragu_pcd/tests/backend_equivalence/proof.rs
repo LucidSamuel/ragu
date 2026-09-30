@@ -1,7 +1,8 @@
 //! Semantic proof comparison for backend-equivalence tests.
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse::Polynomial};
+use ragu_core::Cycle;
+use udon::field::Field;
 
 use super::Proof;
 use crate::internal::{native, nested};

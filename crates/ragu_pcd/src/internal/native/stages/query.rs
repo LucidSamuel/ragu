@@ -16,18 +16,18 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Cycle, ff::PrimeField};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging,
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind, WireEqualizer},
     maybe::Maybe,
 };
 use ragu_primitives::{Element, allocator::Allocator};
+use udon::field::Field;
 
 use crate::{
     Proof,
@@ -57,7 +57,7 @@ pub struct ChildEvaluationsWitness<F> {
     pub current_registry_wy_at_child_x: F,
 }
 
-impl<F: PrimeField> ChildEvaluationsWitness<F> {
+impl<F: Field> ChildEvaluationsWitness<F> {
     /// Creates a child evaluations witness from a proof evaluated at the given points.
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank, B: ragu_backend::Backend>(
         proof: &Proof<C, R>,
@@ -111,7 +111,7 @@ impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for InternalCircuitValues<Element<'dr, 
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `InternalCircuitValues`
 // is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: ragu_arithmetic::ff::Field> ragu_core::gadgets::GadgetKind<F>
+unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
     for InternalCircuitValues<Element<'static, PhantomData<F>>>
 {
     type Rebind<'dr, D: Driver<'dr, F = F>> = InternalCircuitValues<Element<'dr, D>>;
@@ -149,7 +149,7 @@ impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for RxValues<Element<'dr, D>> {
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `RxValues`
 // is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: ragu_arithmetic::ff::Field> ragu_core::gadgets::GadgetKind<F>
+unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
     for RxValues<Element<'static, PhantomData<F>>>
 {
     type Rebind<'dr, D: Driver<'dr, F = F>> = RxValues<Element<'dr, D>>;
@@ -181,9 +181,7 @@ unsafe impl<F: ragu_arithmetic::ff::Field> ragu_core::gadgets::GadgetKind<F>
     }
 }
 
-impl<F: ragu_arithmetic::ff::Field> ragu_primitives::io::Write<F>
-    for RxValues<Element<'static, PhantomData<F>>>
-{
+impl<F: Field> ragu_primitives::io::Write<F> for RxValues<Element<'static, PhantomData<F>>> {
     fn write_gadget<'dr, D: Driver<'dr, F = F>, B: ragu_primitives::io::Buffer<'dr, D>>(
         this: &Bound<'dr, D, Self>,
         dr: &mut D,
@@ -322,7 +320,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Pasta;
+    use ragu_core::pasta::Pasta;
 
     use super::*;
     use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};

@@ -42,9 +42,10 @@
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.
 
-use ragu_arithmetic::{CurveAffine, Cycle};
 use ragu_circuits::polynomials::Rank;
+use ragu_core::Cycle;
 use ragu_core::Result;
+use udon::curve::Affine;
 
 use self::{
     batch::Batch,
@@ -65,7 +66,7 @@ mod verifier;
 
 /// The prover's messages of the compression on one curve.
 #[derive(Clone, Debug)]
-pub(crate) struct Messages<P: CurveAffine> {
+pub(crate) struct Messages<P: Affine> {
     /// The revdot reduction's.
     pub reduction: Reduction<P>,
     /// The batch's.
@@ -95,7 +96,7 @@ impl<C: Cycle> CompressedProof<C> {
     /// commitment per component, one opening per derived polynomial, one
     /// value per batched polynomial and one IPA round per bit of the rank.
     fn well_formed<R: Rank>(&self) -> bool {
-        fn side<P: CurveAffine, R: Rank>(messages: &Messages<P>) -> bool {
+        fn side<P: Affine, R: Rank>(messages: &Messages<P>) -> bool {
             let derived = Derived::ALL.len();
             // The batch covers the derived polynomials, the reduction's p
             // and q, and the four the instance opens.
@@ -155,9 +156,7 @@ struct Sampled<F> {
 }
 
 impl<F> Sampled<F> {
-    fn squeeze<P: CurveAffine<ScalarExt = F>, T: IpaTranscript<P>>(
-        transcript: &mut T,
-    ) -> Result<Self> {
+    fn squeeze<P: Affine<Scalar = F>, T: IpaTranscript<P>>(transcript: &mut T) -> Result<Self> {
         Ok(Sampled {
             w: transcript.squeeze_challenge()?,
             y: transcript.squeeze_challenge()?,

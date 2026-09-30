@@ -5,14 +5,16 @@ mod setup;
 use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     Circuit, CircuitExt,
     polynomials::{ProductionRank, TestRank, sparse},
     registry::{Registry, RegistryBuilder},
     testing::synthesis_counts,
 };
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Pasta},
+};
 use ragu_testing::circuits::{MySimpleCircuit, SquareCircuit};
 use setup::{
     builder_squares, f, rand_sparse_poly, rand_sparse_poly_vec, registry_simple, setup_rng,
@@ -20,7 +22,7 @@ use setup::{
 };
 
 #[library_benchmark(setup = setup_with_rng)]
-#[bench::sparse(Pasta::host_generators(Pasta::baked()), (rand_sparse_poly,))]
+#[bench::sparse(Pasta::host_generators(ragu_pcd::pasta::baked()), (rand_sparse_poly,))]
 fn commit_sparse(
     (generators, (poly,)): (
         &'static <Pasta as Cycle>::HostGenerators,

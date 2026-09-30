@@ -19,14 +19,14 @@
 //!
 //! [`PointsStage`]: crate::internal::endoscalar::PointsStage
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
     staging::{MultiStage, StageExt},
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
 use ragu_primitives::{extract_endoscalar, lift_endoscalar, vec::ConstLen};
+use udon::field::Field;
 
 pub mod circuits {
     pub mod collapse;

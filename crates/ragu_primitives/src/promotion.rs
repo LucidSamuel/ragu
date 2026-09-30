@@ -2,14 +2,14 @@
 
 use core::ops::Deref;
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     convert::{CloneWires, WireMap},
     drivers::{Driver, DriverTypes, DriverValue},
     gadgets::{Bound, Gadget, GadgetKind, WireEqualizer},
     maybe::Empty,
 };
+use udon::field::Field;
 
 /// Trait for gadgets that support promotion from a [`Demoted`] state.
 ///

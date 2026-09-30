@@ -3,7 +3,7 @@
 pub mod sparse;
 pub mod txz;
 
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 mod private {
     pub trait Sealed {}
@@ -51,7 +51,7 @@ pub trait Rank:
         let mut view = sparse::View::wiring();
         if z != F::ZERO {
             let zinv = z.invert().unwrap();
-            let zpow = z.pow_vartime([2 * Self::n() as u64]);
+            let zpow = z.pow_u64(2 * Self::n() as u64);
             let mut l = -zpow * zinv;
             let mut r = -zpow;
             for _ in 0..Self::n() {
@@ -73,7 +73,7 @@ pub trait Rank:
     fn tx<F: Field>(x: F) -> sparse::Polynomial<F, Self> {
         let mut view = sparse::View::wiring();
         if x != F::ZERO {
-            let mut xi = -x.pow([3 * Self::n() as u64]);
+            let mut xi = -x.pow_u64(3 * Self::n() as u64);
             for _ in 0..Self::n() {
                 view.a.push(xi);
                 view.b.push(xi);
@@ -147,7 +147,8 @@ impl_rank_for_R! {7, 13}
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
+    use rand::Rng;
 
     use super::*;
 
@@ -162,7 +163,7 @@ mod tests {
             view.b.push(Fp::ONE);
         }
         let mut poly = view.build();
-        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         poly.dilate(z);
         poly.negate();
         let poly_dense = poly.to_dense();
@@ -183,8 +184,8 @@ mod tests {
     #[test]
     fn test_txz_consistency() {
         type DemoR = TestRank;
-        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         let txz = DemoR::txz(x, z);
         let tx0 = DemoR::txz(x, Fp::ZERO);
         let t0z: Fp = DemoR::txz(Fp::ZERO, z);

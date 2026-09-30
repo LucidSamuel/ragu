@@ -1,11 +1,11 @@
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{
-    group::Group as _,
-    rand::{SeedableRng as _, rngs::StdRng},
+use ragu_core::{
+    Error, Result,
+    pasta::{Ep, Eq, Fp, Fq},
 };
-use ragu_core::{Error, Result};
-use ragu_pasta::{Ep, Eq, Fp, Fq};
+use rand::{SeedableRng as _, rngs::StdRng};
+use udon::curve::Projective;
 
 use crate::{
     Application, ApplicationBuilder, Header, Index, PROOF_SIZE_COMPRESSED, Pcd, Proof, Step,

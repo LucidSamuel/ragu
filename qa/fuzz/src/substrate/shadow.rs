@@ -31,7 +31,7 @@
 //!
 //! [`Capabilities::VALUE_FALLIBLE`]: super::Capabilities::VALUE_FALLIBLE
 
-use ff::PrimeField;
+use udon::field::Field;
 
 use super::{
     Op, Program, special_value,
@@ -116,7 +116,7 @@ pub struct ShadowStacks<F> {
 /// Evaluates `program` natively with the given advice overrides.
 pub fn shadow_eval<F>(program: &Program, ov: Overrides<'_, F>) -> ShadowStacks<F>
 where
-    F: PrimeField<Repr = [u8; 32]>,
+    F: Field,
 {
     let elem_ov = |slot: usize, honest: F| -> F {
         ov.elems
@@ -187,7 +187,7 @@ where
             Op::Invert(a) => {
                 let a = a as usize % elen;
                 // Mirrors the gadget: inverting zero fails, skipping the push.
-                let inv: Option<F> = elems[a].invert().into();
+                let inv: Option<F> = elems[a].invert();
                 value_fallible_pushes.push(inv.is_some());
                 if let Some(inv) = inv {
                     elems.push(inv);
@@ -204,7 +204,7 @@ where
                 let (a, b) = (a as usize % elen, b as usize % elen);
                 // Mirrors the gadget: a zero divisor fails enforce_nonzero,
                 // skipping the push.
-                let inv: Option<F> = elems[b].invert().into();
+                let inv: Option<F> = elems[b].invert();
                 value_fallible_pushes.push(inv.is_some());
                 if let Some(inv) = inv {
                     elems.push(elems[a] * inv);
@@ -230,7 +230,9 @@ where
             }
             Op::AllocRaw(bytes) => {
                 // Mirrors the gadget: non-canonical bytes skip the push.
-                let v: Option<F> = F::from_repr(bytes).into();
+                let mut repr = F::ZERO.to_bytes();
+                repr.as_mut().copy_from_slice(&bytes);
+                let v: Option<F> = F::from_bytes(repr);
                 value_fallible_pushes.push(v.is_some());
                 if let Some(honest) = v {
                     let slot = elems.len();
@@ -303,17 +305,15 @@ where
 /// observe its honest value?
 pub fn native_satisfied<F>(program: &Program, honest_anchors: &[F], ov: Overrides<'_, F>) -> bool
 where
-    F: PrimeField<Repr = [u8; 32]>,
+    F: Field,
 {
     shadow_eval(program, ov).anchors == honest_anchors
 }
 
 #[cfg(test)]
 mod tests {
-    use ff::Field;
     use proptest::prelude::*;
-    use ragu_core::maybe::Maybe;
-    use ragu_pasta::Fp;
+    use ragu_core::{maybe::Maybe, pasta::Fp};
     use ragu_primitives::{Simulator, allocator::Standard};
 
     use super::{

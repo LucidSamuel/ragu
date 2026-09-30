@@ -6,13 +6,13 @@
 use alloc::vec::Vec;
 use core::borrow::Borrow;
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
+use udon::field::Field;
 
 use crate::{
     Boolean, GadgetExt, Invertible, Nonzero,
@@ -408,7 +408,6 @@ impl<'dr, D: Driver<'dr>> Element<'dr, D> {
                     .value()
                     .take()
                     .invert()
-                    .into_option()
                     .ok_or_else(|| Error::InvalidWitness("division by zero".into()))?)
         })?;
 
@@ -599,11 +598,12 @@ pub fn multiadd<'dr, D: Driver<'dr>>(
 ) -> Element<'dr, D> {
     assert_eq!(values.len(), coeffs.len());
     let value = D::just(|| {
-        let mut sum = D::F::ZERO;
-        for (value, coeff) in values.iter().zip(coeffs) {
-            sum += *value.value().take() * *coeff;
-        }
-        sum
+        D::F::sum_of_product_pairs(
+            values
+                .iter()
+                .zip(coeffs)
+                .map(|(value, coeff)| (value.value().take(), coeff)),
+        )
     });
     let wire = dr.add(|mut lc| {
         for (value, coeff) in values.iter().zip(coeffs) {
@@ -620,8 +620,9 @@ mod tests {
     use alloc::{format, vec, vec::Vec};
 
     use proptest::prelude::*;
-    use ragu_pasta::{Fp, fp};
+    use ragu_core::pasta::Fp;
     use ragu_testing::strategies;
+    use udon::fp_hex;
 
     use super::*;
     use crate::allocator::Standard;
@@ -632,12 +633,15 @@ mod tests {
     // (omega, k, should_pass)
     fn test_cases() -> Vec<(Fp, u32, bool)> {
         // 2^32 primitive roots of unity
-        let root_of_unity1 =
-            fp!(0x2bce74deac30ebda362120830561f81aea322bf2b7bb7584bdad6fabd87ea32f);
-        let root_of_unity2 =
-            fp!(0x16d296aa2b2fb60c7f2cf0bd729140e59875893be132b539a16988b46a2131f1);
-        let root_of_unity3 =
-            fp!(0x0e16194e05e127fc65f98157c0a42b1c050cd2c5dd8b481c9d9e9fd0a13ee1c9);
+        let root_of_unity1 = Fp::new(fp_hex!(
+            "0x2bce74deac30ebda362120830561f81aea322bf2b7bb7584bdad6fabd87ea32f"
+        ));
+        let root_of_unity2 = Fp::new(fp_hex!(
+            "0x16d296aa2b2fb60c7f2cf0bd729140e59875893be132b539a16988b46a2131f1"
+        ));
+        let root_of_unity3 = Fp::new(fp_hex!(
+            "0x0e16194e05e127fc65f98157c0a42b1c050cd2c5dd8b481c9d9e9fd0a13ee1c9"
+        ));
 
         vec![
             // 1 is a 2^0 root of unity (1^1 = 1)

@@ -43,27 +43,28 @@
 
 #![no_main]
 
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-use std::hint::black_box;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    hint::black_box,
+};
 
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::Maybe;
+use ragu_core::{maybe::Maybe, pasta::Fp};
 use ragu_primitives::{Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{Capabilities, Limits, OpSet, Program, synthesize};
+use udon::field::Field;
 
 /// Hash the final witness state into a single u64.
 ///
-/// Field elements are serialized via `to_repr()` (canonical byte form);
+/// Field elements are serialized via `to_bytes()` (canonical byte form);
 /// booleans are hashed as a `Vec<bool>`. Uses `DefaultHasher` because
 /// adversarial hash resistance isn't needed — we only need different
 /// witnesses to produce different hashes with overwhelming probability.
 fn hash_witness(elems: &[Fp], bools: &[bool]) -> u64 {
     let mut hasher = DefaultHasher::new();
     for fp_val in elems {
-        fp_val.to_repr().as_ref().hash(&mut hasher);
+        fp_val.to_bytes().as_ref().hash(&mut hasher);
     }
     bools.hash(&mut hasher);
     hasher.finish()

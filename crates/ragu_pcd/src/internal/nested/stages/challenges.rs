@@ -53,10 +53,6 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{
-    CurveAffine,
-    ff::{Field, PrimeField},
-};
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     Result,
@@ -69,6 +65,7 @@ use ragu_primitives::{
     io::Write,
     vec::{ConstLen, FixedVec},
 };
+use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 /// The native challenges this stage holds the lifts of before the sign and
 /// $\beta$, in order: `w, y, z, mu, nu, mu_prime, nu_prime, x, alpha, u`.
@@ -114,12 +111,12 @@ pub struct Witness<F> {
     pub beta: F,
 }
 
-impl<F: PrimeField> Witness<F> {
+impl<F: Field> Witness<F> {
     /// Creates the witness from the lifts and the children's native output
     /// headers. The sign mirrors the native preamble's base-case predicate;
     /// the last native binding circuit derives that predicate independently
     /// from its header wires. The beta lift is filled once `pre_beta` is known.
-    pub fn new<N: PrimeField, const HEADER_SIZE: usize>(
+    pub fn new<N: Field, const HEADER_SIZE: usize>(
         lifts: [F; NUM],
         left_header: &[N],
         right_header: &[N],
@@ -167,11 +164,11 @@ pub struct Pair<'dr, D: Driver<'dr>> {
 }
 
 #[derive(Default)]
-pub struct Stage<C: CurveAffine, R> {
+pub struct Stage<C: Affine, R> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
+impl<C: Affine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
     type Parent = super::eval::Stage<C, R>;
     type Witness<'source> = &'source Witness<C::Base>;
     type OutputKind = Kind![C::Base; Output<'_, _>];
@@ -216,7 +213,7 @@ mod tests {
         polynomials::ProductionRank,
         staging::{StageExt, StageReader, stage_wire_indices, wires_of},
     };
-    use ragu_pasta::EqAffine;
+    use ragu_core::pasta::EqAffine;
 
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};
@@ -231,10 +228,10 @@ mod tests {
     #[test]
     fn stage_values_read_back() -> Result<()> {
         type R = ProductionRank;
-        type F = ragu_pasta::Fq;
+        type F = ragu_core::pasta::Fq;
         let lifts: [F; NUM] = core::array::from_fn(|i| F::from(3 + i as u64));
         let beta = F::from(99);
-        let header = [ragu_pasta::Fp::from(crate::header::Suffix::new(0).get()); 4];
+        let header = [ragu_core::pasta::Fp::from(crate::header::Suffix::new(0).get()); 4];
         let witness = Witness::new::<_, 4>(lifts, &header, &header, beta);
         let rx = <Stage<EqAffine, R> as StageExt<F, R>>::rx(F::from(11), &witness)?;
         let reader = StageReader::<F, R>::new(&rx);

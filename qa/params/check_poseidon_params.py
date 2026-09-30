@@ -1,57 +1,72 @@
-"""Check the committed Poseidon tables against the generator that produced them.
+"""Check the Poseidon tables ragu runs with against the generator that produced them.
 
-    python3 qa/params/check_poseidon_params.py [--halo2-dir DIR] [--ragu-dir DIR]
+    python3 qa/params/check_poseidon_params.py [--halo2-dir DIR] [--udon-dir DIR]
 
-The default run checks the tables this repository ships, three ways: the
-committed Rust tables, the pinned Sage output under `reference/`, and the
-Python port's regeneration must all agree. `--halo2-dir` adds a self-test of
-the port against halo2's P128Pow5T3 tables, deployed Orchard parameters from
-the same script at t=3; it needs a halo2 checkout and is not run in CI.
+The tables are `udon`'s (`crates/udon/src/poseidon/` in the udon repository, at the revision
+this workspace pins; located through `cargo metadata` unless `--udon-dir` names
+the crate). The default run checks them three ways: the committed Rust tables,
+the pinned Sage output under `reference/`, and the Python port's regeneration
+must all agree. `--halo2-dir` adds a self-test of the port against halo2's
+P128Pow5T3 tables, deployed Orchard parameters from the same script at t=3; it
+needs a halo2 checkout and is not run in CI.
 """
 
 import argparse
+import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 from gen_halo2_vectors import parse_constants as parse_halo2
 from poseidon_params import PALLAS_BASE, VESTA_BASE, generate
 
-HEX_LITERAL = re.compile(r"(?:fp|fq)!\(0x([0-9a-fA-F]{64})\)")
+HEX_LITERAL = re.compile(r"(?:fp|fq)_hex!\(\"0x([0-9a-fA-F]{64})\"\)")
 SAGE_HEX = re.compile(r"0x([0-9a-f]{1,64})")
-TRAIT_CONST = re.compile(
-    r"^\s*const\s+(T|RATE|FULL_ROUNDS|PARTIAL_ROUNDS|ALPHA)\s*:\s*"
-    r"(?:usize|isize)\s*=\s*(-?\d+)\s*;\s*$",
-    re.MULTILINE,
+INSTANCE = re.compile(
+    r"pub const (?P<name>PALLAS_BASE|PALLAS_SCALAR): PoseidonParameters<F[pq], (?P<t>\d+)> ="
+    r" PoseidonParameters \{(?P<fields>.*?)\};",
+    re.DOTALL,
 )
+FIELD = re.compile(r"(full_rounds|partial_rounds|alpha):\s*(\d+)")
 
 
-def parse_ragu(path, *, t, rate, r_f, r_p, alpha):
-    """ROUND_CONSTANTS and MDS_MATRIX from a ragu_pasta poseidon_f*.rs."""
-    text = path.read_text()
-    actual_config = {name: int(value) for name, value in TRAIT_CONST.findall(text)}
-    expected_config = {
-        "T": t,
-        "RATE": rate,
-        "FULL_ROUNDS": r_f,
-        "PARTIAL_ROUNDS": r_p,
-        "ALPHA": alpha,
+def parse_udon(udon_src, instance, tables, *, t, r_f, r_p, alpha):
+    """ROUND_CONSTANTS and MDS from udon's poseidon tables, checked against the
+    instance's declared shape in `poseidon/mod.rs`."""
+    shapes = {
+        m.group("name"): (int(m.group("t")), {k: int(v) for k, v in FIELD.findall(m.group("fields"))})
+        for m in INSTANCE.finditer((udon_src / "poseidon" / "mod.rs").read_text())
     }
-    if actual_config != expected_config:
-        raise ValueError(
-            f"{path}: PoseidonPermutation metadata {actual_config}, expected {expected_config}"
-        )
-
+    actual = shapes.get(instance)
+    expected = (t, {"full_rounds": r_f, "partial_rounds": r_p, "alpha": alpha})
+    if actual != expected:
+        raise ValueError(f"udon poseidon/mod.rs: {instance} declares {actual}, expected {expected}")
     rounds = r_f + r_p
-    head, _, tail = text.partition("const MDS_MATRIX")
+    text = (udon_src / "poseidon" / tables).read_text()
+    head, _, tail = text.partition("pub(super) const MDS")
     rc_flat = [int(m, 16) for m in HEX_LITERAL.findall(head)]
     mds_flat = [int(m, 16) for m in HEX_LITERAL.findall(tail)]
     if len(rc_flat) != rounds * t or len(mds_flat) != t * t:
-        raise ValueError(f"{path}: parsed {len(rc_flat)} constants and {len(mds_flat)} MDS entries")
+        raise ValueError(f"{tables}: parsed {len(rc_flat)} constants and {len(mds_flat)} MDS entries")
     return (
         [rc_flat[r * t : (r + 1) * t] for r in range(rounds)],
         [mds_flat[i * t : (i + 1) * t] for i in range(t)],
     )
+
+
+def locate_udon(ragu_dir):
+    """The `src/` directory of the udon crate this workspace resolves."""
+    metadata = json.loads(
+        subprocess.run(
+            ["cargo", "metadata", "--format-version", "1", "--manifest-path", str(ragu_dir / "Cargo.toml")],
+            check=True, capture_output=True, text=True,
+        ).stdout
+    )
+    for package in metadata["packages"]:
+        if package["name"] == "zakura-udon":
+            return Path(package["manifest_path"]).parent / "src"
+    raise ValueError("udon is not a dependency of this workspace")
 
 
 def parse_sage(path, t, p, rounds=64):
@@ -130,7 +145,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--halo2-dir", type=Path, default=None,
                         help="path to a halo2 checkout, for the port self-test")
-    parser.add_argument("--ragu-dir", type=Path, default=here.parents[1])
+    parser.add_argument("--udon-dir", type=Path, default=None,
+                        help="path to the udon crate; default: the one this workspace pins")
     args = parser.parse_args()
 
     all_ok = True
@@ -146,13 +162,13 @@ def main():
             rc, mds = parse_halo2(path, 3, modulus=p)
             all_ok &= check(field, rc, mds, t=3, r_f=8, r_p=56, p=p)
 
-    print("ragu_pasta (t=5):")
-    for name, field, curve, p in (
-        ("poseidon_fp", "Fp", "pallas", PALLAS_BASE),
-        ("poseidon_fq", "Fq", "vesta", VESTA_BASE),
+    udon_src = (args.udon_dir / "src") if args.udon_dir else locate_udon(here.parents[1])
+    print(f"udon (t=5), {udon_src}:")
+    for instance, tables, field, curve, p in (
+        ("PALLAS_BASE", "pallas_base.rs", "Fp", "pallas", PALLAS_BASE),
+        ("PALLAS_SCALAR", "pallas_scalar.rs", "Fq", "vesta", VESTA_BASE),
     ):
-        path = args.ragu_dir / "crates" / "ragu_pasta" / "src" / f"{name}.rs"
-        rc, mds = parse_ragu(path, t=5, rate=4, r_f=8, r_p=56, alpha=5)
+        rc, mds = parse_udon(udon_src, instance, tables, t=5, r_f=8, r_p=56, alpha=5)
         reference = parse_sage(here / "reference" / f"{curve}-t5.txt", 5, p)
         all_ok &= check(field, rc, mds, t=5, r_f=8, r_p=56, p=p, reference=reference)
 

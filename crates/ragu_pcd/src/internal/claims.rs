@@ -19,12 +19,12 @@
 use alloc::{borrow::Cow, vec::Vec};
 use core::{borrow::Borrow, marker::PhantomData};
 
-use ragu_arithmetic::ff::{Field, PrimeField};
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::{CircuitIndex, Registry},
 };
+use udon::field::Field;
 
 /// Sum an iterator of polynomials, borrowing if only one element.
 ///
@@ -81,7 +81,7 @@ pub trait Source {
 /// - Verify path: `A = Cow<'rx, Polynomial>` (plain polynomial references)
 /// - Fuse path: `A = TrackedPoly<'rx, FoldKey, F, R>` (polynomial +
 ///   commitment decomposition; see `fuse::claims`)
-pub struct Builder<'m, 'rx, A, F: PrimeField, R: Rank, B: Backend> {
+pub struct Builder<'m, 'rx, A, F: Field, R: Rank, B: Backend> {
     pub registry: &'m Registry<'m, F, R>,
     pub y: F,
     pub z: F,
@@ -93,7 +93,7 @@ pub struct Builder<'m, 'rx, A, F: PrimeField, R: Rank, B: Backend> {
     backend: PhantomData<B>,
 }
 
-impl<'m, 'rx, A, F: PrimeField, R: Rank, B: Backend> Builder<'m, 'rx, A, F, R, B>
+impl<'m, 'rx, A, F: Field, R: Rank, B: Backend> Builder<'m, 'rx, A, F, R, B>
 where
     A: Borrow<sparse::Polynomial<F, R>>,
 {

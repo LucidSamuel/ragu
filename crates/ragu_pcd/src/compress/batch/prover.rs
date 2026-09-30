@@ -1,17 +1,20 @@
 //! The prover's side of the batch.
 
-use alloc::{borrow::Cow, boxed::Box, vec::Vec};
+use alloc::{borrow::Cow, vec::Vec};
 
-use ragu_arithmetic::{CurveAffine, FixedGenerators, factor_iter, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
+use ragu_core::FixedGenerators;
 use ragu_core::Result;
+use udon::curve::Affine;
+use udon::field::Field;
+use udon::polynomial::divide_linear_rev;
 
 use super::{Batch, Witness};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
 
 /// The prover's batch: `polys` are the committed polynomials the `claims`
 /// refer to, in the order their commitments are listed.
-pub(crate) fn batch<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
+pub(crate) fn batch<C: Affine, R: Rank, T: IpaTranscript<C>>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     claims: &[OpeningClaim<C::Scalar>],
     generators: &impl FixedGenerators<C>,
@@ -22,8 +25,8 @@ pub(crate) fn batch<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
     // f: the quotients of every claim, batched under alpha.
     let quotients = claims
         .iter()
-        .map(|claim| factor_iter(polys[claim.poly].iter_coeffs(), claim.point))
-        .collect();
+        .map(|claim| divide_linear_rev(polys[claim.poly].iter_coeffs(), claim.point))
+        .collect::<Vec<_>>();
     let f = batched_quotients::<_, R>(quotients, alpha);
     let f_commitment = f.commit_to_affine(generators);
     transcript.write_point(f_commitment)?;
@@ -57,10 +60,10 @@ pub(crate) fn batch<C: CurveAffine, R: Rank, T: IpaTranscript<C>>(
 }
 
 /// Horner-batches quotient coefficient streams, highest degree first as
-/// [`factor_iter`] yields them, under $\alpha$: the first stream receives the
-/// highest power.
+/// [`divide_linear_rev`] yields them, under $\alpha$: the first stream
+/// receives the highest power.
 fn batched_quotients<F: Field, R: Rank>(
-    mut streams: Vec<Box<dyn Iterator<Item = F> + '_>>,
+    mut streams: Vec<impl Iterator<Item = F>>,
     alpha: F,
 ) -> sparse::Polynomial<F, R> {
     let mut coeffs = Vec::with_capacity(R::num_coeffs());

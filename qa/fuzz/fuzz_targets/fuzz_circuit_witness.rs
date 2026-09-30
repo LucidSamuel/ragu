@@ -17,26 +17,26 @@
 //! ## Invariants enforced
 //!
 //! - **Synthesis correctness**: the Simulator output values equal the
-//!    native spec. Catches bugs in any `Circuit::witness` impl that
-//!    produces a non-spec output from a satisfying witness, and catches
-//!    gadget plumbing bugs that would emit a constraint inconsistent
-//!    with the witness it returns.
+//!   native spec. Catches bugs in any `Circuit::witness` impl that
+//!   produces a non-spec output from a satisfying witness, and catches
+//!   gadget plumbing bugs that would emit a constraint inconsistent
+//!   with the witness it returns.
 //! - **Trace-pipeline implication**: if `Simulator::simulate` accepted,
-//!    `circuit.trace` must also return `Ok`. The reverse direction does
-//!    *not* hold — `trace::eval`'s `enforce_zero` and `gate` are pure
-//!    recorders, not constraint checkers (see `trace.rs:226-261`), so an
-//!    unsatisfying witness produces `Err` from `Simulator` and `Ok` from
-//!    `trace::eval` by design. Constraint checking is the Simulator's
-//!    job; trace's job is to record values for later assembly into a
-//!    polynomial whose algebraic identity is checked downstream.
+//!   `circuit.trace` must also return `Ok`. The reverse direction does
+//!   *not* hold — `trace::eval`'s `enforce_zero` and `gate` are pure
+//!   recorders, not constraint checkers (see `trace.rs:226-261`), so an
+//!   unsatisfying witness produces `Err` from `Simulator` and `Ok` from
+//!   `trace::eval` by design. Constraint checking is the Simulator's
+//!   job; trace's job is to record values for later assembly into a
+//!   polynomial whose algebraic identity is checked downstream.
 //! - **`alpha` injection contract**: assembling the same trace twice with
-//!    distinct `alpha_a` and `alpha_b` produces two polynomials that
-//!    differ in exactly one coefficient position, with the difference
-//!    equal to `alpha_a - alpha_b`. `Registry::assemble_with_alpha`
-//!    documents that `alpha` is written to `a[0]` and used nowhere else;
-//!    this catches any future regression that leaks `alpha` into another
-//!    slot (which would break commit-blinding / point-at-infinity
-//!    protection).
+//!   distinct `alpha_a` and `alpha_b` produces two polynomials that
+//!   differ in exactly one coefficient position, with the difference
+//!   equal to `alpha_a - alpha_b`. `Registry::assemble_with_alpha`
+//!   documents that `alpha` is written to `a[0]` and used nowhere else;
+//!   this catches any future regression that leaks `alpha` into another
+//!   slot (which would break commit-blinding / point-at-infinity
+//!   protection).
 //!
 //! ## Circuit coverage
 //!
@@ -81,35 +81,32 @@
 
 #![no_main]
 
+use std::sync::LazyLock;
+
 use arbitrary::Arbitrary;
-use ff::Field;
-use ff::PrimeField;
-use ff::WithSmallOrderMulGroup;
-use group::Curve;
-use group::CurveAffine as _;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use pasta_curves::arithmetic::CurveAffine;
-use ragu_arithmetic::Coeff;
 use ragu_circuits::{
     Circuit, CircuitExt, WithAux,
     polynomials::TestRank,
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    pasta::{EpAffine, Fp, Fq},
     routines::{Prediction, Routine},
 };
-use ragu_pasta::{EpAffine, Fq};
 use ragu_primitives::{Boolean, Element, Point, Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{
     Limits, OpSet, Overrides, Preamble, Program, ProgramCircuit, shadow_eval, steer,
     synthesize_with_witness,
 };
-use std::sync::LazyLock;
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 #[derive(Arbitrary, Debug)]
 enum CircuitChoice {
@@ -166,7 +163,7 @@ fn special_value(idx: u8) -> Fp {
         0 => Fp::ZERO,
         1 => Fp::ONE,
         2 => -Fp::ONE,
-        3 => Fp::TWO_INV,
+        3 => Fp::TWO_INVERSE,
         4 => Fp::ROOT_OF_UNITY,
         5 => Fp::MULTIPLICATIVE_GENERATOR,
         6 => Fp::from(1u64 << 32),
@@ -294,10 +291,9 @@ impl Circuit<Fp> for PointCircuit {
 /// `EpAffine` value. Returns `None` if the witness or any intermediate
 /// would be the point at infinity (which `Point::alloc` rejects).
 fn point_native(base: EpAffine) -> Option<EpAffine> {
-    let coords = base.coordinates().into_option()?;
-    let endo_x = *coords.x() * Fp::ZETA;
-    let endo_p = EpAffine::from_xy(endo_x, *coords.y()).into_option()?;
-    Some((-endo_p.to_curve()).to_affine())
+    let (x, y) = Affine::coordinates(&base)?;
+    let endo_p = <EpAffine as Affine>::from_xy(x * Fp::ZETA, y)?;
+    Some((-endo_p.to_projective()).to_affine())
 }
 
 // ---------------------------------------------------------------------------

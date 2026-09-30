@@ -49,7 +49,12 @@ mod tests;
 use alloc::vec::Vec;
 use core::{borrow::Borrow, marker::PhantomData};
 
-use ragu_arithmetic::{CurveAffine, DeferredField, ff::Field, rand::CryptoRng};
+use rand::CryptoRng;
+use udon::{
+    curve::Affine,
+    fft::reference::Butterfly,
+    field::{Field, FieldAdapter, PastaField, PrimeModulus},
+};
 
 use super::Rank;
 
@@ -117,7 +122,7 @@ fn extend_runs<F: Field>(out: &mut Vec<(usize, Vec<F>)>, base: usize, data: Vec<
     let mut zero_count: usize = 0;
 
     for (i, coeff) in data.into_iter().enumerate() {
-        let is_zero = bool::from(coeff.is_zero());
+        let is_zero = coeff.is_zero();
 
         match (run_start, is_zero) {
             (None, true) => {}
@@ -183,7 +188,9 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     /// Creates a polynomial with random coefficients filling all `4n` slots.
     pub fn random<RNG: CryptoRng>(rng: &mut RNG) -> Self {
         assert!(R::num_coeffs() > 0, "num_coeffs must be positive");
-        let coeffs: Vec<F> = (0..R::num_coeffs()).map(|_| F::random(&mut *rng)).collect();
+        let coeffs: Vec<F> = (0..R::num_coeffs())
+            .map(|_| F::random(|bytes| rng.fill_bytes(bytes)))
+            .collect();
         Self::from_blocks(alloc::vec![(0, coeffs)])
     }
 }
@@ -329,7 +336,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
 
     /// Multiplies all coefficients by `by`.
     pub fn scale(&mut self, by: F) {
-        if bool::from(by.is_zero()) {
+        if by.is_zero() {
             self.blocks.clear();
         } else {
             self.apply_all(|x| *x *= by);
@@ -372,15 +379,14 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         for (start, data) in self.blocks.iter().rev() {
             let gap = prev_start - (start + data.len());
             if gap > 0 {
-                result *= z.pow_vartime([gap as u64]);
+                result *= z.pow_u64(gap as u64);
             }
-            for coeff in data.iter().rev() {
-                result = result * z + *coeff;
-            }
+            result =
+                udon::polynomial::evaluate_iter(data.iter().chain(core::iter::once(&result)), z);
             prev_start = *start;
         }
         if prev_start > 0 {
-            result *= z.pow_vartime([prev_start as u64]);
+            result *= z.pow_u64(prev_start as u64);
         }
         result
     }
@@ -393,7 +399,7 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         for (start, data) in &mut self.blocks {
             let gap = *start - prev_end;
             if gap > 0 {
-                power *= z.pow_vartime([gap as u64]);
+                power *= z.pow_u64(gap as u64);
             }
             for coeff in data.iter_mut() {
                 *coeff *= power;
@@ -409,12 +415,9 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
     ///
     /// Uses a two-pointer merge over both block lists for $O(\text{nnz})$
     /// time. Products are accumulated unreduced via
-    /// [`DeferredField::mul_accumulate`] and a single Montgomery reduction is
+    /// [`Field::mul_accumulate`] and a single Montgomery reduction is
     /// performed at the end.
-    pub fn revdot(&self, other: &Self) -> F
-    where
-        F: DeferredField,
-    {
+    pub fn revdot(&self, other: &Self) -> F {
         let max_deg = R::num_coeffs() - 1;
         let mut acc = F::Accumulator::default();
 
@@ -463,32 +466,30 @@ impl<F: Field, R: Rank> Polynomial<F, R> {
         F::reduce(acc)
     }
 
-    /// Computes a commitment to this polynomial in projective form. Use
-    /// [`batch_to_affine`](ragu_arithmetic::batch_to_affine) to efficiently
-    /// convert multiple projective commitments to affine with a single
+    /// Computes a commitment to this polynomial in projective form, through
+    /// the group vocabulary's [`Affine::msm`]. Use [`Affine::batch_to_affine`]
+    /// to convert multiple projective commitments to affine with a single
     /// field inversion.
-    pub fn commit<C: CurveAffine<ScalarExt = F>>(
+    pub fn commit<C: Affine<Scalar = F>>(
         &self,
-        generators: &impl ragu_arithmetic::FixedGenerators<C>,
-    ) -> C::Curve {
+        generators: &impl ragu_core::FixedGenerators<C>,
+    ) -> C::Projective {
         assert!(generators.g().len() >= R::num_coeffs());
 
         let g = generators.g();
-        ragu_arithmetic::msm(
-            self.blocks.iter().flat_map(|(_, data)| data.iter()),
-            self.blocks
-                .iter()
-                .flat_map(|(start, data)| &g[*start..*start + data.len()]),
-        )
+        let (scalars, bases): (Vec<F>, Vec<C>) = self
+            .iter_stored_coeffs()
+            .map(|(index, coefficient)| (*coefficient, g[index]))
+            .unzip();
+        C::msm(&scalars, &bases)
     }
 
     /// Computes a commitment to this polynomial, normalized to affine. For
     /// multiple commitments, prefer [`commit`](Self::commit) with
-    /// [`batch_to_affine`](ragu_arithmetic::batch_to_affine) to share a
-    /// single field inversion.
-    pub fn commit_to_affine<C: CurveAffine<ScalarExt = F>>(
+    /// [`Affine::batch_to_affine`] to share a single field inversion.
+    pub fn commit_to_affine<C: Affine<Scalar = F>>(
         &self,
-        generators: &impl ragu_arithmetic::FixedGenerators<C>,
+        generators: &impl ragu_core::FixedGenerators<C>,
     ) -> C {
         self.commit(generators).into()
     }
@@ -571,18 +572,25 @@ impl<F: Field> DoubleEndedIterator for CoeffIter<'_, F> {
 
 impl<F: Field> ExactSizeIterator for CoeffIter<'_, F> {}
 
-impl<F: Field, R: Rank> ragu_arithmetic::Ring for Polynomial<F, R> {
-    type R = Self;
-    type F = F;
+/// Polynomials support reference FFTs by scaling, adding, and negating their
+/// coefficients. Udon's reference transforms twiddle by native Pasta elements.
+impl<M: PrimeModulus, R: Rank> Butterfly<PastaField<M>> for Polynomial<FieldAdapter<M>, R> {
+    fn scaled(&self, twiddle: &PastaField<M>) -> Self {
+        let mut scaled = self.clone();
+        scaled.scale(FieldAdapter::new(*twiddle));
+        scaled
+    }
 
-    fn scale_assign(r: &mut Self, by: F) {
-        r.scale(by);
+    fn add(&self, rhs: &Self) -> Self {
+        let mut sum = self.clone();
+        Polynomial::add_assign(&mut sum, rhs);
+        sum
     }
-    fn add_assign(r: &mut Self, other: &Self) {
-        Polynomial::add_assign(r, other);
-    }
-    fn sub_assign(r: &mut Self, other: &Self) {
-        Polynomial::sub_assign(r, other);
+
+    fn negated(&self) -> Self {
+        let mut negated = self.clone();
+        negated.scale(-FieldAdapter::<M>::ONE);
+        negated
     }
 }
 

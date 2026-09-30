@@ -7,7 +7,6 @@
 
 use std::vec::{IntoIter, Vec};
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Error, Result,
     convert::WireMap,
@@ -18,6 +17,7 @@ use ragu_core::{
     gadgets::{Bound, Gadget},
 };
 use ragu_primitives::{Boolean, Endoscalar, Invertible};
+use udon::field::Field;
 
 type TemplateDriver<D> =
     Emulator<Wireless<<D as DriverTypes>::MaybeKind, <D as DriverTypes>::ImplField>>;

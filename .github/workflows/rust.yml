@@ -123,7 +123,7 @@ jobs:
         with:
           cache-suffix: proptests-fast
       - name: Run fast proptests
-        run: cargo test --release -p ragu_arithmetic -p ragu_core --locked --all-features proptest
+        run: cargo test --release -p ragu_core --locked --all-features proptest
         env:
           PROPTEST_CASES: "64"
 

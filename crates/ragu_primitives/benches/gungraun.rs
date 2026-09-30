@@ -5,7 +5,7 @@ mod setup;
 use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
-use ragu_pasta::{EpAffine, Fp, PoseidonFp};
+use ragu_core::pasta::{EpAffine, Fp, PoseidonFp};
 use ragu_primitives::{
     Boolean, Element, Endoscalar, EndoscalarChallenge, NonzeroBank, Point, multiadd, multipack,
     poseidon::Sponge,

@@ -1,13 +1,11 @@
-use ff::Field;
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
+    pasta::{Fp, Pasta},
 };
-use ragu_pasta::{Fp, Pasta};
 use ragu_pcd::{
     ApplicationBuilder,
     header::{Header, Suffix},
@@ -18,6 +16,7 @@ use ragu_primitives::{
     allocator::{Allocator, Standard},
 };
 use rand::{SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 // Header A (suffix 0) - unit data
 struct HeaderA;
@@ -148,7 +147,7 @@ impl<C: Cycle> Step<C> for Step1 {
 
 #[test]
 fn rerandomization_flow() {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()
@@ -177,7 +176,7 @@ fn rerandomization_flow() {
 
 #[test]
 fn multiple_rerandomizations_all_verify() {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()
@@ -203,7 +202,7 @@ fn multiple_rerandomizations_all_verify() {
 
 #[test]
 fn rerandomization_preserves_header_data() {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(StepWithData)
         .unwrap()
@@ -236,7 +235,7 @@ fn rerandomization_preserves_header_data() {
 
 #[test]
 fn rerandomized_fused_proof_verifies() {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()

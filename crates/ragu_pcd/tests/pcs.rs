@@ -9,16 +9,18 @@
 use alloc::{format, string::String, vec, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
     staging::Stage,
 };
-use ragu_core::Result;
-use ragu_pasta::{Fp, Fq};
+use ragu_core::{
+    Cycle, Result,
+    pasta::{Fp, Fq},
+};
 use ragu_primitives::vec::Len;
+use udon::field::Field;
 
 use crate::{
     Pcd,
@@ -333,13 +335,12 @@ mod folding {
 
     use alloc::{borrow::Cow, vec::Vec};
 
-    use ragu_arithmetic::{Cycle, ff::Field};
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::polynomials::sparse;
-    use ragu_core::{Result, maybe::Maybe};
-    use ragu_pasta::Fq;
+    use ragu_core::{Cycle, Result, maybe::Maybe, pasta::Fq};
     use ragu_primitives::{Element, vec::FixedVec};
     use support::{C, R};
+    use udon::field::Field;
 
     use super::{
         super::{NestedFuseEmulator, claims::NestedFuseProofSource},
@@ -404,7 +405,7 @@ mod folding {
                 |dr, witness| {
                     let (instance, y) = witness.cast();
                     let y = Element::alloc(dr, &mut (), y)?;
-                    let output = nested::unified::Output::<_, ragu_pasta::EqAffine>::alloc(
+                    let output = nested::unified::Output::<_, ragu_core::pasta::EqAffine>::alloc(
                         dr,
                         &mut (),
                         instance.as_ref(),
@@ -659,12 +660,16 @@ mod denominators {
     use alloc::vec::Vec;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::ff::PrimeField;
     use ragu_circuits::registry::CircuitIndex;
-    use ragu_core::{Error, Result, drivers::Driver, maybe::Maybe};
-    use ragu_pasta::{Fp, Fq};
+    use ragu_core::{
+        Error, Result,
+        drivers::Driver,
+        maybe::Maybe,
+        pasta::{Fp, Fq},
+    };
     use ragu_primitives::{Element, Simulator, allocator::Standard};
     use ragu_testing::strategies;
+    use udon::field::Field;
 
     use crate::internal::inverter::Inverter;
 
@@ -674,7 +679,7 @@ mod denominators {
         Constant(usize),
     }
 
-    fn batch<F: PrimeField>(
+    fn batch<F: Field>(
         base: F,
         differences: &[F],
         circuit: CircuitIndex,
@@ -719,11 +724,7 @@ mod denominators {
         Ok(())
     }
 
-    fn check<F: PrimeField>(
-        differences: &[F],
-        circuit: CircuitIndex,
-        position: usize,
-    ) -> Result<()> {
+    fn check<F: Field>(differences: &[F], circuit: CircuitIndex, position: usize) -> Result<()> {
         assert!(!differences.is_empty());
         assert!(differences.iter().all(|difference| *difference != F::ZERO));
         Simulator::<F>::simulate(F::ZERO, |dr, witness| {
@@ -792,8 +793,7 @@ mod child_openings {
     //! is still rejected.
 
     use proptest::prelude::*;
-    use ragu_core::Result;
-    use ragu_pasta::Fp;
+    use ragu_core::{Result, pasta::Fp};
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
 
@@ -873,12 +873,14 @@ mod challenge_stage {
     //! commitment is recomputed, the batch opening while it is left stale.
 
     use proptest::prelude::*;
-    use ragu_arithmetic::ff::Field;
     use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
-    use ragu_core::Result;
-    use ragu_pasta::{EqAffine, Fq};
+    use ragu_core::{
+        Result,
+        pasta::{EqAffine, Fq},
+    };
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
+    use udon::field::Field;
 
     use super::{
         folding,

@@ -4,22 +4,24 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
-use ragu_arithmetic::{CurveAffine, ff::Field, group::Group, msm};
+use udon::curve::Affine;
+use udon::curve::Projective;
+use udon::field::Field;
 
 use super::Params;
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
-pub struct MSM<'a, C: CurveAffine> {
+pub struct MSM<'a, C: Affine> {
     pub(crate) params: &'a Params<C>,
     g_scalars: Option<Vec<C::Scalar>>,
     w_scalar: Option<C::Scalar>,
     u_scalar: Option<C::Scalar>,
-    // x-coordinate -> (scalar, y-coordinate)
-    other: BTreeMap<C::Base, (C::Scalar, C::Base)>,
+    // x-coordinate's bytes -> (scalar, x-coordinate, y-coordinate)
+    other: BTreeMap<Vec<u8>, (C::Scalar, C::Base, C::Base)>,
 }
 
-impl<'a, C: CurveAffine> MSM<'a, C> {
+impl<'a, C: Affine> MSM<'a, C> {
     /// Create a new, empty MSM using the provided parameters.
     pub fn new(params: &'a Params<C>) -> Self {
         let g_scalars = None;
@@ -38,10 +40,10 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
     /// Add another multiexp into this one
     pub fn add_msm(&mut self, other: &Self) {
-        for (x, (scalar, y)) in other.other.iter() {
+        for (key, (scalar, x, y)) in other.other.iter() {
             self.other
-                .entry(*x)
-                .and_modify(|(our_scalar, our_y)| {
+                .entry(key.clone())
+                .and_modify(|(our_scalar, _, our_y)| {
                     if our_y == y {
                         *our_scalar += *scalar;
                     } else {
@@ -49,7 +51,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
                         *our_scalar -= *scalar;
                     }
                 })
-                .or_insert((*scalar, *y));
+                .or_insert((*scalar, *x, *y));
         }
 
         if let Some(g_scalars) = &other.g_scalars {
@@ -67,14 +69,12 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
     /// Add arbitrary term (the scalar and the point)
     pub fn append_term(&mut self, scalar: C::Scalar, point: C) {
-        if !bool::from(point.is_identity()) {
-            let xy = point.coordinates().unwrap();
-            let x = *xy.x();
-            let y = *xy.y();
+        if !point.is_identity() {
+            let (x, y) = point.coordinates().expect("not the identity");
 
             self.other
-                .entry(x)
-                .and_modify(|(our_scalar, our_y)| {
+                .entry(x.to_bytes().as_ref().to_vec())
+                .and_modify(|(our_scalar, _, our_y)| {
                     if *our_y == y {
                         *our_scalar += scalar;
                     } else {
@@ -82,7 +82,7 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
                         *our_scalar -= scalar;
                     }
                 })
-                .or_insert((scalar, y));
+                .or_insert((scalar, x, y));
         }
     }
 
@@ -145,11 +145,11 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
         let mut scalars: Vec<C::Scalar> = Vec::with_capacity(len);
         let mut bases: Vec<C> = Vec::with_capacity(len);
 
-        scalars.extend(self.other.values().map(|(scalar, _)| scalar));
+        scalars.extend(self.other.values().map(|(scalar, _, _)| scalar));
         bases.extend(
             self.other
-                .iter()
-                .map(|(x, (_, y))| C::from_xy(*x, *y).unwrap()),
+                .values()
+                .map(|(_, x, y)| C::from_xy(*x, *y).expect("a point's own coordinates")),
         );
 
         if let Some(w_scalar) = self.w_scalar {
@@ -169,6 +169,6 @@ impl<'a, C: CurveAffine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        bool::from(msm(&scalars, &bases).is_identity())
+        C::msm(&scalars, &bases).is_identity()
     }
 }

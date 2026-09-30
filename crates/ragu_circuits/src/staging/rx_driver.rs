@@ -1,11 +1,11 @@
 //! [`Driver`] that records gate placements into a [`sparse::View`].
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverTypes},
     maybe::Always,
 };
+use udon::field::Field;
 
 use crate::polynomials::{
     Rank,

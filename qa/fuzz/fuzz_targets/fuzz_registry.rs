@@ -58,16 +58,20 @@
 
 #![no_main]
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use ragu_circuits::polynomials::Rank;
-use ragu_circuits::registry::{CircuitIndex, RegistryBuilder};
-use ragu_testing_fuzz::params::{Fp, RankChoice, TestRank};
-use ragu_testing_fuzz::substrate::{
-    Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval, steer,
+use ragu_circuits::{
+    polynomials::Rank,
+    registry::{CircuitIndex, RegistryBuilder},
 };
-use ragu_testing_fuzz::with_rank;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use ragu_testing_fuzz::{
+    params::{Fp, RankChoice, TestRank},
+    substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval, steer},
+    with_rank,
+};
+use udon::field::Field;
 
 /// Registering a circuit synthesizes it, so the count is what sets this
 /// target's cost per input. Six is enough to cross a power-of-two domain
@@ -162,7 +166,7 @@ struct Input {
 fn to_field(bytes: &[u8; 32]) -> Fp {
     let mut wide = [0u8; 64];
     wide[..32].copy_from_slice(bytes);
-    <Fp as ff::FromUniformBytes<64>>::from_uniform_bytes(&wide)
+    <Fp as Field>::from_uniform_bytes(&wide)
 }
 
 fuzz_target!(|input: Input| {
@@ -421,12 +425,14 @@ fn fill<'a, R: Rank>(
 /// A minimal two-wire stage, used only to mint a bonding object.
 mod stage {
     use core::marker::PhantomData;
-    use ragu_circuits::polynomials::Rank;
-    use ragu_circuits::staging::Stage;
-    use ragu_core::Result;
-    use ragu_core::drivers::{Driver, DriverValue};
-    use ragu_core::gadgets::{Bound, Gadget};
-    use ragu_core::maybe::Maybe;
+
+    use ragu_circuits::{polynomials::Rank, staging::Stage};
+    use ragu_core::{
+        Result,
+        drivers::{Driver, DriverValue},
+        gadgets::{Bound, Gadget},
+        maybe::Maybe,
+    };
     use ragu_primitives::Element;
     use ragu_testing_fuzz::params::Fp;
 

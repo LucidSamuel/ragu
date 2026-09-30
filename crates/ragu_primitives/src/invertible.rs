@@ -1,13 +1,10 @@
-use ragu_arithmetic::{
-    Coeff,
-    ff::{Field, PrimeField},
-};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Gadget, Kind},
     maybe::Maybe,
 };
+use udon::field::Field;
 
 use crate::{
     Element, GadgetExt,
@@ -92,20 +89,18 @@ impl<'dr, D: Driver<'dr>> Nonzero<'dr, D> {
     pub fn divide(&self, dr: &mut D, divisor: &Self) -> Result<Self> {
         Ok(Self::new_unchecked(self.element.divide(dr, divisor)?))
     }
-}
 
-impl<'dr, D: Driver<'dr, F: PrimeField>> Nonzero<'dr, D> {
     /// Monomorphization-time guard that `D::F` has odd characteristic, which
     /// is what makes [`double`](Self::double) preserve nonzeroness: $2x = 0$
     /// has no nonzero solution iff $\mathrm{char}(F) \neq 2$.
     ///
     /// $S$ is the 2-adicity of $p - 1$ where $p = \mathrm{char}(D::F)$. For
     /// any odd prime $p$, $p - 1$ is even, so $S \geq 1$. The only prime
-    /// field where $S = 0$ is $\mathbb{F}_2$; bounding on [`PrimeField`]
+    /// field where $S = 0$ is $\mathbb{F}_2$; bounding on [`Field`]
     /// already rules out extension fields, so together this excludes every
     /// char-2 field.
     pub const ASSERT_ODD_CHAR: () = assert!(
-        <D::F as PrimeField>::S >= 1,
+        <D::F as Field>::TWO_ADICITY >= 1,
         "Nonzero::double requires a field of odd characteristic",
     );
 
@@ -169,7 +164,6 @@ impl<'dr, D: Driver<'dr>> Invertible<'dr, D> {
             value
                 .snag()
                 .invert()
-                .into_option()
                 .ok_or_else(|| Error::InvalidWitness("division by zero".into()))
         })?;
         Self::alloc_with_advice(dr, value, inverse_value)
@@ -391,12 +385,11 @@ impl<'dr, D: Driver<'dr>> NonzeroBank<'dr, D> {
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::ff::Field;
 
     use super::*;
     use crate::{Simulator, allocator::Standard};
 
-    type F = ragu_pasta::Fp;
+    type F = ragu_core::pasta::Fp;
     type Sim = Simulator<F>;
 
     #[test]

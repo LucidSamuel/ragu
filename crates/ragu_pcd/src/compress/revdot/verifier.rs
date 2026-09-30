@@ -2,13 +2,15 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, Registry},
 };
+use ragu_core::Cycle;
 use ragu_core::{Error, Result};
+use udon::curve::Affine;
+use udon::field::Field;
 
 use super::{
     Openings, Reduction,
@@ -29,7 +31,7 @@ use crate::{
 /// component's commitment and `public` each kind of claim's public parts
 /// of $a$ and $b$ at a point. Returns the opening claims the batch must
 /// prove, or `None` if the reduction does not hold.
-fn verify<C: CurveAffine, R: Rank, Id: Copy, T: IpaTranscript<C>>(
+fn verify<C: Affine, R: Rank, Id: Copy, T: IpaTranscript<C>>(
     shapes: &[Shape<Id, C::Scalar>],
     targets: impl Iterator<Item = C::Scalar>,
     commitment: impl Fn(Id) -> C,
@@ -110,8 +112,8 @@ fn verify<C: CurveAffine, R: Rank, Id: Copy, T: IpaTranscript<C>>(
         target += weight * claim.k;
         weight *= rho;
     }
-    let split = r.pow_vartime([(n - 1) as u64]) * reduction.p_at_inverse_r
-        + r.pow_vartime([n as u64]) * reduction.q_at_r;
+    let split = r.pow_u64((n - 1) as u64) * reduction.p_at_inverse_r
+        + r.pow_u64(n as u64) * reduction.q_at_r;
     if combined != split {
         return Ok(None);
     }

@@ -4,10 +4,13 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{
-    CurveAffine, dot, eval, ff::Field, group::Curve, msm, parallelize, rand::CryptoRng,
-};
+use crate::multicore::parallelize;
 use ragu_core::Result;
+use rand::CryptoRng;
+use udon::curve::Affine;
+use udon::curve::Projective;
+use udon::field::Field;
+use udon::polynomial::evaluate_iter;
 
 use super::{Blind, IpaProof, IpaTranscript, Params};
 
@@ -24,7 +27,7 @@ use super::{Blind, IpaProof, IpaTranscript, Params};
 /// opening v, and the point x. It's probably also nice for the transcript
 /// to have seen the elliptic curve description and the URS, if you want to
 /// be rigorous.
-pub fn create_proof<C: CurveAffine, R: CryptoRng, T: IpaTranscript<C>>(
+pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     params: &Params<C>,
     mut rng: R,
     transcript: &mut T,
@@ -39,14 +42,14 @@ pub fn create_proof<C: CurveAffine, R: CryptoRng, T: IpaTranscript<C>>(
     // by setting all coefficients to random values.
     let mut s_poly = p_poly.to_vec();
     for coeff in s_poly.iter_mut() {
-        *coeff = C::Scalar::random(&mut rng);
+        *coeff = C::Scalar::random(|bytes| rng.fill_bytes(bytes));
     }
     // Evaluate the random polynomial at x_3
-    let s_at_x3 = eval(&s_poly[..], x_3);
+    let s_at_x3 = evaluate_iter(&s_poly[..], x_3);
     // Subtract constant coefficient to get a random polynomial with a root at x_3
     s_poly[0] -= &s_at_x3;
     // And sample a random blind
-    let s_poly_blind = Blind(C::Scalar::random(&mut rng));
+    let s_poly_blind = Blind(C::Scalar::random(|bytes| rng.fill_bytes(bytes)));
 
     // Write a commitment to the random polynomial to the transcript
     let s_poly_commitment = params.commit(&s_poly, s_poly_blind).to_affine();
@@ -68,7 +71,7 @@ pub fn create_proof<C: CurveAffine, R: CryptoRng, T: IpaTranscript<C>>(
         .zip(p_poly.iter())
         .map(|(s, p)| *s * &xi + p)
         .collect();
-    let v = eval(&p_prime_poly, x_3);
+    let v = evaluate_iter(&p_prime_poly, x_3);
     p_prime_poly[0] -= &v;
     let p_prime_blind = s_poly_blind * Blind(xi) + p_blind;
 
@@ -107,14 +110,14 @@ pub fn create_proof<C: CurveAffine, R: CryptoRng, T: IpaTranscript<C>>(
         //
         // TODO: If we modify multiexp to take "extra" bases, we could speed
         // this piece up a bit by combining the multiexps.
-        let l_j = msm(&p_prime[half..], &g_prime[0..half]);
-        let r_j = msm(&p_prime[0..half], &g_prime[half..]);
-        let value_l_j = dot(&p_prime[half..], &b[0..half]);
-        let value_r_j = dot(&p_prime[0..half], &b[half..]);
-        let l_j_randomness = C::Scalar::random(&mut rng);
-        let r_j_randomness = C::Scalar::random(&mut rng);
-        let l_j = l_j + &msm(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
-        let r_j = r_j + &msm(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
+        let l_j = C::msm(&p_prime[half..], &g_prime[0..half]);
+        let r_j = C::msm(&p_prime[0..half], &g_prime[half..]);
+        let value_l_j = C::Scalar::sum_of_products_slice(&p_prime[half..], &b[0..half]);
+        let value_r_j = C::Scalar::sum_of_products_slice(&p_prime[0..half], &b[half..]);
+        let l_j_randomness = C::Scalar::random(|bytes| rng.fill_bytes(bytes));
+        let r_j_randomness = C::Scalar::random(|bytes| rng.fill_bytes(bytes));
+        let l_j = l_j + &C::msm(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
+        let r_j = r_j + &C::msm(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
         let l_j = l_j.to_affine();
         let r_j = r_j.to_affine();
 
@@ -160,7 +163,7 @@ pub fn create_proof<C: CurveAffine, R: CryptoRng, T: IpaTranscript<C>>(
     })
 }
 
-fn parallel_generator_collapse<C: CurveAffine>(g: &mut [C], challenge: C::Scalar) {
+fn parallel_generator_collapse<C: Affine>(g: &mut [C], challenge: C::Scalar) {
     let len = g.len() / 2;
     let (g_lo, g_hi) = g.split_at_mut(len);
 
@@ -168,8 +171,8 @@ fn parallel_generator_collapse<C: CurveAffine>(g: &mut [C], challenge: C::Scalar
         let g_hi = &g_hi[start..];
         let mut tmp = Vec::with_capacity(g_lo.len());
         for (g_lo, g_hi) in g_lo.iter().zip(g_hi.iter()) {
-            tmp.push(g_lo.to_curve() + &(*g_hi * challenge));
+            tmp.push(g_lo.to_projective() + &(*g_hi * challenge));
         }
-        C::Curve::batch_normalize(&tmp, g_lo);
+        C::batch_to_affine(&tmp, g_lo);
     });
 }

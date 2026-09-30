@@ -46,18 +46,15 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{
-    Coeff,
-    ff::{FromUniformBytes, PrimeField},
-};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     convert::{WireMap, extract_wires},
     drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::{Bound, GadgetKind as _},
     maybe::Empty,
     routines::Routine,
 };
+use udon::field::Field;
 
 use super::{Circuit, raw::RawCircuit};
 
@@ -103,11 +100,16 @@ pub struct BaseFingerprint {
 }
 
 impl BaseFingerprint {
-    fn new<F: PrimeField>(eval: F, num_gates: usize, num_constraints: usize) -> Self {
+    fn new<F: Field>(eval: F, num_gates: usize, num_constraints: usize) -> Self {
+        // The low 64 bits of the canonical little-endian encoding.
+        let mut low = [0u8; 8];
+        for (dst, src) in low.iter_mut().zip(eval.to_bytes().as_ref()) {
+            *dst = *src;
+        }
         Self {
             num_gates,
             num_constraints,
-            eval: ragu_arithmetic::low_u64(&eval),
+            eval: u64::from_le_bytes(low),
         }
     }
 
@@ -169,7 +171,7 @@ impl DeepFingerprint {
     /// permutations that leave the output gadget tuple-equal. The stored
     /// `deep` is the first 8 bytes of the BLAKE2b digest interpreted as a
     /// little-endian `u64`.
-    fn new<F: PrimeField, Ro: Routine<F>>(
+    fn new<F: Field, Ro: Routine<F>>(
         base: BaseFingerprint,
         output_wires: &[F],
         children: &[u64],
@@ -183,7 +185,7 @@ impl DeepFingerprint {
         state.update(&(base.num_constraints as u64).to_le_bytes());
         state.update(&(output_wires.len() as u64).to_le_bytes());
         for w in output_wires {
-            state.update(w.to_repr().as_ref());
+            state.update(w.to_bytes().as_ref());
         }
         state.update(&(children.len() as u64).to_le_bytes());
         for child in children {
@@ -372,7 +374,7 @@ impl<F: Copy + core::ops::MulAssign> ReinitWires<F> {
 /// [`WireMap`] for `Counter`→`Counter`: every source wire is replaced by a
 /// fresh value from this `ReinitWires` sequence. No gates are allocated and
 /// no constraint counts change.
-impl<F: FromUniformBytes<64>> WireMap<F> for ReinitWires<F> {
+impl<F: Field> WireMap<F> for ReinitWires<F> {
     type Src = Counter<F>;
     type Dst = Counter<F>;
 
@@ -425,7 +427,7 @@ struct Counter<F> {
     y: F,
 }
 
-impl<F: FromUniformBytes<64>> Counter<F> {
+impl<F: Field> Counter<F> {
     fn new() -> Self {
         let base_state = blake2b_simd::Params::new()
             .personal(b"ragu_counter____")
@@ -469,7 +471,7 @@ impl<F: FromUniformBytes<64>> Counter<F> {
     }
 }
 
-impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
+impl<F: Field> DriverTypes for Counter<F> {
     type MaybeKind = Empty;
     type ImplField = F;
     type ImplWire = F;
@@ -505,7 +507,7 @@ impl<F: FromUniformBytes<64>> DriverTypes for Counter<F> {
     }
 }
 
-impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
+impl<'dr, F: Field> Driver<'dr> for Counter<F> {
     type F = F;
     type Wire = F;
     const ONE: Self::Wire = F::ONE;
@@ -520,8 +522,10 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
     fn enforce_zero(&mut self, lc: impl Fn(Self::LCenforce) -> Self::LCenforce) -> Result<()> {
         self.num_constraints += 1;
         self.segments[self.scope.current_segment].num_constraints += 1;
-        self.scope.result *= self.y;
-        self.scope.result += lc(DirectSum::default()).value();
+        self.scope.result = self
+            .scope
+            .result
+            .mul_add(&self.y, &lc(DirectSum::default()).value());
         Ok(())
     }
 
@@ -601,14 +605,12 @@ impl<'dr, F: FromUniformBytes<64>> Driver<'dr> for Counter<F> {
 ///
 /// Propagates any error from the raw orchestration pass used to analyze the
 /// circuit.
-pub fn eval<F: FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
+pub fn eval<F: Field, C: Circuit<F>>(circuit: &C) -> Result<CircuitMetrics> {
     eval_raw(&super::raw::CircuitAdapterRef(circuit))
 }
 
 /// Evaluates the constraint topology of a [`RawCircuit`].
-pub(crate) fn eval_raw<F: FromUniformBytes<64>, RC: RawCircuit<F>>(
-    circuit: &RC,
-) -> Result<CircuitMetrics> {
+pub(crate) fn eval_raw<F: Field, RC: RawCircuit<F>>(circuit: &RC) -> Result<CircuitMetrics> {
     let mut collector = Counter::<F>::new();
 
     let result = super::raw::orchestrate(&mut collector, circuit, Empty)?;
@@ -647,9 +649,9 @@ pub(crate) mod tests {
     use ragu_core::{
         drivers::{Driver, DriverValue},
         gadgets::Bound,
+        pasta::Fp,
         routines::{Prediction, Routine},
     };
-    use ragu_pasta::Fp;
     use ragu_primitives::allocator::Allocator;
 
     use super::*;
@@ -663,9 +665,7 @@ pub(crate) mod tests {
         _marker: PhantomData<Src>,
     }
 
-    impl<F: FromUniformBytes<64>, Src: DriverTypes<ImplField = F>> WireMap<F>
-        for CounterRemap<'_, F, Src>
-    {
+    impl<F: Field, Src: DriverTypes<ImplField = F>> WireMap<F> for CounterRemap<'_, F, Src> {
         type Src = Src;
         type Dst = Counter<F>;
 
@@ -691,7 +691,7 @@ pub(crate) mod tests {
         input: &Bound<'dr, D, Ro::Input>,
     ) -> Result<RoutineIdentity>
     where
-        F: FromUniformBytes<64>,
+        F: Field,
         D: Driver<'dr, F = F>,
         Ro: Routine<F>,
     {

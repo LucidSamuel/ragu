@@ -11,20 +11,23 @@
 //! curve are the raw squeeze, and challenges for the nested curve are its
 //! lifts, as in the fuse.
 
-use ragu_arithmetic::{CurveAffine, Cycle, FixedGenerators, group::Curve, msm};
+use ragu_core::Cycle;
+use ragu_core::FixedGenerators;
 use ragu_core::{
     Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Element, GadgetExt, Point};
+use udon::curve::Affine;
+use udon::curve::Projective;
 
 use crate::internal::{nested, transcript::Transcript};
 
 /// What the IPA needs from a transcript: halo2's `TranscriptWrite`
 /// operations, with the proof carried as a struct rather than written to a
 /// byte stream, so the verifier writes what the prover wrote.
-pub trait IpaTranscript<C: CurveAffine> {
+pub trait IpaTranscript<C: Affine> {
     /// Absorbs a point.
     fn write_point(&mut self, point: C) -> Result<()>;
 
@@ -79,7 +82,8 @@ impl<'dr, C: Cycle> CycleTranscript<'dr, C> {
     /// commitment.
     fn bridge(&mut self, values: &[C::ScalarField]) -> Result<()> {
         let g = C::nested_generators(self.params).g();
-        let commitment: C::NestedCurve = msm(values, &g[..values.len()]).to_affine();
+        let commitment: C::NestedCurve =
+            C::NestedCurve::msm(values, &g[..values.len()]).to_affine();
         self.absorb(commitment)
     }
 
@@ -97,12 +101,12 @@ pub struct HostSide<'a, 'dr, C: Cycle>(&'a mut CycleTranscript<'dr, C>);
 
 impl<C: Cycle> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C> {
     fn write_point(&mut self, point: C::HostCurve) -> Result<()> {
-        let Some(coordinates) = point.coordinates().into_option() else {
+        let Some((x, y)) = point.coordinates() else {
             return Err(ragu_core::Error::InvalidWitness(
                 "point at infinity cannot be written to the transcript".into(),
             ));
         };
-        self.0.bridge(&[*coordinates.x(), *coordinates.y()])
+        self.0.bridge(&[x, y])
     }
 
     fn write_scalar(&mut self, scalar: C::CircuitField) -> Result<()> {

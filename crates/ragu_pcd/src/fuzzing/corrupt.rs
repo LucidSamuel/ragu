@@ -68,11 +68,12 @@
 
 use alloc::vec;
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
+use ragu_core::Cycle;
+use udon::field::Field;
 
 use crate::{Application, Proof};
 
@@ -724,7 +725,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
             }
 
             Corruption::RescaleNativeAccumulator(scale) => {
-                let Some(inverse) = Option::<C::CircuitField>::from(scale.invert()) else {
+                let Some(inverse) = scale.invert() else {
                     return Binding::Unbound;
                 };
                 if scale == C::CircuitField::ONE {
@@ -740,7 +741,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
             }
 
             Corruption::RescaleNestedAccumulator(scale) => {
-                let Some(inverse) = Option::<C::ScalarField>::from(scale.invert()) else {
+                let Some(inverse) = scale.invert() else {
                     return Binding::Unbound;
                 };
                 if scale == C::ScalarField::ONE {

@@ -18,13 +18,11 @@ mod substitution;
 
 use helpers::macro_body;
 use proc_macro::TokenStream;
-#[cfg(test)]
-#[allow(unused_imports)]
-use ragu_arithmetic::repr256 as _;
 use syn::{DeriveInput, LitInt, parse_macro_input};
 
-// Documentation for the `repr256` macro is in `macro@ragu_arithmetic::repr256`.
-#[allow(missing_docs)]
+/// Converts a 256-bit integer literal into its little-endian `[u64; 4]` limb
+/// representation, the raw form a field constant is built from. This makes
+/// constants more readable, but is not intended for use in other contexts.
 #[proc_macro]
 pub fn repr256(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as LitInt);
@@ -56,9 +54,9 @@ use ragu_core::gadgets::Gadget as _;
 pub fn derive_gadget(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
-        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
+        let udon_path = path_resolution::UdonPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
-        derive::gadget::derive(input, ragu_arithmetic_path, ragu_core_path)
+        derive::gadget::derive(input, udon_path, ragu_core_path)
     })
 }
 
@@ -72,15 +70,10 @@ use ragu_primitives::io::Write as _;
 pub fn derive_write(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
-        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
+        let udon_path = path_resolution::UdonPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
         let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::gadgetwrite::derive(
-            input,
-            ragu_arithmetic_path,
-            ragu_core_path,
-            ragu_primitives_path,
-        )
+        derive::gadgetwrite::derive(input, udon_path, ragu_core_path, ragu_primitives_path)
     })
 }
 
@@ -110,15 +103,10 @@ use ragu_primitives::comparison::GadgetEquals as _;
 pub fn derive_gadget_equals(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
-        let ragu_arithmetic_path = path_resolution::RaguArithmeticPath::resolve()?;
+        let udon_path = path_resolution::UdonPath::resolve()?;
         let ragu_core_path = path_resolution::RaguCorePath::resolve()?;
         let ragu_primitives_path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::gadgetequals::derive(
-            input,
-            ragu_arithmetic_path,
-            ragu_core_path,
-            ragu_primitives_path,
-        )
+        derive::gadgetequals::derive(input, udon_path, ragu_core_path, ragu_primitives_path)
     })
 }
 

@@ -1,8 +1,13 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use ragu_arithmetic::{CurveAffine as _, CurveExt, ff::PrimeField as _};
-use ragu_core::{Error, Result};
-use ragu_pasta::{Ep, Eq, Fp, Fq};
+use ragu_core::{
+    Error, Result,
+    pasta::{Ep, Eq, Fp, Fq},
+};
+use udon::{
+    curve::{Affine as _, Projective},
+    field::Field,
+};
 
 use super::{
     header::{Header, Suffix},
@@ -208,7 +213,7 @@ pub(crate) fn compute_header_hash(
         state.update(b"Fp");
         state.update(&(fps.len() as u64).to_le_bytes());
         for element in fps {
-            state.update(element.to_repr().as_ref());
+            state.update(element.to_bytes().as_ref());
         }
     }
 
@@ -216,7 +221,7 @@ pub(crate) fn compute_header_hash(
         state.update(b"Fq");
         state.update(&(fqs.len() as u64).to_le_bytes());
         for element in fqs {
-            state.update(element.to_repr().as_ref());
+            state.update(element.to_bytes().as_ref());
         }
     }
 
@@ -231,7 +236,7 @@ pub(crate) fn compute_header_hash(
 /// Absorbs `points` as affine coordinate pairs, rejecting the identity — which
 /// has no coordinates, and which real ragu's in-circuit `encode` could not
 /// witness either.
-fn absorb_points<G: CurveExt>(
+fn absorb_points<G: Projective<Base: Field>>(
     state: &mut blake2b_simd::State,
     tag: &[u8],
     points: &[G],
@@ -242,10 +247,9 @@ fn absorb_points<G: CurveExt>(
         let affine = point.to_affine();
         let coordinates = affine
             .coordinates()
-            .into_option()
             .ok_or_else(|| Error::InvalidWitness("point at infinity cannot be witnessed".into()))?;
-        state.update(coordinates.x().to_repr().as_ref());
-        state.update(coordinates.y().to_repr().as_ref());
+        state.update(coordinates.0.to_bytes().as_ref());
+        state.update(coordinates.1.to_bytes().as_ref());
     }
     Ok(())
 }

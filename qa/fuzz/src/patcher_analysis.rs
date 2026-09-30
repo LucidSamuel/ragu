@@ -8,8 +8,8 @@
 
 use std::collections::BTreeMap;
 
-use ragu_arithmetic::ff::Field;
 use ragu_testing::patcher::{Event, underconstrained_derived};
+use udon::field::Field;
 
 /// One connected subgraph of non-constant wires.
 ///
@@ -374,8 +374,7 @@ impl DisjointSet {
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::ff::Field;
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
 
     use super::*;
 

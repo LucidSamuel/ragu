@@ -1,9 +1,10 @@
 use alloc::{vec, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::ff::Field;
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_testing::strategies;
+use rand::Rng;
+use udon::{curve::Affine, fft::reference, field::Field};
 
 use super::{Polynomial, View};
 use crate::polynomials::{Rank, TestRank};
@@ -229,7 +230,7 @@ proptest! {
     #[test]
     fn eval_matches_dense(poly in arb_any_poly(), x in strategies::prime_field_element::<Fp>()) {
         let dense = poly.to_dense();
-        let expected = ragu_arithmetic::eval(&dense, x);
+        let expected = udon::polynomial::evaluate_iter(&dense, x);
         prop_assert_eq!(poly.eval(x), expected);
     }
 
@@ -245,7 +246,7 @@ proptest! {
     fn revdot_matches_dense(a in arb_any_poly(), b in arb_any_poly()) {
         let a_dense = a.to_dense();
         let b_dense = b.to_dense();
-        let expected = ragu_arithmetic::dot(a_dense.iter(), b_dense.iter().rev());
+        let expected = Fp::sum_of_product_pairs(a_dense.iter().zip(b_dense.iter().rev()));
         prop_assert_eq!(a.revdot(&b), expected);
     }
 
@@ -256,7 +257,7 @@ proptest! {
     ) {
         let a_dense = a.to_dense();
         let b_dense = b.to_dense();
-        let expected = ragu_arithmetic::dot(a_dense.iter(), b_dense.iter().rev());
+        let expected = Fp::sum_of_product_pairs(a_dense.iter().zip(b_dense.iter().rev()));
         prop_assert_eq!(a.revdot(&b), expected);
     }
 
@@ -373,12 +374,16 @@ proptest! {
         p2 in arb_any_poly(),
         p3 in arb_any_poly(),
     ) {
-        let domain = ragu_arithmetic::Domain::<Fp>::new(2); // size 4
+        let domain = Fp::domain(2).unwrap(); // size 4
         let mut polys = alloc::vec![p0, p1, p2, p3];
         let originals: Vec<_> = polys.clone();
 
-        domain.ring_fft::<Polynomial<Fp, R>>(&mut polys);
-        domain.ring_ifft::<Polynomial<Fp, R>>(&mut polys);
+        reference::transform(&mut polys, &domain.root().into_inner());
+        reference::inverse_transform(
+            &mut polys,
+            &domain.inverse_root().into_inner(),
+            &domain.size_inverse().into_inner(),
+        );
 
         for (orig, result) in originals.iter().zip(polys.iter()) {
             prop_assert_eq!(orig.to_dense(), result.to_dense());
@@ -387,21 +392,20 @@ proptest! {
 
     #[test]
     fn commit_matches_dense(poly in arb_any_poly()) {
-        use ragu_arithmetic::{Cycle, FixedGenerators};
-        use ragu_pasta::Pasta;
+        use ragu_core::Cycle;
+        use ragu_core::FixedGenerators;
+        use ragu_core::pasta::Pasta;
 
-        let pasta = Pasta::baked();
+        let pasta = ragu_pcd::pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
         let sparse_commit = poly.commit_to_affine(generators);
 
         // Compute commitment from the dense representation directly.
         let dense = poly.to_dense();
-        let dense_commit: <Pasta as Cycle>::HostCurve = ragu_arithmetic::msm(
-            dense.iter(),
-            generators.g().iter().take(dense.len()),
-        )
-        .into();
+        let dense_commit: <Pasta as Cycle>::HostCurve =
+            <<Pasta as Cycle>::HostCurve as Affine>::msm(&dense, &generators.g()[..dense.len()])
+                .into();
 
         prop_assert_eq!(sparse_commit, dense_commit);
     }
@@ -473,7 +477,7 @@ proptest! {
     fn sub_self_is_zero(poly in arb_any_poly()) {
         let mut result = poly.clone();
         result.sub_assign(&poly);
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         prop_assert_eq!(result.eval(x), Fp::ZERO, "sub_assign(self) should yield zero");
     }
 
@@ -483,7 +487,7 @@ proptest! {
         negated.negate();
         let mut result = poly;
         result.add_assign(&negated);
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         prop_assert_eq!(result.eval(x), Fp::ZERO, "add_assign(-self) should yield zero");
     }
 }
@@ -527,7 +531,7 @@ fn single_coefficient_at_degree_boundaries() {
         let poly = Polynomial::<Fp, R>::from_coeffs(coeffs);
         assert_eq!(
             poly.eval(x),
-            val * x.pow_vartime([u64::try_from(degree).unwrap()]),
+            val * x.pow_u64(u64::try_from(degree).unwrap()),
             "degree {degree}"
         );
     }
@@ -538,7 +542,7 @@ fn only_a_wire_data() {
     let n = R::n();
     let mut view = View::<_, R, _>::trace();
     let a_vals: Vec<Fp> = (0..n)
-        .map(|_| Fp::random(&mut ragu_arithmetic::rand::rng()))
+        .map(|_| Fp::random(|bytes| rand::rng().fill_bytes(bytes)))
         .collect();
     view.a = a_vals.clone();
     let poly = view.build();
@@ -549,8 +553,8 @@ fn only_a_wire_data() {
     for (i, val) in a_vals.iter().enumerate() {
         expected[2 * n - 1 - i] = *val;
     }
-    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-    assert_eq!(poly.eval(x), ragu_arithmetic::eval(&expected, x));
+    let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+    assert_eq!(poly.eval(x), udon::polynomial::evaluate_iter(&expected, x));
 }
 
 #[test]
@@ -558,7 +562,7 @@ fn only_d_wire_data() {
     let n = R::n();
     let mut view = View::<_, R, _>::trace();
     let d_vals: Vec<Fp> = (0..n)
-        .map(|_| Fp::random(&mut ragu_arithmetic::rand::rng()))
+        .map(|_| Fp::random(|bytes| rand::rng().fill_bytes(bytes)))
         .collect();
     view.d = d_vals.clone();
     let poly = view.build();
@@ -568,8 +572,8 @@ fn only_d_wire_data() {
     for (i, val) in d_vals.iter().enumerate() {
         expected[4 * n - 1 - i] = *val;
     }
-    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-    assert_eq!(poly.eval(x), ragu_arithmetic::eval(&expected, x));
+    let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+    assert_eq!(poly.eval(x), udon::polynomial::evaluate_iter(&expected, x));
 }
 
 #[test]
@@ -581,14 +585,16 @@ fn alloc_optimization_pattern() {
     for i in 0..n {
         if i % 10 == 0 {
             // Alloc gate: a is non-zero, b=c=0, d is non-zero.
-            view.a.push(Fp::random(&mut ragu_arithmetic::rand::rng()));
+            view.a
+                .push(Fp::random(|bytes| rand::rng().fill_bytes(bytes)));
             view.b.push(Fp::ZERO);
             view.c.push(Fp::ZERO);
-            view.d.push(Fp::random(&mut ragu_arithmetic::rand::rng()));
+            view.d
+                .push(Fp::random(|bytes| rand::rng().fill_bytes(bytes)));
         } else {
             // Mul gate: a,b,c non-zero, d=0.
-            let a = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let b = Fp::random(&mut ragu_arithmetic::rand::rng());
+            let a = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let b = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
             view.a.push(a);
             view.b.push(b);
             view.c.push(a * b);
@@ -599,14 +605,14 @@ fn alloc_optimization_pattern() {
 
     // Verify eval consistency.
     let dense = poly.to_dense();
-    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-    assert_eq!(poly.eval(x), ragu_arithmetic::eval(&dense, x));
+    let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+    assert_eq!(poly.eval(x), udon::polynomial::evaluate_iter(&dense, x));
 
     // The d-wire region should be sparse (few non-zero entries).
     // d[i] -> degree 4*n-1-i, so d occupies degrees [3*n, 4*n).
     // Only n/10 entries are non-zero.
     let d_region = &dense[3 * n..4 * n];
-    let d_nonzero = d_region.iter().filter(|x| bool::from(!x.is_zero())).count();
+    let d_nonzero = d_region.iter().filter(|x| !x.is_zero()).count();
     let expected_allocs = (0..n).filter(|i| i % 10 == 0).count();
     assert_eq!(d_nonzero, expected_allocs);
 }
@@ -669,8 +675,8 @@ fn iter_coeffs_fully_drain_both_ends() {
 fn product_identity() {
     let mut view = View::<_, R, _>::trace();
     for _ in 0..R::n() {
-        let a = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let b = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let a = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let b = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         view.a.push(a);
         view.b.push(b);
         view.c.push(a * b);
@@ -678,7 +684,7 @@ fn product_identity() {
     let rx = view.build();
 
     let mut rzx = rx.clone();
-    let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+    let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
     rzx.dilate(z);
     rzx.add_assign(&R::tz::<Fp>(z));
 
@@ -689,10 +695,10 @@ fn product_identity() {
 /// followed by IFFT, equals the polynomial of diagonal revdot products.
 #[test]
 fn ring_convolution() {
-    let rand_poly = || Polynomial::<Fp, R>::random(&mut ragu_arithmetic::rand::rng());
+    let rand_poly = || Polynomial::<Fp, R>::random(&mut rand::rng());
 
-    let little = ragu_arithmetic::Domain::<Fp>::new(2);
-    let big = ragu_arithmetic::Domain::<Fp>::new(3);
+    let little = Fp::domain(2).unwrap();
+    let big = Fp::domain(3).unwrap();
 
     let mut a_polys: Vec<_> = (0..4).map(|_| rand_poly()).collect();
     let mut b_polys: Vec<_> = (0..4).map(|_| rand_poly()).collect();
@@ -703,24 +709,32 @@ fn ring_convolution() {
         c.push(a_polys[i].revdot(&b_polys[i]));
     }
 
-    little.ring_ifft::<Polynomial<Fp, R>>(&mut a_polys);
+    reference::inverse_transform(
+        &mut a_polys,
+        &little.inverse_root().into_inner(),
+        &little.size_inverse().into_inner(),
+    );
     let a_polys_collapse = a_polys.clone();
     a_polys.resize(8, Default::default());
-    big.ring_fft::<Polynomial<Fp, R>>(&mut a_polys);
+    reference::transform(&mut a_polys, &big.root().into_inner());
 
-    little.ring_ifft::<Polynomial<Fp, R>>(&mut b_polys);
+    reference::inverse_transform(
+        &mut b_polys,
+        &little.inverse_root().into_inner(),
+        &little.size_inverse().into_inner(),
+    );
     let b_polys_collapse = b_polys.clone();
     b_polys.resize(8, Default::default());
-    big.ring_fft::<Polynomial<Fp, R>>(&mut b_polys);
+    reference::transform(&mut b_polys, &big.root().into_inner());
 
     let mut big_c = vec![];
     for (a, b) in a_polys.iter().zip(b_polys.iter()).take(8) {
         big_c.push(a.revdot(b));
     }
 
-    big.ifft(&mut big_c);
+    big.inverse_transform(&mut big_c);
 
-    let x = Fp::random(&mut ragu_arithmetic::rand::rng());
+    let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
     let mut cur = Fp::ONE;
     let mut a = Polynomial::<Fp, R>::new();

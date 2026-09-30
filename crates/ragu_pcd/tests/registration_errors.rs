@@ -1,17 +1,17 @@
-use ff::Field;
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
+    pasta::Pasta,
 };
-use ragu_pasta::Pasta;
 use ragu_pcd::{
     ApplicationBuilder,
     header::{Header, Suffix},
     step::{Encoded, Index, Step},
 };
 use ragu_primitives::allocator::{Allocator, Standard};
+use udon::field::Field;
 
 // Header A with suffix 0
 struct HSuffixA;
@@ -61,7 +61,7 @@ impl<F: Field> Header<F> for HSuffixAOther {
 
 // Step 0 -> produces HSuffixA
 struct Step0;
-impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
+impl<C: ragu_core::Cycle> Step<C> for Step0 {
     const INDEX: Index = Index::new(0);
     type Witness<'source> = ();
     type Aux<'source> = ();
@@ -94,7 +94,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step0 {
 
 // Step 1 -> consumes A and produces B
 struct Step1;
-impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
+impl<C: ragu_core::Cycle> Step<C> for Step1 {
     const INDEX: Index = Index::new(1);
     type Witness<'source> = ();
     type Aux<'source> = ();
@@ -127,7 +127,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1 {
 
 // Duplicate suffix step (index 1) producing different header with same suffix
 struct Step1Dup;
-impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
+impl<C: ragu_core::Cycle> Step<C> for Step1Dup {
     const INDEX: Index = Index::new(1);
     type Witness<'source> = ();
     type Aux<'source> = ();
@@ -160,7 +160,7 @@ impl<C: ragu_arithmetic::Cycle> Step<C> for Step1Dup {
 
 #[test]
 fn register_steps_success_and_finalize() {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let builder = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(Step0)
         .unwrap()

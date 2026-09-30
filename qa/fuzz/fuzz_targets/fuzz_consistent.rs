@@ -26,23 +26,24 @@
 
 #![no_main]
 
-use arbitrary::Arbitrary;
-use ff::PrimeField;
-use group::Curve;
-use group::CurveAffine;
-use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::Maybe;
-use ragu_pasta::{EpAffine, Fq};
-use ragu_primitives::{
-    Boolean, Element, Point, Simulator,
-    allocator::Standard, consistent::Consistent,
-};
-
 use std::sync::LazyLock;
 
+use arbitrary::Arbitrary;
+use libfuzzer_sys::fuzz_target;
+use ragu_core::{
+    maybe::Maybe,
+    pasta::{EpAffine, Fp, Fq},
+};
+use ragu_primitives::{
+    Boolean, Element, Point, Simulator, allocator::Standard, consistent::Consistent,
+};
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
+
 fn parse_fp(bytes: [u8; 32]) -> Fp {
-    Option::<Fp>::from(Fp::from_repr(bytes)).unwrap_or_else(|| {
+    Option::<Fp>::from(Fp::from_bytes(bytes)).unwrap_or_else(|| {
         Fp::from(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
@@ -95,51 +96,48 @@ fuzz_target!(|input: Input| {
     let p = point_from_seed(input.p_seed);
     let q = point_from_seed(input.q_seed);
 
-    let r = Simulator::<Fp>::simulate(
-        (a_val, b_val, input.bv, input.bv2, p, q),
-        |dr, witness| {
-            let allocator = &mut Standard::new();
+    let r = Simulator::<Fp>::simulate((a_val, b_val, input.bv, input.bv2, p, q), |dr, witness| {
+        let allocator = &mut Standard::new();
 
-            // Element: enforce_consistent is a no-op (no internal invariant).
-            let e = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
-            e.enforce_consistent(dr)?;
+        // Element: enforce_consistent is a no-op (no internal invariant).
+        let e = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?;
+        e.enforce_consistent(dr)?;
 
-            // Boolean: enforce_consistent re-enforces the 0-or-1 constraint.
-            let b = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?;
-            b.enforce_consistent(dr)?;
+        // Boolean: enforce_consistent re-enforces the 0-or-1 constraint.
+        let b = Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?;
+        b.enforce_consistent(dr)?;
 
-            // Point: enforce_consistent re-enforces the curve equation.
-            let pt = Point::alloc(dr, witness.as_ref().map(|w| w.4))?;
-            pt.enforce_consistent(dr)?;
+        // Point: enforce_consistent re-enforces the curve equation.
+        let pt = Point::alloc(dr, witness.as_ref().map(|w| w.4))?;
+        pt.enforce_consistent(dr)?;
 
-            // Array of Elements (no-op delegate).
-            let elems: [Element<'_, _>; 3] = [
-                Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?,
-                Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?,
-                Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?,
-            ];
-            elems.enforce_consistent(dr)?;
+        // Array of Elements (no-op delegate).
+        let elems: [Element<'_, _>; 3] = [
+            Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?,
+            Element::alloc(dr, allocator, witness.as_ref().map(|w| w.1))?,
+            Element::alloc(dr, allocator, witness.as_ref().map(|w| w.0))?,
+        ];
+        elems.enforce_consistent(dr)?;
 
-            // Array of Booleans (delegates 0-or-1 enforcement to each).
-            let bools: [Boolean<'_, _>; 2] = [
-                Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?,
-                Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.3))?,
-            ];
-            bools.enforce_consistent(dr)?;
+        // Array of Booleans (delegates 0-or-1 enforcement to each).
+        let bools: [Boolean<'_, _>; 2] = [
+            Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.2))?,
+            Boolean::alloc(dr, allocator, witness.as_ref().map(|w| w.3))?,
+        ];
+        bools.enforce_consistent(dr)?;
 
-            // Array of Points (delegates curve-equation check to each).
-            let points: [Point<'_, _, EpAffine>; 2] = [
-                Point::alloc(dr, witness.as_ref().map(|w| w.4))?,
-                Point::alloc(dr, witness.as_ref().map(|w| w.5))?,
-            ];
-            points.enforce_consistent(dr)?;
+        // Array of Points (delegates curve-equation check to each).
+        let points: [Point<'_, _, EpAffine>; 2] = [
+            Point::alloc(dr, witness.as_ref().map(|w| w.4))?,
+            Point::alloc(dr, witness.as_ref().map(|w| w.5))?,
+        ];
+        points.enforce_consistent(dr)?;
 
-            // The unit type's Consistent impl is also a no-op; smoke-test it.
-            ().enforce_consistent(dr)?;
+        // The unit type's Consistent impl is also a no-op; smoke-test it.
+        ().enforce_consistent(dr)?;
 
-            Ok(())
-        },
-    );
+        Ok(())
+    });
 
     assert!(
         r.is_ok(),

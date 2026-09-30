@@ -10,8 +10,8 @@ the corresponding bit of the 128-bit prover hint `value`. Mirrors the
 Rust loop `for i in 0..Uendo::BITS { Boolean::alloc((value >> i) & 1) }`
 in `crates/ragu_primitives/src/endoscalar.rs::Endoscalar::alloc`.
 
-`Uendo` is `pub use u128 as Uendo` in `crates/ragu_arithmetic/src/lib.rs:102`,
-so `Uendo::BITS = u128::BITS = 128`. This Lean reimpl is monomorphic at 128 —
+`Uendo` was an alias for `u128` (the endoscalar type is `u128` directly now),
+so the bound is `u128::BITS = 128`. This Lean reimpl is monomorphic at 128 —
 no polymorphism needed.
 
 Extraction instance: `qa/fv/extraction/src/instances/endoscalar_alloc.rs`

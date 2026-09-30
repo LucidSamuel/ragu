@@ -3,8 +3,11 @@
 
 use core::borrow::Borrow;
 
-use ragu_arithmetic::{Coeff, ff::Field};
-use ragu_core::maybe::{Maybe, Perhaps};
+use ragu_core::{
+    Coeff,
+    maybe::{Maybe, Perhaps},
+};
+use udon::field::Field;
 
 /// Extension trait for `Maybe` that provides helper methods kept internal to
 /// this crate.

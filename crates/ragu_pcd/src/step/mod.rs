@@ -4,10 +4,9 @@ mod encoder;
 pub(crate) mod internal;
 
 pub use encoder::Encoded;
-use ragu_arithmetic::Cycle;
 use ragu_circuits::registry::CircuitIndex;
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
 };
 

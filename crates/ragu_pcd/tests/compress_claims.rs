@@ -5,16 +5,14 @@
 
 use alloc::{borrow::Cow, vec::Vec};
 
-use ragu_arithmetic::{
-    ff::{Field, PrimeField},
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::{ProductionRank, Rank, sparse},
     registry::Registry,
 };
-use ragu_pasta::{Fp, Fq, Pasta};
+use ragu_core::pasta::{Fp, Fq, Pasta};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use super::{Kind, Masked, NativePolys, NestedPolys, Shape};
 use crate::{
@@ -27,16 +25,16 @@ const HEADER_SIZE: usize = 4;
 
 fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .expect("failed to create test application")
 }
 
-fn coeffs<F: PrimeField>(poly: &sparse::Polynomial<F, TestR>) -> Vec<F> {
+fn coeffs<F: Field>(poly: &sparse::Polynomial<F, TestR>) -> Vec<F> {
     poly.iter_coeffs().collect()
 }
 
 /// The weighted sum of components a shape's side lists.
-fn sum<F: PrimeField, Id: Copy>(
+fn sum<F: Field, Id: Copy>(
     side: &[(F, Id)],
     poly: &impl Fn(Id) -> sparse::Polynomial<F, TestR>,
 ) -> sparse::Polynomial<F, TestR> {
@@ -51,7 +49,7 @@ fn sum<F: PrimeField, Id: Copy>(
 
 /// Holds the shapes to the builder's polynomials: each $a$ is the shape's
 /// sum, and each $b$ follows from the kind.
-fn check<F: PrimeField, Id: Copy>(
+fn check<F: Field, Id: Copy>(
     shapes: &[Shape<Id, F>],
     poly: impl Fn(Id) -> sparse::Polynomial<F, TestR>,
     registry: &Registry<'_, F, TestR>,
@@ -94,7 +92,10 @@ fn native_shapes_match_the_decider() {
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(1);
-    let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
+    let (y, z) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+    );
 
     let mut builder = Builder::<_, Fp, TestR, ReferenceBackend>::new(&app.native_registry, y, z);
     native::claims::build(&NativePolys(proof), &mut builder).unwrap();
@@ -119,7 +120,10 @@ fn nested_shapes_match_the_decider() {
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(2);
-    let (y, z) = (Fq::random(&mut rng), Fq::random(&mut rng));
+    let (y, z) = (
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
 
     let mut builder = Builder::<_, Fq, TestR, ReferenceBackend>::new(&app.nested_registry, y, z);
     nested::claims::build(&NestedPolys(proof), &mut builder).unwrap();

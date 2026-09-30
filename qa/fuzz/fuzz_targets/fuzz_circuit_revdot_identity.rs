@@ -45,17 +45,17 @@
 
 #![no_main]
 
-use ff::Field;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, TestRank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
+use ragu_core::pasta::Fp;
 use ragu_testing_fuzz::substrate::{
     Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval, steer,
 };
+use udon::field::Field;
 
 #[derive(arbitrary::Arbitrary, Debug)]
 struct Input {

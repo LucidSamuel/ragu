@@ -43,7 +43,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{
     WithAux,
     horner::Horner,
@@ -57,6 +56,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{Element, GadgetExt, allocator::Standard, vec::FixedVec};
+use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 use super::common;
 use crate::internal::{
@@ -73,11 +73,11 @@ use crate::internal::{
 };
 
 /// Circuit computing the nested batch evaluation $v_n$.
-pub struct Circuit<C: CurveAffine, R: Rank> {
+pub struct Circuit<C: Affine, R: Rank> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> Circuit<C, R> {
+impl<C: Affine, R: Rank> Circuit<C, R> {
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,
@@ -85,7 +85,7 @@ impl<C: CurveAffine, R: Rank> Circuit<C, R> {
     }
 }
 
-impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
+impl<C: Affine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
     type Last = stages::challenges::Stage<C, R>;
     type Instance<'source> = &'source unified::Instance<C>;
     type Witness<'source> = common::Witness<'source, C>;
@@ -217,7 +217,7 @@ struct Denominators<'dr, D: Driver<'dr>> {
 }
 
 impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
-    fn new<C: CurveAffine<Base = D::F>>(
+    fn new<C: Affine<Base = D::F>>(
         dr: &mut D,
         u: &Element<'dr, D>,
         w: &Element<'dr, D>,
@@ -227,7 +227,7 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         preamble: &nested_preamble::Output<'dr, D, C>,
     ) -> Result<Self>
     where
-        D::F: ragu_arithmetic::ff::PrimeField,
+        D::F: Field,
     {
         let xz = x.mul(dr, z)?;
 
@@ -385,7 +385,7 @@ impl<'a, 'dr, D: Driver<'dr>> Processor<&'a Element<'dr, D>> for EvaluationProce
 /// the static prefix, each child's rx polynomials at $x_n z_n$, then the
 /// current `registry_xy` at each internal circuit's $\omega^j$.
 #[rustfmt::skip]
-fn poly_queries<'a, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>>(
+fn poly_queries<'a, 'dr, D: Driver<'dr>, C: Affine<Base = D::F>>(
     eval: &'a nested_eval::EvaluationsOutput<'dr, D>,
     query: &'a query::EvaluationsOutput<'dr, D>,
     preamble: &'a nested_preamble::Output<'dr, D, C>,

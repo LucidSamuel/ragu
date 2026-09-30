@@ -46,7 +46,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
     horner::Horner,
@@ -54,7 +53,7 @@ use ragu_circuits::{
     staging::{MultiStage, MultiStageCircuit, StageBuilder},
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
     maybe::Maybe,
@@ -299,10 +298,7 @@ impl<'dr, D: Driver<'dr>> Denominators<'dr, D> {
         y: &Element<'dr, D>,
         z: &Element<'dr, D>,
         preamble: &native_preamble::Output<'dr, D, C, HEADER_SIZE>,
-    ) -> Result<Self>
-    where
-        D::F: ragu_arithmetic::ff::PrimeField,
-    {
+    ) -> Result<Self> {
         let xz = x.mul(dr, z)?;
 
         let mut inverter = Inverter::with_base(u.clone());

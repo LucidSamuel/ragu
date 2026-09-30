@@ -418,14 +418,12 @@ target consumes only what it needs:
 Living in this standalone fuzz crate's library lets the same grammar feed
 both its libFuzzer binaries and deterministic `cargo test --lib` proptests.
 
-## Patch table
+## Dependencies
 
 This crate stands as its own workspace root (`[workspace]` in
-`Cargo.toml`), so the repo-root `[patch.crates-io]` doesn't propagate
-in. The same overrides are mirrored here. When the root patch set
-changes, mirror the change here too — otherwise the fuzz build
-resolves different versions than the rest of the workspace and ABI-
-mismatches at link time.
+`Cargo.toml`) and has its own lockfile. Both workspaces use the published
+Udon and Bento 0.1.0 crates. Keep their versions in sync when updating
+these dependencies.
 
 ## Background
 

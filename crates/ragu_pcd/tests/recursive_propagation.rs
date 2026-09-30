@@ -12,27 +12,27 @@ pub(crate) mod support {
     use std::sync::Mutex;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{CurveAffine, Cycle, ff::Field};
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::{
         polynomials::{ProductionRank, Rank, sparse},
         staging::{StageReader, stage_wire_indices, wire_degree, wires_of},
     };
     use ragu_core::{
-        Result,
+        Cycle, Result,
         drivers::{Driver, DriverValue},
         gadgets::{Bound, Kind},
         maybe::Maybe,
+        pasta::{EpAffine, EqAffine, Fp, Fq, Pasta},
     };
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
     use ragu_primitives::{
         Element,
         allocator::{Allocator, Standard},
         poseidon::Sponge,
     };
     use ragu_testing::strategies;
-    use rand::{SeedableRng, rngs::StdRng};
+    use rand::{Rng, SeedableRng, rngs::StdRng};
     use rayon::prelude::*;
+    use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
     pub(crate) type C = Pasta;
     pub(crate) type R = ProductionRank;
@@ -113,7 +113,7 @@ pub(crate) mod support {
             let left = Encoded::new(dr, allocator, left)?;
             let right = Encoded::new(dr, allocator, right)?;
             let salt = Element::alloc(dr, allocator, witness)?;
-            let mut sponge = Sponge::new(dr, C::circuit_poseidon(C::baked()));
+            let mut sponge = Sponge::new(dr, C::circuit_poseidon(crate::pasta::baked()));
             let mut inputs = Vec::new();
             left.clone().write(dr, &mut inputs)?;
             right.clone().write(dr, &mut inputs)?;
@@ -138,7 +138,7 @@ pub(crate) mod support {
             .register(Merge::new())?
             .register(UnitLeft::new())?
             .register(UnitRight::new())?
-            .finalize(C::baked())
+            .finalize(crate::pasta::baked())
     }
 
     /// Reuse the deterministic registries and bootstrap proof between test
@@ -393,7 +393,7 @@ pub(crate) mod support {
         child: &Pcd<C, R, Value>,
         rng: &mut StdRng,
     ) -> Result<Pcd<C, R, Value>> {
-        let salt = Fp::random(&mut *rng);
+        let salt = Fp::random(|bytes| rng.fill_bytes(bytes));
         let sibling = app
             .fuse(rng, Merge::new(), salt, child.clone(), child.clone())?
             .0;
@@ -415,7 +415,7 @@ pub(crate) mod support {
                 Side::Left => (child.clone(), sibling.clone()),
                 Side::Right => (sibling.clone(), child.clone()),
             };
-            let salt = Fp::random(&mut *rng);
+            let salt = Fp::random(|bytes| rng.fill_bytes(bytes));
             let parent = app.fuse(&mut *rng, Merge::new(), salt, left, right)?.0;
             assert_copied_endpoints(parent.proof(), child.proof(), parent_side)?;
             for grandparent_side in [Side::Left, Side::Right] {
@@ -423,7 +423,7 @@ pub(crate) mod support {
                     Side::Left => (parent.clone(), sibling.clone()),
                     Side::Right => (sibling.clone(), parent.clone()),
                 };
-                let salt = Fp::random(&mut *rng);
+                let salt = Fp::random(|bytes| rng.fill_bytes(bytes));
                 let grandparent = app.fuse(&mut *rng, Merge::new(), salt, left, right)?.0;
                 assert_copied_endpoints(grandparent.proof(), parent.proof(), grandparent_side)?;
                 proofs.push((
@@ -594,7 +594,7 @@ pub(crate) mod support {
         assert!(low < high && high < R::num_coeffs());
         assert_ne!(delta, F::ZERO);
         edit(poly, |coefficients| {
-            coefficients[low] -= delta * root.pow_vartime([(high - low) as u64]);
+            coefficients[low] -= delta * root.pow_u64((high - low) as u64);
             coefficients[high] += delta;
         });
     }
@@ -612,12 +612,11 @@ pub(crate) mod support {
         });
     }
 
-    pub(crate) fn coordinates<P: CurveAffine>(point: P) -> [P::Base; 2] {
-        let coordinates = point
+    pub(crate) fn coordinates<P: Affine>(point: P) -> [P::Base; 2] {
+        let (x, y) = point
             .coordinates()
-            .into_option()
             .expect("fixture point is not the identity");
-        [*coordinates.x(), *coordinates.y()]
+        [x, y]
     }
 
     /// A commitment cache a property recomputes after editing the polynomial
@@ -789,12 +788,14 @@ mod accumulator {
     //! Rejection must propagate through parent and grandparent proofs.
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{Cycle, ff::Field};
     use ragu_backend::{Backend, ReferenceBackend};
-    use ragu_core::Result;
-    use ragu_pasta::{Fp, Fq};
+    use ragu_core::{
+        Cycle, Result,
+        pasta::{Fp, Fq},
+    };
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
+    use udon::field::Field;
 
     use super::support::{self, C, R};
     use crate::{Pcd, header::Header};
@@ -931,11 +932,12 @@ mod endpoints {
     use alloc::sync::Arc;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::Cycle;
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
-    use ragu_core::Result;
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
+    use ragu_core::{
+        Cycle, Result,
+        pasta::{EpAffine, EqAffine, Fp, Fq},
+    };
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
 
@@ -1080,18 +1082,25 @@ mod timing {
     use alloc::{sync::Arc, vec::Vec};
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{CurveAffine, Cycle, ff::Field, group::Curve};
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::{
         polynomials::Rank,
         registry::CircuitIndex,
         staging::{StageExt, StageReader, stage_wire_indices, wires_of},
     };
-    use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
+    use ragu_core::{
+        Cycle, Result,
+        drivers::emulator::Emulator,
+        maybe::Maybe,
+        pasta::{EpAffine, EqAffine, Fp, Fq},
+    };
     use ragu_primitives::{GadgetExt, Point};
     use ragu_testing::strategies;
     use rand::{SeedableRng, rngs::StdRng};
+    use udon::{
+        curve::{Affine, Projective},
+        field::Field,
+    };
 
     use super::support::{self, C, R, Value, coordinates};
     use crate::{
@@ -1180,7 +1189,6 @@ mod timing {
                     })?;
                     let reader = StageReader::new(&changed.native_points_ab_rx);
                     let old = EpAffine::from_xy(reader.read(wires[0]), reader.read(wires[1]))
-                        .into_option()
                         .expect("the stored registry point is on the curve");
                     let replacement = (old * point_scale).to_affine();
                     assert_ne!(replacement, old);
@@ -1344,24 +1352,25 @@ mod commitments {
     use alloc::vec::Vec;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{
-        Cycle, FixedGenerators,
-        ff::Field,
-        group::{Curve, CurveAffine},
-    };
     use ragu_backend::{Backend, ReferenceBackend};
     use ragu_circuits::{
         polynomials::{Rank, sparse},
         staging::Stage,
     };
-    use ragu_core::Result;
-    use ragu_pasta::{Fq, Pasta};
+    use ragu_core::{
+        Cycle, FixedGenerators, Result,
+        pasta::{Fq, Pasta},
+    };
     use ragu_testing::strategies;
+    use udon::{
+        curve::{Affine as _, Projective},
+        field::Field,
+    };
 
     use super::support::{self, C, HEADER_SIZE, R};
     use crate::{Pcd, Proof, header::Header, internal::nested};
 
-    fn check_coefficients<H: Header<ragu_pasta::Fp>>(
+    fn check_coefficients<H: Header<ragu_core::pasta::Fp>>(
         app: &support::App,
         pcd: &Pcd<C, R, H>,
         inputs: &support::Inputs,
@@ -1406,9 +1415,10 @@ mod commitments {
             if coefficient
                 != crate::internal::native::circuits::bind_beta::generator_index::<C, R>()
             {
-                changed.nested_challenges_partial = (changed.nested_challenges_partial.to_curve()
-                    + C::nested_generators(app.params).g()[coefficient] * delta)
-                    .to_affine();
+                changed.nested_challenges_partial =
+                    (changed.nested_challenges_partial.to_projective()
+                        + C::nested_generators(app.params).g()[coefficient] * delta)
+                        .to_affine();
             }
             assert!(
                 !verify(changed)?,
@@ -1424,11 +1434,9 @@ mod commitments {
         parent: &Proof<C, R>,
         sign: Fq,
     ) -> Result<()> {
-        use ragu_arithmetic::{
-            Cycle, FixedGenerators,
-            group::{Curve, Group},
-        };
         use ragu_circuits::staging::StageExt;
+        use ragu_core::{Cycle, FixedGenerators};
+        use udon::curve::Projective;
 
         use crate::internal::native::{
             circuits::{
@@ -1451,7 +1459,7 @@ mod commitments {
             beta_lift[0],
         );
         assert_eq!(challenges.base_case_sign, sign);
-        let expected = nested::stages::challenges::Stage::<ragu_pasta::EqAffine, R>::rx(
+        let expected = nested::stages::challenges::Stage::<ragu_core::pasta::EqAffine, R>::rx(
             Fq::ZERO,
             &challenges,
         )?;
@@ -1466,7 +1474,7 @@ mod commitments {
         // 2. Its commitment is the fixed generator combination the binding
         //    circuits recompute, term by term: the binders' terms, then beta's.
         let generators = Pasta::nested_generators(pasta);
-        let mut binding = ragu_pasta::Ep::identity();
+        let mut binding = ragu_core::pasta::Ep::identity();
         for (i, lift) in challenge_lifts.iter().enumerate() {
             binding += generators.g()[generator_index::<C, R>(i)] * *lift;
         }
@@ -1487,7 +1495,7 @@ mod commitments {
         // 3. The eval stage's partials are the running sums the binders check;
         //    the last binder's sum is the exported binding.
         let partials = BindingPartials::compute::<C, R, ReferenceBackend>(pasta, &challenges);
-        let mut acc = ragu_pasta::Ep::identity();
+        let mut acc = ragu_core::pasta::Ep::identity();
         for k in 0..NUM_BINDERS {
             for (i, lift) in challenge_lifts
                 .iter()
@@ -1514,7 +1522,7 @@ mod commitments {
     /// The parent's root stage holds each child's bridge, challenge-stage and
     /// persistent polynomial commitments. Its own persistent points match the
     /// decider's caches, including $P_n$ at the walk's last interstitial.
-    fn check_walk<H: Header<ragu_pasta::Fp>>(
+    fn check_walk<H: Header<ragu_core::pasta::Fp>>(
         app: &support::App,
         parent_pcd: &Pcd<C, R, H>,
         left_pcd: &Pcd<C, R, H>,
@@ -1522,34 +1530,30 @@ mod commitments {
         inputs: &support::Inputs,
         replacement_scalar: Fq,
     ) -> Result<()> {
-        use ragu_arithmetic::{
-            CurveAffine,
-            group::{Curve, Group},
-        };
         use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
+        use udon::curve::{Affine, Projective};
 
         use crate::internal::native::{
             RxIndex,
             stages::points::{BindingStage, WalkStage},
         };
 
-        type Nested = <C as ragu_arithmetic::Cycle>::NestedCurve;
-        let coordinates = |point: Nested| -> [ragu_pasta::Fp; 2] {
-            let c = point
+        type Nested = <C as ragu_core::Cycle>::NestedCurve;
+        let coordinates = |point: Nested| -> [ragu_core::pasta::Fp; 2] {
+            let (x, y) = point
                 .coordinates()
-                .into_option()
                 .expect("a walked point is not the identity");
-            [*c.x(), *c.y()]
+            [x, y]
         };
 
         let (parent, left, right) = (parent_pcd.proof(), left_pcd.proof(), right_pcd.proof());
 
         // The root stage, wire by wire, against the children's caches.
-        let binding = StageReader::<ragu_pasta::Fp, R>::new(&parent[RxIndex::PointsBinding]);
+        let binding = StageReader::<ragu_core::pasta::Fp, R>::new(&parent[RxIndex::PointsBinding]);
         let wires = stage_wire_indices::<_, R, BindingStage<Nested>>(|stage| wires_of(&stage))?;
-        let held: alloc::vec::Vec<ragu_pasta::Fp> =
+        let held: alloc::vec::Vec<ragu_core::pasta::Fp> =
             wires.iter().map(|&i| binding.read(i)).collect();
-        let expected: alloc::vec::Vec<ragu_pasta::Fp> = [left, right]
+        let expected: alloc::vec::Vec<ragu_core::pasta::Fp> = [left, right]
             .into_iter()
             .flat_map(|child| {
                 [
@@ -1576,9 +1580,10 @@ mod commitments {
         );
 
         // The walk's last interstitial, against this step's cache.
-        let walk = StageReader::<ragu_pasta::Fp, R>::new(&parent[RxIndex::PointsWalk]);
+        let walk = StageReader::<ragu_core::pasta::Fp, R>::new(&parent[RxIndex::PointsWalk]);
         let wires = stage_wire_indices::<_, R, WalkStage<Nested>>(|stage| wires_of(stage.p()))?;
-        let last: alloc::vec::Vec<ragu_pasta::Fp> = wires.iter().map(|&i| walk.read(i)).collect();
+        let last: alloc::vec::Vec<ragu_core::pasta::Fp> =
+            wires.iter().map(|&i| walk.read(i)).collect();
         assert_eq!(
             last,
             coordinates(parent.nested_p_commitment()).to_vec(),
@@ -1597,7 +1602,7 @@ mod commitments {
             |proof| &mut proof.nested_b_commitment.0,
             |proof| &mut proof.nested_registry_xy_commitment.0,
         ];
-        let generated = (ragu_pasta::Ep::generator() * replacement_scalar).to_affine();
+        let generated = (ragu_core::pasta::Ep::generator() * replacement_scalar).to_affine();
         for (name, cache) in ["A_n", "B_n", "registry_xy"].into_iter().zip(caches) {
             let mut changed = parent.clone();
             let original = *cache(&mut changed);
@@ -1605,7 +1610,7 @@ mod commitments {
             for point in [
                 -original,
                 generated,
-                <Nested as ragu_arithmetic::group::CurveAffine>::identity(),
+                <Nested as udon::curve::Affine>::identity(),
             ] {
                 *cache(&mut changed) = point;
                 assert!(

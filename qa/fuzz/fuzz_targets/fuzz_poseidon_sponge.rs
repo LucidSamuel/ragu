@@ -8,14 +8,14 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_arithmetic::Cycle;
-use ragu_core::maybe::Maybe;
-use ragu_pasta::Pasta;
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Element, Simulator, allocator::Standard};
+use ragu_core::{
+    Cycle,
+    maybe::Maybe,
+    pasta::{Fp, Pasta},
+};
+use ragu_primitives::{Element, Simulator, allocator::Standard, poseidon::Sponge};
+use udon::field::Field;
 
 fn special_value(idx: u8) -> Fp {
     match idx % 16 {
@@ -23,13 +23,13 @@ fn special_value(idx: u8) -> Fp {
         1 => Fp::ONE,
         2 => -Fp::ONE,
         3 => -Fp::from(2),
-        4 => Fp::TWO_INV,
+        4 => Fp::TWO_INVERSE,
         5 => Fp::from(2),
         6 => Fp::from(3),
         7 => Fp::from(7),
         8 => Fp::ROOT_OF_UNITY,
         9 => Fp::ROOT_OF_UNITY.square(),
-        10 => Fp::ROOT_OF_UNITY.pow_vartime([4u64]),
+        10 => Fp::ROOT_OF_UNITY.pow_u64(4u64),
         11 => Fp::MULTIPLICATIVE_GENERATOR,
         12 => Fp::MULTIPLICATIVE_GENERATOR.square(),
         13 => Fp::from(1u64 << 32),
@@ -72,10 +72,10 @@ fn absorb_values(ops: &[Op]) -> Vec<Fp> {
 fn run_sponge(ops: &[Op], values: &[Fp]) -> Fp {
     let mut output = Fp::ZERO;
     let mut got_output = false;
-    // Pasta::baked() returns a &'static, but recomputing the address each
+    // ragu_pcd::pasta::baked() returns a &'static, but recomputing the address each
     // call is wasteful; hoist outside the closure so we touch the static
     // exactly once per run_sponge.
-    let params = Pasta::baked();
+    let params = ragu_pcd::pasta::baked();
 
     let result = Simulator::<Fp>::simulate(values.to_vec(), |dr, witness| {
         let allocator = &mut Standard::new();
@@ -151,7 +151,7 @@ fuzz_target!(|input: Input| {
     if input.test_save_resume && values.len() >= 1 {
         let mut direct_output = Fp::ZERO;
         let mut resume_output = Fp::ZERO;
-        let params = Pasta::baked();
+        let params = ragu_pcd::pasta::baked();
 
         let result = Simulator::<Fp>::simulate(values.clone(), |dr, witness| {
             let allocator = &mut Standard::new();
@@ -178,7 +178,9 @@ fuzz_target!(|input: Input| {
             for elem in &elems {
                 sponge2.absorb(dr, elem)?;
             }
-            let state = sponge2.save_state(dr).expect("save should succeed after absorb");
+            let state = sponge2
+                .save_state(dr)
+                .expect("save should succeed after absorb");
             let mut resumed = Sponge::resume(state, Pasta::circuit_poseidon(params));
             let squeezed = resumed.squeeze(dr)?;
             resume_output = *squeezed.value().take();
@@ -188,8 +190,7 @@ fuzz_target!(|input: Input| {
 
         assert!(result.is_ok(), "save/resume failed: {:?}", result.err());
         assert_eq!(
-            direct_output,
-            resume_output,
+            direct_output, resume_output,
             "save/resume produced different output than direct squeeze"
         );
     }

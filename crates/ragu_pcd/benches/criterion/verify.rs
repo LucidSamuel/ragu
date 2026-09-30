@@ -3,15 +3,17 @@
 use std::hint::black_box;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::ApplicationBuilder;
 use ragu_testing::pcd::nontrivial;
 use rand::{SeedableRng, rngs::StdRng};
 
 fn verify_bench(c: &mut Criterion) {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(nontrivial::WitnessLeaf { poseidon_params })
@@ -54,7 +56,7 @@ fn verify_bench(c: &mut Criterion) {
     ];
     #[cfg(feature = "unstable-fuzzing")]
     let proofs = {
-        use ragu_pasta::Fq;
+        use ragu_core::pasta::Fq;
         use ragu_pcd::fuzzing::corrupt::{Binding, Corruption, NativeRx, NestedRx, RxComponent};
 
         let mut proofs = Vec::from(proofs);

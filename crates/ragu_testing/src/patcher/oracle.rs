@@ -40,7 +40,7 @@
 //!   richer harness on top of [`determinism_probe`] (the fuzz target's
 //!   mutation vocabulary is the model).
 
-use ragu_arithmetic::ff::{Field, PrimeFieldBits};
+use udon::field::Field;
 
 use super::{
     discover::discover_free_advice,
@@ -186,7 +186,7 @@ pub struct Prepared<F> {
     events_of: Vec<Vec<usize>>,
 }
 
-impl<F: PrimeFieldBits> Prepared<F> {
+impl<F: Field> Prepared<F> {
     /// Prepares `events` at the satisfying witness `honest` for probes that
     /// pin `inputs` and watch `outputs`.
     pub fn new(
@@ -406,9 +406,11 @@ fn sweep_with<F: Field>(
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::Coeff;
-    use ragu_core::drivers::{Driver, LinearExpression};
-    use ragu_pasta::Fp;
+    use ragu_core::{
+        Coeff,
+        drivers::{Driver, LinearExpression},
+        pasta::Fp,
+    };
 
     use super::{super::recorder::Recorder, *};
 

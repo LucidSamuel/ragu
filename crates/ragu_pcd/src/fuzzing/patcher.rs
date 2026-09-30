@@ -72,14 +72,13 @@
 
 use alloc::{format, string::String, vec::Vec};
 
-use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     Circuit,
     polynomials::Rank,
     staging::{MultiStage, Stage, StageExt, stage_wire_indices, wires_of},
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::emulator::Emulator,
     maybe::{Always, Maybe, MaybeKind},
 };
@@ -87,6 +86,8 @@ use ragu_primitives::{
     EndoscalarChallenge, GadgetExt, Point, extract_endoscalar,
     vec::{CollectFixed, Len},
 };
+use rand::CryptoRng;
+use udon::field::Field;
 
 use super::claims::{NativeFuseProofSource, NestedFuseProofSource};
 use crate::{
@@ -422,7 +423,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         S: Step<C>,
         V: InternalCircuitVisitor<C>,
     {
-        let mut builder = ProofBuilder::new(self.params, C::ScalarField::random(&mut *rng));
+        let mut builder = ProofBuilder::new(
+            self.params,
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
+        );
 
         let (left, right, _application_data, _application_aux) =
             self.compute_application_proof(rng, step, witness, left, right, &mut builder)?;

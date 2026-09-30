@@ -49,7 +49,7 @@ test *ARGS:
 
 # run quicker proptests used for routine local/CI coverage
 proptests_fast *ARGS:
-  PROPTEST_CASES="${PROPTEST_CASES:-64}" cargo test --release -p ragu_arithmetic -p ragu_core --all-features proptest {{ARGS}}
+  PROPTEST_CASES="${PROPTEST_CASES:-64}" cargo test --release -p ragu_core --all-features proptest {{ARGS}}
 
 # run slower proptests with higher default case counts
 proptests_heavy *ARGS:
@@ -127,21 +127,20 @@ _flamegraph_linux PACKAGE GROUP TARGET *ARGS: _flamegraph_setup
 
 # backend feature configurations compile cleanly
 backend_clippy:
-  cargo clippy -p ragu_acceleration --lib --tests --no-default-features --features native-msm -- -D warnings
-  cargo clippy -p ragu_pcd --lib --tests --benches --no-default-features --features native-msm -- -D warnings
+  cargo clippy -p ragu_acceleration --lib --tests --no-default-features -- -D warnings
+  cargo clippy -p ragu_pcd --lib --tests --benches --no-default-features -- -D warnings
 
-# backend lane: differential, parity, and liveness tests in the serial
-# native-msm configuration
+# backend lane: the PCD end-to-end equivalence, serially
 backend_equivalence *ARGS:
-  cargo test --release -p ragu_acceleration --no-default-features --features native-msm {{ARGS}} -- --test-threads=1
-  PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --no-default-features --features native-msm --lib backend_equivalence:: {{ARGS}} -- --test-threads=1
+  PROPTEST_CASES="${PROPTEST_CASES:-4}" cargo test --release -p ragu_pcd --no-default-features --lib backend_equivalence:: {{ARGS}} -- --test-threads=1
 
 # correctness-first fallbacks retain their bare-metal no_std configurations
 backend_nostd:
   cargo build -p ragu_backend -p ragu_acceleration --lib --no-default-features --target thumbv7em-none-eabihf
   cargo build -p ragu_pcd --lib --no-default-features --features alloc --target thumbv7em-none-eabihf
+  cargo build -p ragu_no_std --lib --no-default-features --locked --target thumbv7em-none-eabihf
 
-# backend correctness lane: compilation, liveness, and equivalence
+# backend correctness lane: compilation, equivalence, and no_std
 backend_lane: backend_clippy backend_equivalence backend_nostd
 
 # run CI checks locally (formatting, clippy, tests)

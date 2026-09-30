@@ -5,7 +5,6 @@
 //! - [`MySimpleCircuit`]: Proves knowledge of a and b such that a^5 = b^2 and outputs c = a+b, d = a-b.
 //! - [`SquareCircuit`]: Parameterized circuit that squares an input `times` times.
 
-use ragu_arithmetic::ff::Field;
 use ragu_circuits::{Circuit, WithAux};
 use ragu_core::{
     Result,
@@ -14,6 +13,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{Element, allocator::Standard};
+use udon::field::Field;
 
 /// A simple circuit that proves knowledge of a and b such that a^5 = b^2
 /// and a + b = c and a - b = d where c and d are public inputs.

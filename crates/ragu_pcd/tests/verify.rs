@@ -1,14 +1,14 @@
-use ragu_arithmetic::{
-    ff::Field,
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_circuits::{
     polynomials::{ProductionRank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::drivers::{Driver, DriverValue};
-use ragu_pasta::Pasta;
+use ragu_core::{
+    drivers::{Driver, DriverValue},
+    pasta::Pasta,
+};
 use ragu_primitives::allocator::Standard;
+use rand::{SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use super::*;
 use crate::{
@@ -20,7 +20,7 @@ type TestR = ProductionRank;
 const HEADER_SIZE: usize = 4;
 
 fn create_test_app() -> crate::Application<'static, Pasta, TestR, HEADER_SIZE> {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
         .finalize(pasta)
         .expect("failed to create test application")
@@ -189,7 +189,7 @@ fn unit_app() -> crate::Application<'static, Pasta, TestR, HEADER_SIZE> {
         .expect("register seed step")
         .register(UnitStep)
         .expect("register fuse step")
-        .finalize(Pasta::baked())
+        .finalize(ragu_pcd::pasta::baked())
         .expect("failed to create test application")
 }
 
@@ -340,7 +340,7 @@ fn rerandomize_unit_proof_still_verifies() {
     // and `Rerandomize`'s suffix wire constrained away from `Dummy`,
     // an honest rerandomize takes the normal claim-enforcing path — and
     // must still preserve verification.
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let app = ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
         .register(UnitSeed)
         .expect("register seed step")

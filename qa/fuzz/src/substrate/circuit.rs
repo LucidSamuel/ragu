@@ -18,7 +18,6 @@
 //!
 //! [`Preamble::values`]: super::Preamble::values
 
-use ff::PrimeField;
 use ragu_circuits::{Circuit, WithAux};
 use ragu_core::{
     Result,
@@ -26,6 +25,7 @@ use ragu_core::{
     gadgets::{Bound, Kind},
 };
 use ragu_primitives::allocator::Standard;
+use udon::field::Field;
 
 use super::{
     AdviceSlot, Capabilities, Op, Overrides, Preamble, Program, shadow_eval,
@@ -50,7 +50,7 @@ pub struct ProgramCircuit<'a, F> {
     pub anchors: &'a [F],
 }
 
-impl<'a, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for ProgramCircuit<'a, F> {
+impl<'a, F: Field> Circuit<F> for ProgramCircuit<'a, F> {
     type Instance<'instance> = ();
     type Output = Kind![F; ()];
     type Witness<'witness> = [F; Preamble::LEN];
@@ -98,7 +98,7 @@ impl<'a, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for ProgramCircuit<'a, F> {
 /// divisor to zero. Consumers that need progression stability across
 /// overridden runs should additionally mask
 /// [`Capabilities::VALUE_FALLIBLE`] out of their vocabulary.
-pub fn steer<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program {
+pub fn steer<F: Field>(program: &Program) -> Program {
     let mut steered = Program {
         preamble: program.preamble.clone(),
         ops: Vec::new(),
@@ -139,7 +139,7 @@ pub fn steer<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program {
 /// pin itself, so ragu and the native oracle agree before the cheat ever
 /// reaches the gadget under test — masking downstream bugs rather than
 /// exposing them.
-pub fn anchor_tail<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program {
+pub fn anchor_tail<F: Field>(program: &Program) -> Program {
     let shadow = shadow_eval::<F>(program, Overrides::none());
     let advice: Vec<usize> = shadow
         .advice
@@ -160,10 +160,9 @@ pub fn anchor_tail<F: PrimeField<Repr = [u8; 32]>>(program: &Program) -> Program
 
 #[cfg(test)]
 mod tests {
-    use ff::Field;
     use proptest::prelude::*;
     use ragu_circuits::{CircuitExt, polynomials::TestRank, registry::RegistryBuilder};
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
 
     use super::{
         super::{Limits, OpSet, program_strategy},

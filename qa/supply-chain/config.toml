@@ -184,12 +184,28 @@ criteria = "safe-to-deploy"
 version = "0.5.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.zakura-bento]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.zakura-bento-core]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.zakura-bento-macros]]
+version = "0.1.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.zakura-halo2-proofs]]
 version = "1.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zakura-pasta-curves]]
 version = "1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.zakura-udon]]
+version = "0.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.zerocopy]]

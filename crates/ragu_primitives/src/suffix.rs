@@ -1,11 +1,11 @@
 //! Compositional gadget that appends an extra element during serialization.
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,
     gadgets::{Bound, Gadget, GadgetKind, Kind},
 };
+use udon::field::Field;
 
 use crate::{
     Element, GadgetExt,

@@ -3,12 +3,12 @@
 //! Provides an implementation of [`Circuit`] for the unit type `()`,
 //! which creates zero constraints. Useful for testing and placeholders.
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
+use udon::field::Field;
 
 use crate::{Circuit, WithAux};
 
@@ -46,8 +46,8 @@ mod tests {
     use ragu_core::{
         drivers::emulator::{Emulator, Wired},
         maybe::{Always, MaybeKind},
+        pasta::Fp,
     };
-    use ragu_pasta::Fp;
 
     use crate::Circuit;
 

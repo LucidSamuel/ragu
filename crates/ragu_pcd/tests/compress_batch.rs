@@ -5,14 +5,18 @@
 
 use alloc::{borrow::Cow, vec::Vec};
 
-use ragu_arithmetic::{
-    CurveAffine, Cycle, FixedGenerators, eval,
-    ff::{Field, PrimeField},
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
-use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
+use ragu_core::Cycle;
+use ragu_core::FixedGenerators;
+use ragu_core::pasta::{Fp, Fq, Pasta};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::curve::Affine;
+use udon::field::Field;
+use udon::polynomial::evaluate_iter;
+
+type EpAffine = <Pasta as Cycle>::NestedCurve;
+type EqAffine = <Pasta as Cycle>::HostCurve;
 
 use super::{Batch, Batched, batch, verify};
 use crate::{
@@ -22,7 +26,7 @@ use crate::{
         ky::{self, NativeKy, NestedKy},
         nested,
     },
-    ipa::{self, Blind, CycleTranscript, IpaProof, IpaTranscript, MSM, Params},
+    ipa::{self, Blind, CycleTranscript, IpaCycle, IpaProof, IpaTranscript, MSM, Params},
 };
 
 type TestR = ProductionRank;
@@ -31,17 +35,17 @@ const TAG: &[u8] = b"ragu-test-batch";
 
 fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .expect("failed to create test application")
 }
 
 fn transcript() -> CycleTranscript<'static, Pasta> {
-    CycleTranscript::new(Pasta::baked(), TAG).unwrap()
+    CycleTranscript::new(crate::pasta::baked(), TAG).unwrap()
 }
 
 /// The prover's batch and IPA opening after an accepted reduction, with the
 /// claim the verifier is expected to derive.
-struct Proved<C: CurveAffine> {
+struct Proved<C: Affine> {
     batch: Batch<C>,
     p: Vec<C::Scalar>,
     claim: Batched<C>,
@@ -55,13 +59,13 @@ fn prove<C, R, T>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     openings: &Openings<C>,
     generators: &impl FixedGenerators<C>,
+    u: C,
     transcript: &mut T,
     verifier_transcript: &mut T,
     rng: &mut StdRng,
 ) -> Proved<C>
 where
-    C: CurveAffine,
-    C::Scalar: PrimeField,
+    C: Affine,
     R: Rank,
     T: IpaTranscript<C>,
 {
@@ -75,7 +79,7 @@ where
     )
     .unwrap();
     assert_eq!(claim.point, witness.u);
-    let params = Params::new(generators);
+    let params = Params::new(generators, u);
     let opening = ipa::create_proof(
         &params,
         &mut *rng,
@@ -100,10 +104,11 @@ fn check<C, T>(
     messages: &Batch<C>,
     opening: &IpaProof<C>,
     generators: &impl FixedGenerators<C>,
+    u: C,
     transcript: &mut T,
 ) -> bool
 where
-    C: CurveAffine,
+    C: Affine,
     T: IpaTranscript<C>,
 {
     let claim = verify(
@@ -113,7 +118,7 @@ where
         transcript,
     )
     .unwrap();
-    let params = Params::new(generators);
+    let params = Params::new(generators, u);
     let mut msm = MSM::new(&params);
     msm.append_term(C::Scalar::ONE, claim.commitment);
     ipa::verify_proof(&params, msm, transcript, opening, claim.point, claim.value)
@@ -153,13 +158,16 @@ fn native_batch_opens_through_the_ipa() {
     let app = create_test_app();
     let pcd = app.bootstrap_pcd();
     let mut rng = StdRng::seed_from_u64(1);
-    let (y, z) = (Fp::random(&mut rng), Fp::random(&mut rng));
+    let (y, z) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+    );
     let proof = pcd.proof();
     let targets = NativeKy {
         c: Some(proof.native_c()),
         ..ky::native_ky::<Pasta, TestR, (), HEADER_SIZE>(&pcd, y).unwrap()
     };
-    let generators = Pasta::host_generators(Pasta::baked());
+    let generators = Pasta::host_generators(crate::pasta::baked());
 
     // The reduction, on the prover's and the verifier's transcripts.
     let mut prover = transcript();
@@ -181,6 +189,7 @@ fn native_batch_opens_through_the_ipa() {
         &polys,
         &openings,
         generators,
+        *Pasta::host_u(crate::pasta::baked()),
         &mut prover.host(),
         &mut verifier.host(),
         &mut rng,
@@ -191,7 +200,10 @@ fn native_batch_opens_through_the_ipa() {
         proved.claim.commitment,
         sparse::Polynomial::<Fp, TestR>::from_coeffs(proved.p.clone()).commit_to_affine(generators)
     );
-    assert_eq!(proved.claim.value, eval(&proved.p, proved.claim.point));
+    assert_eq!(
+        proved.claim.value,
+        evaluate_iter(&proved.p, proved.claim.point)
+    );
 
     // The IPA proves it, on a verifier transcript replayed from the
     // reduction.
@@ -201,6 +213,7 @@ fn native_batch_opens_through_the_ipa() {
         &proved.batch,
         &proved.opening,
         generators,
+        *Pasta::host_u(crate::pasta::baked()),
         &mut verifier.host()
     ));
 
@@ -214,6 +227,7 @@ fn native_batch_opens_through_the_ipa() {
         &tampered,
         &proved.opening,
         generators,
+        *Pasta::host_u(crate::pasta::baked()),
         &mut verifier.host()
     ));
 
@@ -226,6 +240,7 @@ fn native_batch_opens_through_the_ipa() {
         &tampered,
         &proved.opening,
         generators,
+        *Pasta::host_u(crate::pasta::baked()),
         &mut verifier.host()
     ));
 
@@ -249,6 +264,7 @@ fn native_batch_opens_through_the_ipa() {
         &proved.batch,
         &proved.opening,
         generators,
+        *Pasta::host_u(crate::pasta::baked()),
         &mut verifier.host()
     ));
 }
@@ -259,12 +275,15 @@ fn nested_batch_opens_through_the_ipa() {
     let pcd = app.bootstrap_pcd();
     let proof = pcd.proof();
     let mut rng = StdRng::seed_from_u64(2);
-    let (y, z) = (Fq::random(&mut rng), Fq::random(&mut rng));
+    let (y, z) = (
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
     let targets = NestedKy {
         c: proof.nested_c(),
         unified: ky::nested_ky(proof, y).unwrap(),
     };
-    let generators = Pasta::nested_generators(Pasta::baked());
+    let generators = Pasta::nested_generators(crate::pasta::baked());
     let commitment = |component| match component {
         nested::RxComponent::AbA => proof.nested_a_commitment(),
         nested::RxComponent::AbB => proof.nested_b_commitment(),
@@ -305,11 +324,15 @@ fn nested_batch_opens_through_the_ipa() {
         &polys,
         &openings,
         generators,
+        *Pasta::nested_u(crate::pasta::baked()),
         &mut prover.nested(),
         &mut verifier.nested(),
         &mut rng,
     );
-    assert_eq!(proved.claim.value, eval(&proved.p, proved.claim.point));
+    assert_eq!(
+        proved.claim.value,
+        evaluate_iter(&proved.p, proved.claim.point)
+    );
 
     let (mut verifier, _) = nested_verifier();
     assert!(check(
@@ -317,6 +340,7 @@ fn nested_batch_opens_through_the_ipa() {
         &proved.batch,
         &proved.opening,
         generators,
+        *Pasta::nested_u(crate::pasta::baked()),
         &mut verifier.nested()
     ));
 
@@ -328,6 +352,7 @@ fn nested_batch_opens_through_the_ipa() {
         &tampered,
         &proved.opening,
         generators,
+        *Pasta::nested_u(crate::pasta::baked()),
         &mut verifier.nested()
     ));
 }

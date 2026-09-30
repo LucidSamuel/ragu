@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 
-use ragu_arithmetic::ff::PrimeField;
 use ragu_core::{
     Result,
     drivers::{
@@ -76,7 +75,7 @@ impl<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize> Clone
     }
 }
 
-impl<'dr, D: Driver<'dr, F: PrimeField>, H: Header<D::F>, const HEADER_SIZE: usize>
+impl<'dr, D: Driver<'dr>, H: Header<D::F>, const HEADER_SIZE: usize>
     Encoded<'dr, D, H, HEADER_SIZE>
 {
     /// Create an encoded header from a gadget value.
@@ -189,8 +188,8 @@ mod tests {
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
         maybe::{Always, Maybe, MaybeKind},
+        pasta::Fp,
     };
-    use ragu_pasta::Fp;
 
     use super::*;
     use crate::header::{Header, Suffix};

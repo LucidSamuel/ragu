@@ -18,16 +18,16 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::Field;
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use ragu_arithmetic::DeferredField;
 use ragu_circuits::polynomials::{
     Rank,
     sparse::{Polynomial, View},
 };
-use ragu_testing_fuzz::params::{FieldChoice, RankChoice};
-use ragu_testing_fuzz::{with_field, with_rank};
+use ragu_testing_fuzz::{
+    params::{FieldChoice, RankChoice},
+    with_field, with_rank,
+};
+use udon::field::Field;
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -40,7 +40,7 @@ struct Input {
     fold_scale: u64,
 }
 
-fn build_poly<F: PrimeField, R: Rank>(
+fn build_poly<F: Field, R: Rank>(
     lens: &[u8; 4],
     coeffs: &mut impl Iterator<Item = F>,
 ) -> Polynomial<F, R> {
@@ -95,7 +95,7 @@ fuzz_target!(|input: Input| {
     });
 });
 
-fn run<F: PrimeField + DeferredField, R: Rank>(input: &Input) {
+fn run<F: Field, R: Rank>(input: &Input) {
     let mut coeffs = input.coeffs.iter().map(|&v| F::from(v));
 
     let p1 = build_poly::<F, R>(&input.p1_lens, &mut coeffs);
@@ -106,7 +106,8 @@ fn run<F: PrimeField + DeferredField, R: Rank>(input: &Input) {
     let dense_revdot = naive_revdot_iter(p1.iter_coeffs(), p2.iter_coeffs());
 
     assert_eq!(
-        sparse_revdot, dense_revdot,
+        sparse_revdot,
+        dense_revdot,
         "revdot mismatch at rank {}: p1 lens={:?}, p2 lens={:?}",
         R::RANK,
         input.p1_lens,
@@ -137,7 +138,7 @@ fn run<F: PrimeField + DeferredField, R: Rank>(input: &Input) {
 
     // 3. Fold-then-eval agreement
     let s = F::from(input.fold_scale);
-    let folded = Polynomial::fold([&p1, &p2].into_iter(), s);
+    let folded = Polynomial::fold([&p1, &p2], s);
     let folded_eval = folded.eval(z);
     let folded_dense_eval = naive_eval(folded.iter_coeffs(), z);
 

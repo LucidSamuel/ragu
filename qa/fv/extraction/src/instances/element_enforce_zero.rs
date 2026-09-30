@@ -1,5 +1,6 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireDeserializer};
 
@@ -14,7 +15,7 @@ impl CircuitInstance for ElementEnforceZeroInstance {
     {
         let input_wires = dr.alloc_input_wires(1);
 
-        let element_template = Element::constant(dr, Fp::zero());
+        let element_template = Element::constant(dr, Fp::ZERO);
         let input = WireDeserializer::new(input_wires).into_gadget(&element_template)?;
 
         input.enforce_zero(dr)?;

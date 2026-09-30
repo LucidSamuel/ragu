@@ -1,6 +1,6 @@
-use ff::Field;
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use crate::{
     instance::{CircuitInstance, InstanceDriver, WireDeserializer},

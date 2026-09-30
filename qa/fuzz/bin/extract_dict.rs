@@ -14,9 +14,11 @@
 //! quoted byte string with `\xNN` escapes for every byte. Names are
 //! omitted; libFuzzer doesn't use them for anything we care about.
 
-use ff::{Field, PrimeField};
-use ragu_arithmetic::PoseidonPermutation;
-use ragu_pasta::{Fp, Fq, PoseidonFp, PoseidonFq};
+use ragu_core::{
+    PoseidonPermutation,
+    pasta::{Fp, Fq, PoseidonFp, PoseidonFq},
+};
+use udon::field::Field;
 
 /// Print an `Fp` (or `Fq`) value as a libFuzzer dictionary entry.
 fn emit_repr(label: &str, idx: usize, bytes: &[u8]) {
@@ -28,11 +30,11 @@ fn emit_repr(label: &str, idx: usize, bytes: &[u8]) {
 }
 
 fn emit_fp(label: &str, idx: usize, v: Fp) {
-    emit_repr(label, idx, v.to_repr().as_ref());
+    emit_repr(label, idx, v.to_bytes().as_ref());
 }
 
 fn emit_fq(label: &str, idx: usize, v: Fq) {
-    emit_repr(label, idx, v.to_repr().as_ref());
+    emit_repr(label, idx, v.to_bytes().as_ref());
 }
 
 fn main() {
@@ -46,13 +48,13 @@ fn main() {
     emit_fp("fp_special", 1, Fp::ONE);
     emit_fp("fp_special", 2, -Fp::ONE);
     emit_fp("fp_special", 3, -Fp::from(2));
-    emit_fp("fp_special", 4, Fp::TWO_INV);
+    emit_fp("fp_special", 4, Fp::TWO_INVERSE);
     emit_fp("fp_special", 5, Fp::from(2));
     emit_fp("fp_special", 6, Fp::from(3));
     emit_fp("fp_special", 7, Fp::from(7));
     emit_fp("fp_special", 8, Fp::ROOT_OF_UNITY);
     emit_fp("fp_special", 9, Fp::ROOT_OF_UNITY.square());
-    emit_fp("fp_special", 10, Fp::ROOT_OF_UNITY.pow_vartime([4u64]));
+    emit_fp("fp_special", 10, Fp::ROOT_OF_UNITY.pow_u64(4u64));
     emit_fp("fp_special", 11, Fp::MULTIPLICATIVE_GENERATOR);
     emit_fp("fp_special", 12, Fp::MULTIPLICATIVE_GENERATOR.square());
     emit_fp("fp_special", 13, Fp::from(1u64 << 32));
@@ -64,13 +66,13 @@ fn main() {
     emit_fq("fq_special", 1, Fq::ONE);
     emit_fq("fq_special", 2, -Fq::ONE);
     emit_fq("fq_special", 3, -Fq::from(2));
-    emit_fq("fq_special", 4, Fq::TWO_INV);
+    emit_fq("fq_special", 4, Fq::TWO_INVERSE);
     emit_fq("fq_special", 5, Fq::from(2));
     emit_fq("fq_special", 6, Fq::from(3));
     emit_fq("fq_special", 7, Fq::from(7));
     emit_fq("fq_special", 8, Fq::ROOT_OF_UNITY);
     emit_fq("fq_special", 9, Fq::ROOT_OF_UNITY.square());
-    emit_fq("fq_special", 10, Fq::ROOT_OF_UNITY.pow_vartime([4u64]));
+    emit_fq("fq_special", 10, Fq::ROOT_OF_UNITY.pow_u64(4u64));
     emit_fq("fq_special", 11, Fq::MULTIPLICATIVE_GENERATOR);
     emit_fq("fq_special", 12, Fq::MULTIPLICATIVE_GENERATOR.square());
     emit_fq("fq_special", 13, Fq::from(1u64 << 32));

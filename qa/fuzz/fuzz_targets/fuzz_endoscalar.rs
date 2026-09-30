@@ -11,23 +11,22 @@
 
 #![no_main]
 
+use std::sync::LazyLock;
+
 use arbitrary::Arbitrary;
-use ff::Field;
-use ff::PrimeField;
-use ff::WithSmallOrderMulGroup;
-use group::CurveAffine as _;
-use group::{Curve, Group};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use pasta_curves::arithmetic::CurveAffine;
-use ragu_core::maybe::Maybe;
-use ragu_pasta::{EpAffine, Fq};
+use ragu_core::{
+    maybe::Maybe,
+    pasta::{EpAffine, Fp, Fq},
+};
 use ragu_primitives::{
     Boolean, Element, Endoscalar, EndoscalarChallenge, EndoscalarRangeError, NonzeroBank, Point,
     Simulator, allocator::Standard, extract_endoscalar, lift_endoscalar,
 };
-
-use std::sync::LazyLock;
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 /// Edge-case field elements that trigger boundary conditions.
 fn special_scalar(idx: u8) -> Fp {
@@ -35,7 +34,7 @@ fn special_scalar(idx: u8) -> Fp {
         0 => Fp::ZERO,
         1 => Fp::ONE,
         2 => -Fp::ONE,          // p - 1
-        3 => Fp::TWO_INV,       // (p + 1) / 2
+        3 => Fp::TWO_INVERSE,   // (p + 1) / 2
         4 => Fp::ROOT_OF_UNITY, // 2-adic root of unity
         5 => Fp::MULTIPLICATIVE_GENERATOR,
         6 => Fp::ZETA, // cube root of unity (endomorphism scalar)
@@ -120,7 +119,8 @@ fuzz_target!(|input: Input| {
         Ok(extracted) => extracted,
         Err(err) => {
             assert!(
-                err.invalid_witness_source::<EndoscalarRangeError>().is_some(),
+                err.invalid_witness_source::<EndoscalarRangeError>()
+                    .is_some(),
                 "extraction must fail only with the typed range rejection: {err:?}"
             );
             return;
@@ -129,8 +129,8 @@ fuzz_target!(|input: Input| {
     let lifted_native: Fp = lift_endoscalar(extracted);
 
     // Determinism
-    let extracted2 = extract_endoscalar::<Fp>(r)
-        .expect("range-checked endoscalar challenge should extract");
+    let extracted2 =
+        extract_endoscalar::<Fp>(r).expect("range-checked endoscalar challenge should extract");
     assert_eq!(extracted, extracted2, "extract is not deterministic");
     assert_eq!(
         lifted_native,
@@ -190,17 +190,17 @@ fuzz_target!(|input: Input| {
                 match op {
                     PointOp::Endo => {
                         current = current.endo(dr);
-                        let coords = current_native.coordinates().unwrap();
-                        let new_x = *coords.x() * Fp::ZETA;
-                        current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
+                        let coords = Affine::coordinates(&current_native).unwrap();
+                        let new_x = coords.0 * Fp::ZETA;
+                        current_native = <EpAffine as Affine>::from_xy(new_x, coords.1).unwrap();
                     }
                     PointOp::Negate => {
                         current = current.negate(dr);
-                        current_native = (-current_native.to_curve()).to_affine();
+                        current_native = (-current_native.to_projective()).to_affine();
                     }
                     PointOp::Double => {
                         current = current.double(dr)?;
-                        current_native = current_native.to_curve().double().to_affine();
+                        current_native = current_native.to_projective().double().to_affine();
                     }
                     PointOp::ConditionalEndo(cond) => {
                         let b =
@@ -208,9 +208,10 @@ fuzz_target!(|input: Input| {
                         bool_idx += 1;
                         current = current.conditional_endo(dr, &b)?;
                         if *cond {
-                            let coords = current_native.coordinates().unwrap();
-                            let new_x = *coords.x() * Fp::ZETA;
-                            current_native = EpAffine::from_xy(new_x, *coords.y()).unwrap();
+                            let coords = Affine::coordinates(&current_native).unwrap();
+                            let new_x = coords.0 * Fp::ZETA;
+                            current_native =
+                                <EpAffine as Affine>::from_xy(new_x, coords.1).unwrap();
                         }
                     }
                     PointOp::ConditionalNegate(cond) => {
@@ -219,7 +220,7 @@ fuzz_target!(|input: Input| {
                         bool_idx += 1;
                         current = current.conditional_negate(dr, &b)?;
                         if *cond {
-                            current_native = (-current_native.to_curve()).to_affine();
+                            current_native = (-current_native.to_projective()).to_affine();
                         }
                     }
                 }
@@ -237,10 +238,10 @@ fuzz_target!(|input: Input| {
             let q = Point::<'_, _, EpAffine>::alloc(dr, p2_val)?;
             let p_coords = p.coordinates().unwrap();
             let p2_coords = p2.coordinates().unwrap();
-            if p_coords.x() != p2_coords.x() {
+            if p_coords.0 != p2_coords.0 {
                 let p_again = Point::<'_, _, EpAffine>::constant(dr, p)?;
                 let sum = NonzeroBank::scope(dr, |dr, bank| p_again.add_incomplete(dr, &q, bank))?;
-                let expected_sum: EpAffine = (p.to_curve() + p2.to_curve()).to_affine();
+                let expected_sum: EpAffine = (p.to_projective() + p2.to_projective()).to_affine();
                 assert_eq!(
                     sum.value().take(),
                     expected_sum,

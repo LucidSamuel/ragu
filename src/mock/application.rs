@@ -3,8 +3,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::any::TypeId;
 
-use ragu_arithmetic::rand::CryptoRng;
 use ragu_core::{Error, Result};
+use rand::CryptoRng;
 
 use super::{
     ctx::StepCtx,

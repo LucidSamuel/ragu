@@ -2,15 +2,17 @@
 
 use alloc::{borrow::Cow, vec, vec::Vec};
 
-use ragu_arithmetic::{
-    CurveAffine, Cycle, DeferredField, FixedGenerators, decomp_poly, eval, ff::Field, poly_mul,
-};
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::Registry,
 };
+use ragu_core::Cycle;
+use ragu_core::FixedGenerators;
 use ragu_core::Result;
+use udon::curve::Affine;
+use udon::field::Field;
+use udon::polynomial::evaluate_iter;
 
 use super::{
     Reduction, Witness,
@@ -23,6 +25,48 @@ use crate::{
     internal::{claims::Builder, native, nested},
     ipa::IpaTranscript,
 };
+
+/// The product of two coefficient vectors of $n$ coefficients, as its $2n -
+/// 1$ coefficients, over the doubled domain.
+fn poly_mul<F: Field>(a: &[F], b: &[F], out: &mut Vec<F>) {
+    let n = a.len();
+    assert_eq!(b.len(), n, "the factors have the same length");
+    let size = 2 * n;
+    let domain = F::domain(size.ilog2()).expect("the doubled rank is a domain");
+    let mut lhs = vec![F::ZERO; size];
+    let mut rhs = vec![F::ZERO; size];
+    lhs[..n].copy_from_slice(a);
+    rhs[..n].copy_from_slice(b);
+    domain.transform(&mut lhs);
+    domain.transform(&mut rhs);
+    for (l, r) in lhs.iter_mut().zip(&rhs) {
+        *l *= r;
+    }
+    domain.inverse_transform(&mut lhs);
+    lhs.truncate(size - 1);
+    *out = lhs;
+}
+
+/// Splits a polynomial $c$ of $2n - 1$ coefficients into $(p, q)$ with
+///
+/// $$ c(X) = X^{n-1} p(X^{-1}) + X^n q(X), $$
+///
+/// so that $p(0) = c\_{n-1}$: $p$ is the reverse of the lower $n$
+/// coefficients and $q$ the upper $n - 1$.
+///
+/// # Panics
+///
+/// Panics if `c` does not have exactly $2n - 1$ coefficients.
+fn decomp_poly<F: Field>(mut c: Vec<F>, n: usize) -> (Vec<F>, Vec<F>) {
+    assert_eq!(
+        c.len(),
+        2 * n - 1,
+        "decomp_poly requires a product of length 2n - 1"
+    );
+    let q = c.split_off(n);
+    c.reverse();
+    (c, q)
+}
 
 /// A revdot claim's polynomials.
 type Claim<'a, F, R> = (
@@ -53,7 +97,7 @@ fn fold_powers<'a, F: Field, R: Rank>(
 
 /// The products `pairs` index into `a` and `b`, as the low coefficients of
 /// one polynomial.
-fn errors<'a, F: DeferredField, R: Rank, B: Backend>(
+fn errors<'a, F: Field, R: Rank, B: Backend>(
     a: impl Fn(usize) -> &'a sparse::Polynomial<F, R>,
     b: impl Fn(usize) -> &'a sparse::Polynomial<F, R>,
     pairs: impl Iterator<Item = (usize, usize)>,
@@ -65,24 +109,21 @@ fn errors<'a, F: DeferredField, R: Rank, B: Backend>(
 /// the [`Derived`] polynomials and their commitments.
 type Folded<C, R> = (
     Fold<C>,
-    Vec<Claim<'static, <C as CurveAffine>::ScalarExt, R>>,
-    Vec<sparse::Polynomial<<C as CurveAffine>::ScalarExt, R>>,
+    Vec<Claim<'static, <C as Affine>::Scalar, R>>,
+    Vec<sparse::Polynomial<<C as Affine>::Scalar, R>>,
     Vec<C>,
 );
 
 /// The prover's fold on one curve, over `claims` in claim order with their
 /// `shapes`: commits each layer's error terms and squeezes its weights.
-fn fold_claims<C: CurveAffine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
+fn fold_claims<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
     claims: &[Claim<'_, C::Scalar, R>],
     shapes: &[Shape<Id, C::Scalar>],
     masked: &[Masked<Id, C::Scalar>],
     commitment: impl Fn(Id) -> C,
     generators: &impl FixedGenerators<C>,
     transcript: &mut T,
-) -> Result<Folded<C, R>>
-where
-    C::Scalar: DeferredField,
-{
+) -> Result<Folded<C, R>> {
     let layout = Layout::new(claims.len());
 
     // The first layer: the error terms within each group, then the groups
@@ -176,7 +217,7 @@ where
 /// The prover's reduction on one curve: `claims` are the $(a_i, b_i)$ in
 /// claim order and `shapes` their shapes, `masked` the wire bindings the
 /// claims end with, and `commitment` gives each component's commitment.
-fn reduce<C: CurveAffine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
+fn reduce<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
     claims: &[Claim<'_, C::Scalar, R>],
     shapes: &[Shape<Id, C::Scalar>],
     masked: &[Masked<Id, C::Scalar>],
@@ -184,10 +225,7 @@ fn reduce<C: CurveAffine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
     generators: &impl FixedGenerators<C>,
     z: C::Scalar,
     transcript: &mut T,
-) -> Result<(Reduction<C>, Witness<C, R>)>
-where
-    C::Scalar: DeferredField,
-{
+) -> Result<(Reduction<C>, Witness<C, R>)> {
     let n = R::num_coeffs();
     let (messages, folded, derived, commitments) =
         fold_claims::<C, R, B, Id, T>(claims, shapes, masked, commitment, generators, transcript)?;
@@ -224,8 +262,8 @@ where
         transcript.write_scalar(opened)?;
         openings.push(opened);
     }
-    let p_at_inverse_r = eval(&p, inverse_r);
-    let q_at_r = eval(&q, r);
+    let p_at_inverse_r = evaluate_iter(&p, inverse_r);
+    let q_at_r = evaluate_iter(&q, r);
     transcript.write_scalar(p_at_inverse_r)?;
     transcript.write_scalar(q_at_r)?;
 

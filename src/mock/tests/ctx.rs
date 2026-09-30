@@ -1,8 +1,10 @@
 use alloc::string::ToString as _;
 
-use ragu_arithmetic::{ff::Field as _, group::Group as _};
-use ragu_core::Error;
-use ragu_pasta::{Eq, Fp};
+use ragu_core::{
+    Error,
+    pasta::{Eq, Fp},
+};
+use udon::{curve::Projective, field::Field};
 
 use super::super::hooks::FrameworkHooks;
 use crate::StepCtx;

@@ -14,17 +14,19 @@
 //! ten lifts and the base-case sign derived from the child headers. Their
 //! binding sum goes to the unified instance.
 
-use ragu_arithmetic::{Cycle, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging::StageExt,
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
+use rand::CryptoRng;
+use udon::field::Field;
 
 use super::{NativeSPrime, NestedRegistryWy, NestedSPrime, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{native, nested},
+    multicore::par_join,
     proof::ProofBuilder,
 };
 
@@ -143,14 +145,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         C::NestedCurve,
     )> {
         let eval_rx = native::stages::eval::Stage::<C, R, HEADER_SIZE>::rx(
-            C::CircuitField::random(&mut *rng),
+            C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
             eval_witness,
         )?;
         let native_eval_commitment =
             B::sparse_commit_to_affine(&eval_rx, C::host_generators(self.params));
 
         let bridge_rx = nested::stages::eval::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::random(&mut *rng),
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
             &nested::stages::eval::Witness {
                 native_eval: native_eval_commitment,
                 nested: nested_eval.clone(),

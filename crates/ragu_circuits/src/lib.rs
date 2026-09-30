@@ -45,13 +45,13 @@ mod tests;
 use alloc::boxed::Box;
 
 use polynomials::{Rank, sparse};
-use ragu_arithmetic::ff::{Field, FromUniformBytes};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
 use ragu_primitives::io::Write;
+use udon::field::Field;
 
 /// Bundles a primary value with auxiliary data.
 ///
@@ -236,7 +236,7 @@ pub(crate) fn into_wiring_object<'a, F, C, R>(
     circuit: C,
 ) -> Result<Box<dyn WiringObject<F, R> + 'a>>
 where
-    F: FromUniformBytes<64>,
+    F: Field,
     C: Circuit<F> + 'a,
     R: Rank,
 {

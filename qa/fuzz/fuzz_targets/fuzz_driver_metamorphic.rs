@@ -54,13 +54,13 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
 use ragu_core::{
     drivers::{
         Driver,
         emulator::{Emulator, Wired},
     },
     maybe::{Always, Maybe},
+    pasta::Fp,
 };
 use ragu_primitives::{Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{Capabilities, Limits, OpSet, Program, synthesize};

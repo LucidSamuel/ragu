@@ -48,12 +48,14 @@
 //!
 //! [book]: https://tachyon.z.cash/ragu/guide/drivers/
 
+mod coeff;
 pub mod emulator;
 mod linexp;
 mod phantom;
 
+pub use coeff::Coeff;
 pub use linexp::{DirectSum, LinearExpression};
-use ragu_arithmetic::{Coeff, ff::Field};
+use udon::field::Field;
 
 use crate::{
     Result,

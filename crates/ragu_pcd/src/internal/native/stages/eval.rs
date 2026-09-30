@@ -25,13 +25,12 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Cycle, ff::PrimeField};
 use ragu_circuits::{
     polynomials::Rank,
     staging::{self, StageExt},
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
@@ -42,6 +41,7 @@ use ragu_primitives::{
     io::Write,
     vec::{ConstLen, FixedVec},
 };
+use udon::field::Field;
 
 use crate::{
     Proof,
@@ -67,18 +67,18 @@ pub struct BindingPartials<P> {
     pub binding: P,
 }
 
-impl<P: ragu_arithmetic::CurveAffine> BindingPartials<P> {
+impl<P: udon::curve::EndomorphismAffine> BindingPartials<P> {
     /// Computes the partial sums and binding from the nested challenge
     /// witness's ten lifts and base-case sign. The beta field is not used:
     /// its term is added by the parent's binding circuit.
-    pub fn compute<C: Cycle<NestedCurve = P, ScalarField = P::ScalarExt>, R: Rank, B>(
+    pub fn compute<C: Cycle<NestedCurve = P, ScalarField = P::Scalar>, R: Rank, B>(
         params: &C::Params,
         challenges: &nested::stages::challenges::Witness<C::ScalarField>,
     ) -> Self
     where
         B: ragu_backend::Backend,
     {
-        use ragu_arithmetic::FixedGenerators;
+        use ragu_core::FixedGenerators;
 
         assert_eq!(challenges.lifts.len(), 2 * NUM_BINDERS);
         let generators = C::nested_generators(params);
@@ -89,16 +89,17 @@ impl<P: ragu_arithmetic::CurveAffine> BindingPartials<P> {
         let bases: alloc::vec::Vec<P> = (0..scalars.len())
             .map(|i| generators.g()[generator_index::<C, R>(i)])
             .collect();
-        let sums =
-            ragu_arithmetic::batch_to_affine(core::array::from_fn::<_, NUM_BINDERS, _>(|k| {
-                // The last sum includes the sign term.
-                let n = if k + 1 == NUM_BINDERS {
-                    scalars.len()
-                } else {
-                    2 * (k + 1)
-                };
-                B::msm(scalars[..n].iter(), bases[..n].iter())
-            }));
+        let projective = core::array::from_fn::<_, NUM_BINDERS, _>(|k| {
+            // The last sum includes the sign term.
+            let n = if k + 1 == NUM_BINDERS {
+                scalars.len()
+            } else {
+                2 * (k + 1)
+            };
+            B::msm(scalars[..n].iter(), bases[..n].iter())
+        });
+        let mut sums = [P::identity(); NUM_BINDERS];
+        P::batch_to_affine(&projective, &mut sums);
         let (partials, binding) = sums.split_at(NUM_BINDERS - 1);
         Self {
             partials: FixedVec::new(partials.to_vec()).expect("NUM_BINDERS - 1 partials"),
@@ -138,7 +139,7 @@ pub struct ChildEvaluationsWitness<F> {
     pub p_poly: F,
 }
 
-impl<F: PrimeField> ChildEvaluationsWitness<F> {
+impl<F: Field> ChildEvaluationsWitness<F> {
     /// Create child evaluations witness from a proof evaluated at point u.
     pub fn from_proof<C: Cycle<CircuitField = F>, R: Rank, B: ragu_backend::Backend>(
         proof: &Proof<C, R>,
@@ -208,7 +209,7 @@ impl<C: Cycle> Witness<C> {
     /// The all-zero evaluations of a proof that opens nothing, with the
     /// given binding partials.
     pub fn trivial(partials: BindingPartials<C::NestedCurve>) -> Self {
-        use ragu_arithmetic::ff::Field;
+        use udon::field::Field;
         let child = || ChildEvaluationsWitness {
             rx: RxValues::from_fn(|_| C::CircuitField::ZERO),
             a_poly: C::CircuitField::ZERO,
@@ -388,7 +389,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::CircuitField
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Pasta;
+    use ragu_core::pasta::Pasta;
 
     use super::*;
     use crate::internal::tests::{HEADER_SIZE, R, assert_stage_values};

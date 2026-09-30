@@ -10,10 +10,9 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{CurveAffine, Cycle, ff::PrimeField};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
@@ -23,6 +22,7 @@ use ragu_primitives::{
     io::Write,
     vec::{FixedVec, Len},
 };
+use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 use crate::{
     Proof,
@@ -51,7 +51,7 @@ pub struct ChildEvaluationsWitness<F> {
     pub current_registry_wy_at_child_x: F,
 }
 
-impl<F: PrimeField> ChildEvaluationsWitness<F> {
+impl<F: Field> ChildEvaluationsWitness<F> {
     /// Evaluates a child proof's nested polynomials at the given nested
     /// points.
     pub fn from_proof<C: Cycle<ScalarField = F>, R: Rank, B: ragu_backend::Backend>(
@@ -88,7 +88,7 @@ pub struct Evaluations<F> {
     pub right: ChildEvaluationsWitness<F>,
 }
 
-impl<F: PrimeField> Evaluations<F> {
+impl<F: Field> Evaluations<F> {
     /// All-zero values, for proofs that open nothing (the dummy proof).
     pub fn zero() -> Self {
         let child = || ChildEvaluationsWitness {
@@ -108,7 +108,7 @@ impl<F: PrimeField> Evaluations<F> {
 }
 
 /// Witness data for this bridge stage.
-pub struct Witness<C: CurveAffine> {
+pub struct Witness<C: Affine> {
     pub native_query: C,
     pub registry_xy: C,
     /// The nested query values.
@@ -171,7 +171,7 @@ pub struct EvaluationsOutput<'dr, D: Driver<'dr>> {
 /// This is stage communication data, not part of the circuit's
 /// public instance.
 #[derive(Gadget, Write)]
-pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Output<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub native_query: Point<'dr, D, C>,
     #[ragu(gadget)]
@@ -182,11 +182,11 @@ pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 }
 
 #[derive(Default)]
-pub struct Stage<C: CurveAffine, R> {
+pub struct Stage<C: Affine, R> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
+impl<C: Affine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
     type Parent = super::ab::Stage<C, R>;
     type Witness<'source> = &'source Witness<C>;
     type OutputKind = Kind![C::Base; Output<'_, _, C>];
@@ -234,7 +234,7 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::EqAffine;
+    use ragu_core::pasta::EqAffine;
 
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};

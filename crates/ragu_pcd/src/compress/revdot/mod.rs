@@ -20,9 +20,10 @@
 
 use alloc::{borrow::Cow, vec::Vec};
 
-use ragu_arithmetic::{CurveAffine, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Error, Result};
+use udon::curve::Affine;
+use udon::field::Field;
 
 use self::fold::{Derived, Fold};
 use crate::internal::{native, nested};
@@ -47,14 +48,14 @@ pub(crate) struct OpeningClaim<F> {
 /// polynomials they refer to: the [`Derived`] polynomials in order, then
 /// $p$, then $q$.
 #[derive(Clone, Debug)]
-pub(crate) struct Openings<C: CurveAffine> {
+pub(crate) struct Openings<C: Affine> {
     pub commitments: Vec<C>,
     pub claims: Vec<OpeningClaim<C::Scalar>>,
 }
 
 /// The prover's messages of the reduction on one curve.
 #[derive(Clone, Debug)]
-pub(crate) struct Reduction<C: CurveAffine> {
+pub(crate) struct Reduction<C: Affine> {
     /// The fold's.
     pub fold: Fold<C>,
     /// The commitment to $p$.
@@ -71,7 +72,7 @@ pub(crate) struct Reduction<C: CurveAffine> {
 }
 
 /// What the prover keeps to open the reduction's polynomials in the batch.
-pub(crate) struct Witness<C: CurveAffine, R: Rank> {
+pub(crate) struct Witness<C: Affine, R: Rank> {
     /// The point the claims were opened at.
     pub r: C::Scalar,
     /// $p$, with $n$ coefficients.
@@ -84,7 +85,7 @@ pub(crate) struct Witness<C: CurveAffine, R: Rank> {
     pub commitments: Vec<C>,
 }
 
-impl<C: CurveAffine, R: Rank> Witness<C, R> {
+impl<C: Affine, R: Rank> Witness<C, R> {
     /// The openings the verifier will require of `reduction`, as
     /// [`verify_native`] and [`verify_nested`] list them, with $p(0)$ read
     /// off $p$.
@@ -169,7 +170,7 @@ pub(crate) fn nested_position(component: nested::RxComponent) -> usize {
 /// The opening claims a reduction leaves over `commitments`, the
 /// [`Derived`] polynomials' in order: each at its point, $p$ at $1/r$, $q$
 /// at $r$, and $p$ at $0$, where it must equal `target`.
-fn openings<C: CurveAffine>(
+fn openings<C: Affine>(
     mut commitments: Vec<C>,
     reduction: &Reduction<C>,
     r: C::Scalar,
@@ -211,7 +212,8 @@ fn openings<C: CurveAffine>(
 
 /// The inverse of a challenge, which is zero with negligible probability.
 fn invert<F: Field>(value: F) -> Result<F> {
-    Option::from(value.invert())
+    value
+        .invert()
         .ok_or_else(|| Error::InvalidWitness("a zero challenge cannot be inverted".into()))
 }
 

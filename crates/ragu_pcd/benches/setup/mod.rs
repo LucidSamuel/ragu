@@ -1,7 +1,9 @@
 use ragu_acceleration::AcceleratedBackend;
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::{SeedableRng, rngs::StdRng};
@@ -10,7 +12,7 @@ pub fn setup_register() -> (
     nontrivial::WitnessLeaf<'static, Pasta>,
     nontrivial::Hash2<'static, Pasta>,
 ) {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     (
         nontrivial::WitnessLeaf { poseidon_params },
@@ -22,7 +24,7 @@ pub fn setup_finalize() -> (
     ApplicationBuilder<'static, Pasta, ProductionRank, 4>,
     &'static <Pasta as Cycle>::Params,
 ) {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(nontrivial::WitnessLeaf { poseidon_params })
@@ -37,7 +39,7 @@ pub fn setup_seed() -> (
     &'static <Pasta as Cycle>::CircuitPoseidon,
     StdRng,
 ) {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .register(nontrivial::WitnessLeaf { poseidon_params })
@@ -86,7 +88,7 @@ pub fn setup_fuse_accelerated() -> (
     &'static <Pasta as Cycle>::CircuitPoseidon,
     StdRng,
 ) {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let poseidon_params = Pasta::circuit_poseidon(pasta);
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
         .with_backend::<AcceleratedBackend>()

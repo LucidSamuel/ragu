@@ -82,7 +82,7 @@
 
 mod foreign;
 
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 use super::{
     Result,
@@ -355,7 +355,7 @@ pub use ragu_macros::Gadget;
 /// expected you can use `'_` instead.
 ///
 /// ```rust
-/// # use ragu_arithmetic::ff::Field;
+/// # use udon::field::Field;
 /// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Kind};
 /// # #[derive(ragu_core::gadgets::Gadget)]
 /// # struct Boolean<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>> {
@@ -376,7 +376,7 @@ pub use ragu_macros::Gadget;
 /// In this example, the `Kind!` macro expands to the type
 ///
 /// ```rust
-/// # use ragu_arithmetic::ff::Field;
+/// # use udon::field::Field;
 /// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::{Kind, Gadget}};
 /// # use core::marker::PhantomData;
 /// # #[derive(ragu_core::gadgets::Gadget)]

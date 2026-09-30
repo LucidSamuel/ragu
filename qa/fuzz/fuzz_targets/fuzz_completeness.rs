@@ -15,8 +15,10 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::{Always, MaybeKind};
+use ragu_core::{
+    maybe::{Always, MaybeKind},
+    pasta::Fp,
+};
 use ragu_primitives::{Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, OpSet, Preamble, Program, synthesize_with_witness,

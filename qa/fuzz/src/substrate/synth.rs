@@ -11,14 +11,13 @@
 //! generating programs whose fallible ops are steered to succeed (layer 5),
 //! not by changing the interpreter.
 
-use ff::PrimeField;
-use ragu_arithmetic::Coeff;
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue},
     maybe::Maybe,
 };
 use ragu_primitives::{Boolean, Element, allocator::Allocator};
+use udon::field::Field;
 
 use super::{Op, Program, special_value};
 
@@ -82,10 +81,7 @@ pub fn synthesize<'dr, D: Driver<'dr>>(
     allocator: &mut impl Allocator<'dr, D>,
     program: &Program,
     anchors: &[D::F],
-) -> Result<Stacks<'dr, D>>
-where
-    D::F: PrimeField<Repr = [u8; 32]>,
-{
+) -> Result<Stacks<'dr, D>> {
     synthesize_with_hook(dr, allocator, program, anchors, |_, _, _, _| Ok(()))
 }
 
@@ -105,10 +101,7 @@ pub fn synthesize_with_witness<'dr, D: Driver<'dr>>(
     program: &Program,
     witness: DriverValue<D, [D::F; super::Preamble::LEN]>,
     anchors: &[D::F],
-) -> Result<Stacks<'dr, D>>
-where
-    D::F: PrimeField<Repr = [u8; 32]>,
-{
+) -> Result<Stacks<'dr, D>> {
     let structure: [D::F; super::Preamble::LEN] = program.preamble.values();
     let mut elems: Vec<Element<'dr, D>> = Vec::with_capacity(structure.len());
     let mut advice_wires: Vec<D::Wire> = Vec::new();
@@ -145,10 +138,7 @@ pub fn synthesize_with_hook<'dr, D: Driver<'dr>>(
     program: &Program,
     anchors: &[D::F],
     hook: impl FnMut(&mut D, usize, &mut Vec<Element<'dr, D>>, &mut Vec<Boolean<'dr, D>>) -> Result<()>,
-) -> Result<Stacks<'dr, D>>
-where
-    D::F: PrimeField<Repr = [u8; 32]>,
-{
+) -> Result<Stacks<'dr, D>> {
     let values: [D::F; super::Preamble::LEN] = program.preamble.values();
     let mut elems: Vec<Element<'dr, D>> = Vec::with_capacity(values.len());
     let mut advice_wires: Vec<D::Wire> = Vec::new();
@@ -179,10 +169,7 @@ fn synthesize_ops<'dr, D: Driver<'dr>>(
         &mut Vec<Element<'dr, D>>,
         &mut Vec<Boolean<'dr, D>>,
     ) -> Result<()>,
-) -> Result<Stacks<'dr, D>>
-where
-    D::F: PrimeField<Repr = [u8; 32]>,
-{
+) -> Result<Stacks<'dr, D>> {
     let mut bools: Vec<Boolean<'dr, D>> = Vec::new();
     let mut bool_advice_wires: Vec<D::Wire> = Vec::new();
     let mut fold_advice: Vec<(usize, D::Wire)> = Vec::new();
@@ -275,7 +262,9 @@ where
                 elems.push(r);
             }
             Op::AllocRaw(bytes) => {
-                let v: Option<D::F> = D::F::from_repr(bytes).into();
+                let mut repr = D::F::ZERO.to_bytes();
+                repr.as_mut().copy_from_slice(&bytes);
+                let v: Option<D::F> = D::F::from_bytes(repr);
                 if let Some(fp) = v
                     && let Ok(r) = Element::alloc(dr, allocator, D::just(move || fp))
                 {
@@ -354,7 +343,7 @@ where
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
     use ragu_primitives::{Simulator, allocator::Standard};
 
     use super::*;

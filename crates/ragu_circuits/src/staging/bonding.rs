@@ -21,15 +21,12 @@
 
 use alloc::boxed::Box;
 
-use ragu_arithmetic::{
-    Coeff,
-    ff::{Field, FromUniformBytes},
-};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverTypes, LinearExpression},
     maybe::Empty,
 };
+use udon::field::Field;
 
 use super::{MultiStage, MultiStageCircuit, StageBuilder};
 use crate::{
@@ -41,7 +38,7 @@ use crate::{
 
 impl<F, R, S> MultiStage<F, R, S>
 where
-    F: FromUniformBytes<64>,
+    F: Field,
     R: Rank,
     S: MultiStageCircuit<F, R>,
 {
@@ -276,17 +273,17 @@ impl<F: Field, R: Rank> WiringObject<F, R> for Stripped<'_, F, R> {
 mod tests {
     use core::marker::PhantomData;
 
-    use ragu_arithmetic::ff::Field;
     use ragu_core::{
         drivers::DriverValue,
         gadgets::{Bound, Gadget},
+        pasta::Fp,
     };
-    use ragu_pasta::Fp;
     use ragu_primitives::{
         Element,
         allocator::{Allocator, Standard},
         io::Write,
     };
+    use rand::Rng;
 
     use super::*;
     use crate::{
@@ -597,8 +594,8 @@ mod tests {
         let obj = bonding_obj();
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         // s(0, y) = 0: no constraint on d_0 wires.
         assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
@@ -612,8 +609,8 @@ mod tests {
         let obj = bonding_obj();
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let sxy = obj.sxy(x, y, &floor_plan);
         assert_eq!(sxy, obj.sx(x, &floor_plan).eval(y));
@@ -645,11 +642,11 @@ mod tests {
         let obj = bonding_obj();
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
 
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         let sy = obj.sy(y, &floor_plan);
 
-        let v = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let w = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let v = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let w = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let rx_equal = build_trace(&[(v, v)]);
         assert_eq!(rx_equal.revdot(&sy), Fp::ZERO);
@@ -667,8 +664,8 @@ mod tests {
             .unwrap()
             .into_inner();
         let floor_plan = floor_planner::floor_plan(obj.segment_records());
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         assert_eq!(obj.sxy(Fp::ZERO, y, &floor_plan), Fp::ZERO);
         assert_eq!(obj.sxy(x, Fp::ZERO, &floor_plan), Fp::ZERO);
@@ -678,8 +675,8 @@ mod tests {
         assert_eq!(sxy, obj.sy(y, &floor_plan).eval(x));
 
         let rx = build_trace(&[(
-            Fp::random(&mut ragu_arithmetic::rand::rng()),
-            Fp::random(&mut ragu_arithmetic::rand::rng()),
+            Fp::random(|bytes| rand::rng().fill_bytes(bytes)),
+            Fp::random(|bytes| rand::rng().fill_bytes(bytes)),
         )]);
         assert_eq!(rx.revdot(&obj.sy(y, &floor_plan)), Fp::ZERO);
     }

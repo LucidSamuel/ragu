@@ -14,7 +14,7 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::CurveAffine;
+use udon::curve::Affine;
 
 mod prover;
 mod verifier;
@@ -24,7 +24,7 @@ pub(crate) use verifier::verify;
 
 /// The prover's messages of the batch on one curve.
 #[derive(Clone, Debug)]
-pub(crate) struct Batch<C: CurveAffine> {
+pub(crate) struct Batch<C: Affine> {
     /// The commitment to the quotient polynomial $f$.
     pub f: C,
     /// Each polynomial's value at $u$, in the polynomials' order.
@@ -33,7 +33,7 @@ pub(crate) struct Batch<C: CurveAffine> {
 
 /// The one opening claim the batch leaves for the IPA.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Batched<C: CurveAffine> {
+pub(crate) struct Batched<C: Affine> {
     /// The commitment to $p$.
     pub commitment: C,
     /// The point $u$.

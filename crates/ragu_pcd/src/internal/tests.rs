@@ -6,23 +6,23 @@ use ragu_circuits::{
     Circuit,
     staging::{Stage, StageExt},
 };
-use ragu_pasta::{Fp, Pasta, fp, fq};
+use ragu_core::pasta::{Fp, Fq, Pasta};
 
 use super::*;
 use crate::*;
 pub type R = ragu_circuits::polynomials::ProductionRank;
 
-use ragu_arithmetic::ff::PrimeField;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     drivers::emulator::{Emulator, Wireless},
     gadgets::{Bound, Gadget},
     maybe::Empty,
 };
+use udon::field::Field;
 
 pub fn assert_stage_values<F, R, S>(stage: &S)
 where
-    F: PrimeField,
+    F: Field,
     R: Rank,
     S: Stage<F, R>,
     for<'dr> Bound<'dr, Emulator<Wireless<Empty, F>>, S::OutputKind>:
@@ -56,7 +56,7 @@ type OuterError = outer_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
 type InnerError = inner_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
 type Query = query::Stage<Pasta, R, HEADER_SIZE>;
 type Eval = eval::Stage<Pasta, R, HEADER_SIZE>;
-type NestedCurve = <Pasta as ragu_arithmetic::Cycle>::NestedCurve;
+type NestedCurve = <Pasta as ragu_core::Cycle>::NestedCurve;
 type PointsBinding = native::stages::points::BindingStage<NestedCurve>;
 type PointsChildren = native::stages::points::ChildrenStage<NestedCurve>;
 type PointsRegistryWx = native::stages::points::RegistryWxStage<NestedCurve>;
@@ -76,7 +76,7 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
         let counts = ragu_circuits::testing::synthesis_counts(&circuit)?;
         Ok((counts.num_gates, counts.num_constraints))
     }
-    let pasta = Pasta::baked();
+    let pasta = crate::pasta::baked();
     let (_, log2_circuits) = native::total_circuit_counts(NUM_APP_STEPS);
     match variant {
         InternalCircuitIndex::Hashes1Circuit => counts(native::circuits::hashes_1::Circuit::<
@@ -130,7 +130,7 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
 }
 
 fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
-    let pasta = Pasta::baked();
+    let pasta = crate::pasta::baked();
     let (_, log2_circuits) = native::total_circuit_counts(NUM_APP_STEPS);
 
     match variant {
@@ -170,7 +170,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
             synthesis_counts(native::circuits::compute_v::Circuit::<Pasta, R, HEADER_SIZE>::new())
         }
         InternalCircuitIndex::BindChallengesCircuit(k) => {
-            crate::with_binder!(k, Pasta, R, HEADER_SIZE, Pasta::baked(), |circuit| {
+            crate::with_binder!(k, Pasta, R, HEADER_SIZE, crate::pasta::baked(), |circuit| {
                 synthesis_counts(circuit)
             })
         }
@@ -180,7 +180,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 R,
                 HEADER_SIZE,
                 RevdotParameters,
-            >::new(Pasta::baked()))
+            >::new(crate::pasta::baked()))
         }
         InternalCircuitIndex::BindEndoscalarCircuit => {
             synthesis_counts(native::circuits::bind_endoscalar::Circuit::<Pasta, R>::new())
@@ -367,9 +367,9 @@ fn print_internal_stage_parameters() {
 /// Panics for the bonding entries, which are masks rather than circuits.
 fn nested_circuit_counts(variant: nested::InternalCircuitIndex) -> (usize, usize) {
     use ragu_circuits::staging::MultiStage;
-    use ragu_pasta::EqAffine;
+    use ragu_core::pasta::EqAffine;
 
-    fn counts(circuit: impl Circuit<ragu_pasta::Fq>) -> (usize, usize) {
+    fn counts(circuit: impl Circuit<ragu_core::pasta::Fq>) -> (usize, usize) {
         let counts = ragu_circuits::testing::synthesis_counts(&circuit).unwrap();
         (counts.num_gates, counts.num_constraints)
     }
@@ -450,7 +450,7 @@ fn test_nested_circuit_constraint_counts() {
 #[test]
 fn test_nested_stage_parameters() {
     use crate::internal::{endoscalar, nested::stages};
-    use ragu_pasta::{EqAffine, Fq};
+    use ragu_core::pasta::{EqAffine, Fq};
 
     macro_rules! check_stage {
         ($Stage:ty, skip = $skip:expr, num = $num:expr) => {{
@@ -479,7 +479,7 @@ fn test_nested_stage_parameters() {
 fn print_nested_circuit_constraint_counts() {
     use std::println;
 
-    use ragu_pasta::{EqAffine, Fq};
+    use ragu_core::pasta::{EqAffine, Fq};
 
     use crate::internal::{endoscalar, nested::stages};
 
@@ -528,17 +528,15 @@ fn print_nested_circuit_constraint_counts() {
 fn test_non_step_slots_reject_application_instances() {
     use alloc::{format, string::String, vec::Vec};
 
-    use ragu_arithmetic::{
-        ff::Field,
-        rand::{SeedableRng, rngs::StdRng},
-    };
     use ragu_circuits::registry::CircuitIndex;
+    use rand::{Rng, SeedableRng, rngs::StdRng};
+    use udon::field::Field;
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .unwrap();
     let registry = &app.native_registry;
-    let x = Fp::random(&mut StdRng::seed_from_u64(0));
+    let x = Fp::random(|bytes| StdRng::seed_from_u64(0).fill_bytes(bytes));
 
     let steps = InternalCircuitIndex::NUM..registry.num_circuits();
     let unprotected: Vec<String> = (0..registry.num_circuits().next_power_of_two())
@@ -569,7 +567,7 @@ fn supplied_tags_reach_both_registries() -> Result<()> {
     let nested = tags.nested.value();
     let app = ApplicationBuilder::<Pasta, R, 4>::new()
         .with_registry_tags(tags)
-        .finalize(Pasta::baked())?;
+        .finalize(crate::pasta::baked())?;
     assert_eq!(app.native_registry.tag(), native);
     assert_eq!(app.nested_registry.tag(), nested);
     Ok(())
@@ -578,7 +576,7 @@ fn supplied_tags_reach_both_registries() -> Result<()> {
 /// Verifies the native registry uses the fixed tag enabled by the testing feature.
 #[test]
 fn test_native_registry_tag() {
-    let pasta = Pasta::baked();
+    let pasta = crate::pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
@@ -586,7 +584,9 @@ fn test_native_registry_tag() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fp!(0x247e382a1523800d0fc7bccd9b0e1e57eecd7a9758c4b7537f4ed76f5f54fe43);
+    let expected = Fp::new(udon::fp_hex!(
+        "0x247e382a1523800d0fc7bccd9b0e1e57eecd7a9758c4b7537f4ed76f5f54fe43"
+    ));
 
     assert_eq!(
         app.native_registry.tag(),
@@ -598,7 +598,7 @@ fn test_native_registry_tag() {
 /// Verifies the nested registry uses the fixed tag enabled by the testing feature.
 #[test]
 fn test_nested_registry_tag() {
-    let pasta = Pasta::baked();
+    let pasta = crate::pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
@@ -606,7 +606,9 @@ fn test_nested_registry_tag() {
         .finalize(pasta)
         .unwrap();
 
-    let expected = fq!(0x009ad8ef87fe4e7dc6e51df8807db0f783f39978e29787ab3e00a28c15d2bdbd);
+    let expected = Fq::new(udon::fq_hex!(
+        "0x009ad8ef87fe4e7dc6e51df8807db0f783f39978e29787ab3e00a28c15d2bdbd"
+    ));
 
     assert_eq!(
         app.nested_registry.tag(),
@@ -622,9 +624,7 @@ fn print_registry_tags() {
     use alloc::{format, string::String, vec::Vec};
     use std::println;
 
-    use ragu_arithmetic::ff::PrimeField;
-
-    let pasta = Pasta::baked();
+    let pasta = crate::pasta::baked();
 
     let app = ApplicationBuilder::<Pasta, R, HEADER_SIZE>::new()
         .register_dummy_circuits(NUM_APP_STEPS)
@@ -637,14 +637,14 @@ fn print_registry_tags() {
 
     // Convert to big-endian hex for repr256! format
     let native_bytes: Vec<u8> = native_tag
-        .to_repr()
+        .to_bytes()
         .as_ref()
         .iter()
         .rev()
         .cloned()
         .collect();
     let nested_bytes: Vec<u8> = nested_tag
-        .to_repr()
+        .to_bytes()
         .as_ref()
         .iter()
         .rev()
@@ -653,14 +653,14 @@ fn print_registry_tags() {
 
     println!("\n// Copy-paste the following into the registry tag tests:");
     println!(
-        "    let expected = fp!(0x{});",
+        "    let expected = Fp::new(fp_hex!(\"0x{}\"));",
         native_bytes
             .iter()
             .map(|b| format!("{:02x}", b))
             .collect::<String>()
     );
     println!(
-        "    let expected = fq!(0x{});",
+        "    let expected = Fq::new(fq_hex!(\"0x{}\"));",
         nested_bytes
             .iter()
             .map(|b| format!("{:02x}", b))

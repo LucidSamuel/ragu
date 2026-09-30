@@ -34,20 +34,20 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{
-    CurveAffine, Cycle, FixedGenerators, bitreverse,
-    ff::{Field, PrimeField},
-    group::Curve,
-    rand::CryptoRng,
-};
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
     staging::{StageExt, StageReader, stage_wire_indices, wires_of},
 };
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Cycle, FixedGenerators, Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt as _, Point, extract_endoscalar};
+use rand::CryptoRng;
+use udon::{
+    curve::{Affine as _, EndomorphismAffine as Affine, Projective},
+    fft::bit_reverse,
+    field::Field,
+};
 
 use crate::{
     Application, Pcd, Proof, RAGU_TAG, SelectableBackend,
@@ -91,9 +91,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         mut rng: RNG,
     ) -> Result<bool> {
         // Sample verification challenges w, y, and z.
-        let w = C::CircuitField::random(&mut rng);
-        let y = C::CircuitField::random(&mut rng);
-        let z = C::CircuitField::random(&mut rng);
+        let w = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
+        let y = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
+        let z = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
 
         // The proof's circuit_id selects which wiring polynomial the verifier
         // checks against, and every domain point carries one, so an in-domain id
@@ -150,8 +150,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // Check all nested revdot claims.
         let nested_revdot_claims = {
             let nested_source = nested::SingleProofSource { proof: pcd.proof() };
-            let y_nested = C::ScalarField::random(&mut rng);
-            let z_nested = C::ScalarField::random(&mut rng);
+            let y_nested = C::ScalarField::random(|bytes| rng.fill_bytes(bytes));
+            let z_nested = C::ScalarField::random(|bytes| rng.fill_bytes(bytes));
             let mut nested_builder = claims::Builder::<_, C::ScalarField, R, Verifier<B>>::new(
                 &self.nested_registry,
                 y_nested,
@@ -194,7 +194,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // m_n(W, x_n, y_n) at the nested counterparts of its x and y, checked
         // at a sampled w.
         let nested_registry_xy_claim = {
-            let w = C::ScalarField::random(&mut rng);
+            let w = C::ScalarField::random(|bytes| rng.fill_bytes(bytes));
             let x = nested_challenge::<C>(pcd.proof().x())?;
             let y = nested_challenge::<C>(pcd.proof().y())?;
             let poly_eval = Verifier::<B>::sparse_eval(pcd.proof().nested_registry_xy_poly(), w);
@@ -250,7 +250,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 commitments_match::<Verifier<B>, _, _, R, _>(
                     &polys,
                     &points,
-                    C::CircuitField::random(&mut rng),
+                    C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
                     C::host_generators(self.params),
                 )
             };
@@ -272,7 +272,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 commitments_match::<Verifier<B>, _, _, R, _>(
                     &polys,
                     &points,
-                    C::ScalarField::random(&mut rng),
+                    C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
                     C::nested_generators(self.params),
                 )
             };
@@ -432,7 +432,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             .zip(&fixed)
             .all(|(id, &i)| {
                 let j = usize::from(id.circuit_index()) as u32;
-                query.read(i) == evals[bitreverse(j, log2_n) as usize]
+                query.read(i) == evals[bit_reverse(j as usize, log2_n)]
             });
         let claimed: Vec<C::CircuitField> = claimed.iter().map(|&i| query.read(i)).collect();
         let query_claim = claimed
@@ -524,7 +524,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             .zip(&fixed)
             .all(|(id, &i)| {
                 let j = usize::from(id.circuit_index()) as u32;
-                query.read(i) == evals[bitreverse(j, log2_n) as usize]
+                query.read(i) == evals[bit_reverse(j as usize, log2_n)]
             });
         let claimed: Vec<C::ScalarField> = claimed.iter().map(|&i| query.read(i)).collect();
         let query_claim = claimed
@@ -596,10 +596,10 @@ pub(crate) fn nested_points_match<C: Cycle, R: Rank>(proof: &Proof<C, R>) -> Res
         proof.nested_b_commitment(),
         proof.nested_registry_xy_commitment(),
     ] {
-        let Some(coordinates) = point.coordinates().into_option() else {
+        let Some((x, y)) = point.coordinates() else {
             return Ok(false);
         };
-        expected.extend_from_slice(&[*coordinates.x(), *coordinates.y()]);
+        expected.extend_from_slice(&[x, y]);
     }
     Ok(held.eq(expected))
 }
@@ -616,8 +616,8 @@ fn commitments_match<B, F, P, R, G>(
 ) -> bool
 where
     B: Backend,
-    F: PrimeField,
-    P: CurveAffine<ScalarExt = F>,
+    F: Field,
+    P: Affine<Scalar = F>,
     R: Rank,
     G: FixedGenerators<P>,
 {

@@ -46,14 +46,13 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{Cycle, FixedGenerators};
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},
 };
 use ragu_core::{
-    Result,
+    Cycle, FixedGenerators, Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
     maybe::Maybe,

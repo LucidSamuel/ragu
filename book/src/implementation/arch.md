@@ -33,39 +33,37 @@ The following diagram is a high-level dependency sketch for the main library
 crates in the Ragu workspace. It omits placeholder and testing crates
 (`ragu_acceleration`, `ragu_backend`, `ragu_gadgets`, `ragu_testing`) as
 well as dev-dependencies. Arrows point
-from a crate to the crates it depends on. `ragu_arithmetic` sits at the
-foundation; `ragu_core` builds the `Driver` abstraction on top of it;
+from a crate to the crates it depends on. The arithmetic comes from outside
+the workspace: [`udon`](https://docs.rs/crate/zakura-udon/0.1.0/source/) implements the
+Pasta fields, curves, cycle traits, and Poseidon parameter interfaces;
+`ragu_core` builds the `Driver` abstraction on top of it;
 `ragu_primitives` and `ragu_circuits` extend that layer with gadgets and
-protocol logic; and `ragu_pcd` ties those pieces together for recursive
-proofs.
+protocol logic; and `ragu_pcd` ties those pieces together for recursive proofs
+and owns Ragu's fixed generator derivation and loading.
 
 ```mermaid
 flowchart BT
     macros["ragu_macros<br/><i>proc macros</i>"]
-    arith["ragu_arithmetic<br/><i>math traits & utilities</i>"]
-    pasta["ragu_pasta<br/><i>Pasta curve shim</i>"]
+    udon["udon<br/><i>Pasta fields & curves,<br/>cycle & parameter interfaces</i>"]
     core["ragu_core<br/><i>Driver abstraction</i>"]
     prims["ragu_primitives<br/><i>standard library:<br/>gadgets, Poseidon, etc.</i>"]
     circuits["ragu_circuits<br/><i>protocol impl &<br/>circuit building</i>"]
-    pcd["ragu_pcd<br/><i>recursive proof<br/>circuits (WIP)</i>"]
+    pcd["ragu_pcd<br/><i>recursive proof circuits,<br/>Ragu generator parameters</i>"]
     ragu["ragu<br/><i>public API crate</i>"]
 
-    arith --> macros
-    pasta --> arith
-    core --> arith
+    core --> udon
     core --> macros
-    prims --> arith
+    prims --> udon
     prims --> core
     prims --> macros
-    circuits --> arith
+    circuits --> udon
     circuits --> core
     circuits --> prims
-    pcd --> arith
+    pcd --> udon
     pcd --> circuits
     pcd --> core
     pcd --> prims
     ragu --> core
-    ragu --> arith
     ragu --> prims
     ragu --> circuits
     ragu --> pcd
@@ -81,18 +79,14 @@ Ragu is developed as a Cargo workspace.
   API for the entire construction, and may deliberately expose less
   functionality than the other crates are capable of providing.
 * `crates/`
-    * **`ragu_arithmetic`**: Contains most of the math traits and utilities
-      needed throughout Ragu, and is a dependency of almost every other
-      crate in this project.
     * **`ragu_macros`**: Internal crate that contains procedural macros both
       used within the project and exposed to users in other crates.
-    * **`ragu_pasta`**: Implements the [`Cycle`] trait for the
-      [Pasta curve cycle], providing parameter generation and baked-in
-      constants.
     * **`ragu_core`**: The fundamental crate of the library. Presents the
-      `Driver` abstraction and related traits and utilities. All circuit
+      `Driver` abstraction and related traits and utilities, and reexports
+      `udon`'s [`Cycle`] trait and [Pasta curve cycle] types. All circuit
       development and most algorithms are written using the API provided by
-      this crate.
+      this crate. The field and curve arithmetic, and the traits generic code
+      is written against, are `udon`'s.
     * **`ragu_primitives`**: The standard library for circuit developers.
       Builds on the `Driver` abstraction from `ragu_core` to provide the
       concrete gadgets (`Element`, `Boolean`, `Point`), cryptographic
@@ -105,7 +99,8 @@ Ragu is developed as a Cargo workspace.
       These are just placeholders, and may be removed in the future.
     * **`ragu_pcd`**: Top-level API for proof-carrying data applications,
       providing `ApplicationBuilder`, `Application`, `Step`, `Header`,
-      `Proof`, and `Pcd`.
+      `Proof`, and `Pcd`. Its `pasta` module derives and loads Ragu's fixed
+      generators, exposed through `ragu_pcd::pasta::baked()`.
     * **`ragu_testing`**: Test scaffolding and nontrivial example Steps/Headers
       used in integration tests.
 
@@ -128,7 +123,7 @@ APIs that represent, compute, or manipulate them.
 | Witness polynomial $r(X)$ | `trace::Trace<F>`, assembled into `polynomials::sparse::Polynomial<F, R>` | `ragu_circuits` |
 | Wiring polynomial $s(X, Y)$ | internal `WiringObject` trait (constructed from `Circuit` impls) | `ragu_circuits` |
 | Public input / instance encoding $k(Y)$ | `Circuit::Output: Write<F>` and `CircuitExt::ky()` | `ragu_circuits` |
-| Domain | `Domain<F>` | `ragu_arithmetic` |
+| Domain | `Domain<F>` | `udon` |
 | Polynomial commitment (IPA) | `polynomials::sparse::Polynomial::commit()` | `ragu_circuits` |
 | Transcript (Fiat-Shamir) | `Sponge<'dr, D, P>` | `ragu_primitives` |
 | PCD step | `Step<C>` | `ragu_pcd` |

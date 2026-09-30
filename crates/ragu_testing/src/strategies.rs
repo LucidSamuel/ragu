@@ -1,7 +1,8 @@
 //! Shared proptest strategies for Ragu crates.
 
 use proptest::{prelude::*, sample::select, strategy::BoxedStrategy};
-use ragu_arithmetic::{Coeff, Domain, ff::PrimeField};
+use ragu_core::Coeff;
+use udon::field::Field;
 
 /// Generates edge-biased and arbitrary `u64` values.
 pub fn edge_u64() -> impl Strategy<Value = u64> + Clone {
@@ -68,7 +69,7 @@ pub fn bounded_edge_usize(max_inclusive: usize) -> BoxedStrategy<usize> {
 
 fn edge_field_element<F>() -> impl Strategy<Value = F> + Clone
 where
-    F: PrimeField + From<u64> + 'static,
+    F: Field + From<u64> + 'static,
 {
     prop_oneof![
         Just(F::ZERO),
@@ -85,7 +86,7 @@ where
 /// Generates field elements with mixed edge-biased and broad coverage.
 pub fn prime_field_element<F>() -> BoxedStrategy<F>
 where
-    F: PrimeField + From<u64> + 'static,
+    F: Field + From<u64> + 'static,
 {
     prop_oneof![
         6 => edge_field_element(),
@@ -100,19 +101,17 @@ where
 /// Generates non-zero field elements with mixed edge-biased and broad coverage.
 pub fn nonzero_prime_field_element<F>() -> BoxedStrategy<F>
 where
-    F: PrimeField + From<u64> + 'static,
+    F: Field + From<u64> + 'static,
 {
     prime_field_element::<F>()
-        .prop_filter("non-zero field element", |value| {
-            !bool::from(value.is_zero())
-        })
+        .prop_filter("non-zero field element", |value| !value.is_zero())
         .boxed()
 }
 
 /// Generates all coefficient variants, including arbitrary field elements.
 pub fn coeff<F>() -> BoxedStrategy<Coeff<F>>
 where
-    F: PrimeField + From<u64> + 'static,
+    F: Field + From<u64> + 'static,
 {
     prop_oneof![
         Just(Coeff::Zero),
@@ -128,9 +127,9 @@ where
 /// Generates root multisets that exercise boundary sizes, repeated roots, and roots of unity.
 pub fn poly_with_roots<F>() -> BoxedStrategy<Vec<F>>
 where
-    F: PrimeField + From<u64> + 'static,
+    F: Field + From<u64> + 'static,
 {
-    let w = Domain::<F>::new(6).omega();
+    let w = F::domain(6).expect("supported test domain").root();
 
     prop_oneof![
         select(vec![
@@ -142,9 +141,9 @@ where
         Just(vec![F::from(5); 8]),
         Just(vec![F::ZERO, F::from(1), F::from(2)]),
         Just(vec![F::ZERO; 5]),
-        Just((0..4).map(|i| w.pow([i * 16])).collect()),
-        Just((0..16).map(|i| w.pow([i * 4])).collect()),
-        Just((0..64).map(|i| w.pow([i as u64])).collect()),
+        Just((0..4).map(|i| w.pow_u64(i * 16)).collect()),
+        Just((0..16).map(|i| w.pow_u64(i * 4)).collect()),
+        Just((0..64).map(|i| w.pow_u64(i as u64)).collect()),
         Just(vec![
             w,
             w,

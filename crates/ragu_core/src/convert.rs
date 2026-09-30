@@ -29,7 +29,7 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 use crate::{
     Result,
@@ -235,11 +235,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::{Coeff, ff::Field};
-    use ragu_pasta::Fp;
+    use udon::field::Field;
 
     use crate::{
-        Result,
+        Coeff, Result,
         convert::WireMap,
         drivers::{
             Driver,
@@ -247,6 +246,7 @@ mod tests {
         },
         gadgets::{Bound, Gadget, GadgetKind, WireEqualizer},
         maybe::Always,
+        pasta::Fp,
     };
 
     type F = Fp;

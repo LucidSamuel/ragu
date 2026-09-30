@@ -4,7 +4,6 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::{ff::Field, geosum};
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
@@ -13,6 +12,7 @@ use ragu_core::{
     routines::{Prediction, Routine},
 };
 use ragu_primitives::{Element, Invertible};
+use udon::{field::Field, polynomial::geometric_sum};
 
 use super::Rank;
 
@@ -103,9 +103,9 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
                 // Splitting $(z^{2n - 1 - i} + z^{2n + i})$ gives two geometric
                 // sums sharing the prefactor $l_0 = x^{4n - 1} z^{2n}$; the
                 // first picks up an extra $z^{-1}$, applied below.
-                let l0 = x.pow([4 * n - 1]) * z.pow([2 * n]);
-                let l = l0 * geosum(x_inv * z, n as usize);
-                let r = l0 * geosum(x_inv * z_inv, n as usize);
+                let l0 = x.pow_u64(4 * n - 1) * z.pow_u64(2 * n);
+                let l = l0 * geometric_sum(x_inv * z, n as usize);
+                let r = l0 * geometric_sum(x_inv * z_inv, n as usize);
 
                 -(l + r * z_inv)
             }),
@@ -117,8 +117,9 @@ impl<F: Field, R: Rank> Routine<F> for Evaluate<R> {
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
     use ragu_primitives::Simulator;
+    use rand::Rng;
 
     use super::*;
     use crate::polynomials::ProductionRank;
@@ -128,8 +129,8 @@ mod tests {
         // ProductionRank (R<13>) has log2_n = 11
         type TestRank = ProductionRank;
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         let evaluator = Evaluate::<TestRank>::new();
 
         Simulator::simulate((x, z), |dr, witness| {

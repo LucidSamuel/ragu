@@ -43,7 +43,6 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{polynomials::Rank, staging};
 use ragu_core::{
     Result,
@@ -56,6 +55,7 @@ use ragu_primitives::{
     consistent::Consistent,
     vec::{ConstLen, FixedVec, Len},
 };
+use udon::curve::EndomorphismAffine as Affine;
 
 use super::super::{ENDOSCALINGS_PER_STEP, NUM_ENDOSCALING_POINTS};
 use crate::internal::{
@@ -198,7 +198,7 @@ pub fn input_source(i: usize) -> InputSource {
 
 /// A child's points tied to its native unified instance.
 #[derive(Clone, Copy)]
-pub struct ChildBindingWitness<C: CurveAffine> {
+pub struct ChildBindingWitness<C: Affine> {
     pub bridges: [C; nested::RxIndex::BRIDGES.len()],
     pub challenges: C,
     pub a: C,
@@ -209,27 +209,27 @@ pub struct ChildBindingWitness<C: CurveAffine> {
 
 /// Witness of [`BindingStage`]: the points tied to each child's instance.
 #[derive(Clone, Copy)]
-pub struct BindingWitness<C: CurveAffine> {
+pub struct BindingWitness<C: Affine> {
     pub left: ChildBindingWitness<C>,
     pub right: ChildBindingWitness<C>,
 }
 
 /// Witness of [`ChildrenStage`].
 #[derive(Clone)]
-pub struct ChildrenWitness<C: CurveAffine> {
+pub struct ChildrenWitness<C: Affine> {
     pub points: FixedVec<C, ChildrenLen>,
 }
 
 /// Witness of [`RegistryWxStage`].
 #[derive(Clone, Copy)]
-pub struct RegistryWxWitness<C: CurveAffine> {
+pub struct RegistryWxWitness<C: Affine> {
     pub registry_wx0: C,
     pub registry_wx1: C,
 }
 
 /// Witness of [`AbStage`].
 #[derive(Clone, Copy)]
-pub struct AbWitness<C: CurveAffine> {
+pub struct AbWitness<C: Affine> {
     pub registry_wy: C,
     pub a: C,
     pub b: C,
@@ -237,7 +237,7 @@ pub struct AbWitness<C: CurveAffine> {
 
 /// Witness of [`FStage`].
 #[derive(Clone, Copy)]
-pub struct FWitness<C: CurveAffine> {
+pub struct FWitness<C: Affine> {
     pub registry_xy: C,
     pub f: C,
 }
@@ -245,12 +245,12 @@ pub struct FWitness<C: CurveAffine> {
 /// Witness of [`WalkStage`]: the endoscalar and the walk's outputs, one per
 /// step.
 #[derive(Clone)]
-pub struct WalkWitness<C: CurveAffine> {
+pub struct WalkWitness<C: Affine> {
     pub endoscalar: u128,
     pub interstitials: FixedVec<C, NumSteps>,
 }
 
-impl<C: CurveAffine> WalkWitness<C> {
+impl<C: Affine> WalkWitness<C> {
     /// The walk's outputs under `endoscalar`, from a simulated walk.
     pub fn new(
         endoscalar: u128,
@@ -278,7 +278,7 @@ impl<C: CurveAffine> WalkWitness<C> {
 /// # Panics
 ///
 /// Panics if either child has other than [`NUM_CHILD_POINTS`] points.
-pub fn children_witnesses<C: CurveAffine>(
+pub fn children_witnesses<C: Affine>(
     left: &[C],
     right: &[C],
 ) -> (BindingWitness<C>, ChildrenWitness<C>) {
@@ -316,7 +316,7 @@ pub fn children_witnesses<C: CurveAffine>(
 /// The witnesses of every input stage: the walk's inputs, in the stages
 /// that commit them.
 #[derive(Clone)]
-pub struct Inputs<C: CurveAffine> {
+pub struct Inputs<C: Affine> {
     pub binding: BindingWitness<C>,
     pub children: ChildrenWitness<C>,
     pub registry_wx: RegistryWxWitness<C>,
@@ -324,7 +324,7 @@ pub struct Inputs<C: CurveAffine> {
     pub f: FWitness<C>,
 }
 
-impl<C: CurveAffine> Inputs<C> {
+impl<C: Affine> Inputs<C> {
     /// Splits the walk's points, the initial $F_n$ first, into the stages.
     ///
     /// # Panics
@@ -389,7 +389,7 @@ impl<C: CurveAffine> Inputs<C> {
 
 /// A child's walked points that must match its native unified instance.
 #[derive(Gadget, Consistent)]
-pub struct ChildBinding<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct ChildBinding<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub bridges: FixedVec<Point<'dr, D, C>, BridgesLen>,
     #[ragu(gadget)]
@@ -404,7 +404,7 @@ pub struct ChildBinding<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     pub p: Point<'dr, D, C>,
 }
 
-impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildBinding<'dr, D, C> {
+impl<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> ChildBinding<'dr, D, C> {
     fn alloc(dr: &mut D, witness: DriverValue<D, &ChildBindingWitness<C>>) -> Result<Self> {
         Ok(Self {
             bridges: FixedVec::try_from_fn(|i| {
@@ -421,7 +421,7 @@ impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> ChildBinding<'dr, D, C> {
 
 /// Output gadget of [`BindingStage`].
 #[derive(Gadget, Consistent)]
-pub struct Binding<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Binding<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub left: ChildBinding<'dr, D, C>,
     #[ragu(gadget)]
@@ -430,14 +430,14 @@ pub struct Binding<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 
 /// Output gadget of [`ChildrenStage`].
 #[derive(Gadget, Consistent)]
-pub struct Children<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Children<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub points: FixedVec<Point<'dr, D, C>, ChildrenLen>,
 }
 
 /// Output gadget of [`RegistryWxStage`].
 #[derive(Gadget, Consistent)]
-pub struct RegistryWx<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct RegistryWx<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub registry_wx0: Point<'dr, D, C>,
     #[ragu(gadget)]
@@ -446,7 +446,7 @@ pub struct RegistryWx<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 
 /// Output gadget of [`AbStage`].
 #[derive(Gadget, Consistent)]
-pub struct Ab<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Ab<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub registry_wy: Point<'dr, D, C>,
     #[ragu(gadget)]
@@ -457,7 +457,7 @@ pub struct Ab<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 
 /// Output gadget of [`FStage`].
 #[derive(Gadget, Consistent)]
-pub struct F<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct F<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub registry_xy: Point<'dr, D, C>,
     #[ragu(gadget)]
@@ -466,14 +466,14 @@ pub struct F<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 
 /// Output gadget of [`WalkStage`].
 #[derive(Gadget)]
-pub struct Walk<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Walk<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub endoscalar: Endoscalar<'dr, D>,
     #[ragu(gadget)]
     pub interstitials: FixedVec<Point<'dr, D, C>, NumSteps>,
 }
 
-impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Walk<'dr, D, C> {
+impl<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> Walk<'dr, D, C> {
     /// The walk's last interstitial: $P_n$.
     pub fn p(&self) -> &Point<'dr, D, C> {
         self.interstitials
@@ -483,7 +483,7 @@ impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Walk<'dr, D, C> {
 }
 
 /// The loaded input stages, viewed as the walk's inputs.
-pub struct WalkInputs<'a, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct WalkInputs<'a, 'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     pub binding: &'a Binding<'dr, D, C>,
     pub children: &'a Children<'dr, D, C>,
     pub registry_wx: &'a RegistryWx<'dr, D, C>,
@@ -491,7 +491,7 @@ pub struct WalkInputs<'a, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     pub f: &'a F<'dr, D, C>,
 }
 
-impl<'a, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> WalkInputs<'a, 'dr, D, C> {
+impl<'a, 'dr, D: Driver<'dr>, C: Affine<Base = D::F>> WalkInputs<'a, 'dr, D, C> {
     /// The walk's initial point, $F_n$.
     pub fn initial(&self) -> &'a Point<'dr, D, C> {
         &self.f.f
@@ -531,9 +531,9 @@ macro_rules! points_stage {
     ) => {
         $(#[$meta])*
         #[derive(Default)]
-        pub struct $Stage<C: CurveAffine>(PhantomData<C>);
+        pub struct $Stage<C: Affine>(PhantomData<C>);
 
-        impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for $Stage<C> {
+        impl<C: Affine, R: Rank> staging::Stage<C::Base, R> for $Stage<C> {
             type Parent = $Parent;
             type Witness<'source> = &'source $Witness<C>;
             type OutputKind = Kind![C::Base; $Output<'_, _, C>];
@@ -562,9 +562,9 @@ macro_rules! points_stage {
 /// The root of the native stage tree: the children's walked commitments
 /// tied to their native unified instances, committed before $w$.
 #[derive(Default)]
-pub struct BindingStage<C: CurveAffine>(PhantomData<C>);
+pub struct BindingStage<C: Affine>(PhantomData<C>);
 
-impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for BindingStage<C> {
+impl<C: Affine, R: Rank> staging::Stage<C::Base, R> for BindingStage<C> {
     type Parent = ();
     type Witness<'source> = &'source BindingWitness<C>;
     type OutputKind = Kind![C::Base; Binding<'_, _, C>];
@@ -590,9 +590,9 @@ impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for BindingStage<C> {
 
 /// The rest of the children's nested commitments, committed before $w$.
 #[derive(Default)]
-pub struct ChildrenStage<C: CurveAffine>(PhantomData<C>);
+pub struct ChildrenStage<C: Affine>(PhantomData<C>);
 
-impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for ChildrenStage<C> {
+impl<C: Affine, R: Rank> staging::Stage<C::Base, R> for ChildrenStage<C> {
     type Parent = BindingStage<C>;
     type Witness<'source> = &'source ChildrenWitness<C>;
     type OutputKind = Kind![C::Base; Children<'_, _, C>];
@@ -642,9 +642,9 @@ points_stage!(
 /// `bind_endoscalar`, and the walk's outputs, one per step, the last of
 /// which is $P_n$; committed after $\beta$.
 #[derive(Default)]
-pub struct WalkStage<C: CurveAffine>(PhantomData<C>);
+pub struct WalkStage<C: Affine>(PhantomData<C>);
 
-impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for WalkStage<C> {
+impl<C: Affine, R: Rank> staging::Stage<C::Base, R> for WalkStage<C> {
     type Parent = FStage<C>;
     type Witness<'source> = &'source WalkWitness<C>;
     type OutputKind = Kind![C::Base; Walk<'_, _, C>];
@@ -673,12 +673,12 @@ impl<C: CurveAffine, R: Rank> staging::Stage<C::Base, R> for WalkStage<C> {
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::{EpAffine, Pasta};
+    use ragu_core::pasta::{EpAffine, Pasta};
 
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};
 
-    type C = <Pasta as ragu_arithmetic::Cycle>::NestedCurve;
+    type C = <Pasta as ragu_core::Cycle>::NestedCurve;
 
     #[test]
     fn stage_values_match_wire_counts() {
@@ -695,13 +695,15 @@ mod tests {
     /// stages and reading it back is the identity.
     #[test]
     fn walk_round_trips_through_the_stages() {
-        use ragu_arithmetic::{
-            group::{Curve, Group},
-            rand::{SeedableRng, rngs::StdRng},
-        };
+        use rand::{Rng, SeedableRng, rngs::StdRng};
+        use udon::{curve::Projective, field::Field};
         let mut rng = StdRng::seed_from_u64(7);
         let points: Vec<C> = (0..NUM_ENDOSCALING_POINTS)
-            .map(|_| ragu_pasta::Ep::random(&mut rng).to_affine())
+            .map(|_| {
+                (ragu_core::pasta::Ep::generator()
+                    * ragu_core::pasta::Fq::random(|bytes| rng.fill_bytes(bytes)))
+                .to_affine()
+            })
             .collect();
         let inputs = Inputs::from_walk(&points);
         assert_eq!(inputs.walk(), points);

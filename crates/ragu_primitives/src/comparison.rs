@@ -1,11 +1,11 @@
 //! Wire-contract-aware gadget equality.
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,
     gadgets::{Bound, GadgetKind},
 };
+use udon::field::Field;
 
 /// Gadget comparison utilities.
 ///

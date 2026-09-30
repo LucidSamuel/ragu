@@ -34,13 +34,13 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::Bound,
 };
 use ragu_primitives::{GadgetExt as _, io::Write};
+use udon::field::Field;
 
 use crate::WithAux;
 

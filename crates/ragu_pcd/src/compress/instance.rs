@@ -15,15 +15,18 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_arithmetic::{Coordinates, CurveAffine, Cycle, bitreverse, ff::Field};
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, Registry},
     staging::{StageExt, StageReader, stage_wire_indices, wire_degree, wires_of},
 };
+use ragu_core::Cycle;
 use ragu_core::{Error, Result};
 use ragu_primitives::extract_endoscalar;
+use udon::curve::Affine;
+use udon::fft::bit_reverse;
+use udon::field::Field;
 
 use super::{
     claims::Masked,
@@ -122,11 +125,11 @@ fn degrees<F: Field, R: Rank, S: ragu_circuits::staging::Stage<F, R> + Default>(
 }
 
 /// The coordinates of a commitment, which is never the identity.
-fn coordinates<P: CurveAffine>(point: P) -> Result<[P::Base; 2]> {
-    let coordinates = Option::<Coordinates<P>>::from(point.coordinates())
+fn coordinates<P: Affine>(point: P) -> Result<[P::Base; 2]> {
+    let (x, y) = point
+        .coordinates()
         .ok_or_else(|| Error::InvalidWitness("a commitment is the identity".into()))?;
-    let (x, y) = (coordinates.x(), coordinates.y());
-    Ok([*x, *y])
+    Ok([x, y])
 }
 
 impl<C: Cycle> Instance<C> {
@@ -544,7 +547,7 @@ impl<C: Cycle> Instance<C> {
             .iter()
             .map(|id| {
                 let j = usize::from(id.circuit_index()) as u32;
-                evals[bitreverse(j, log2_n) as usize]
+                evals[bit_reverse(j as usize, log2_n)]
             })
             .collect();
         values.extend([
@@ -650,7 +653,7 @@ impl<C: Cycle> Instance<C> {
             .iter()
             .map(|id| {
                 let j = usize::from(id.circuit_index()) as u32;
-                evals[bitreverse(j, log2_n) as usize]
+                evals[bit_reverse(j as usize, log2_n)]
             })
             .collect();
         values.extend([

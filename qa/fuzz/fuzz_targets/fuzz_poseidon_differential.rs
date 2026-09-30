@@ -10,14 +10,14 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_arithmetic::{Cycle, PoseidonPermutation};
-use ragu_core::maybe::Maybe;
-use ragu_pasta::Pasta;
-use ragu_primitives::poseidon::Sponge;
-use ragu_primitives::{Element, Simulator, allocator::Standard};
+use ragu_core::{
+    Cycle, PoseidonPermutation,
+    maybe::Maybe,
+    pasta::{Fp, Pasta},
+};
+use ragu_primitives::{Element, Simulator, allocator::Standard, poseidon::Sponge};
+use udon::field::Field;
 
 fn special_value(idx: u8) -> Fp {
     match idx % 16 {
@@ -25,13 +25,13 @@ fn special_value(idx: u8) -> Fp {
         1 => Fp::ONE,
         2 => -Fp::ONE,
         3 => -Fp::from(2),
-        4 => Fp::TWO_INV,
+        4 => Fp::TWO_INVERSE,
         5 => Fp::from(2),
         6 => Fp::from(3),
         7 => Fp::from(7),
         8 => Fp::ROOT_OF_UNITY,
         9 => Fp::ROOT_OF_UNITY.square(),
-        10 => Fp::ROOT_OF_UNITY.pow_vartime([4u64]),
+        10 => Fp::ROOT_OF_UNITY.pow_u64(4u64),
         11 => Fp::MULTIPLICATIVE_GENERATOR,
         12 => Fp::MULTIPLICATIVE_GENERATOR.square(),
         13 => Fp::from(1u64 << 32),
@@ -67,9 +67,9 @@ impl<'a, P: PoseidonPermutation<Fp>> NativeSponge<'a, P> {
         let rcs = self.params.round_constants();
         let t = P::T;
 
-        for (round_idx, rc) in rcs.enumerate() {
+        for (round_idx, rc) in rcs.iter().enumerate() {
             // Add round constants
-            for (s, c) in self.state.iter_mut().zip(rc.iter()) {
+            for (s, c) in self.state.iter_mut().zip(rc.as_ref().iter()) {
                 *s += c;
             }
 
@@ -93,8 +93,8 @@ impl<'a, P: PoseidonPermutation<Fp>> NativeSponge<'a, P> {
             for s in self.scratch[..t].iter_mut() {
                 *s = Fp::ZERO;
             }
-            for (row_idx, row) in self.params.mds_matrix().enumerate() {
-                for (col_idx, coeff) in row.iter().enumerate() {
+            for (row_idx, row) in self.params.mds_matrix().iter().enumerate() {
+                for (col_idx, coeff) in row.as_ref().iter().enumerate() {
                     self.scratch[row_idx] += *coeff * self.state[col_idx];
                 }
             }
@@ -147,7 +147,9 @@ impl<'a, P: PoseidonPermutation<Fp>> NativeSponge<'a, P> {
             self.squeezable = self.state[..P::RATE].iter().copied().rev().collect();
         }
 
-        self.squeezable.pop().expect("squeezable not empty after permute")
+        self.squeezable
+            .pop()
+            .expect("squeezable not empty after permute")
     }
 }
 
@@ -194,7 +196,7 @@ fuzz_target!(|input: Input| {
         return;
     }
 
-    let params = Pasta::baked();
+    let params = ragu_pcd::pasta::baked();
 
     // --- Native reference ---
     // Skip Squeeze ops scheduled before any Absorb. The circuit Sponge rejects
@@ -270,12 +272,13 @@ fuzz_target!(|input: Input| {
 
     assert!(result.is_ok(), "circuit sponge failed: {:?}", result.err());
 
-    for (i, (native_val, circuit_val)) in
-        native_squeezes.iter().zip(circuit_squeezes.iter()).enumerate()
+    for (i, (native_val, circuit_val)) in native_squeezes
+        .iter()
+        .zip(circuit_squeezes.iter())
+        .enumerate()
     {
         assert_eq!(
-            native_val,
-            circuit_val,
+            native_val, circuit_val,
             "squeeze {i} mismatch: native vs circuit"
         );
     }

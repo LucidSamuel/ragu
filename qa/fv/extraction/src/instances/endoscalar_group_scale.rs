@@ -1,6 +1,6 @@
-use group::CurveAffine;
-use ragu_pasta::{EpAffine, Fp};
+use ragu_core::pasta::{EpAffine, Fp};
 use ragu_primitives::Point;
+use udon::curve::Affine;
 
 use crate::{
     instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer},

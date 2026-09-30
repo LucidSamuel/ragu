@@ -26,15 +26,17 @@
 
 #![no_main]
 
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
 use ragu_circuits::{
     polynomials::Rank,
     registry::{CircuitIndex, RegistryBuilder},
 };
-use ragu_testing_fuzz::params::{FieldChoice, RankChoice};
-use ragu_testing_fuzz::substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval};
-use ragu_testing_fuzz::{with_field, with_rank};
+use ragu_testing_fuzz::{
+    params::{FieldChoice, RankChoice},
+    substrate::{Limits, OpSet, Overrides, Program, ProgramCircuit, shadow_eval},
+    with_field, with_rank,
+};
+use udon::field::Field;
 
 #[derive(arbitrary::Arbitrary, Debug)]
 struct Input {
@@ -70,10 +72,7 @@ fuzz_target!(|input: Input| {
     });
 });
 
-fn run<F: PrimeField<Repr = [u8; 32]> + ff::FromUniformBytes<64>, R: Rank>(
-    program: &Program,
-    input: &Input,
-) {
+fn run<F: Field, R: Rank>(program: &Program, input: &Input) {
     // Anchor constants are circuit structure; the honest shadow supplies
     // one per `Anchor` op. (Their values do not affect the three-way
     // identity, but a well-formed circuit needs them to register.)
@@ -99,12 +98,14 @@ fn run<F: PrimeField<Repr = [u8; 32]> + ff::FromUniformBytes<64>, R: Rank>(
     let sy_at_x = registry.wy(w, y).eval(x);
 
     assert_eq!(
-        sxy, sx_at_y,
+        sxy,
+        sx_at_y,
         "wxy != wx(w, x).eval(y) at rank {}: {program:?}",
         R::RANK
     );
     assert_eq!(
-        sxy, sy_at_x,
+        sxy,
+        sy_at_x,
         "wxy != wy(w, y).eval(x) at rank {}: {program:?}",
         R::RANK
     );

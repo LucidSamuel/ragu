@@ -42,8 +42,8 @@
 //! [`Boolean`]: ragu_primitives::Boolean
 //! [`Driver`]: ragu_core::drivers::Driver
 
-use ff::PrimeField;
 use proptest::{prelude::*, sample::select, strategy::BoxedStrategy};
+use udon::field::Field;
 
 mod circuit;
 #[cfg(test)]
@@ -418,7 +418,7 @@ impl Preamble {
     pub const LEN: usize = 4 + 2 + 2;
 
     /// The initial element values, in stack order.
-    pub fn values<F: PrimeField>(&self) -> [F; Self::LEN] {
+    pub fn values<F: Field>(&self) -> [F; Self::LEN] {
         let mut out = [F::ZERO; Self::LEN];
         let mut i = 0;
         for seed in self.seeds {
@@ -668,20 +668,20 @@ impl Program {
 ///
 /// The 16-variant superset used by the robustness targets (the patcher
 /// family previously used an 8-variant subset).
-pub fn special_value<F: PrimeField>(idx: u8) -> F {
+pub fn special_value<F: Field>(idx: u8) -> F {
     match idx % 16 {
         0 => F::ZERO,
         1 => F::ONE,
-        2 => -F::ONE,     // p - 1
-        3 => -F::from(2), // p - 2
-        4 => F::TWO_INV,  // (p + 1) / 2
+        2 => -F::ONE,        // p - 1
+        3 => -F::from(2),    // p - 2
+        4 => F::TWO_INVERSE, // (p + 1) / 2
         5 => F::from(2),
         6 => F::from(3),
         7 => F::from(7),
-        8 => F::ROOT_OF_UNITY,                      // 2-adic primitive root
-        9 => F::ROOT_OF_UNITY.square(),             // (S-1)-adic primitive root
-        10 => F::ROOT_OF_UNITY.pow_vartime([4u64]), // (S-2)-adic primitive root
-        11 => F::MULTIPLICATIVE_GENERATOR,          // smallest generator
+        8 => F::ROOT_OF_UNITY,                // 2-adic primitive root
+        9 => F::ROOT_OF_UNITY.square(),       // (S-1)-adic primitive root
+        10 => F::ROOT_OF_UNITY.pow_u64(4u64), // (S-2)-adic primitive root
+        11 => F::MULTIPLICATIVE_GENERATOR,    // smallest generator
         12 => F::MULTIPLICATIVE_GENERATOR.square(),
         13 => F::from(1u64 << 32), // 2^32 boundary
         14 => F::from(1u64 << 48), // 2^48 boundary

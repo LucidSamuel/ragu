@@ -4,14 +4,12 @@
 //! stages and evaluates from openings to what the polynomials give, and the
 //! extra openings hold against the polynomials.
 
-use ragu_arithmetic::{
-    Cycle,
-    ff::Field,
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::{ProductionRank, Rank, sparse};
-use ragu_pasta::{Fp, Fq, Pasta};
+use ragu_core::Cycle;
+use ragu_core::pasta::{Fp, Fq, Pasta};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use super::Instance;
 use crate::{
@@ -29,7 +27,7 @@ const HEADER_SIZE: usize = 4;
 
 fn create_test_app() -> Application<'static, Pasta, TestR, HEADER_SIZE> {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .expect("failed to create test application")
 }
 
@@ -46,7 +44,7 @@ fn setup() -> (
 
 /// The fuse's challenges, replayed on a transcript under the fuse's tag.
 fn replay(instance: &Instance<Pasta>) -> nested::Challenges<Fp> {
-    let mut transcript = CycleTranscript::<Pasta>::new(Pasta::baked(), RAGU_TAG).unwrap();
+    let mut transcript = CycleTranscript::<Pasta>::new(crate::pasta::baked(), RAGU_TAG).unwrap();
     instance
         .challenges(&mut transcript)
         .unwrap()
@@ -65,7 +63,10 @@ fn targets_match_the_decider() {
     let (_, pcd, instance) = setup();
     let challenges = replay(&instance);
     let mut rng = StdRng::seed_from_u64(1);
-    let (y, nested_y) = (Fp::random(&mut rng), Fq::random(&mut rng));
+    let (y, nested_y) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
 
     let header = ky::output_header::<Pasta, (), HEADER_SIZE>(()).unwrap();
     let (native, nested) = instance
@@ -87,7 +88,7 @@ fn targets_match_the_decider() {
 fn recomputed_stages_match() {
     let (_, _, instance) = setup();
     let challenges = replay(&instance);
-    let generators = Pasta::nested_generators(Pasta::baked());
+    let generators = Pasta::nested_generators(crate::pasta::baked());
     assert!(
         instance
             .stages_match::<TestR, ReferenceBackend, HEADER_SIZE>(&challenges, generators)
@@ -110,7 +111,7 @@ fn check_bindings<F, Id, R>(
     poly: impl Fn(Id) -> sparse::Polynomial<F, R>,
     r: F,
 ) where
-    F: ragu_arithmetic::ff::PrimeField + ragu_arithmetic::DeferredField,
+    F: Field,
     Id: Copy + core::fmt::Debug,
     R: Rank,
 {
@@ -131,8 +132,14 @@ fn wire_bindings_hold() {
     let proof = pcd.proof();
     let challenges = replay(&instance);
     let mut rng = StdRng::seed_from_u64(2);
-    let (sigma, r) = (Fp::random(&mut rng), Fp::random(&mut rng));
-    let (nested_sigma, nested_r) = (Fq::random(&mut rng), Fq::random(&mut rng));
+    let (sigma, r) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+    );
+    let (nested_sigma, nested_r) = (
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
 
     let native = instance
         .native_bindings::<TestR, ReferenceBackend, HEADER_SIZE>(
@@ -152,7 +159,7 @@ fn wire_bindings_hold() {
 
     // The shapes append the bindings after the decider's claims, each over
     // its stage polynomial alone.
-    let z = Fp::random(&mut rng);
+    let z = Fp::random(|bytes| rng.fill_bytes(bytes));
     let shapes = claims::native_shapes(instance.circuit_id, z, &native).unwrap();
     let tail = &shapes[shapes.len() - native.len()..];
     for ((m, shape), masked) in tail.iter().enumerate().zip(&native) {
@@ -188,7 +195,7 @@ fn wire_bindings_hold() {
 /// [`Masked::new`] protect: a wire dropped from the list would pass here.
 fn check_pinned<F, Id, R>(masked: &[Masked<Id, F>], poly: impl Fn(Id) -> sparse::Polynomial<F, R>)
 where
-    F: ragu_arithmetic::ff::PrimeField + ragu_arithmetic::DeferredField,
+    F: Field,
     Id: Copy + core::fmt::Debug,
     R: Rank,
 {
@@ -221,7 +228,7 @@ fn every_bound_wire_is_pinned() {
         .native_bindings::<TestR, ReferenceBackend, HEADER_SIZE>(
             &challenges,
             &app.native_registry,
-            Fp::random(&mut rng),
+            Fp::random(|bytes| rng.fill_bytes(bytes)),
         )
         .unwrap();
     check_pinned(&native, |component| proof[component].clone());
@@ -230,7 +237,7 @@ fn every_bound_wire_is_pinned() {
         .nested_bindings::<TestR, ReferenceBackend>(
             &challenges,
             &app.nested_registry,
-            Fq::random(&mut rng),
+            Fq::random(|bytes| rng.fill_bytes(bytes)),
         )
         .unwrap();
     check_pinned(&nested, |component| proof[component].clone());
@@ -242,7 +249,10 @@ fn extra_openings_hold() {
     let proof = pcd.proof();
     let challenges = replay(&instance);
     let mut rng = StdRng::seed_from_u64(3);
-    let (w, nested_w) = (Fp::random(&mut rng), Fq::random(&mut rng));
+    let (w, nested_w) = (
+        Fp::random(|bytes| rng.fill_bytes(bytes)),
+        Fq::random(|bytes| rng.fill_bytes(bytes)),
+    );
     let base = Derived::ALL.len() + 2;
 
     let (polys, claims) = instance.native_openings::<TestR, ReferenceBackend>(

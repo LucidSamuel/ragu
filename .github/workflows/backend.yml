@@ -40,23 +40,18 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: >-
           cargo clippy -p ragu_acceleration --lib --tests --no-default-features
-          --features native-msm -- -D warnings
+          -- -D warnings
       - name: Run PCD backend clippy
         if: matrix.os == 'ubuntu-latest'
         run: >-
           cargo clippy -p ragu_pcd --lib --tests --benches --no-default-features
-          --features native-msm -- -D warnings
-      - name: Run acceleration backend equivalence suite
-        run: >-
-          cargo test --release -p ragu_acceleration --no-default-features
-          --features native-msm -- --test-threads=1
+          -- -D warnings
       - name: Run native PCD backend equivalence
-        if: matrix.os == 'ubuntu-latest'
         env:
           # Each case builds three applications and runs seed/seed/fuse/verify.
           PROPTEST_CASES: "4"
         run: >-
-          cargo test --release -p ragu_pcd --no-default-features --features native-msm
+          cargo test --release -p ragu_pcd --no-default-features
           --lib backend_equivalence:: -- --test-threads=1
 
   # Every backend must retain its correctness-first fallback on bare metal.
@@ -79,6 +74,10 @@ jobs:
       - name: Build PCD reference configuration for bare-metal no_std
         run: >-
           cargo build -p ragu_pcd --lib --no-default-features --features alloc
+          --target thumbv7em-none-eabihf
+      - name: Build a no_std consumer of baked Pasta parameters
+        run: >-
+          cargo build -p ragu_no_std --lib --no-default-features --locked
           --target thumbv7em-none-eabihf
 
   # Stable status for the ruleset. Future backend jobs should be added to this

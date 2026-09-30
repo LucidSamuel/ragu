@@ -21,8 +21,8 @@ all-features = true
 [features]
 alloc = []
 default = ["alloc"]
-multicore = ["maybe-rayon/threads", "ragu_arithmetic/multicore", "std"]
-std = []
+multicore = ["maybe-rayon/threads", "std"]
+std = ["ragu_core/std"]
 test-utils = []
 # Fixed fallback registry tag for tests, benchmarks, and fuzzing. Never enable in production.
 insecure-test-registry-tag = []
@@ -31,21 +31,19 @@ insecure-test-registry-tag = []
 bench = false
 
 [dependencies]
-ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
+udon = { workspace = true }
 blake2b_simd = { workspace = true }
 ragu_core = { path = "../ragu_core", version = "0.0.0", default-features = false, features = ["alloc"] }
+rand = { workspace = true }
 ragu_primitives = { path = "../ragu_primitives", version = "0.0.0", default-features = false, features = ["alloc"] }
 maybe-rayon = { workspace = true }
 
 [dev-dependencies]
-ff = { workspace = true }
-group = { workspace = true }
-pasta_curves = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 proptest = { workspace = true }
 gungraun = { workspace = true }
 criterion = { workspace = true }
-ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
+ragu_pcd = { path = "../ragu_pcd", version = "0.0.0", default-features = false, features = ["baked"] }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 
 [[bench]]

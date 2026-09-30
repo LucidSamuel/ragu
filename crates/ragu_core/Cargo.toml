@@ -33,14 +33,11 @@ std = []
 bench = false
 
 [dependencies]
-ragu_arithmetic = { path = "../ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"] }
+udon = { workspace = true }
 ragu_macros = { path = "../ragu_macros", version = "0.0.0" }
 thiserror = { version = "2.0.12", default-features = false }
 
 [dev-dependencies]
-ff = { workspace = true }
 rand = { workspace = true }
-group = { workspace = true }
-ragu_pasta = { path = "../ragu_pasta", version = "0.0.0", features = ["baked"] }
 proptest = { workspace = true }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }

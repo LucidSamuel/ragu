@@ -1,8 +1,7 @@
 //! Nontrivial test fixtures with Poseidon hashing.
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
@@ -16,6 +15,7 @@ use ragu_primitives::{
     allocator::{Allocator, Standard},
     poseidon::Sponge,
 };
+use udon::field::Field;
 
 /// A [`Header`] for the leaves of the tree: a single field element, the hash
 /// of the witness the leaf commits to.

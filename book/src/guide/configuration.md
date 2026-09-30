@@ -40,15 +40,15 @@ recursion without expensive non-native field arithmetic.
 Load the Pasta parameters:
 
 ```rust
-use ragu_pasta::Pasta;
+use ragu_core::pasta::Pasta;
 
-let pasta = Pasta::baked();  // Requires the `baked` crate feature
+let pasta = ragu_pcd::pasta::baked();  // Requires the `baked` crate feature
 ```
 
-Without the `baked` feature, use [`Pasta::generate()`] to compute parameters
-at runtime instead.
+The `ragu_pcd/baked` feature supports both `std` and `no_std` applications
+and enables `alloc`.
 
-The `baked()` method returns precomputed generator points for Pallas and
+The `baked()` function returns precomputed generator points for Pallas and
 Vesta, loaded from data embedded in the binary. Poseidon parameters are
 compile-time constants and do not require initialization.
 
@@ -197,11 +197,11 @@ Here's a production-ready configuration:
 
 ```rust
 use ragu_circuits::{polynomials::R, registry::Tag};
-use ragu_pasta::Pasta;
+use ragu_core::pasta::Pasta;
 use ragu_pcd::{ApplicationBuilder, RegistryTags};
 
 // Initialize Pasta curves
-let pasta = Pasta::baked();
+let pasta = ragu_pcd::pasta::baked();
 
 // Pin the final field elements supplied by your setup procedure.
 let tags = RegistryTags::<Pasta> {
@@ -383,13 +383,13 @@ ApplicationBuilder::<Pasta, R<7>, 4>::new()  // Only 32 gates
 
 ```toml
 [dependencies]
-ragu_pasta = "0.1"  # Missing features = ["baked"]
+ragu_pcd = "0.1"  # Missing features = ["baked"]
 ```
 
-**Error**: Compile error — `Pasta::baked()` does not exist without the feature.
+**Error**: Compile error — `ragu_pcd::pasta::baked()` does not exist without the feature.
 
-**Fix**: Add `features = ["baked"]` to the `ragu_pasta` dependency, or use
-`Pasta::generate()` instead.
+**Fix**: Add `features = ["baked"]` to the `ragu_pcd` dependency. The feature
+also enables `alloc`.
 
 ## Next Steps
 

@@ -95,7 +95,7 @@ $b_0 + 2 b_1 + 4 b_2 + \cdots$ naturally.
 [`add_term`]: ragu_core::drivers::linexp::LinearExpression::add_term
 [`extend`]: ragu_core::drivers::linexp::LinearExpression::extend
 [`gain`]: ragu_core::drivers::linexp::LinearExpression::gain
-[`Coeff<F>`]: ragu_arithmetic::Coeff
+[`Coeff<F>`]: ragu_core::Coeff
 [`LCadd`]: ragu_core::drivers::DriverTypes::LCadd
 [`LCenforce`]: ragu_core::drivers::DriverTypes::LCenforce
 [`Wire`]: ragu_core::drivers::Driver::Wire

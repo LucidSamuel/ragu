@@ -17,10 +17,9 @@
 //! [`hashes_1`]: super::circuits::hashes_1
 //! [`hashes_2`]: super::circuits::hashes_2
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,
@@ -624,8 +623,7 @@ impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: Cycle<CircuitField = D::F>>
 #[cfg(test)]
 mod tests {
     use ragu_circuits::polynomials::ProductionRank;
-    use ragu_core::{drivers::emulator::Emulator, maybe::Empty};
-    use ragu_pasta::Pasta;
+    use ragu_core::{drivers::emulator::Emulator, maybe::Empty, pasta::Pasta};
 
     use super::*;
 
@@ -713,14 +711,13 @@ mod tests {
         );
     }
 
-    type Dr =
-        Emulator<ragu_core::drivers::emulator::Wireless<Empty, ragu_arithmetic::pasta_curves::Fp>>;
+    type Dr = Emulator<ragu_core::drivers::emulator::Wireless<Empty, ragu_core::pasta::Fp>>;
     type Sl = Slot<
         'static,
         Dr,
         ragu_primitives::allocator::Standard<()>,
         Element<'static, Dr>,
-        ragu_arithmetic::pasta_curves::Fp,
+        ragu_core::pasta::Fp,
     >;
 
     /// Helper: creates two independent element slots and a fresh emulator.

@@ -2,31 +2,28 @@
 //!
 //! Optimized implementations of Ragu's computational backend.
 //!
-//! Overrides live behind opt-in features and fall back to the correctness-first
-//! defaults of [`ragu_backend::Backend`] otherwise. Overrides of the kernels
-//! that `ragu_pcd`'s verifier consults are implemented in [`verifier`], which
-//! carries a stricter review and testing bar than prover-only overrides.
+//! Overrides fall back to the defaults of [`ragu_backend::Backend`] where a
+//! method has none. There is no override today: the defaults already run
+//! Udon's MSM through the group vocabulary, and this crate is the home
+//! for the next ones (an external Poseidon, for instance). Overrides of the
+//! kernels that `ragu_pcd`'s verifier consults belong in [`verifier`], which
+//! carries a stricter review and testing bar than prover-only overrides. An
+//! override arrives with its differential test against the default it
+//! replaces; `ragu_pcd`'s `backend_equivalence` tests hold
+//! [`AcceleratedProver`] to the reference end to end.
 
 #![no_std]
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-#[cfg(not(feature = "native-msm"))]
-mod fallback;
-#[cfg(feature = "native-msm")]
-mod msm;
-
 pub mod verifier;
 
 /// Ragu's accelerated computational backend, for proving and verification.
 ///
-/// With the `native-msm` feature, MSMs use Zakura's signed-Booth multiexp
-/// (from `zakura-halo2-proofs`, over the same `zakura-pasta-curves` types Ragu
-/// itself uses). Without it, the correctness-first implementation is retained.
-///
-/// Selecting this backend in `ragu_pcd` also uses its verifier-consulted
-/// kernels (see [`verifier`]) when verifying proofs. Select
-/// [`AcceleratedProver`] to accelerate proving only.
+/// It carries no override yet and computes exactly what
+/// [`ragu_backend::ReferenceBackend`] computes. Selecting this backend in
+/// `ragu_pcd` also uses its verifier-consulted kernels (see [`verifier`]) when
+/// verifying proofs. Select [`AcceleratedProver`] to accelerate proving only.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AcceleratedBackend;
 
@@ -43,19 +40,6 @@ pub struct AcceleratedProver;
 // `AcceleratedProver` must forward every override to `AcceleratedBackend`,
 // one method per override, so the two impl blocks stay comparable and a new
 // override cannot be selected for proving while silently missing here.
-impl ragu_backend::Backend for AcceleratedProver {
-    fn msm<
-        'a,
-        C: ragu_arithmetic::CurveAffine,
-        A: IntoIterator<Item = &'a C::Scalar>,
-        Bases: IntoIterator<Item = &'a C>,
-    >(
-        coeffs: A,
-        bases: Bases,
-    ) -> C::Curve
-    where
-        Bases::IntoIter: Clone + Sync,
-    {
-        <AcceleratedBackend as ragu_backend::Backend>::msm(coeffs, bases)
-    }
-}
+impl ragu_backend::Backend for AcceleratedBackend {}
+
+impl ragu_backend::Backend for AcceleratedProver {}

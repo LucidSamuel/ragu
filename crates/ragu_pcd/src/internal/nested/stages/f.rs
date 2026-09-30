@@ -3,7 +3,6 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{
     Result,
@@ -12,12 +11,13 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{Point, io::Write};
+use udon::curve::EndomorphismAffine as Affine;
 
 /// Number of curve points in this stage.
 const NUM: usize = 2;
 
 /// Witness data for this bridge stage.
-pub struct Witness<C: CurveAffine> {
+pub struct Witness<C: Affine> {
     pub native_f: C,
     /// Commitment of the native points stage holding the nested
     /// `registry_xy` commitment and $F_n$, fixed here before $u$ is
@@ -30,7 +30,7 @@ pub struct Witness<C: CurveAffine> {
 /// This is stage communication data, not part of the circuit's
 /// public instance.
 #[derive(Gadget, Write)]
-pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Output<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub native_f: Point<'dr, D, C>,
     #[ragu(gadget)]
@@ -38,11 +38,11 @@ pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
 }
 
 #[derive(Default)]
-pub struct Stage<C: CurveAffine, R> {
+pub struct Stage<C: Affine, R> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
+impl<C: Affine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stage<C, R> {
     type Parent = super::query::Stage<C, R>;
     type Witness<'source> = &'source Witness<C>;
     type OutputKind = Kind![C::Base; Output<'_, _, C>];
@@ -68,7 +68,7 @@ impl<C: CurveAffine, R: Rank> ragu_circuits::staging::Stage<C::Base, R> for Stag
 
 #[cfg(test)]
 mod tests {
-    use ragu_pasta::EqAffine;
+    use ragu_core::pasta::EqAffine;
 
     use super::*;
     use crate::internal::tests::{R, assert_stage_values};

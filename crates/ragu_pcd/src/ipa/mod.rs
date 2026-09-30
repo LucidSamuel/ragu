@@ -7,7 +7,9 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{CurveAffine, FixedGenerators, ff::Field, msm};
+use ragu_core::{Cycle, FixedGenerators};
+use udon::curve::Affine;
+use udon::field::Field;
 
 mod msm;
 mod prover;
@@ -30,22 +32,33 @@ pub const IPA_TAG: &[u8] = b"ragu-ipa-v1";
 
 /// Log-size IPA opening proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IpaProof<C: CurveAffine> {
+pub struct IpaProof<C: Affine> {
     /// Commitment to the blinding polynomial $S$.
     pub s_commitment: C,
     /// Cross-term commitments $(L_j, R_j)$, one pair per round.
     pub rounds: Vec<(C, C)>,
     /// Final collapsed coefficient.
-    pub c: C::ScalarExt,
+    pub c: C::Scalar,
     /// Synthetic blinding factor.
-    pub f: C::ScalarExt,
+    pub f: C::Scalar,
+}
+
+/// A cycle whose parameters also fix the IPA's generator $u$ on each curve:
+/// a point with no known relation to the vector and blinding generators,
+/// which the argument uses to bind the claimed value into the commitment it
+/// opens.
+pub trait IpaCycle: Cycle {
+    /// The host curve's $u$.
+    fn host_u(params: &Self::Params) -> &Self::HostCurve;
+    /// The nested curve's $u$.
+    fn nested_u(params: &Self::Params) -> &Self::NestedCurve;
 }
 
 /// The public parameters of the polynomial commitment scheme, mirroring
 /// halo2's `Params<C>`: the vector generators, the blinding generator $W$ and
 /// the generator $U$ that binds the inner product value.
 #[derive(Clone, Debug)]
-pub struct Params<C: CurveAffine> {
+pub struct Params<C: Affine> {
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<C>,
@@ -53,19 +66,19 @@ pub struct Params<C: CurveAffine> {
     pub(crate) u: C,
 }
 
-impl<C: CurveAffine> Params<C> {
+impl<C: Affine> Params<C> {
     /// Bundles every vector generator of `generators` into parameters.
     ///
     /// # Panics
     ///
     /// Panics if the generator count is not a power of two.
-    pub fn new<G: FixedGenerators<C>>(generators: &G) -> Self {
+    pub fn new<G: FixedGenerators<C>>(generators: &G, u: C) -> Self {
         let n = generators.g().len();
         assert!(
             n.is_power_of_two(),
             "generator count must be a power of two"
         );
-        Self::with_k(generators, n.ilog2())
+        Self::with_k(generators, u, n.ilog2())
     }
 
     /// Bundles the first $2^k$ vector generators of `generators` into
@@ -74,7 +87,7 @@ impl<C: CurveAffine> Params<C> {
     /// # Panics
     ///
     /// Panics if `generators` holds fewer than $2^k$ vector generators.
-    pub fn with_k<G: FixedGenerators<C>>(generators: &G, k: u32) -> Self {
+    pub fn with_k<G: FixedGenerators<C>>(generators: &G, u: C, k: u32) -> Self {
         let n = 1usize << k;
         assert!(
             generators.g().len() >= n,
@@ -85,7 +98,7 @@ impl<C: CurveAffine> Params<C> {
             n: n as u64,
             g: generators.g()[..n].to_vec(),
             w: *generators.h(),
-            u: *generators.u(),
+            u,
         }
     }
 
@@ -95,19 +108,19 @@ impl<C: CurveAffine> Params<C> {
     /// # Panics
     ///
     /// Panics if `poly` does not have exactly $2^k$ coefficients.
-    pub fn commit(&self, poly: &[C::Scalar], r: Blind<C::Scalar>) -> C::Curve {
+    pub fn commit(&self, poly: &[C::Scalar], r: Blind<C::Scalar>) -> C::Projective {
         assert_eq!(poly.len(), self.n as usize);
 
         let mut tmp_scalars = Vec::with_capacity(poly.len() + 1);
         let mut tmp_bases = Vec::with_capacity(poly.len() + 1);
 
-        tmp_scalars.extend(poly.iter());
+        tmp_scalars.extend(poly.iter().copied());
         tmp_scalars.push(r.0);
 
-        tmp_bases.extend(self.g.iter());
+        tmp_bases.extend(self.g.iter().copied());
         tmp_bases.push(self.w);
 
-        msm::<C, _, _>(&tmp_scalars, &tmp_bases)
+        C::msm(&tmp_scalars, &tmp_bases)
     }
 }
 

@@ -5,10 +5,8 @@
 //! the PCD boundary checks and mutation policy used by both callers.
 
 use arbitrary::Arbitrary;
-use ragu_arithmetic::ff::PrimeFieldBits;
 use ragu_circuits::Circuit;
-use ragu_core::Result;
-use ragu_pasta::Pasta;
+use ragu_core::{Result, pasta::Pasta};
 use ragu_pcd::fuzzing::patcher::{
     CircuitSpec, InternalCircuitVisitor, OutputRef, Resolution, capture_internal_circuits,
     capture_internal_circuits_bootstrap,
@@ -18,11 +16,12 @@ use ragu_testing::patcher::{
     playback,
 };
 use rand::{SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use crate::pcd::{self, NativeField};
 
 /// Capture and independently replay the exact honest witness being checked.
-pub fn capture_checked<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
+pub fn capture_checked<'w, F: Field, Cir: Circuit<F>>(
     name: &str,
     spec: &CircuitSpec,
     circuit: &Cir,
@@ -61,7 +60,7 @@ pub struct BindingCheck {
 
 /// Require the bounded solver to derive every output when other advice is
 /// granted, and count how many it can derive from the declared inputs alone.
-pub fn check_binding<F: PrimeFieldBits>(
+pub fn check_binding<F: Field>(
     name: &str,
     cap: &Capture<F>,
     resolution: &Resolution,
@@ -106,7 +105,7 @@ pub enum Mutation {
 
 /// Apply up to eight distinct, effective mutations. A moved output is checked
 /// by fresh synthesis before it is reported; solver rejection is inconclusive.
-pub fn probe_mutations<F: PrimeFieldBits>(
+pub fn probe_mutations<F: Field>(
     name: &str,
     prepared: &Prepared<F>,
     cheatable: &[usize],

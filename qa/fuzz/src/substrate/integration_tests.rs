@@ -14,18 +14,18 @@
 //!   (the ground truth `fuzz_advice_patcher`'s discovery cross-check rests
 //!   on).
 
-use ff::Field;
 use proptest::prelude::*;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, TestRank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Simulator, allocator::Standard};
 use ragu_testing::patcher::{
     Recorder, TrackingAllocator, allocation_waste, constraints_hold, discover_free_advice,
 };
+use udon::field::Field;
 
 use super::{
     Capabilities, Limits, Op, OpSet, Overrides, Program, ProgramCircuit, native_satisfied,

@@ -1,13 +1,15 @@
 # Poseidon parameter provenance
 
-The Poseidon tables in `crates/ragu_pasta/src/poseidon_f{p,q}.rs` are roughly
+The Poseidon tables ragu runs with — `udon`'s, in the Udon repository's `crates/udon/src/poseidon/` at the
+revision this workspace pins — are roughly
 700 hand-transcribable field elements that no fingerprint or differential test
 can validate. Every test downstream of them is generic in whatever the tables
 happen to contain: replace a constant and nothing fails, because nothing
 anywhere asserts what the constants should be. Their only external authority
 is the script that generated them.
 
-`check_poseidon_params.py` regenerates the tables and compares:
+`check_poseidon_params.py` regenerates the tables and compares (it finds the pinned
+`udon` through `cargo metadata`, or takes `--udon-dir`):
 
 ```sh
 python3 qa/params/check_poseidon_params.py

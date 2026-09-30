@@ -5,14 +5,14 @@
 use alloc::vec::Vec;
 use core::iter::once;
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{polynomials::Rank, registry::CircuitIndex};
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe},
 };
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use super::{
     native::{

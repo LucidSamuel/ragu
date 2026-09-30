@@ -4,7 +4,7 @@ import Ragu.Core
 # Pasta `Fp` Poseidon parameters
 
 The permutation constants of `PoseidonFp`
-(`crates/ragu_pasta/src/poseidon_fp.rs`): state width `5`, rate `4`, an `x^5`
+(`udon::poseidon::PALLAS_BASE`): state width `5`, rate `4`, an `x^5`
 S-box, and `8` full plus `56` partial rounds.
 
 Transcribed from the Rust constants, in the same spirit as the curve

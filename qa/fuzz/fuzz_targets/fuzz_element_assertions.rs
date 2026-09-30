@@ -37,11 +37,10 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::maybe::Maybe;
+use ragu_core::{maybe::Maybe, pasta::Fp};
 use ragu_primitives::{Boolean, Element, Simulator, allocator::Standard};
+use udon::field::Field;
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -53,7 +52,7 @@ struct Input {
 }
 
 fn parse_fp(bytes: [u8; 32]) -> Fp {
-    Option::<Fp>::from(Fp::from_repr(bytes)).unwrap_or_else(|| {
+    Fp::from_bytes(bytes).unwrap_or_else(|| {
         Fp::from(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
@@ -80,7 +79,11 @@ fuzz_target!(|input: Input| {
         let e = Element::alloc(dr, allocator, witness.as_ref().map(|v| *v))?;
         e.enforce_zero(dr)
     });
-    assert!(r.is_ok(), "enforce_zero(0) should succeed but returned Err: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "enforce_zero(0) should succeed but returned Err: {:?}",
+        r.err()
+    );
 
     // NEG: alloc(non-zero).enforce_zero() → Err
     if a_val != Fp::ZERO {
@@ -145,8 +148,7 @@ fuzz_target!(|input: Input| {
 
     // POS: alloc(a).invert_with(a⁻¹) → Ok, result has value a⁻¹
     if a_val != Fp::ZERO {
-        let a_inv: Fp = Option::<Fp>::from(a_val.invert())
-            .expect("non-zero Fp must have an inverse");
+        let a_inv: Fp = a_val.invert().expect("non-zero Fp must have an inverse");
         let r = Simulator::<Fp>::simulate((a_val, a_inv), |dr, witness| {
             let allocator = &mut Standard::new();
             let e = Element::alloc(dr, allocator, witness.as_ref().map(|v| v.0))?;
@@ -189,10 +191,7 @@ fuzz_target!(|input: Input| {
         let _ = e.invert_with(dr, witness.as_ref().map(|_| Fp::ONE))?;
         Ok(())
     });
-    assert!(
-        r.is_err(),
-        "invert_with(0, _) should fail (0 * _ = 0 != 1)",
-    );
+    assert!(r.is_err(), "invert_with(0, _) should fail (0 * _ = 0 != 1)",);
 
     // ============================================================
     // Boolean::conditional_enforce_equal

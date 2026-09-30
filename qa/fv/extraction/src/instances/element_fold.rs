@@ -1,5 +1,6 @@
-use ragu_pasta::Fp;
+use ragu_core::pasta::Fp;
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use crate::instance::{CircuitInstance, InstanceDriver, WireCollector, WireDeserializer};
 
@@ -71,7 +72,7 @@ impl CircuitInstance for ElementFoldInstanceN19 {
 fn fold_at_length<'dr, D: InstanceDriver<'dr, F = Fp>, const N: usize>(
     dr: &mut D,
 ) -> ragu_core::Result<Vec<D::Wire>> {
-    let element_template = Element::constant(dr, Fp::zero());
+    let element_template = Element::constant(dr, Fp::ZERO);
 
     let mut xs = Vec::with_capacity(N);
     for _ in 0..N {

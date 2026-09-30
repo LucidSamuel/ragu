@@ -24,16 +24,13 @@
 
 use std::collections::BTreeSet;
 
-use ragu_arithmetic::{
-    Coeff,
-    ff::{Field, PrimeField, PrimeFieldBits},
-};
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverTypes, LinearExpression},
     maybe::Always,
 };
 use ragu_primitives::allocator::{Allocator, Standard};
+use udon::field::Field;
 
 /// A captured constraint / wire definition, in emission order.
 #[derive(Clone, Debug)]
@@ -693,7 +690,7 @@ struct Decomposition<F> {
 /// The [`Event::Lin`] combinations that recompose a boolean decomposition:
 /// every term is a [`Boolean::alloc`](ragu_primitives::Boolean::alloc) wire
 /// and the weights are a doubling chain `c, 2c, 4c, …` of at most
-/// [`PrimeField::CAPACITY`] terms.
+/// [`Field::CAPACITY`] terms.
 ///
 /// Such a combination admits exactly one boolean assignment per value of
 /// `out`: the weighted sums cover `c · [0, 2^n)`, injective because
@@ -706,10 +703,7 @@ struct Decomposition<F> {
 /// [`CLUSTER_SOLVE_CAP`], and flipping one bit while its `n - 1` neighbours
 /// are still unknown leaves the constraint satisfiable, so neither branch
 /// dies. Recognising the shape is what closes that gap.
-fn decompositions<F: PrimeFieldBits>(
-    events: &[Event<F>],
-    booleans: &[usize],
-) -> Vec<Decomposition<F>> {
+fn decompositions<F: Field>(events: &[Event<F>], booleans: &[usize]) -> Vec<Decomposition<F>> {
     // Wires above the highest boolean are not booleans, so a lookup past the
     // end reads as `false` rather than needing the full wire count here.
     let mut is_boolean = vec![false; booleans.iter().copied().max().map_or(0, |w| w + 1)];
@@ -727,7 +721,7 @@ fn decompositions<F: PrimeFieldBits>(
                 return None;
             }
             let base = terms[0].1;
-            if bool::from(base.is_zero()) {
+            if base.is_zero() {
                 return None;
             }
             let mut weight = base;
@@ -765,7 +759,7 @@ fn decompositions<F: PrimeFieldBits>(
 /// decomposition at all; the low `n` bits are still written, leaving the
 /// recomposition visibly violated so that
 /// [`branch_consistent`] retires the branch that produced it.
-fn deduce_decompositions<F: PrimeFieldBits>(
+fn deduce_decompositions<F: Field>(
     decompositions: &[Decomposition<F>],
     values: &mut [F],
     known: &mut [bool],
@@ -775,7 +769,7 @@ fn deduce_decompositions<F: PrimeFieldBits>(
         if !known[decomposition.out] || decomposition.bits.iter().all(|&w| known[w]) {
             continue;
         }
-        let Some(inverse) = Option::<F>::from(decomposition.base.invert()) else {
+        let Some(inverse) = decomposition.base.invert() else {
             continue;
         };
         let le_bits = (values[decomposition.out] * inverse).to_le_bits();
@@ -783,7 +777,7 @@ fn deduce_decompositions<F: PrimeFieldBits>(
             if known[wire] {
                 continue;
             }
-            values[wire] = if le_bits[i] { F::ONE } else { F::ZERO };
+            values[wire] = if le_bits.as_ref()[i] { F::ONE } else { F::ZERO };
             known[wire] = true;
             progress = true;
         }
@@ -816,11 +810,7 @@ fn deduce_decompositions<F: PrimeFieldBits>(
 /// not run inside `repair`, where the cost per probe would matter and the
 /// guessing tier already picks a branch, nor inside discovery, which calls
 /// the solver once per free wire.
-pub(super) fn deduce_by_cases<F: PrimeFieldBits>(
-    events: &[Event<F>],
-    values: &mut [F],
-    known: &mut [bool],
-) {
+pub(super) fn deduce_by_cases<F: Field>(events: &[Event<F>], values: &mut [F], known: &mut [bool]) {
     let booleans = boolean_wires(events);
     let squares = square_gates(events);
     let decompositions = decompositions(events, &booleans);
@@ -942,9 +932,9 @@ fn branch_consistent<F: Field>(
         Event::Extra { c, d } => !(known[*c] && known[*d]) || values[*c] * values[*d] == F::ZERO,
     });
     holds
-        && squares.iter().all(|&(root, square)| {
-            known[root] || !known[square] || bool::from(values[square].sqrt().is_some())
-        })
+        && squares
+            .iter()
+            .all(|&(root, square)| known[root] || !known[square] || values[square].sqrt().is_some())
 }
 
 /// Single-unknown propagation to a fixpoint (pass 1 of [`repair`]), over any
@@ -1288,7 +1278,7 @@ pub(super) fn constraints_hold_over<'a, F: Field + 'a>(
 /// This runs as a unit test (`tests::selftest_fires`) and on demand in the
 /// `fuzz_advice_patcher` target (`PATCHER_SELFTEST=1`): proof the soundness
 /// direction is not vacuous.
-pub fn selftest<F: PrimeField>() {
+pub fn selftest<F: Field>() {
     let root_honest = F::from(7u64);
 
     let mut rec = Recorder::<F>::new();
@@ -1333,9 +1323,9 @@ mod tests {
         drivers::DriverValue,
         gadgets::{Bound, Kind},
         maybe::Maybe,
+        pasta::{Fp, Fq},
         routines::{Prediction, Routine},
     };
-    use ragu_pasta::{Fp, Fq};
     use ragu_primitives::{Boolean, Element};
 
     use super::*;
@@ -1582,7 +1572,7 @@ mod tests {
     /// branch and the repaired one disagree. A satisfying witness always
     /// exists (`b`, `inv` and `nb` are fully determined once `x` is), so this
     /// must return `true`; returning `false` is the frozen-guess bug.
-    fn accomplice_crosses_zero<F: PrimeField>(x_honest: u64, x_target: u64) -> bool {
+    fn accomplice_crosses_zero<F: Field>(x_honest: u64, x_target: u64) -> bool {
         let one = Recorder::<F>::ONE;
         let delta = F::from(x_target) - F::from(x_honest);
         let x_honest = F::from(x_honest);

@@ -62,14 +62,14 @@
 use alloc::{vec, vec::Vec};
 use core::cell::{RefCell, RefMut};
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{Driver, DriverTypes, LinearExpression, emulator::Emulator},
     gadgets::Bound,
     maybe::Empty,
     routines::Routine,
 };
+use udon::field::Field;
 
 use crate::{
     DriverScope,
@@ -609,7 +609,7 @@ impl<'table, 'sy, F: Field, R: Rank> Driver<'table> for Evaluator<'table, 'sy, '
                 F::ZERO
             } else {
                 self.y
-                    .pow_vartime([(seg.constraint_start + seg.num_constraints - 1) as u64])
+                    .pow_u64((seg.constraint_start + seg.num_constraints - 1) as u64)
             },
             gates: seg.gate_start,
             constraints: seg.constraint_start,
@@ -698,7 +698,7 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
             let mut evaluator = Evaluator::<'_, '_, '_, F, R> {
                 scope: SyScope {
                     // Assertion above prevents this from underflowing.
-                    current_y: y.pow_vartime([(root_constraints - 1) as u64]),
+                    current_y: y.pow_u64((root_constraints - 1) as u64),
                     gates: 0,
                     constraints: 0,
                 },

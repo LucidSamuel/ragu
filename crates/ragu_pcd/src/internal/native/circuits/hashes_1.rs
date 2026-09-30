@@ -73,14 +73,13 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
     staging::{MultiStage, MultiStageCircuit, StageBuilder},
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Gadget, Kind},
     maybe::Maybe,

@@ -1,5 +1,4 @@
-use ragu_arithmetic::Coeff;
-use ragu_pasta::Fp;
+use ragu_core::{Coeff, pasta::Fp};
 
 use crate::instance::{CircuitInstance, InstanceDriver};
 

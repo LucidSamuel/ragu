@@ -27,8 +27,7 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::Coeff;
-use ragu_core::{Result, drivers::Driver};
+use ragu_core::{Coeff, Result, drivers::Driver};
 
 /// Allocates wires on behalf of a gadget.
 ///

@@ -14,15 +14,17 @@
 //! nested-curve commitment enters the native points stage committed before
 //! $u$ (see `_08_f`).
 
-use ragu_arithmetic::{Cycle, bitreverse, ff::Field, par_join, rand::CryptoRng};
 use ragu_circuits::{polynomials::Rank, staging::StageExt};
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
+use ragu_core::{Cycle, Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, vec::FixedVec};
+use rand::CryptoRng;
+use udon::{fft::bit_reverse, field::Field};
 
 use super::{NestedRegistryWy, RegistryWy};
 use crate::{
     Application, Proof,
     internal::{native, nested},
+    multicore::par_join,
     proof::ProofBuilder,
 };
 
@@ -80,7 +82,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 
         let fixed_registry = native::InternalCircuitValues::from_fn(|id| {
             let i = usize::from(id.circuit_index()) as u32;
-            registry_xy_evals[bitreverse(i, log2_n) as usize]
+            registry_xy_evals[bit_reverse(i as usize, log2_n)]
         });
         let registry_xy_poly = B::registry_interpolate_xy(&self.native_registry, registry_xy_evals);
 
@@ -114,7 +116,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         };
 
         let rx = native::stages::query::Stage::<C, R, HEADER_SIZE>::rx(
-            C::CircuitField::random(&mut *rng),
+            C::CircuitField::random(|bytes| rng.fill_bytes(bytes)),
             &query_witness,
         )?;
 
@@ -155,7 +157,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         let fixed_registry = FixedVec::from_fn(|i| {
             let id = nested::InternalCircuitIndex::ALL[i];
             let j = usize::from(id.circuit_index()) as u32;
-            registry_xy_evals[bitreverse(j, log2_n) as usize]
+            registry_xy_evals[bit_reverse(j as usize, log2_n)]
         });
         let registry_xy_poly = B::registry_interpolate_xy(&self.nested_registry, registry_xy_evals);
 
@@ -187,7 +189,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder.set_nested_registry_xy_poly(registry_xy_poly);
 
         let bridge_rx = nested::stages::query::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::random(&mut *rng),
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
             &nested::stages::query::Witness {
                 native_query: builder.native_query_commitment(),
                 registry_xy: builder.native_registry_xy_commitment(),

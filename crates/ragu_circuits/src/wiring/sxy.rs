@@ -48,14 +48,14 @@
 //! [`sx`]: super::sx
 //! [`Driver::enforce_zero`]: ragu_core::drivers::Driver::enforce_zero
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::Bound,
     maybe::Empty,
     routines::Routine,
 };
+use udon::field::Field;
 
 use crate::{DriverScope, floor_planner::ConstraintSegment, polynomials::Rank, raw::RawCircuit};
 
@@ -231,8 +231,10 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
         }
         self.scope.constraints += 1;
 
-        self.scope.result *= self.y;
-        self.scope.result += lc(DirectSum::default()).value();
+        self.scope.result = self
+            .scope
+            .result
+            .mul_add(&self.y, &lc(DirectSum::default()).value());
 
         Ok(())
     }
@@ -249,8 +251,8 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
         // Jump to this routine's absolute position in the polynomial;
         // see "Polynomial Encoding and Scope Jumps" in the `s` module doc.
-        let x_pow = self.x.pow_vartime([gate_start as u64]);
-        let x_inv_pow = self.x_inv.pow_vartime([gate_start as u64]);
+        let x_pow = self.x.pow_u64(gate_start as u64);
+        let x_inv_pow = self.x_inv.pow_u64(gate_start as u64);
         let init_scope = SxyScope {
             current_a_x: self.base_a_x * x_pow,
             current_b_x: self.base_b_x * x_inv_pow,
@@ -282,8 +284,9 @@ impl<'dr, F: Field, R: Rank> Driver<'dr> for Evaluator<'_, F, R> {
 
         // Position the routine's local Horner result at its absolute Y offset,
         // then combine with any nested child contributions.
-        let y_pow_constraint_start = self.y.pow_vartime([constraint_start as u64]);
-        let routine_contribution = y_pow_constraint_start * self.scope.result + self.scope.sum;
+        let y_pow_constraint_start = self.y.pow_u64(constraint_start as u64);
+        let routine_contribution =
+            y_pow_constraint_start.mul_add(&self.scope.result, &self.scope.sum);
         self.scope = saved;
         self.scope.sum += routine_contribution;
 
@@ -317,13 +320,13 @@ pub fn eval<F: Field, RC: RawCircuit<F>, R: Rank>(
     } else {
         x.invert().expect("x is not zero")
     };
-    let xn = x.pow_vartime([R::n() as u64]); // xn = x^n
+    let xn = x.pow_u64(R::n() as u64); // xn = x^n
     let xn2 = xn.square(); // xn2 = x^(2n)
     let base_a_x = xn2; // x^(2n)
     let base_b_x = xn2 * x_inv; // x^(2n - 1)
     let xn4 = xn2.square(); // x^(4n)
     let base_c_x = xn4 * x_inv; // x^(4n - 1)
-    let xn_inv = x_inv.pow_vartime([R::n() as u64]); // x^(-n), or 0 if x = 0
+    let xn_inv = x_inv.pow_u64(R::n() as u64); // x^(-n), or 0 if x = 0
     let base_a_x_inv = xn_inv.square(); // x^(-2n), or 0 if x = 0
 
     let mut evaluator = Evaluator::<F, R> {

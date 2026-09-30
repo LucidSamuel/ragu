@@ -11,7 +11,6 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{
     WithAux,
     polynomials::Rank,
@@ -24,6 +23,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{GadgetExt as _, Point};
+use udon::curve::EndomorphismAffine as Affine;
 
 use crate::internal::{
     endoscalar::EndoscalarStage,
@@ -33,12 +33,12 @@ use crate::internal::{
 
 /// A cursor over [`PointsStage`] inputs that enforces equality against
 /// corresponding bridge stage elements.
-struct Walker<'pts, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+struct Walker<'pts, 'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     points: &'pts Points<'dr, D, C>,
     index: usize,
 }
 
-impl<'pts, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Walker<'pts, 'dr, D, C> {
+impl<'pts, 'dr, D: Driver<'dr>, C: Affine<Base = D::F>> Walker<'pts, 'dr, D, C> {
     fn new(points: &'pts Points<'dr, D, C>) -> Self {
         Self { points, index: 0 }
     }
@@ -61,11 +61,11 @@ impl<'pts, 'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Walker<'pts, 'dr, D
 }
 
 /// Loading circuit that loads the entire nested stage hierarchy.
-pub struct Circuit<C: CurveAffine, R: Rank> {
+pub struct Circuit<C: Affine, R: Rank> {
     _marker: PhantomData<(C, R)>,
 }
 
-impl<C: CurveAffine, R: Rank> Circuit<C, R> {
+impl<C: Affine, R: Rank> Circuit<C, R> {
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,
@@ -73,7 +73,7 @@ impl<C: CurveAffine, R: Rank> Circuit<C, R> {
     }
 }
 
-impl<C: CurveAffine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
+impl<C: Affine, R: Rank> MultiStageCircuit<C::Base, R> for Circuit<C, R> {
     type Last = stages::eval::Stage<C, R>;
     type Instance<'source> = ();
     type Witness<'source> = ();

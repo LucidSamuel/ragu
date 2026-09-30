@@ -2,7 +2,7 @@
 
 use ragu_core::Result;
 
-use crate::{Circuit, FromUniformBytes};
+use crate::{Circuit, Field};
 
 /// Raw counts collected by a circuit synthesis analysis pass.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,7 +17,7 @@ pub struct SynthesisCounts {
 /// Runs the production synthesis analysis pass and returns its raw counts.
 pub fn synthesis_counts<F, C>(circuit: &C) -> Result<SynthesisCounts>
 where
-    F: FromUniformBytes<64>,
+    F: Field,
     C: Circuit<F>,
 {
     let metrics = crate::metrics::eval(circuit)?;

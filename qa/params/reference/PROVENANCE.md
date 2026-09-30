@@ -2,7 +2,7 @@
 
 Verbatim stdout of the reference parameter generator at ragu's parameters. This
 is the authority the pure-Python port in `../poseidon_params.py` is measured
-against, and the tables in `crates/ragu_pasta/src/poseidon_f{p,q}.rs` are
+against, and the tables in `udon` (the Udon repository's `crates/udon/src/poseidon/pallas_{base,scalar}.rs`) are
 compared to it directly.
 
 Generator: [`daira/pasta-hadeshash`](https://github.com/daira/pasta-hadeshash),

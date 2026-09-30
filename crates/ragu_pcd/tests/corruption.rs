@@ -24,7 +24,7 @@ mod nontrivial_support;
 use std::sync::OnceLock;
 
 use nontrivial_support::{C, HEADER_SIZE, R, app};
-use ragu_pasta::{Fp, Fq, Pasta};
+use ragu_core::pasta::{Fp, Fq};
 use ragu_pcd::{
     Application, ApplicationBuilder, Proof,
     fuzzing::corrupt::{
@@ -70,7 +70,7 @@ impl Fixture {
 /// circuit.
 fn empty_app() -> Application<'static, C, R, HEADER_SIZE> {
     ApplicationBuilder::<C, R, HEADER_SIZE>::new()
-        .finalize(Pasta::baked())
+        .finalize(ragu_pcd::pasta::baked())
         .expect("the empty application must build")
 }
 

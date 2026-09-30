@@ -39,10 +39,10 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::{Result, drivers::Driver, maybe::Maybe};
+use ragu_core::{Cycle, Result, drivers::Driver, maybe::Maybe};
 use ragu_primitives::{Element, vec::FixedVec};
+use udon::{curve::Affine, field::Field};
 
 use super::{
     NestedRegistryWy,
@@ -61,7 +61,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn compute_ab<'dr, D, RNG: ragu_arithmetic::rand::CryptoRng>(
+    pub(super) fn compute_ab<'dr, D, RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
         native_a: FixedVec<TrackedPoly<'_, FoldKey, C::CircuitField, R>, NativeNumGroups>,
@@ -183,10 +183,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
             B::msm(msm.iter().map(|(c, _)| c), msm.iter().map(|(_, b)| b))
         };
 
-        let [a_commitment, b_commitment] = ragu_arithmetic::batch_to_affine([
-            a_commitment_proj,
-            B::sparse_commit(&b_poly, host_gen),
-        ]);
+        let mut commitments = [<C::HostCurve as Affine>::identity(); 2];
+        <C::HostCurve as Affine>::batch_to_affine(
+            &[a_commitment_proj, B::sparse_commit(&b_poly, host_gen)],
+            &mut commitments,
+        );
+        let [a_commitment, b_commitment] = commitments;
 
         builder.set_native_a_poly(a_poly, a_commitment);
         builder.set_native_b_poly(b_poly, b_commitment);

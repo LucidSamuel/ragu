@@ -5,15 +5,15 @@
 //! assignment closures cannot run, and compares the emitted shape with a
 //! concrete patcher capture. Nothing is added to a production crate's API.
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_circuits::Circuit;
 use ragu_core::{
-    Result,
+    Coeff, Result,
     drivers::{Driver, DriverTypes, LinearExpression},
     maybe::Empty,
 };
 use ragu_primitives::{Element, GadgetExt};
 use ragu_testing::patcher::{Capture, Event};
+use udon::field::Field;
 
 /// Constraint shape produced by witness-free execution of circuit source.
 #[derive(Clone, Debug)]
@@ -247,8 +247,7 @@ mod tests {
     use std::cell::Cell;
 
     use ragu_circuits::WithAux;
-    use ragu_core::{drivers::DriverValue, gadgets::Bound};
-    use ragu_pasta::Fp;
+    use ragu_core::{drivers::DriverValue, gadgets::Bound, pasta::Fp};
     use ragu_testing::patcher::capture;
 
     use super::*;

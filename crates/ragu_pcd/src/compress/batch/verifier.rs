@@ -2,8 +2,9 @@
 
 use alloc::vec::Vec;
 
-use ragu_arithmetic::{CurveAffine, ff::Field, msm};
 use ragu_core::{Error, Result};
+use udon::curve::Affine;
+use udon::field::Field;
 
 use super::{Batch, Batched};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
@@ -15,7 +16,7 @@ use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
 ///
 /// Fails if the batch does not carry one value per polynomial, or if $u$
 /// lands on a query point, which happens with negligible probability.
-pub(crate) fn verify<C: CurveAffine, T: IpaTranscript<C>>(
+pub(crate) fn verify<C: Affine, T: IpaTranscript<C>>(
     commitments: &[C],
     claims: &[OpeningClaim<C::Scalar>],
     batch: &Batch<C>,
@@ -38,7 +39,8 @@ pub(crate) fn verify<C: CurveAffine, T: IpaTranscript<C>>(
     // f(u) from the quotient relation, the first claim weighted highest.
     let mut f_at_u = C::Scalar::ZERO;
     for claim in claims {
-        let denominator = Option::<C::Scalar>::from((u - claim.point).invert())
+        let denominator = (u - claim.point)
+            .invert()
             .ok_or_else(|| Error::InvalidWitness("u lands on a query point".into()))?;
         f_at_u = f_at_u * alpha + (batch.evaluations[claim.poly] - claim.value) * denominator;
     }
@@ -59,7 +61,7 @@ pub(crate) fn verify<C: CurveAffine, T: IpaTranscript<C>>(
     let points: Vec<C> = core::iter::once(batch.f)
         .chain(commitments.iter().copied())
         .collect();
-    let commitment = msm(&weights, &points).into();
+    let commitment = C::msm(&weights, &points).into();
 
     Ok(Batched {
         commitment,

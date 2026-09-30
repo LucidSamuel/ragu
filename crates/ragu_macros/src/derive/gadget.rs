@@ -7,7 +7,7 @@ use syn::{
 
 use crate::{
     helpers::{GenericDriver, attr_is},
-    path_resolution::{RaguArithmeticPath, RaguCorePath},
+    path_resolution::{RaguCorePath, UdonPath},
     substitution::replace_driver_field_in_generic_param,
 };
 
@@ -58,7 +58,7 @@ impl GenericDriver {
 
 pub fn derive(
     input: DeriveInput,
-    ragu_arithmetic_path: RaguArithmeticPath,
+    udon_path: UdonPath,
     ragu_core_path: RaguCorePath,
 ) -> Result<TokenStream> {
     let DeriveInput {
@@ -217,7 +217,7 @@ pub fn derive(
         for param in &mut params {
             replace_driver_field_in_generic_param(param, &driver.ident, &driverfield_ident);
         }
-        params.push(parse_quote!( #driverfield_ident: #ragu_arithmetic_path::ff::Field ));
+        params.push(parse_quote!( #driverfield_ident: #udon_path::field::Field ));
 
         parse_quote!( < #( #params ),* >)
     };
@@ -305,12 +305,7 @@ mod tests {
         };
 
         assert!(
-            derive(
-                input,
-                RaguArithmeticPath::default(),
-                RaguCorePath::default()
-            )
-            .is_err(),
+            derive(input, UdonPath::default(), RaguCorePath::default()).is_err(),
             "Expected error for enum usage"
         );
     }
@@ -330,12 +325,7 @@ mod tests {
         };
 
         assert!(
-            derive(
-                input,
-                RaguArithmeticPath::default(),
-                RaguCorePath::default()
-            )
-            .is_err(),
+            derive(input, UdonPath::default(), RaguCorePath::default()).is_err(),
             "Expected error for where clause"
         );
     }
@@ -354,12 +344,7 @@ mod tests {
         };
 
         assert!(
-            derive(
-                input,
-                RaguArithmeticPath::default(),
-                RaguCorePath::default()
-            )
-            .is_err(),
+            derive(input, UdonPath::default(), RaguCorePath::default()).is_err(),
             "Expected error for multiple annotations on field"
         );
     }
@@ -376,12 +361,7 @@ mod tests {
         };
 
         assert!(
-            derive(
-                input,
-                RaguArithmeticPath::default(),
-                RaguCorePath::default()
-            )
-            .is_err(),
+            derive(input, UdonPath::default(), RaguCorePath::default()).is_err(),
             "Expected error for unnamed struct fields"
         );
     }
@@ -401,7 +381,7 @@ mod tests {
             }
         };
 
-        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
+        let result = derive(input, UdonPath::default(), RaguCorePath::default()).unwrap();
 
         assert_eq!(
             result.to_string(),
@@ -426,7 +406,7 @@ mod tests {
                         Boolean<'static, ::core::marker::PhantomData< <MyD as ::ragu_core::drivers::Driver<'my_dr> >::F> >;
                 }
                 #[automatically_derived]
-                unsafe impl<DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
+                unsafe impl<DriverField: ::udon::field::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
                     for Boolean<'static, ::core::marker::PhantomData<DriverField> >
                 {
                     type Rebind<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>> =
@@ -492,7 +472,7 @@ mod tests {
             }
         };
 
-        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
+        let result = derive(input, UdonPath::default(), RaguCorePath::default()).unwrap();
 
         assert_eq!(
             result.to_string(),
@@ -518,7 +498,7 @@ mod tests {
                 }
 
                 #[automatically_derived]
-                unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::ragu_arithmetic::ff::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
+                unsafe impl<C: Blah<DriverField>, const N: usize, DriverField: ::udon::field::Field> ::ragu_core::gadgets::GadgetKind<DriverField>
                     for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
                 {
                     type Rebind<'mydr, MyD: ::ragu_core::drivers::Driver<'mydr, F = DriverField>> = MyGadget<'mydr, MyD, C, N>;
@@ -590,7 +570,7 @@ mod tests {
             }
         };
 
-        let result = derive(input, RaguArithmeticPath::default(), RaguCorePath::default()).unwrap();
+        let result = derive(input, UdonPath::default(), RaguCorePath::default()).unwrap();
 
         // Verify both field_a (no annotation) and field_b (explicit annotation) are treated as gadgets
         let result_str = result.to_string();

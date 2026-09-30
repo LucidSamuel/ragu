@@ -1,13 +1,14 @@
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue, LinearExpression},
     gadgets::{Bound, Kind},
     maybe::{Always, Maybe},
+    pasta::Fp,
     routines::{Prediction, Routine},
 };
-use ragu_pasta::Fp;
 use ragu_primitives::{Element, Simulator, allocator::Standard};
+use rand::Rng;
+use udon::field::Field;
 
 use crate::{
     Circuit, WithAux,
@@ -1301,13 +1302,13 @@ fn fingerprint_quad(
     }
 }
 
-fn fingerprint_elem(
-    routine: &impl Routine<Fp, Input = Kind![Fp; Element<'_, _>]>,
+fn fingerprint_elem<F: Field>(
+    routine: &impl Routine<F, Input = Kind![F; Element<'_, _>]>,
 ) -> DeepFingerprint {
-    let mut sim = Simulator::<Fp>::new();
+    let mut sim = Simulator::<F>::new();
     let allocator = &mut Standard::new();
-    let input = Element::alloc(&mut sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &input).unwrap() {
+    let input = Element::alloc(&mut sim, allocator, Always::<F>::just(|| F::ONE)).unwrap();
+    match metrics::tests::fingerprint_routine::<F, Simulator<F>, _>(routine, &input).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
     }
@@ -1320,14 +1321,14 @@ fn fingerprint_unit(routine: &impl Routine<Fp, Input = Kind![Fp; ()]>) -> DeepFi
     }
 }
 
-fn fingerprint_pair(
-    routine: &impl Routine<Fp, Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)]>,
+fn fingerprint_pair<F: Field>(
+    routine: &impl Routine<F, Input = Kind![F; (Element<'_, _>, Element<'_, _>)]>,
 ) -> DeepFingerprint {
-    let sim = &mut Simulator::<Fp>::new();
+    let sim = &mut Simulator::<F>::new();
     let allocator = &mut Standard::new();
-    let a = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    let b = Element::alloc(sim, allocator, Always::<Fp>::just(|| Fp::ONE)).unwrap();
-    match metrics::tests::fingerprint_routine::<Fp, Simulator<Fp>, _>(routine, &(a, b)).unwrap() {
+    let a = Element::alloc(sim, allocator, Always::<F>::just(|| F::ONE)).unwrap();
+    let b = Element::alloc(sim, allocator, Always::<F>::just(|| F::ONE)).unwrap();
+    match metrics::tests::fingerprint_routine::<F, Simulator<F>, _>(routine, &(a, b)).unwrap() {
         RoutineIdentity::Routine(fp) => fp,
         RoutineIdentity::Root => panic!("expected Routine variant"),
     }
@@ -1335,9 +1336,9 @@ fn fingerprint_pair(
 
 /// Extracts a routine's fingerprint via `metrics::eval`, which runs
 /// through `Counter::routine` (the production path for input remapping).
-fn fingerprint_via_eval<Ro>(routine: &Ro) -> DeepFingerprint
+fn fingerprint_via_eval<F: Field, Ro>(routine: &Ro) -> DeepFingerprint
 where
-    Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
+    Ro: Routine<F, Input = Kind![F; Element<'_, _>], Output = Kind![F; Element<'_, _>]>
         + Clone
         + Send
         + Sync,
@@ -1360,20 +1361,20 @@ where
 #[derive(Clone)]
 struct SingleRoutineCircuit<Ro: Clone>(Ro);
 
-impl<Ro> Circuit<Fp> for SingleRoutineCircuit<Ro>
+impl<F: Field, Ro> Circuit<F> for SingleRoutineCircuit<Ro>
 where
-    Ro: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
+    Ro: Routine<F, Input = Kind![F; Element<'_, _>], Output = Kind![F; Element<'_, _>]>
         + Clone
         + Send
         + Sync,
     for<'dr> Ro::Aux<'dr>: Send + Clone,
 {
-    type Instance<'source> = Fp;
-    type Output = Kind![Fp; Element<'_, _>];
-    type Witness<'source> = Fp;
+    type Instance<'source> = F;
+    type Output = Kind![F; Element<'_, _>];
+    type Witness<'source> = F;
     type Aux<'source> = ();
 
-    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'source>>,
@@ -1385,7 +1386,7 @@ where
         Element::alloc(dr, allocator, instance)
     }
 
-    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
@@ -2028,23 +2029,23 @@ fn test_swap_allocation_order_base_matches_deep_differs() {
 /// structure), then calls the routine.
 struct PairRoutineCircuit<Ro: Clone>(Ro);
 
-impl<Ro> Circuit<Fp> for PairRoutineCircuit<Ro>
+impl<F: Field, Ro> Circuit<F> for PairRoutineCircuit<Ro>
 where
     Ro: Routine<
-            Fp,
-            Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
-            Output = Kind![Fp; Element<'_, _>],
+            F,
+            Input = Kind![F; (Element<'_, _>, Element<'_, _>)],
+            Output = Kind![F; Element<'_, _>],
         > + Clone
         + Send
         + Sync,
     for<'dr> Ro::Aux<'dr>: Send + Clone,
 {
-    type Instance<'source> = Fp;
-    type Output = Kind![Fp; Element<'_, _>];
-    type Witness<'source> = Fp;
+    type Instance<'source> = F;
+    type Output = Kind![F; Element<'_, _>];
+    type Witness<'source> = F;
     type Aux<'source> = ();
 
-    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+    fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
         instance: DriverValue<D, Self::Instance<'source>>,
@@ -2056,7 +2057,7 @@ where
         Element::alloc(dr, allocator, instance)
     }
 
-    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = Fp>>(
+    fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
         &self,
         dr: &mut D,
         witness: DriverValue<D, Self::Witness<'source>>,
@@ -2087,27 +2088,27 @@ where
 /// [`BaseFingerprint`]: crate::BaseFingerprint
 #[test]
 fn test_typeid_does_not_affect_polynomial() {
-    let x = Fp::random(&mut rand::rng());
-    let y = Fp::random(&mut rand::rng());
+    let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+    let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
     /// Compares s(x,y) for a single-input circuit vs a pair-input circuit
     /// whose routines share the same `BaseFingerprint`.
-    fn assert_same_polynomial<RoElem, RoPair>(
+    fn assert_same_polynomial<F: Field, RoElem, RoPair>(
         elem_routine: RoElem,
         pair_routine: RoPair,
-        x: Fp,
-        y: Fp,
+        x: F,
+        y: F,
         label: &str,
     ) where
-        RoElem: Routine<Fp, Input = Kind![Fp; Element<'_, _>], Output = Kind![Fp; Element<'_, _>]>
+        RoElem: Routine<F, Input = Kind![F; Element<'_, _>], Output = Kind![F; Element<'_, _>]>
             + Clone
             + Send
             + Sync,
         for<'dr> RoElem::Aux<'dr>: Send + Clone,
         RoPair: Routine<
-                Fp,
-                Input = Kind![Fp; (Element<'_, _>, Element<'_, _>)],
-                Output = Kind![Fp; Element<'_, _>],
+                F,
+                Input = Kind![F; (Element<'_, _>, Element<'_, _>)],
+                Output = Kind![F; Element<'_, _>],
             > + Clone
             + Send
             + Sync,
@@ -2123,10 +2124,10 @@ fn test_typeid_does_not_affect_polynomial() {
         );
 
         let obj_elem =
-            crate::into_wiring_object::<Fp, _, TestRank>(SingleRoutineCircuit(elem_routine))
+            crate::into_wiring_object::<F, _, TestRank>(SingleRoutineCircuit(elem_routine))
                 .unwrap();
         let obj_pair =
-            crate::into_wiring_object::<Fp, _, TestRank>(PairRoutineCircuit(pair_routine)).unwrap();
+            crate::into_wiring_object::<F, _, TestRank>(PairRoutineCircuit(pair_routine)).unwrap();
 
         let fp_elem = crate::floor_planner::floor_plan(obj_elem.segment_records());
         let fp_pair = crate::floor_planner::floor_plan(obj_pair.segment_records());

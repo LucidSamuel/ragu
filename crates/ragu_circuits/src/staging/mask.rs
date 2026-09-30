@@ -1,5 +1,5 @@
-use ragu_arithmetic::{ff::Field, geosum};
 use ragu_core::Result;
+use udon::{field::Field, polynomial::geometric_sum};
 
 use crate::{
     WiringObject,
@@ -33,10 +33,10 @@ pub(crate) fn global_mask<F: Field, R: Rank>(x: F, y: F) -> F {
     }
 
     let xy = x * y;
-    let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
+    let xy_2n = xy.pow_u64(2 * R::n() as u64);
     let xy_inv = xy.invert().expect("xy is not zero");
 
-    geosum(xy, R::n() << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
+    geometric_sum(xy, R::n() << 2) - (xy_2n + F::ONE) * (xy_2n * xy_inv + F::ONE)
 }
 
 /// Computes the polynomial restriction $S\_{\text{global}}(p, Y)$ (equivalently
@@ -161,10 +161,10 @@ impl<R: Rank> StageMask<R> {
         view.c.resize(g + m, F::ZERO);
 
         let p_inv = p.invert().expect("p is not zero");
-        let mut d = -p.pow_vartime([g as u64]);
-        let mut a = -p.pow_vartime([(2 * n + g) as u64]);
-        let mut b = -p.pow_vartime([(2 * n - 1 - g) as u64]);
-        let mut c = -p.pow_vartime([(4 * n - 1 - g) as u64]);
+        let mut d = -p.pow_u64(g as u64);
+        let mut a = -p.pow_u64((2 * n + g) as u64);
+        let mut b = -p.pow_u64((2 * n - 1 - g) as u64);
+        let mut c = -p.pow_u64((4 * n - 1 - g) as u64);
 
         for j in g..g + m {
             view.d[j] = d;
@@ -199,11 +199,11 @@ impl<F: Field, R: Rank> WiringObject<F, R> for StageMask<R> {
         }
 
         let xy = x * y;
-        let xy_2n = xy.pow_vartime([2 * R::n() as u64]);
+        let xy_2n = xy.pow_u64(2 * R::n() as u64);
 
-        let gsum = geosum(xy, self.num_gates);
-        let skip = xy.pow_vartime([self.skip_gates as u64]);
-        let tail = xy.pow_vartime([(2 * R::n() - self.skip_gates - self.num_gates) as u64]);
+        let gsum = geometric_sum(xy, self.num_gates);
+        let skip = xy.pow_u64(self.skip_gates as u64);
+        let tail = xy.pow_u64((2 * R::n() - self.skip_gates - self.num_gates) as u64);
 
         -((F::ONE + xy_2n) * (skip + tail) * gsum)
     }
@@ -238,21 +238,20 @@ mod tests {
     use core::marker::PhantomData;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::{
-        CurveAffine, Cycle, FixedGenerators,
-        ff::Field,
-        group::{Curve, CurveAffine as _},
-        rand::RngExt,
-    };
     use ragu_core::{
-        Result,
+        Cycle, FixedGenerators, Result,
         drivers::{Driver, DriverValue, LinearExpression, emulator::Emulator},
         gadgets::{Bound, Gadget},
         maybe::Maybe,
+        pasta::{EpAffine, EqAffine, Fp, Fq, Pasta},
         routines::{Prediction, Routine},
     };
-    use ragu_pasta::{EpAffine, EqAffine, Fp, Fq, Pasta};
     use ragu_primitives::{Element, Endoscalar, Point, consistent::Consistent, io::Write};
+    use rand::{Rng, RngExt};
+    use udon::{
+        curve::{Affine, Projective},
+        field::Field,
+    };
 
     use super::{
         super::{Stage, StageExt},
@@ -374,7 +373,7 @@ mod tests {
         /// witness polynomial. The SYSTEM gate is included in `skip_gates`, so the
         /// first active gate is at index `skip_gates` and the formula
         /// becomes $2n - 1 - \text{skip\_gates} - \text{coefficient\_index}$.
-        fn generator_for_a_coefficient<C: CurveAffine>(
+        fn generator_for_a_coefficient<C: Affine>(
             &self,
             generators: &impl FixedGenerators<C>,
             coefficient_index: usize,
@@ -450,10 +449,10 @@ mod tests {
             }
         }
 
-        let endoscalar_a: u128 = ragu_arithmetic::rand::rng().random();
-        let endoscalar_b: u128 = ragu_arithmetic::rand::rng().random();
-        let p1 = (EpAffine::generator() * Fq::random(&mut ragu_arithmetic::rand::rng())).into();
-        let p2 = (EpAffine::generator() * Fq::random(&mut ragu_arithmetic::rand::rng())).into();
+        let endoscalar_a: u128 = rand::rng().random();
+        let endoscalar_b: u128 = rand::rng().random();
+        let p1 = (EpAffine::generator() * Fq::random(|bytes| rand::rng().fill_bytes(bytes))).into();
+        let p2 = (EpAffine::generator() * Fq::random(|bytes| rand::rng().fill_bytes(bytes))).into();
 
         let rx1_a = MyStage1::rx(Fp::ZERO, endoscalar_a)?;
         let rx1_b = MyStage1::rx(Fp::ZERO, endoscalar_b)?;
@@ -462,8 +461,8 @@ mod tests {
         let circ1 = MyStage1::mask()?.into_inner();
         let circ2 = MyStage2::mask()?.into_inner();
 
-        let z = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let z = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         // sy() now returns -notch; add global_project to recover the full mask.
         let full_sy = |circ: &dyn WiringObject<Fp, R>, y| {
@@ -499,8 +498,8 @@ mod tests {
     fn test_skip_gates_one() {
         let stage_mask = StageMask::<R>::new(1, 5).unwrap();
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         // All three return -notch (the global term is factored out by Registry).
         let sxy = stage_mask.sxy(x, y, &[]);
@@ -521,8 +520,8 @@ mod tests {
     fn test_stage_mask_all_gates() {
         // Edge case: skip = 1, num = R::n() - 1, reserved = 0.
         let stage = StageMask::<R>::new(1, R::n() - 1).unwrap();
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let generic = mask_wiring_object(stage.clone());
         let plan = floor_planner::floor_plan(generic.segment_records());
@@ -565,8 +564,8 @@ mod tests {
         // When reserved = 0, all gates except the SYSTEM gate are active.
         let stage = StageMask::<R>::new(1, R::n() - 1).expect("valid stage mask");
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         // All three return -notch (the global term is factored out by Registry).
         let sxy = stage.sxy(x, y, &[]);
@@ -632,8 +631,8 @@ mod tests {
                 Ok(())
             };
 
-            let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+            let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
             check(x, y)?;
             check(Fp::ZERO, y)?;
             check(x, Fp::ZERO)?;
@@ -649,12 +648,12 @@ mod tests {
             let mask_a = StageMask::<R>::new(1, split - 1).unwrap();
             let mask_b = StageMask::<R>::new(split, R::n() - split).unwrap();
 
-            let p = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+            let p = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
             // Polynomial-level: (-notch_a(p) + -notch_b(p)).eval(q) == -global_project(p).eval(q)
-            let q = Fp::random(&mut ragu_arithmetic::rand::rng());
+            let q = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
             let mut sum_poly = mask_a.notch_project(p);
             sum_poly += &mask_b.notch_project(p);
             let mut neg_global = super::global_project::<Fp, R>(p);
@@ -744,7 +743,7 @@ mod tests {
         let stage_mask = ConstrainedStage::mask::<'_>().unwrap().into_inner();
 
         // sy() returns -notch; add global_project to recover the full mask.
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         let mut sy = super::global_project::<Fp, R>(y);
         sy += &stage_mask.sy(y, &[]);
 
@@ -825,8 +824,8 @@ mod tests {
             "MulOnlyRoutine should have 0 constraints"
         );
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         // None of these must panic — previously sy would underflow on `- 1`.
         let sxy = circuit.sxy(x, y, &floor_plan);
@@ -945,7 +944,7 @@ mod tests {
     /// at the index computed by `StageExt::generator_index_for_a`.
     #[test]
     fn test_generator_for_a_coefficient() {
-        let pasta = Pasta::baked();
+        let pasta = ragu_pcd::pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
         // Test via StageMask directly
@@ -1002,7 +1001,7 @@ mod tests {
     /// matches a manual MSM using generators from `generator_index_for_a`.
     #[test]
     fn test_a_wire_commitment_for_challenge_smuggling() {
-        let pasta = Pasta::baked();
+        let pasta = ragu_pcd::pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
@@ -1016,7 +1015,7 @@ mod tests {
             let idx = <ChildOfParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let a_gen = generators.g()[idx];
             let contrib = a_gen * challenge;
-            manual_commitment = (manual_commitment.to_curve() + contrib).to_affine();
+            manual_commitment = (manual_commitment.to_projective() + contrib).to_affine();
         }
 
         assert_eq!(
@@ -1028,7 +1027,7 @@ mod tests {
     /// Same as above but for a root stage (no parent, zero skip).
     #[test]
     fn test_a_wire_commitment_via_staging_mechanism() {
-        let pasta = Pasta::baked();
+        let pasta = ragu_pcd::pasta::baked();
         let generators = Pasta::host_generators(pasta);
 
         let challenges = [Fp::from(42u64), Fp::from(123u64), Fp::from(456u64)];
@@ -1041,7 +1040,7 @@ mod tests {
         for (i, &challenge) in challenges.iter().enumerate() {
             let idx = <ParentAOnlyStage as StageExt<Fp, R>>::generator_index_for_a(i);
             let a_gen = generators.g()[idx];
-            manual_commitment = (manual_commitment.to_curve() + a_gen * challenge).to_affine();
+            manual_commitment = (manual_commitment.to_projective() + a_gen * challenge).to_affine();
         }
 
         assert_eq!(

@@ -29,7 +29,6 @@
 //! There is no suffix zero here: the nested registry holds internal circuits
 //! only, so nothing needs telling apart from an application circuit.
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::horner::Horner;
 use ragu_core::{
     Result,
@@ -43,6 +42,7 @@ use ragu_primitives::{
     io::Write,
     vec::{ConstLen, FixedVec},
 };
+use udon::curve::EndomorphismAffine as Affine;
 
 use crate::internal::native::unified::Slot;
 
@@ -54,7 +54,7 @@ pub type ExportedLen = ConstLen<NUM_EXPORTED>;
 
 /// The gadget kind of the nested internal circuits' output.
 #[allow(type_alias_bounds)]
-pub type OutputKind<C: CurveAffine> = Kind![C::Base; Output<'_, _, C>];
+pub type OutputKind<C: Affine> = Kind![C::Base; Output<'_, _, C>];
 
 /// Native (non-gadget) representation of the nested unified instance.
 ///
@@ -62,7 +62,7 @@ pub type OutputKind<C: CurveAffine> = Kind![C::Base; Output<'_, _, C>];
 /// threaded through, so that the prover can check every slot is constrained
 /// by exactly one of them.
 #[derive(Clone)]
-pub struct Instance<C: CurveAffine> {
+pub struct Instance<C: Affine> {
     pub c: C::Base,
     pub v: C::Base,
     pub x: C::Base,
@@ -73,7 +73,7 @@ pub struct Instance<C: CurveAffine> {
     pub coverage: Coverage,
 }
 
-impl<C: CurveAffine> Instance<C> {
+impl<C: Affine> Instance<C> {
     /// Asserts that every slot has been covered by some circuit.
     ///
     /// # Panics
@@ -125,7 +125,7 @@ impl Coverage {
 
 /// The shared public instance of the nested internal circuits.
 #[derive(Gadget, Write)]
-pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Output<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     #[ragu(gadget)]
     pub c: Element<'dr, D>,
     #[ragu(gadget)]
@@ -140,7 +140,7 @@ pub struct Output<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
     pub exported: FixedVec<Point<'dr, D, C>, ExportedLen>,
 }
 
-impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Output<'dr, D, C> {
+impl<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> Output<'dr, D, C> {
     /// Allocates the instance's wires from its native values.
     pub fn alloc<A: Allocator<'dr, D>>(
         dr: &mut D,
@@ -167,7 +167,7 @@ impl<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> Output<'dr, D, C> {
 }
 
 /// Allocates the exported commitments' wires.
-fn alloc_exported<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>>(
+fn alloc_exported<'dr, D: Driver<'dr>, C: Affine<Base = D::F>>(
     dr: &mut D,
     exported: DriverValue<D, [C; NUM_EXPORTED]>,
 ) -> Result<FixedVec<Point<'dr, D, C>, ExportedLen>> {
@@ -180,7 +180,7 @@ fn alloc_exported<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>>(
 /// for it, receive and constrain, or compute and provide; whatever is left
 /// is allocated by [`finish`](Self::finish), which also folds the circuit's
 /// coverage into the [`Instance`] it returns.
-pub struct OutputBuilder<'dr, D: Driver<'dr>, A, C: CurveAffine<Base = D::F>> {
+pub struct OutputBuilder<'dr, D: Driver<'dr>, A, C: Affine<Base = D::F>> {
     pub c: Slot<'dr, D, A, Element<'dr, D>, C::Base>,
     pub v: Slot<'dr, D, A, Element<'dr, D>, C::Base>,
     pub x: Slot<'dr, D, A, Element<'dr, D>, C::Base>,
@@ -190,7 +190,7 @@ pub struct OutputBuilder<'dr, D: Driver<'dr>, A, C: CurveAffine<Base = D::F>> {
     instance: DriverValue<D, Instance<C>>,
 }
 
-impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: CurveAffine<Base = D::F>>
+impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: Affine<Base = D::F>>
     OutputBuilder<'dr, D, A, C>
 {
     /// Creates a builder over `instance`, which carries the values and the
@@ -203,7 +203,7 @@ impl<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: CurveAffine<Base = D::F>>
         ) -> Result<Element<'dr, D>> {
             Element::alloc(dr, allocator, value)
         }
-        fn exported<'dr, D: Driver<'dr>, A, C: CurveAffine<Base = D::F>>(
+        fn exported<'dr, D: Driver<'dr>, A, C: Affine<Base = D::F>>(
             dr: &mut D,
             _: &mut A,
             value: DriverValue<D, [C; NUM_EXPORTED]>,

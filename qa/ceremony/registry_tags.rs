@@ -21,9 +21,9 @@
 //! for the sampling requirement. Use [`ApplicationBuilder::with_registry_tags`](ragu_pcd::ApplicationBuilder::with_registry_tags)
 //! to build an application with these tags.
 
-use ragu_arithmetic::ff::PrimeField;
-use ragu_pasta::Pasta;
+use ragu_core::pasta::Pasta;
 use ragu_pcd::RegistryTags;
+use udon::field::Field;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -71,9 +71,9 @@ fn be_hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Big-endian hex of a field element, matching the `fp!`/`fq!` literal format.
-fn be_hex<F: PrimeField>(f: F) -> String {
-    f.to_repr()
+/// Big-endian hex of a field element, matching Udon's field literal format.
+fn be_hex<F: Field>(f: F) -> String {
+    f.to_bytes()
         .as_ref()
         .iter()
         .rev()

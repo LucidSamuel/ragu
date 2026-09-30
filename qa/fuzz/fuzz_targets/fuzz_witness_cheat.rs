@@ -42,8 +42,7 @@
 
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_core::{Error, drivers::Driver, maybe::Maybe};
+use ragu_core::{Error, drivers::Driver, maybe::Maybe, pasta::Fp};
 use ragu_primitives::{Element, Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, Op, OpKind, OpSet, Preamble, Program, special_value, synthesize_with_hook,

@@ -7,13 +7,13 @@ use syn::{
 
 use crate::{
     helpers::{GenericDriver, attr_is},
-    path_resolution::{RaguArithmeticPath, RaguCorePath, RaguPrimitivesPath},
+    path_resolution::{RaguCorePath, RaguPrimitivesPath, UdonPath},
     substitution::replace_driver_field_in_generic_param,
 };
 
 pub fn derive(
     input: DeriveInput,
-    ragu_arithmetic_path: RaguArithmeticPath,
+    udon_path: UdonPath,
     ragu_core_path: RaguCorePath,
     ragu_primitives_path: RaguPrimitivesPath,
 ) -> Result<TokenStream> {
@@ -106,7 +106,7 @@ pub fn derive(
         for param in &mut params {
             replace_driver_field_in_generic_param(param, &driver.ident, &driverfield_ident);
         }
-        params.push(parse_quote!( #driverfield_ident: #ragu_arithmetic_path::ff::Field ));
+        params.push(parse_quote!( #driverfield_ident: #udon_path::field::Field ));
 
         parse_quote!( < #( #params ),* >)
     };
@@ -154,7 +154,7 @@ mod tests {
 
         let input: DeriveInput = parse_quote! {
             #[derive(Write)]
-            pub struct MyGadget<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>, C: CurveAffine, const N: usize> {
+            pub struct MyGadget<'my_dr, #[ragu(driver)] MyD: Driver<'my_dr>, C: Affine, const N: usize> {
                 field1: Element<'my_dr, MyD>,
                 field2: Boolean<'my_dr, MyD>,
                 #[ragu(skip)]
@@ -164,7 +164,7 @@ mod tests {
 
         let result = derive(
             input,
-            RaguArithmeticPath::default(),
+            UdonPath::default(),
             RaguCorePath::default(),
             RaguPrimitivesPath::default(),
         )
@@ -174,7 +174,7 @@ mod tests {
             result.to_string(),
             quote!(
                 #[automatically_derived]
-                impl<C: CurveAffine, const N: usize, DriverField: ::ragu_arithmetic::ff::Field> ::ragu_primitives::io::Write<DriverField>
+                impl<C: Affine, const N: usize, DriverField: ::udon::field::Field> ::ragu_primitives::io::Write<DriverField>
                     for MyGadget<'static, ::core::marker::PhantomData< DriverField >, C, N>
                 {
                     fn write_gadget<'my_dr, MyD: ::ragu_core::drivers::Driver<'my_dr, F = DriverField>, B: ::ragu_primitives::io::Buffer<'my_dr, MyD> >(

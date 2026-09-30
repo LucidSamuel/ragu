@@ -50,9 +50,8 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Coeff;
 use ragu_core::{
-    Result,
+    Coeff, Result,
     convert::WireMap,
     drivers::{
         Driver, DriverValue,

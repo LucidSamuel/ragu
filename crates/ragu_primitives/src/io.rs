@@ -15,12 +15,12 @@
 mod pipe;
 
 pub use pipe::Pipe;
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::Driver,
     gadgets::{Bound, GadgetKind},
 };
+use udon::field::Field;
 
 use crate::Element;
 
@@ -70,12 +70,12 @@ pub trait Buffer<'dr, D: Driver<'dr>> {
 /// ## Example
 ///
 /// ```rust
-/// # use ragu_arithmetic::CurveAffine;
+/// # use udon::curve::Affine;
 /// # use ragu_core::{drivers::{Driver, DriverValue}, gadgets::Gadget};
 /// # use ragu_primitives::{Element, io::Write};
 /// # use core::marker::PhantomData;
 /// #[derive(Gadget, Write)]
-/// pub struct Point<'dr, D: Driver<'dr>, C: CurveAffine> {
+/// pub struct Point<'dr, D: Driver<'dr>, C: Affine> {
 ///     #[ragu(gadget)]
 ///     x: Element<'dr, D>,
 ///     #[ragu(gadget)]

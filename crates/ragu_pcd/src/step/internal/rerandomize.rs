@@ -21,9 +21,8 @@
 
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Cycle;
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     maybe::Maybe,
 };
@@ -111,8 +110,8 @@ mod tests {
             drivers::{Driver, DriverValue},
             gadgets::{Bound, Kind},
             maybe::Maybe,
+            pasta::{Fp, Pasta},
         };
-        use ragu_pasta::{Fp, Pasta};
         use ragu_primitives::{Element, allocator::Allocator};
         use ragu_testing::registry::TestRegistryBuilder;
 

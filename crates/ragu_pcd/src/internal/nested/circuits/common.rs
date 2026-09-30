@@ -11,7 +11,6 @@
 //! points stage and booleanity of the endoscalar stage once for all consuming
 //! circuits.
 
-use ragu_arithmetic::CurveAffine;
 use ragu_circuits::{polynomials::Rank, staging::StageBuilder};
 use ragu_core::{
     Result,
@@ -19,6 +18,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::Endoscalar;
+use udon::curve::EndomorphismAffine as Affine;
 
 use crate::internal::{
     endoscalar::EndoscalarStage,
@@ -27,7 +27,7 @@ use crate::internal::{
 
 /// The witnesses of every stage a nested circuit reserves, and the nested
 /// unified instance the circuit outputs.
-pub struct Witness<'a, C: CurveAffine> {
+pub struct Witness<'a, C: Affine> {
     pub instance: unified::Instance<C>,
     pub endoscalar: u128,
     pub points: &'a PointsWitness<C>,
@@ -43,7 +43,7 @@ pub struct Witness<'a, C: CurveAffine> {
 }
 
 /// The output gadgets of the stages a circuit reads, once loaded.
-pub struct Loaded<'dr, D: Driver<'dr>, C: CurveAffine<Base = D::F>> {
+pub struct Loaded<'dr, D: Driver<'dr>, C: Affine<Base = D::F>> {
     pub endoscalar: Endoscalar<'dr, D>,
     pub points: Points<'dr, D, C>,
     pub preamble: stages::preamble::Output<'dr, D, C>,
@@ -64,7 +64,7 @@ pub fn load_all<'a, 'dr, 'source: 'dr, D, C, R>(
 ) -> Result<(&'a mut D, Loaded<'dr, D, C>)>
 where
     D: Driver<'dr, F = C::Base>,
-    C: CurveAffine,
+    C: Affine,
     R: Rank,
 {
     let (endoscalar, dr) = dr.add_stage::<EndoscalarStage>()?;

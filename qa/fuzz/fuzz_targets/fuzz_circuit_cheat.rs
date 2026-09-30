@@ -56,20 +56,19 @@
 
 #![no_main]
 
-use ff::Field;
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
 use ragu_circuits::{
     CircuitExt,
     polynomials::{Rank, TestRank, sparse},
     registry::{CircuitIndex, Registry, RegistryBuilder},
 };
+use ragu_core::pasta::Fp;
 use ragu_primitives::{Simulator, allocator::Standard};
 use ragu_testing_fuzz::substrate::{
     Capabilities, Limits, OpSet, Overrides, Preamble, Program, ProgramCircuit, native_satisfied,
     shadow_eval, synthesize_with_witness,
 };
+use udon::field::Field;
 
 #[derive(arbitrary::Arbitrary, Debug)]
 struct Input {

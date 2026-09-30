@@ -44,7 +44,7 @@
 //!   rather than a mutatable value, so the zero-crossing classification
 //!   could not neutralize it. But that is the reason it is *safe*, not the
 //!   reason it is dangerous: the skip is decided by
-//!   `F::from_repr(bytes)` over bytes fixed in the program, so it resolves
+//!   `F::from_bytes(bytes)` over bytes fixed in the program, so it resolves
 //!   identically in the honest and the cheated run. No classification is
 //!   needed, because stack progression cannot move. Contrast
 //!   `invert`/`divide`, whose skip is decided by a value a cheat *can*
@@ -142,10 +142,11 @@
 
 #![no_main]
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use arbitrary::Arbitrary;
-use ff::PrimeField;
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::{Fp, Fq};
+use ragu_core::pasta::{Fp, Fq};
 use ragu_primitives::allocator::Standard;
 use ragu_testing::patcher::{
     Playback, Recorder, TrackingAllocator, constraints_hold, discover_free_advice, repair,
@@ -155,7 +156,7 @@ use ragu_testing_fuzz::substrate::{
     AdviceSlot, Limits, OpKind, OpSet, Overrides, Program, anchor_tail, native_satisfied,
     shadow_eval, special_value, synthesize,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
+use udon::field::Field;
 
 /// Vacuity telemetry (`PATCHER_STATS=1`): a run is *vacuous* when no oracle
 /// observed its cheat — it bailed on an out-of-model control flip, or both
@@ -221,7 +222,7 @@ struct Cheat {
 /// Assembles a full-width field element from 32 LE bytes as four `u64`
 /// limbs `Σ limbᵢ · 2⁶⁴ⁱ`, covering `[0, 2²⁵⁶) mod p` — deltas the `u64`
 /// mutation can never reach. Generic over the field for dual-field runs.
-fn wide_value<F: PrimeField>(bytes: &[u8; 32]) -> F {
+fn wide_value<F: Field>(bytes: &[u8; 32]) -> F {
     let two64 = F::from(u64::MAX) + F::ONE; // 2⁶⁴
     let mut acc = F::ZERO;
     for chunk in bytes.chunks(8).rev() {
@@ -257,7 +258,7 @@ struct Input {
 /// an index wins, including the second leg of a swap), and every result is
 /// nudged off the honest value so each cheat does real work. Shared by the
 /// element- and fold-advice paths.
-fn resolve_cheats<F: PrimeField>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, F)> {
+fn resolve_cheats<F: Field>(cheats: &[Cheat], honest: &[F]) -> Vec<(usize, F)> {
     let n = honest.len();
     let mut out: Vec<(usize, F)> = Vec::new();
     if n == 0 {
@@ -356,7 +357,7 @@ fuzz_target!(|input: Input| {
 });
 
 /// One field's worth of the patcher differential over the decoded `program`.
-fn patch_round<F: PrimeField<Repr = [u8; 32]>>(input: &Input, decoded: &Program) {
+fn patch_round<F: Field>(input: &Input, decoded: &Program) {
     // Maximize observability: anchor every derived slot the honest run
     // leaves live, so a cheat that propagates anywhere is observed by some
     // anchor (advice slots stay unanchored — see `anchor_tail`).

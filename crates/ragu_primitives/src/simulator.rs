@@ -4,14 +4,14 @@
 //! input, tracks constraint counts, and returns local-check errors for
 //! unsatisfied constraints.
 
-use ragu_arithmetic::{Coeff, ff::Field};
 use ragu_core::{
-    Error, Result,
+    Coeff, Error, Result,
     drivers::{DirectSum, Driver, DriverTypes, emulator::Emulator},
     gadgets::Bound,
     maybe::{Always, MaybeKind},
     routines::Routine,
 };
+use udon::field::Field;
 
 /// A driver that simulates circuit execution, checks constraint satisfaction,
 /// and tracks gate and constraint counts. Primarily used for testing.
@@ -99,7 +99,7 @@ impl<F: Field> DriverTypes for Simulator<F> {
         }
 
         self.num_gates += 1;
-        Ok((a, b, c, c.is_zero().into()))
+        Ok((a, b, c, c.is_zero()))
     }
 
     fn assign_extra(
@@ -109,7 +109,7 @@ impl<F: Field> DriverTypes for Simulator<F> {
     ) -> Result<Self::ImplWire> {
         let d = value()?.value();
 
-        if !c_is_zero && !bool::from(d.is_zero()) {
+        if !c_is_zero && !d.is_zero() {
             return Err(Error::InvalidWitness("auxiliary constraint failed".into()));
         }
 

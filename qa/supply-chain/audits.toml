@@ -6,12 +6,6 @@ who = "Sean Bowe <ewillbefull@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "0.4.1 -> 0.3.4"
 
-[[audits.pasta_curves]]
-who = "Sean Bowe <ewillbefull@gmail.com>"
-criteria = "safe-to-deploy"
-delta = "0.5.1 -> 0.5.1@git:5a84fc0d13f738f54c43fb1f9e28ecf1d358dcf5"
-importable = false
-
 [[trusted.addchain]]
 criteria = "safe-to-deploy"
 user-id = 6289 # Jack Grigg (str4d)
@@ -203,12 +197,6 @@ criteria = "safe-to-deploy"
 user-id = 6743 # Ed Page (epage)
 start = "2025-05-22"
 end = "2027-05-24"
-
-[[trusted.pasta_curves]]
-criteria = "safe-to-deploy"
-user-id = 6289 # Jack Grigg (str4d)
-start = "2021-03-03"
-end = "2027-04-07"
 
 [[trusted.prettyplease]]
 criteria = "safe-to-deploy"

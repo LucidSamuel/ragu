@@ -34,7 +34,7 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 use super::{Polynomial, Rank, extend_runs};
 

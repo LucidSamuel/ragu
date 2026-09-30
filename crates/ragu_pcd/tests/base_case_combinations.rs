@@ -4,11 +4,6 @@
 use alloc::{vec, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::{
-    Coeff, Cycle, FixedGenerators,
-    ff::Field,
-    group::{Curve, CurveAffine},
-};
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     Circuit,
@@ -16,16 +11,20 @@ use ragu_circuits::{
     staging::{MultiStage, StageReader, stage_wire_indices, wire_degree, wires_of},
 };
 use ragu_core::{
-    Result,
+    Coeff, Cycle, FixedGenerators, Result,
     drivers::{Driver, DriverTypes, DriverValue, LinearExpression},
     gadgets::Bound,
     maybe::Empty,
+    pasta::{EqAffine, Fp, Fq},
     routines::Routine,
 };
-use ragu_pasta::{EqAffine, Fp, Fq};
 use ragu_primitives::{GadgetExt, allocator::Standard, io::Write};
 use ragu_testing::strategies;
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use udon::{
+    curve::{Affine as _, Projective},
+    field::Field,
+};
 
 use super::recursive_propagation_tests::support::{
     self, C, HEADER_SIZE, Merge, R, Seed, UnitLeft, UnitRight, Value,
@@ -104,7 +103,7 @@ fn flipped_sign(
     let delta = -sign - sign;
     let generator = C::nested_generators(app.params).g()[wire_degree::<R>(sign_wire)];
     changed.nested_challenges_partial =
-        (changed.nested_challenges_partial.to_curve() + generator * delta).to_affine();
+        (changed.nested_challenges_partial.to_projective() + generator * delta).to_affine();
     changed
 }
 
@@ -231,7 +230,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
             "bootstrap/{label}"
         );
         for parent_side in [Side::Left, Side::Right] {
-            let salt = Fp::random(&mut rng);
+            let salt = Fp::random(|bytes| rng.fill_bytes(bytes));
             let parent = match parent_side {
                 Side::Left => {
                     app.fuse(&mut rng, UnitLeft::new(), salt, child.clone(), left.clone())?
@@ -259,7 +258,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
                     Side::Left => (parent.clone(), left.clone()),
                     Side::Right => (left.clone(), parent.clone()),
                 };
-                let salt = Fp::random(&mut rng);
+                let salt = Fp::random(|bytes| rng.fill_bytes(bytes));
                 let grandparent = app.fuse(&mut rng, Merge::new(), salt, l, r)?.0;
                 support::assert_copied_endpoints(
                     grandparent.proof(),
@@ -704,7 +703,7 @@ fn noncanonical_unit_children_reject_through_two_generations() {
     let app = ApplicationBuilder::<C, R, HEADER_SIZE>::new()
         .register(UnitStep)
         .expect("register unit step")
-        .finalize(C::baked())
+        .finalize(crate::pasta::baked())
         .expect("build unit application");
     let mut rng = StdRng::seed_from_u64(873003);
     let honest = app.bootstrap_pcd();

@@ -1,4 +1,4 @@
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 use super::Coeff;
 
@@ -56,19 +56,28 @@ impl<W: Clone, F: Field> LinearExpression<W, F> for () {
     }
 }
 
-/// A straightforward linear expression that directly computes the sum.
+/// A linear expression that accumulates products through Udon before reduction.
+///
+/// Zero, unit, and doubled coefficients keep their cheap field operations.
+/// Other coefficients share a deferred accumulator, reduced by [`Self::value`].
 pub struct DirectSum<F: Field> {
-    /// The current value of the linear combination.
+    /// The sum of terms handled without field multiplication.
     value: F,
+
+    /// Products awaiting reduction; absent when every coefficient is cheap.
+    products: Option<F::Accumulator>,
 
     /// The current gain of the linear combination.
     current_gain: Coeff<F>,
 }
 
 impl<F: Field> DirectSum<F> {
-    /// Returns the current value of the linear combination.
-    pub fn value(&self) -> F {
-        self.value
+    /// Consumes the linear expression, reducing its accumulated products.
+    pub fn value(self) -> F {
+        match self.products {
+            Some(products) => self.value + F::reduce(products),
+            None => self.value,
+        }
     }
 
     /// Returns the current gain of the linear combination.
@@ -82,6 +91,7 @@ impl<F: Field> Default for DirectSum<F> {
     fn default() -> Self {
         Self {
             value: F::ZERO,
+            products: None,
             current_gain: Coeff::One,
         }
     }
@@ -94,8 +104,16 @@ impl<F: Field> LinearExpression<F, F> for DirectSum<F> {
             Coeff::One => self.value += *wire,
             Coeff::Two => self.value += wire.double(),
             Coeff::NegativeOne => self.value -= *wire,
-            Coeff::Arbitrary(coeff) => self.value += *wire * coeff,
-            Coeff::NegativeArbitrary(coeff) => self.value -= *wire * coeff,
+            Coeff::Arbitrary(coeff) => F::mul_accumulate(
+                self.products.get_or_insert_with(Default::default),
+                wire,
+                &coeff,
+            ),
+            Coeff::NegativeArbitrary(coeff) => F::mul_accumulate(
+                self.products.get_or_insert_with(Default::default),
+                wire,
+                &-coeff,
+            ),
         }
 
         self
@@ -109,13 +127,14 @@ impl<F: Field> LinearExpression<F, F> for DirectSum<F> {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec;
+    use alloc::{vec, vec::Vec};
 
     use proptest::prelude::*;
-    use ragu_pasta::Fp;
     use ragu_testing::strategies;
+    use udon::field::Field;
 
     use super::*;
+    use crate::pasta::{Fp, Fq};
 
     #[test]
     fn test_linexp_direct() {
@@ -208,8 +227,8 @@ mod tests {
     #[test]
     fn direct_sum_default_state() {
         let ds = DirectSum::<Fp>::default();
-        assert_eq!(ds.value(), Fp::ZERO);
         assert_eq!(ds.current_gain().value(), Fp::ONE);
+        assert_eq!(ds.value(), Fp::ZERO);
     }
 
     #[test]
@@ -483,43 +502,64 @@ mod tests {
     }
 
     #[derive(Debug, Clone)]
-    enum Op {
-        AddTerm(Fp, Coeff<Fp>),
-        Gain(Coeff<Fp>),
+    enum Op<F: Field> {
+        AddTerm(F, Coeff<F>),
+        Gain(Coeff<F>),
     }
 
-    fn arb_op() -> impl Strategy<Value = Op> {
+    /// Every coefficient variant, over this crate's own [`Coeff`]: the shared
+    /// strategy in `ragu_testing` yields the dev-dependency's copy of the type.
+    fn arb_coeff<F: Field>() -> impl Strategy<Value = Coeff<F>> {
         prop_oneof![
-            (
-                strategies::prime_field_element::<Fp>(),
-                strategies::coeff::<Fp>()
-            )
-                .prop_map(|(w, c)| Op::AddTerm(w, c)),
-            strategies::coeff::<Fp>().prop_map(Op::Gain),
+            Just(Coeff::Zero),
+            Just(Coeff::One),
+            Just(Coeff::Two),
+            Just(Coeff::NegativeOne),
+            strategies::prime_field_element::<F>().prop_map(Coeff::Arbitrary),
+            strategies::nonzero_prime_field_element::<F>().prop_map(Coeff::NegativeArbitrary),
         ]
+    }
+
+    fn arb_op<F: Field>() -> impl Strategy<Value = Op<F>> {
+        prop_oneof![
+            (strategies::prime_field_element::<F>(), arb_coeff::<F>())
+                .prop_map(|(w, c)| Op::AddTerm(w, c)),
+            arb_coeff::<F>().prop_map(Op::Gain),
+        ]
+    }
+
+    fn check_direct_sum<F: Field>(ops: Vec<Op<F>>) -> (F, F) {
+        let mut ds = DirectSum::<F>::default();
+        let mut manual_value = F::ZERO;
+        let mut manual_gain = F::ONE;
+
+        for op in ops {
+            match op {
+                Op::AddTerm(wire, coeff) => {
+                    ds = ds.add_term(&wire, coeff);
+                    manual_value += wire * coeff.value() * manual_gain;
+                }
+                Op::Gain(coeff) => {
+                    ds = ds.gain(coeff);
+                    manual_gain *= coeff.value();
+                }
+            }
+        }
+
+        (ds.value(), manual_value)
     }
 
     proptest! {
         #[test]
-        fn proptest_direct_sum_matches_manual(ops in proptest::collection::vec(arb_op(), 0..30)) {
-            let mut ds = DirectSum::<Fp>::default();
-            let mut manual_value = Fp::ZERO;
-            let mut manual_gain = Fp::ONE;
+        fn proptest_direct_sum_matches_manual(ops in proptest::collection::vec(arb_op::<Fp>(), 0..257)) {
+            let (actual, expected) = check_direct_sum(ops);
+            prop_assert_eq!(actual, expected);
+        }
 
-            for op in ops {
-                match op {
-                    Op::AddTerm(wire, coeff) => {
-                        ds = ds.add_term(&wire, coeff);
-                        manual_value += wire * coeff.value() * manual_gain;
-                    }
-                    Op::Gain(coeff) => {
-                        ds = ds.gain(coeff);
-                        manual_gain *= coeff.value();
-                    }
-                }
-            }
-
-            prop_assert_eq!(ds.value(), manual_value);
+        #[test]
+        fn proptest_direct_sum_fq_matches_manual(ops in proptest::collection::vec(arb_op::<Fq>(), 0..257)) {
+            let (actual, expected) = check_direct_sum(ops);
+            prop_assert_eq!(actual, expected);
         }
     }
 }

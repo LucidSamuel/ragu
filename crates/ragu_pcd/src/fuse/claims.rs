@@ -17,15 +17,12 @@
 use alloc::{borrow::Cow, vec::Vec};
 use core::borrow::Borrow;
 
-use ragu_arithmetic::{
-    Cycle,
-    ff::{Field, PrimeField},
-};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::Result;
+use ragu_core::{Cycle, Result};
+use udon::field::Field;
 
 use crate::{
     Proof,
@@ -232,7 +229,7 @@ pub(super) type NativeFuseBuilder<'m, 'rx, F, R, B> =
 /// records how it decomposes as a linear combination of child-proof
 /// polynomials (and therefore their commitments). The decomposition is
 /// consumed in `_06_ab` to compute `a_commitment` via MSM.
-impl<'m, 'rx, F: PrimeField, R: Rank, B: ragu_backend::Backend>
+impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend>
     Processor<Atom<'rx, FoldKey, F, R>, CircuitIndex>
     for Builder<'m, 'rx, TrackedPoly<'rx, FoldKey, F, R>, F, R, B>
 {

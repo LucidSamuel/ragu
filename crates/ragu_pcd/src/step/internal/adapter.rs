@@ -1,10 +1,9 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::{Circuit, WithAux, polynomials::Rank};
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
@@ -119,8 +118,8 @@ mod tests {
         drivers::emulator::Emulator,
         gadgets::{Bound, Kind},
         maybe::{Always, Maybe, MaybeKind},
+        pasta::{Fp, Pasta},
     };
-    use ragu_pasta::{Fp, Pasta};
     use ragu_primitives::allocator::{Allocator, Standard};
 
     use super::*;

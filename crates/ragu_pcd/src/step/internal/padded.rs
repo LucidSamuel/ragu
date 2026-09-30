@@ -1,6 +1,5 @@
 use core::marker::PhantomData;
 
-use ragu_arithmetic::ff::{Field, PrimeField};
 use ragu_core::{
     Result,
     drivers::Driver,
@@ -10,6 +9,7 @@ use ragu_primitives::{
     Element, GadgetExt, WithSuffix,
     io::{Buffer, Write},
 };
+use udon::field::Field;
 
 use crate::Header;
 
@@ -32,12 +32,7 @@ pub(crate) struct Padded<
 
 /// Constructs a [`Padded`] gadget representing a gadget for a [`Header`] padded
 /// to some fixed size `HEADER_SIZE` encoding, including the header suffix.
-pub(crate) fn for_header<
-    'dr,
-    H: Header<D::F>,
-    const HEADER_SIZE: usize,
-    D: Driver<'dr, F: PrimeField>,
->(
+pub(crate) fn for_header<'dr, H: Header<D::F>, const HEADER_SIZE: usize, D: Driver<'dr>>(
     dr: &mut D,
     gadget: Bound<'dr, D, H::Output>,
 ) -> Result<Padded<'dr, D, H::Output, HEADER_SIZE>> {
@@ -125,8 +120,8 @@ mod tests {
         drivers::{Driver, emulator::Emulator},
         gadgets::{Gadget, Kind},
         maybe::{Always, Maybe, MaybeKind},
+        pasta::Fp as F,
     };
-    use ragu_pasta::Fp as F;
     use ragu_primitives::{
         Element, GadgetExt, WithSuffix,
         io::Write,

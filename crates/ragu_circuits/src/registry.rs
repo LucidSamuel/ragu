@@ -55,11 +55,11 @@
 
 use alloc::{boxed::Box, vec::Vec};
 
-use ragu_arithmetic::{
-    Domain, bitreverse,
-    ff::{Field, FromUniformBytes, PrimeField},
-};
 use ragu_core::{Error, Result};
+use udon::{
+    fft::{Domain, bit_reverse},
+    field::Field,
+};
 
 use crate::{
     BondingObject, Circuit, WiringObject,
@@ -89,18 +89,18 @@ impl CircuitIndex {
 
     /// Returns $\omega^j$ field element that corresponds to this $i$th circuit index.
     ///
-    /// The $i$th circuit added to any [`Registry`] (for a given [`PrimeField`] `F`) is
+    /// The $i$th circuit added to any [`Registry`] (for a given [`Field`] `F`) is
     /// assigned the domain element of smallest multiplicative order not yet
     /// assigned to any circuit prior to $i$. This corresponds with $\Omega^{f(i)}$
-    /// where $f(i)$ is the [`S`](PrimeField::S)-bit reversal of `i` and $\Omega$ is
-    /// the primitive [root of unity](PrimeField::ROOT_OF_UNITY) of order $2^{S}$ in
+    /// where $f(i)$ is the [`TWO_ADICITY`](Field::TWO_ADICITY)-bit reversal of `i` and $\Omega$ is
+    /// the primitive [root of unity](Field::ROOT_OF_UNITY) of order $2^{S}$ in
     /// `F`.
     ///
     /// Notably, the result of this function does not depend on the actual size of
     /// the [`Registry`]'s interpolation polynomial domain.
-    pub fn omega_j<F: PrimeField>(self) -> F {
-        let bit_reversal_id = bitreverse(self.0, F::S);
-        F::ROOT_OF_UNITY.pow([bit_reversal_id.into()])
+    pub fn omega_j<F: Field>(self) -> F {
+        let bit_reversal_id = bit_reverse(self.0 as usize, F::TWO_ADICITY);
+        F::ROOT_OF_UNITY.pow_u64(bit_reversal_id as u64)
     }
 }
 
@@ -121,7 +121,7 @@ impl From<CircuitIndex> for usize {
 /// During finalization, circuits are concatenated in the order above,
 /// ensuring internal circuits get lower indices while maintaining
 /// proper PCD indexing.
-pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
+pub struct RegistryBuilder<'params, F: Field, R: Rank> {
     internal_circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     bonding: Vec<Box<dyn WiringObject<F, R> + 'params>>,
     internal_steps: Vec<Box<dyn WiringObject<F, R> + 'params>>,
@@ -129,13 +129,13 @@ pub struct RegistryBuilder<'params, F: PrimeField, R: Rank> {
     tag: Option<Tag<F>>,
 }
 
-impl<F: FromUniformBytes<64>, R: Rank> Default for RegistryBuilder<'_, F, R> {
+impl<F: Field, R: Rank> Default for RegistryBuilder<'_, F, R> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
+impl<'params, F: Field, R: Rank> RegistryBuilder<'params, F, R> {
     /// Creates a new empty [`Registry`] builder.
     pub fn new() -> Self {
         Self {
@@ -247,7 +247,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
     /// fallback is disabled.
     pub fn finalize(self) -> Result<Registry<'params, F, R>>
     where
-        F: FromUniformBytes<64>,
+        F: Field,
     {
         let total_circuits = self.num_circuits();
         if total_circuits > R::num_coeffs() {
@@ -257,7 +257,7 @@ impl<'params, F: FromUniformBytes<64>, R: Rank> RegistryBuilder<'params, F, R> {
         }
 
         let log2_circuits = self.log2_circuits();
-        let domain = Domain::<F>::new(log2_circuits);
+        let domain = F::domain(log2_circuits).expect("supported registry domain");
 
         let circuits: Vec<_> = self
             .internal_circuits
@@ -376,7 +376,7 @@ impl<F: Field> Tag<F> {
 /// may make reference to the others or be executed in similar contexts. The
 /// circuits are combined together using an interpolation polynomial so that
 /// they can be queried efficiently.
-pub struct Registry<'params, F: PrimeField, R: Rank> {
+pub struct Registry<'params, F: Field, R: Rank> {
     domain: Domain<F>,
     circuits: Vec<Box<dyn WiringObject<F, R> + 'params>>,
 
@@ -409,13 +409,13 @@ enum LagrangeCache<F> {
 /// Created via [`Registry::at`]. All evaluation methods (`wx`, `wy`, `wxy`)
 /// reuse the cached Lagrange coefficients, avoiding recomputation when
 /// evaluating at multiple X/Y points.
-pub struct RegistryAt<'a, F: PrimeField, R: Rank> {
+pub struct RegistryAt<'a, F: Field, R: Rank> {
     registry: &'a Registry<'a, F, R>,
     cache: LagrangeCache<F>,
     mask_coeff_sum: F,
 }
 
-impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
+impl<F: Field, R: Rank> Registry<'_, F, R> {
     /// Assembles a [`Trace`](crate::Trace) into a [`sparse::Polynomial`] using
     /// the floor plan for the specified circuit.
     ///
@@ -429,9 +429,9 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         &self,
         trace: &crate::trace::Trace<F>,
         circuit: CircuitIndex,
-        rng: &mut impl ragu_arithmetic::rand::CryptoRng,
+        rng: &mut impl rand::CryptoRng,
     ) -> Result<sparse::Polynomial<F, R>> {
-        self.assemble_with_alpha(trace, circuit, F::random(rng))
+        self.assemble_with_alpha(trace, circuit, F::random(|bytes| rng.fill_bytes(bytes)))
     }
 
     /// Like [`assemble`](Self::assemble), but accepts an explicit
@@ -476,10 +476,10 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 
     /// Converts between a domain position and its circuit index: circuit `i`
-    /// is assigned to domain position `bitreverse(i)` over `log2_n` bits, and
+    /// is assigned to domain position `bit_reverse(i)` over `log2_n` bits, and
     /// the map is its own inverse.
     fn bitreversed_index(&self, i: usize) -> usize {
-        bitreverse(i as u32, self.domain.log2_n()) as usize
+        bit_reverse(i, self.domain.log_size())
     }
 
     /// Evaluates the registry tag contribution $k \cdot (XY)^{4n-1}$
@@ -488,7 +488,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         if x == F::ZERO || y == F::ZERO {
             return F::ZERO;
         }
-        let xy_4n_minus_1 = (x * y).pow_vartime([(4 * R::n() - 1) as u64]);
+        let xy_4n_minus_1 = (x * y).pow_u64((4 * R::n() - 1) as u64);
         self.tag.value() * xy_4n_minus_1
     }
 
@@ -508,7 +508,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// $\omega$ generates the domain.
     ///
     /// Entries are indexed by domain position: circuit $i$'s evaluation lives
-    /// at $j = \text{bitreverse}(i, \log\_2 n)$, the same point
+    /// at $j = \text{bit_reverse}(i, \log\_2 n)$, the same point
     /// [`CircuitIndex::omega_j`] computes against the field's full $2^S$
     /// domain. Every entry includes the $W$-independent tag term (positions
     /// with no registered circuit hold it alone), and masking circuits also
@@ -519,7 +519,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
         let tag_scalar = self.tag_sxy(x, y);
         let global_xy = crate::staging::mask::global_mask::<F, R>(x, y);
 
-        let mut evals = alloc::vec![tag_scalar; self.domain.n()];
+        let mut evals = alloc::vec![tag_scalar; self.domain.size()];
         // Masking polynomials return only -notch from sxy(); add the shared
         // global term to each mask slot inline.
         for (i, circuit) in self.circuits.iter().enumerate() {
@@ -544,15 +544,15 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     ///
     /// Panics if `evals.len()` does not equal the registry's domain size.
     pub fn interpolate_xy(&self, mut evals: Vec<F>) -> sparse::Polynomial<F, R> {
-        assert_eq!(evals.len(), self.domain.n());
-        self.domain.ifft(&mut evals);
+        assert_eq!(evals.len(), self.domain.size());
+        self.domain.inverse_transform(&mut evals);
         sparse::Polynomial::from_coeffs(evals)
     }
 
     /// Returns $\log_2$ of the registry's $W$-domain size (the smallest power
     /// of two that fits all registered circuits).
     pub fn log2_domain(&self) -> u32 {
-        self.domain.log2_n()
+        self.domain.log_size()
     }
 
     /// Index the $i$th circuit to field element $\omega^j$ as $w$, and evaluate
@@ -674,7 +674,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
                 sum
             }
             LagrangeCache::Assigned(i) => {
-                // W is exactly omega^bitreverse(i), so the Lagrange
+                // W is exactly omega^bit_reverse(i), so the Lagrange
                 // coefficient for circuit i is ONE and all others are ZERO.
                 if self.circuits[*i].is_mask() {
                     F::ONE
@@ -691,15 +691,26 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     /// Returns a [`RegistryAt`] that can be used to evaluate the registry
     /// polynomial at multiple $X$/$Y$ points without recomputing the W-restriction.
     pub fn at(&self, w: F) -> RegistryAt<'_, F, R> {
-        let cache = match self.domain.lagrange_evals(w, self.domain.n()) {
-            Ok(coeffs) => {
+        // A domain point selects one circuit directly and needs no buffers.
+        let count = if self.domain.contains(w) {
+            0
+        } else {
+            self.domain.size()
+        };
+        let mut coeffs = alloc::vec![F::ZERO; count];
+        let mut scratch = alloc::vec![F::ZERO; count];
+        let cache = match self
+            .domain
+            .lagrange_evaluations(w, &mut coeffs, &mut scratch)
+        {
+            None => {
                 // w is not a domain point; the Lagrange coefficients evaluate
                 // the registry interpolation there.
                 LagrangeCache::Arbitrary(coeffs)
             }
-            Err(j) => {
+            Some(j) => {
                 // w is the domain point omega^j. The i-th circuit is assigned
-                // to omega^bitreverse(i) rather than omega^i — the domain-local
+                // to omega^bit_reverse(i) rather than omega^i — the domain-local
                 // half of `CircuitIndex::omega_j`'s size-independent mapping,
                 // which in effect *implicitly* performs domain extensions as
                 // smaller domains become exhausted. Inverting that assignment,
@@ -725,7 +736,7 @@ impl<F: PrimeField, R: Rank> Registry<'_, F, R> {
     }
 }
 
-impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
+impl<F: Field, R: Rank> RegistryAt<'_, F, R> {
     /// Evaluate the registry polynomial restricted at $W$ and $Y$, unrestricted at $X$.
     pub fn y(&self, y: F) -> sparse::Polynomial<F, R> {
         let mut poly = self.registry.w_cached(
@@ -748,7 +759,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         // at Y, this is k * y^{4n-1} at X^{4n-1} (c-wire of the SYSTEM gate in
         // the wiring layout).
         if y != F::ZERO {
-            let y_4n_minus_1 = y.pow_vartime([(4 * R::n() - 1) as u64]);
+            let y_4n_minus_1 = y.pow_u64((4 * R::n() - 1) as u64);
             let mut tag_view = sparse::View::<_, R, _>::wiring();
             tag_view.c.push(self.registry.tag.value() * y_4n_minus_1);
             poly.add_assign(&tag_view.build());
@@ -778,7 +789,7 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
         // Add the registry tag contribution k * (XY)^{4n-1}.  Restricted
         // at X, this is k * x^{4n-1} at Y^{4n-1}.
         if x != F::ZERO {
-            let x_4n_minus_1 = x.pow_vartime([(4 * R::n() - 1) as u64]);
+            let x_4n_minus_1 = x.pow_u64((4 * R::n() - 1) as u64);
             let tag_coeff = self.registry.tag.value() * x_4n_minus_1;
             let mut tag_coeffs = alloc::vec![F::ZERO; R::num_coeffs()];
             // Y^{4n-1} is the last coefficient (index num_coeffs() - 1 = 4n - 1),
@@ -792,24 +803,28 @@ impl<F: PrimeField, R: Rank> RegistryAt<'_, F, R> {
 
     /// Evaluate the registry polynomial at the point ($W$, $X$, $Y$).
     pub fn xy(&self, x: F, y: F) -> F {
-        let mut result: F = self.registry.w_cached(
+        let mut result = self.registry.w_cached(
             &self.cache,
-            || F::ZERO,
+            F::Accumulator::default,
             |circuit, floor_plan, coeff, result| {
-                *result += circuit.sxy(x, y, floor_plan) * coeff;
+                F::mul_accumulate(result, &circuit.sxy(x, y, floor_plan), &coeff);
             },
         );
 
         // Masking polynomials return only -notch; apply the shared global
         // scalar once.
-        result += self.mask_coeff_sum * crate::staging::mask::global_mask::<F, R>(x, y);
+        F::mul_accumulate(
+            &mut result,
+            &self.mask_coeff_sum,
+            &crate::staging::mask::global_mask::<F, R>(x, y),
+        );
 
         // Add the registry tag contribution.
-        result + self.registry.tag_sxy(x, y)
+        F::reduce(result) + self.registry.tag_sxy(x, y)
     }
 }
 
-impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
+impl<F: Field, R: Rank> Registry<'_, F, R> {
     /// Use the caller's beacon tag through the temporary replacement.
     fn compute_registry_tag(&self, tag: Option<Tag<F>>) -> Result<F> {
         crate::beacon::registry_tag(tag)
@@ -818,12 +833,9 @@ impl<F: FromUniformBytes<64>, R: Rank> Registry<'_, F, R> {
 
 #[cfg(test)]
 mod tests {
-    use ragu_arithmetic::{
-        Domain, bitreverse,
-        ff::{Field, PrimeField},
-    };
-    use ragu_core::Result;
-    use ragu_pasta::Fp;
+    use ragu_core::{Result, pasta::Fp};
+    use rand::Rng;
+    use udon::{fft::bit_reverse, field::Field};
 
     use super::{CircuitIndex, RegistryBuilder};
     use crate::{polynomials::TestRank, tests::SquareCircuit};
@@ -865,9 +877,9 @@ mod tests {
             .register_circuit(SquareCircuit { times: 19 })?
             .finalize()?;
 
-        let w = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let w = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let xy_poly = registry.xy(x, y);
         let wy_poly = registry.wy(w, y);
@@ -880,7 +892,7 @@ mod tests {
         assert_eq!(wxy_value, wx_poly.eval(y));
 
         let mut w = Fp::ONE;
-        for _ in 0..registry.domain.n() {
+        for _ in 0..registry.domain.size() {
             let xy_poly = registry.xy(x, y);
             let wy_poly = registry.wy(w, y);
             let wx_poly = registry.wx(w, x);
@@ -891,7 +903,7 @@ mod tests {
             assert_eq!(wxy_value, wy_poly.eval(x));
             assert_eq!(wxy_value, wx_poly.eval(y));
 
-            w *= registry.domain.omega();
+            w *= registry.domain.root();
         }
 
         Ok(())
@@ -908,13 +920,13 @@ mod tests {
             .register_circuit(SquareCircuit { times: 19 })?
             .finalize()?;
 
-        let x = Fp::random(&mut rand::rng());
-        let y = Fp::random(&mut rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let evals = registry.wxy_over_domain(x, y);
         let poly = registry.xy(x, y);
 
-        assert_eq!(evals.len(), registry.domain.n());
+        assert_eq!(evals.len(), registry.domain.size());
 
         // evals[j] must equal m(omega^j, x, y) = poly.eval(omega^j).
         let mut omega_pow = Fp::ONE;
@@ -924,14 +936,14 @@ mod tests {
                 poly.eval(omega_pow),
                 "evals[{j}] should equal poly.eval(omega^{j})"
             );
-            omega_pow *= registry.domain.omega();
+            omega_pow *= registry.domain.root();
         }
 
         // For each registered circuit i, its evaluation at omega_j(i) lives
         // at the bit-reversed domain position.
         let log2_n = registry.log2_domain();
         for i in 0..registry.num_circuits() {
-            let j = bitreverse(i as u32, log2_n) as usize;
+            let j = bit_reverse(i, log2_n);
             let omega_j = CircuitIndex::new(i).omega_j::<Fp>();
             assert_eq!(evals[j], poly.eval(omega_j));
         }
@@ -942,7 +954,7 @@ mod tests {
         // composition, so such an assertion could never fail.
         let interpolated = registry.interpolate_xy(evals);
         for _ in 0..4 {
-            let probe = Fp::random(&mut rand::rng());
+            let probe = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
             assert_eq!(interpolated.eval(probe), registry.wxy(probe, x, y));
         }
 
@@ -958,10 +970,10 @@ mod tests {
             .register_circuit(SquareCircuit { times: 11 })?
             .finalize()?;
 
-        let w = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let eval_point = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let w = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let eval_point = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let registry_at_w = registry.at(w);
 
@@ -976,7 +988,7 @@ mod tests {
         assert_eq!(registry_at_w.xy(x, y), registry.wxy(w, x, y));
 
         // Test with w in domain (omega^j)
-        let w_in_domain = registry.domain.omega();
+        let w_in_domain = registry.domain.root();
         let registry_at_w_in_domain = registry.at(w_in_domain);
 
         assert_eq!(
@@ -1002,7 +1014,7 @@ mod tests {
             .register_circuit(SquareCircuit { times: 5 })?
             .finalize()?;
 
-        let omega = registry.domain.omega();
+        let omega = registry.domain.root();
 
         // This isn't in the domain.
         let w = omega + Fp::ONE;
@@ -1025,16 +1037,16 @@ mod tests {
             builder = builder.register_circuit(SquareCircuit { times: i })?;
         }
         let registry = builder.finalize()?;
-        assert_eq!(registry.domain.n(), 8);
+        assert_eq!(registry.domain.size(), 8);
 
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
         let xy_poly = registry.xy(x, y);
 
         let mut w = Fp::ONE;
-        for _ in 0..registry.domain.n() {
+        for _ in 0..registry.domain.size() {
             assert_eq!(registry.wxy(w, x, y), xy_poly.eval(w));
-            w *= registry.domain.omega();
+            w *= registry.domain.root();
         }
 
         Ok(())
@@ -1054,14 +1066,15 @@ mod tests {
     fn test_omega_j_consistency() -> Result<()> {
         for num_circuits in [2usize, 3, 7, 8, 15, 16, 32] {
             let log2_circuits = num_circuits.next_power_of_two().trailing_zeros();
-            let domain = Domain::<Fp>::new(log2_circuits);
+            let domain = Fp::domain(log2_circuits).unwrap();
 
             for id in 0..num_circuits {
                 let omega_from_function = CircuitIndex::new(id).omega_j::<Fp>();
 
-                let bit_reversal_id = bitreverse(id as u32, Fp::S);
-                let position = ((bit_reversal_id as u64) >> (Fp::S - log2_circuits)) as usize;
-                let omega_from_finalization = domain.omega().pow([position as u64]);
+                let bit_reversal_id = bit_reverse(id, Fp::TWO_ADICITY);
+                let position =
+                    ((bit_reversal_id as u64) >> (Fp::TWO_ADICITY - log2_circuits)) as usize;
+                let omega_from_finalization = domain.root().pow_u64(position as u64);
 
                 assert_eq!(
                     omega_from_function, omega_from_finalization,
@@ -1087,11 +1100,11 @@ mod tests {
 
             // Verify domain size is next power of 2
             let expected_domain_size = num_circuits.next_power_of_two();
-            assert_eq!(registry.domain.n(), expected_domain_size);
+            assert_eq!(registry.domain.size(), expected_domain_size);
 
-            let w = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-            let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+            let w = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+            let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
             let wxy = registry.wxy(w, x, y);
             let xy = registry.xy(x, y);
@@ -1121,7 +1134,7 @@ mod tests {
 
         // Indices beyond the domain size should not be in the domain
         // The registry has 4 circuits, so domain size is 4 (2^2)
-        // CircuitIndex::omega_j uses F::S-bit reversal, which maps indices
+        // CircuitIndex::omega_j uses F::TWO_ADICITY-bit reversal, which maps indices
         // beyond the domain to non-domain elements
         for i in [1 << 16, 1 << 20, 1 << 30] {
             assert!(
@@ -1275,9 +1288,9 @@ mod tests {
         assert_eq!(registry.num_circuits(), 5);
 
         // Verify evaluation consistency
-        let w = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let x = Fp::random(&mut ragu_arithmetic::rand::rng());
-        let y = Fp::random(&mut ragu_arithmetic::rand::rng());
+        let w = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let x = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
+        let y = Fp::random(|bytes| rand::rng().fill_bytes(bytes));
 
         let wxy = registry.wxy(w, x, y);
         let xy = registry.xy(x, y);

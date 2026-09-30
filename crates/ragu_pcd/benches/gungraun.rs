@@ -6,9 +6,11 @@ use std::hint::black_box;
 
 use gungraun::{library_benchmark, library_benchmark_group, main};
 use ragu_acceleration::AcceleratedBackend;
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::{Application, ApplicationBuilder, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::rngs::StdRng;

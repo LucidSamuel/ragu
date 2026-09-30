@@ -8,11 +8,6 @@
 use alloc::{sync::Arc, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::{
-    CurveAffine, Cycle, FixedGenerators,
-    ff::{Field, PrimeField},
-    group::{Curve, CurveAffine as _, Group},
-};
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_circuits::{
     CircuitExt,
@@ -20,11 +15,17 @@ use ragu_circuits::{
     registry::CircuitIndex,
     staging::{Stage, StageExt, StageReader, stage_wire_indices, wires_of},
 };
-use ragu_core::Result;
-use ragu_pasta::{Ep, EpAffine, EqAffine, Fp, Fq};
+use ragu_core::{
+    Cycle, FixedGenerators, Result,
+    pasta::{Ep, EpAffine, EqAffine, Fp, Fq},
+};
 use ragu_primitives::extract_endoscalar;
 use ragu_testing::strategies;
 use rand::{SeedableRng, rngs::StdRng};
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 use super::recursive_propagation_tests::support::{self, C, HEADER_SIZE, R, Value};
 use crate::{
@@ -145,7 +146,7 @@ mod challenge_binding {
         let beta_generator = C::nested_generators(app.params).g()
             [native::circuits::bind_beta::generator_index::<C, R>()];
         assert_eq!(
-            (proof.nested_challenges_partial.to_curve()
+            (proof.nested_challenges_partial.to_projective()
                 + beta_generator * nested::challenge::<C>(proof.pre_beta())?)
             .to_affine(),
             proof.nested_challenges_commitment(),
@@ -229,7 +230,7 @@ mod challenge_binding {
         for case in ["partial", "pre_beta", "pre_beta_with_compensating_partial"] {
             let (mut proof, data) = honest.clone().into_parts();
             if case == "partial" {
-                proof.nested_challenges_partial = (proof.nested_challenges_partial.to_curve()
+                proof.nested_challenges_partial = (proof.nested_challenges_partial.to_projective()
                     + Ep::generator() * delta)
                     .to_affine();
             } else {
@@ -251,9 +252,10 @@ mod challenge_binding {
                 let new_beta = nested::challenge::<C>(proof.pre_beta())?;
                 assert_ne!(new_beta, old_beta);
                 if case == "pre_beta_with_compensating_partial" {
-                    proof.nested_challenges_partial = (proof.nested_challenges_partial.to_curve()
-                        + beta_generator * (old_beta - new_beta))
-                        .to_affine();
+                    proof.nested_challenges_partial =
+                        (proof.nested_challenges_partial.to_projective()
+                            + beta_generator * (old_beta - new_beta))
+                            .to_affine();
                     // The entire parent binding still agrees, even though the
                     // partial and pre_beta each differ from the child's trace.
                     assert_complete_binding(app, &proof)?;
@@ -316,7 +318,6 @@ fn stage_points<S: Stage<Fp, R> + Default>(
         .chunks_exact(2)
         .map(|pair| {
             EpAffine::from_xy(reader.read(pair[0]), reader.read(pair[1]))
-                .into_option()
                 .expect("the fixture's staged point must be on curve")
         })
         .collect())
@@ -346,7 +347,7 @@ fn walk_inputs(
 fn horner(points: &[EpAffine], beta: Fq) -> EpAffine {
     points
         .iter()
-        .fold(Ep::identity(), |acc, point| acc * beta + point)
+        .fold(Ep::identity(), |acc, point| (acc * beta).add_mixed(point))
         .to_affine()
 }
 
@@ -531,11 +532,11 @@ mod walk_binding {
         for (name, position) in cases {
             let index = offset + position;
             let mut points = original.clone();
-            points[index] = (points[index].to_curve() + change).to_affine();
+            points[index] = (points[index].to_projective() + change).to_affine();
             // beta^(N-1-index) * change is canceled by the initial
             // point's beta^(N-1) weight. Every other input stays fixed.
-            points[0] = (points[0].to_curve()
-                - change * beta.invert().unwrap().pow_vartime([index as u64]))
+            points[0] = (points[0].to_projective()
+                - change * beta.invert().unwrap().pow_u64(index as u64))
             .to_affine();
             assert_ne!(points[index], original[index]);
             assert_ne!(points[0], original[0]);
@@ -622,11 +623,12 @@ mod walk_binding {
         }
         proof.nested_registry_xy_commitment.0 = nested_commit(app, &proof.nested_registry_xy_poly);
         let last = points.len() - 1;
-        let difference = proof.nested_registry_xy_commitment().to_curve() - points[last];
-        assert!(!bool::from(difference.is_identity()));
+        let difference =
+            proof.nested_registry_xy_commitment().to_projective() - points[last].to_projective();
+        assert!(!difference.is_identity());
         points[last] = proof.nested_registry_xy_commitment();
-        points[0] = (points[0].to_curve()
-            - difference * beta.invert().unwrap().pow_vartime([last as u64]))
+        points[0] = (points[0].to_projective()
+            - difference * beta.invert().unwrap().pow_u64(last as u64))
         .to_affine();
         install_walk(
             app,
@@ -684,7 +686,7 @@ mod claim_values {
 
     /// Move c by an independently chosen delta, rather than rescale A/B while
     /// preserving c. The untouched circuit traces still claim the original fold.
-    fn change_c<F: ragu_arithmetic::DeferredField>(
+    fn change_c<F: Field>(
         a: &mut sparse::Polynomial<F, R>,
         b: &sparse::Polynomial<F, R>,
         delta: F,

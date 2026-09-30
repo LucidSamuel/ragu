@@ -30,13 +30,12 @@ pub(crate) mod patcher;
 
 use _10_p::NativeInputs;
 use claims::{NativeFuseProofSource, NestedFuseProofSource};
-use ragu_arithmetic::{Cycle, ff::Field, rand::CryptoRng};
 use ragu_circuits::{
     polynomials::{Rank, sparse},
     staging::StageExt,
 };
 use ragu_core::{
-    Result,
+    Cycle, Result,
     drivers::{
         Driver,
         emulator::{Emulator, Wireless},
@@ -44,6 +43,8 @@ use ragu_core::{
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Element, EndoscalarChallenge, GadgetExt, Point, vec::CollectFixed};
+use rand::CryptoRng;
+use udon::field::Field;
 
 use crate::{
     Application, Pcd, Proof, RAGU_TAG,
@@ -197,8 +198,10 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         left: Pcd<C, R, S::Left>,
         right: Pcd<C, R, S::Right>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
-        let mut builder =
-            ProofBuilder::<C, R, B>::new(self.params, C::ScalarField::random(&mut *rng));
+        let mut builder = ProofBuilder::<C, R, B>::new(
+            self.params,
+            C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),
+        );
 
         let (left, right, application_data, application_aux) =
             self.compute_application_proof(rng, step, witness, left, right, &mut builder)?;

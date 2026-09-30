@@ -16,10 +16,10 @@
 use alloc::{borrow::Cow, vec::Vec};
 use core::iter::once;
 
-use ragu_arithmetic::ff::PrimeField;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver};
 use ragu_primitives::Element;
+use udon::field::Field;
 
 use super::{InternalCircuitIndex, NUM_INSTANCE_CIRCUITS, RxComponent, RxIndex};
 use crate::internal::claims::{Builder, Source, sum_polynomials};
@@ -62,8 +62,7 @@ pub trait Processor<Rx> {
     ) -> Result<()>;
 }
 
-impl<'m, 'rx, F: PrimeField, R: Rank, B: ragu_backend::Backend>
-    Processor<&'rx sparse::Polynomial<F, R>>
+impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend> Processor<&'rx sparse::Polynomial<F, R>>
     for Builder<'m, 'rx, Cow<'rx, sparse::Polynomial<F, R>>, F, R, B>
 {
     fn raw_claim(&mut self, a: &'rx sparse::Polynomial<F, R>, b: &'rx sparse::Polynomial<F, R>) {

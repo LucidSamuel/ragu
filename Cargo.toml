@@ -23,11 +23,12 @@ default = ["multicore"]
 # Opt-in API-level mock of `ragu_pcd` (see the crate docs). Off by default.
 mock = [
   "dep:blake2b_simd",
-  "dep:ragu_arithmetic",
+  "dep:udon",
   "dep:ragu_core",
-  "dep:ragu_pasta",
+  "dep:rand",
 ]
-multicore = ["ragu_arithmetic?/multicore"]
+# Kept for compatibility: the mock has no parallel stage of its own.
+multicore = []
 std = []
 
 [lib]
@@ -39,25 +40,24 @@ bench = false
 # `ragu_circuits`, `ragu_primitives` and the rest directly.
 [dependencies]
 blake2b_simd = { workspace = true, optional = true }
-ragu_arithmetic = { path = "crates/ragu_arithmetic", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
+rand = { workspace = true, optional = true }
+udon = { workspace = true, optional = true }
 ragu_core = { path = "crates/ragu_core", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
-ragu_pasta = { path = "crates/ragu_pasta", version = "0.0.0", default-features = false, features = ["alloc"], optional = true }
 
 [workspace]
 members = [
   "crates/ragu_acceleration",
-  "crates/ragu_arithmetic",
   "crates/ragu_backend",
   "crates/ragu_circuits",
   "crates/ragu_core",
   "crates/ragu_gadgets",
   "crates/ragu_macros",
-  "crates/ragu_pasta",
   "crates/ragu_primitives",
   "crates/ragu_pcd",
   "crates/ragu_testing",
   "qa/ceremony",
   "qa/fv/extraction",
+  "qa/no_std",
 ]
 
 resolver = "2"
@@ -76,23 +76,19 @@ homepage = "https://github.com/tachyon-zcash/ragu"
 repository = "https://github.com/tachyon-zcash/ragu"
 
 [workspace.dependencies]
-# Keep ff/group/pasta_curves/rand in sync with qa/fuzz/Cargo.toml. The
-# cargo-fuzz workspace is intentionally isolated and cannot inherit these
-# workspace dependencies.
-#
-# `pasta_curves` is Zakura's fork (crates.io package `zakura-pasta-curves`,
-# library target still `pasta_curves`, published from
-# https://github.com/zakura-core/common), so Ragu and Zakura agree on the
-# curve types.
-ff = { version = "0.14", default-features = false }
-group = { version = "0.14", default-features = false }
-pasta_curves = { package = "zakura-pasta-curves", version = "1.1.0", features = ["deferred"] }
+# Keep rand in sync with the isolated qa/fuzz workspace.
 rand = { version = "0.10", default-features = false, features = ["std_rng"] }
-rand_core = { version = "0.10", default-features = false }
 lazy_static = "1.5.0"
 proptest = "1.11.0"
 gungraun = "0.17.0"
 blake2b_simd = { version = "1.0", default-features = false }
+# Used only by ragu_pcd's generator build script.
+pasta_curves = { package = "zakura-pasta-curves", version = "1.1.0", default-features = false, features = ["alloc"] }
 maybe-rayon = { package = "tachyon-maybe-rayon", version = "0.1.2", default-features = false }
 rayon = "1.11.0"
+# Bento stores the generated Udon points.
+bento = { package = "zakura-bento", version = "0.1.0", default-features = false }
+# Udon supplies the Pasta fields, curves, generic arithmetic traits, cycle, and
+# Poseidon parameters.
+udon = { package = "zakura-udon", version = "0.1.0", default-features = false, features = ["traits", "poseidon"] }
 criterion = { version = "0.5", default-features = false }

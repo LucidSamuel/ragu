@@ -3,13 +3,13 @@
 
 use core::any::Any;
 
-use ragu_arithmetic::ff::Field;
 use ragu_core::{
     Result,
     drivers::{Driver, DriverValue},
     gadgets::Bound,
 };
 use ragu_primitives::{allocator::Allocator, io::Write};
+use udon::field::Field;
 
 /// The number of suffixes used internally by Ragu.
 ///

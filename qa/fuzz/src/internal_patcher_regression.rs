@@ -48,13 +48,11 @@
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
-use ragu_arithmetic::{
-    Cycle,
-    ff::{Field, PrimeFieldBits},
-};
 use ragu_circuits::{Circuit, polynomials::ProductionRank};
-use ragu_core::Result;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    Cycle, Result,
+    pasta::{Fp, Pasta},
+};
 use ragu_pcd::{
     ApplicationBuilder,
     fuzzing::patcher::{
@@ -68,6 +66,7 @@ use ragu_testing::{
 };
 use rand::{SeedableRng, rngs::StdRng};
 use rayon::prelude::*;
+use udon::field::Field;
 
 use crate::internal_patcher::{
     CaptureCase, Mutation, Point, capture_checked, check_binding, probe_mutations,
@@ -100,7 +99,7 @@ type Check = Box<dyn FnOnce() -> Result<Census> + Send>;
 
 /// Capture and independently replay while the circuit's witness is available.
 /// The remaining checks own their recording and can run on another thread.
-fn capture_check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
+fn capture_check<'w, F: Field, Cir: Circuit<F>>(
     point: &str,
     spec: &CircuitSpec,
     circuit: &Cir,
@@ -160,7 +159,7 @@ fn capture_check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
 }
 
 /// Run the same static checks and full sweeps against a recorded circuit.
-fn check<F: PrimeFieldBits>(
+fn check<F: Field>(
     point: &str,
     spec: &CircuitSpec,
     cap: &Capture<F>,
@@ -435,7 +434,7 @@ fn expected(name: &str, point: &str) -> Census {
 #[test]
 #[ignore = "internal patcher suite: run by the PR fuzz harness job"]
 fn patcher_captures_internal_circuits() -> Result<()> {
-    let pasta = Pasta::baked();
+    let pasta = ragu_pcd::pasta::baked();
     let leaf_step = || WitnessLeaf {
         poseidon_params: Pasta::circuit_poseidon(pasta),
     };
@@ -627,7 +626,7 @@ struct GeneratedChecker<'a> {
 }
 
 impl GeneratedChecker<'_> {
-    fn check<'w, F: PrimeFieldBits, Cir: Circuit<F>>(
+    fn check<'w, F: Field, Cir: Circuit<F>>(
         &mut self,
         spec: &CircuitSpec,
         circuit: &Cir,

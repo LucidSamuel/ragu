@@ -18,8 +18,8 @@
 
 use alloc::sync::Arc;
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::{Rank, sparse};
+use ragu_core::Cycle;
 
 use super::Proof;
 use crate::fuzzing::corrupt::{

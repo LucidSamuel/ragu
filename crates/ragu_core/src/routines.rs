@@ -10,7 +10,7 @@
 //!
 //! [book]: https://tachyon.z.cash/ragu/guide/routines.html
 
-use ragu_arithmetic::ff::Field;
+use udon::field::Field;
 
 use crate::{
     Result,

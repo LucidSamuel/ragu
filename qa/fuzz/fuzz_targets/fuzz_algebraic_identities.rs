@@ -28,33 +28,33 @@
 //! - distributivity:         `a * (b + 1) == a * b + a`
 //! - divide round-trip:      `(a / b) * b == a` (when `b != 0`)
 //! - scale identities:       `scale(a, 1) == a`, `scale(a, 0) == 0`,
-//!                           `scale(a, 2) == double(a)`
+//!   `scale(a, 2) == double(a)`
 //! - alloc_square:           `let (r, s) = alloc_square(a*a); r*r == s`
 //! - add_coeff identities:   `add_coeff(b, 1) == add(b)`,
-//!                           `add_coeff(b, 0) == self`
+//!   `add_coeff(b, 0) == self`
 //! - is_equal:               `is_equal(a, a) == true`,
-//!                           `is_equal(a, b) == (a_val == b_val)`
+//!   `is_equal(a, b) == (a_val == b_val)`
 //! - sum:                    `sum([]) == 0`, `sum([a]) == a`,
-//!                           `sum([a, b]) == a + b`
+//!   `sum([a, b]) == a + b`
 //! - fold:                   `fold([&a], &s) == a` (single-element identity),
-//!                           `fold([&a, &b], &one) == a + b`,
-//!                           `fold([&a, &b], &s) == a*s + b`
+//!   `fold([&a, &b], &one) == a + b`,
+//!   `fold([&a, &b], &s) == a*s + b`
 //! - multiadd:               `multiadd([&a], &[1]) == a`,
-//!                           `multiadd([&a, &b], &[1, 1]) == a + b`,
-//!                           `multiadd([&a], &[w]) == scale(a, w)`
-//! - from_repr round-trip:   `Fp::from_repr(a.to_repr()) == Some(a)`
-//!                           (pure field-arithmetic check, not a gadget;
-//!                           sanity-guards canonical serialization)
+//!   `multiadd([&a, &b], &[1, 1]) == a + b`,
+//!   `multiadd([&a], &[w]) == scale(a, w)`
+//! - from_repr round-trip:   `Fp::from_bytes(a.to_bytes()) == Some(a)`
+//!   (pure field-arithmetic check, not a gadget;
+//!   sanity-guards canonical serialization)
 //! - invert:                 `a * invert(a) == 1` (when `a != 0`)
 //! - is_zero:                `is_zero(0) == true`,
-//!                           `is_zero(a) == (a_val == 0)`
+//!   `is_zero(a) == (a_val == 0)`
 //!
 //! # Identities (Boolean)
 //!
 //! - double not:             `!!bv == bv`
 //! - self and:               `bv & bv == bv`
 //! - not on constants:       `not(alloc(true)) == false`,
-//!                           `not(alloc(false)) == true`
+//!   `not(alloc(false)) == true`
 //! - and identity:           `and(bv, alloc(true)) == bv`
 //! - and annihilator:        `and(bv, alloc(false)) == false`
 //! - and correctness:        `and(bv, bv2).value() == (bv_val && bv2_val)`
@@ -76,12 +76,10 @@
 #![no_main]
 
 use arbitrary::Arbitrary;
-use ff::{Field, PrimeField};
 use libfuzzer_sys::fuzz_target;
-use pasta_curves::Fp;
-use ragu_arithmetic::Coeff;
-use ragu_core::maybe::Maybe;
+use ragu_core::{Coeff, maybe::Maybe, pasta::Fp};
 use ragu_primitives::{Boolean, Element, Simulator, allocator::Standard};
+use udon::field::Field;
 
 #[derive(Arbitrary, Debug)]
 struct Input {
@@ -101,7 +99,7 @@ struct Input {
 /// This way every input is usable, including ones from libFuzzer's
 /// random byte mutation.
 fn parse_fp(bytes: [u8; 32]) -> Fp {
-    Option::<Fp>::from(Fp::from_repr(bytes)).unwrap_or_else(|| {
+    Fp::from_bytes(bytes).unwrap_or_else(|| {
         Fp::from(u64::from_le_bytes([
             bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         ]))
@@ -124,12 +122,12 @@ fuzz_target!(|input: Input| {
     // any gadget; just guards that the canonical byte representation is a
     // true bijection, which the rest of the suite assumes.
     {
-        let bytes = a_val.to_repr();
-        let recovered: Option<Fp> = Fp::from_repr(bytes).into();
+        let bytes = a_val.to_bytes();
+        let recovered: Option<Fp> = Fp::from_bytes(bytes);
         assert_eq!(
             recovered,
             Some(a_val),
-            "from_repr(to_repr(a)) != Some(a): a={:?}",
+            "from_bytes(to_repr(a)) != Some(a): a={:?}",
             a_val,
         );
     }
@@ -306,10 +304,7 @@ fuzz_target!(|input: Input| {
         // alloc_square: pre-square a so we know a*a is a QR; the gadget
         // should return (root, sq) with root*root == sq.
         let a_squared_val = a_val.square();
-        let (root, sq) = Element::alloc_square(
-            dr,
-            witness.as_ref().map(|_| a_squared_val),
-        )?;
+        let (root, sq) = Element::alloc_square(dr, witness.as_ref().map(|_| a_squared_val))?;
         let root_squared = root.mul(dr, &root)?;
         assert_eq!(
             *root_squared.value().take(),
@@ -360,11 +355,7 @@ fuzz_target!(|input: Input| {
         // sum([]) == 0
         let empty_iter: Vec<&Element<'_, _>> = Vec::new();
         let sum_empty = Element::sum(dr, empty_iter);
-        assert_eq!(
-            *sum_empty.value().take(),
-            Fp::ZERO,
-            "sum([]) != 0",
-        );
+        assert_eq!(*sum_empty.value().take(), Fp::ZERO, "sum([]) != 0",);
 
         // sum([a]) == a
         let sum_single = Element::sum(dr, [&a]);
@@ -416,7 +407,7 @@ fuzz_target!(|input: Input| {
         );
 
         // multiadd([&a], &[1]) == a
-        let ma_single_one = ragu_primitives::multiadd(dr, &[a.clone()], &[Fp::ONE]);
+        let ma_single_one = ragu_primitives::multiadd(dr, core::slice::from_ref(&a), &[Fp::ONE]);
         assert_eq!(
             *ma_single_one.value().take(),
             a_val,
@@ -425,7 +416,7 @@ fuzz_target!(|input: Input| {
         );
 
         // multiadd([&a], &[w]) == scale(a, w) — use b_val as the coefficient
-        let ma_single_scaled = ragu_primitives::multiadd(dr, &[a.clone()], &[b_val]);
+        let ma_single_scaled = ragu_primitives::multiadd(dr, core::slice::from_ref(&a), &[b_val]);
         let scale_check = a.scale(dr, Coeff::Arbitrary(b_val));
         assert_eq!(
             *ma_single_scaled.value().take(),
@@ -459,10 +450,7 @@ fuzz_target!(|input: Input| {
 
         // is_zero: is_zero(0) == true
         let zero_is_zero = zero.is_zero(dr, allocator)?;
-        assert!(
-            zero_is_zero.value().take(),
-            "is_zero(0) != true",
-        );
+        assert!(zero_is_zero.value().take(), "is_zero(0) != true",);
 
         // is_zero: is_zero(a) == (a == 0)
         let a_is_zero = a.is_zero(dr, allocator)?;
@@ -501,14 +489,8 @@ fuzz_target!(|input: Input| {
         let false_const = Boolean::alloc(dr, allocator, witness.as_ref().map(|_| false))?;
         let not_true = true_const.not(dr);
         let not_false = false_const.not(dr);
-        assert!(
-            !not_true.value().take(),
-            "not(true) != false",
-        );
-        assert!(
-            not_false.value().take(),
-            "not(false) != true",
-        );
+        assert!(!not_true.value().take(), "not(true) != false",);
+        assert!(not_false.value().take(), "not(false) != true",);
 
         // and identity: and(bv, true) == bv
         let and_true = bv.and(dr, &true_const)?;

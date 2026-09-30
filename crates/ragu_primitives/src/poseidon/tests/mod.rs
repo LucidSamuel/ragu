@@ -4,9 +4,11 @@ mod halo2_vectors;
 
 use core::cell::Cell;
 
-use ragu_arithmetic::Cycle;
-use ragu_core::maybe::Maybe;
-use ragu_pasta::{Fp, Pasta};
+use ragu_core::{
+    maybe::Maybe,
+    pasta::{Fp, PoseidonFp},
+};
+use udon::field::Field;
 
 use self::halo2_vectors::{FP_PERMUTE_VECTORS, FQ_PERMUTE_VECTORS, P128Pow5T3Fp, P128Pow5T3Fq};
 use super::*;
@@ -23,7 +25,7 @@ use crate::allocator::Standard;
 /// ragu ships: the round ordering, the sbox placement, the full/partial
 /// split, the MDS application, and the point at which round constants are
 /// added are all generic over
-/// [`PoseidonPermutation`](ragu_arithmetic::PoseidonPermutation), so
+/// [`PoseidonPermutation`](ragu_core::PoseidonPermutation), so
 /// running them at Orchard's t=3 instantiation exercises the same code the
 /// t=5 one ragu deploys goes through. What it does not reach is behaviour
 /// specific to a width -- the state and MDS loops at t=5 -- which is what
@@ -33,7 +35,7 @@ use crate::allocator::Standard;
 fn check_permutation_vectors<F, P>(params: &P, vectors: &[([F; 3], [F; 3])]) -> Result<()>
 where
     F: Field,
-    P: ragu_arithmetic::PoseidonPermutation<F>,
+    P: ragu_core::PoseidonPermutation<F>,
 {
     assert_eq!(P::T, 3, "the vendored vectors are for a width-3 state");
     assert!(!vectors.is_empty(), "no test vectors");
@@ -80,13 +82,8 @@ fn test_permutation_matches_halo2_vectors_fq() -> Result<()> {
 
 #[test]
 fn test_permutation_constraints() -> Result<()> {
-    let params = Pasta::baked();
-
     let sim = Simulator::simulate(Fp::from(1), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let allocator = &mut Standard::new();
         let value = Element::alloc(dr, allocator, value)?;
         sponge.absorb(dr, &value)?;
@@ -103,13 +100,8 @@ fn test_permutation_constraints() -> Result<()> {
 
 #[test]
 fn test_save_state_nothing_absorbed() -> Result<()> {
-    let params = Pasta::baked();
-
     Simulator::simulate((), |dr, _| {
-        let sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         // Try to save without absorbing anything
         let result = sponge.save_state(dr);
         assert!(matches!(result, Err(SaveError::NothingAbsorbed)));
@@ -122,12 +114,8 @@ fn test_save_state_nothing_absorbed() -> Result<()> {
 
 #[test]
 fn test_squeeze_before_any_absorb() -> Result<()> {
-    let params = Pasta::baked();
     let mut dr = Simulator::new();
-    let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-        &mut dr,
-        Pasta::circuit_poseidon(params),
-    );
+    let mut sponge = Sponge::<'_, _, PoseidonFp>::new(&mut dr, &PoseidonFp);
 
     // Squeeze without absorbing anything should fail
     assert!(sponge.squeeze(&mut dr).is_err());
@@ -136,13 +124,8 @@ fn test_squeeze_before_any_absorb() -> Result<()> {
 
 #[test]
 fn test_save_state_already_in_squeeze_mode() -> Result<()> {
-    let params = Pasta::baked();
-
     Simulator::simulate(Fp::from(1), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let allocator = &mut Standard::new();
         let value = Element::alloc(dr, allocator, value)?;
         sponge.absorb(dr, &value)?;
@@ -160,13 +143,8 @@ fn test_save_state_already_in_squeeze_mode() -> Result<()> {
 
 #[test]
 fn test_save_state_succeeds_after_absorb() -> Result<()> {
-    let params = Pasta::baked();
-
     Simulator::simulate(Fp::from(1), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let allocator = &mut Standard::new();
         let value = Element::alloc(dr, allocator, value)?;
         sponge.absorb(dr, &value)?;
@@ -181,18 +159,13 @@ fn test_save_state_succeeds_after_absorb() -> Result<()> {
 
 #[test]
 fn test_save_resume_produces_same_output_as_normal_sponge() -> Result<()> {
-    let params = Pasta::baked();
-
     // Use Cell to extract the output values from inside the closures
     let normal_output = Cell::new(Fp::ZERO);
     let save_resume_output = Cell::new(Fp::ZERO);
 
     // Run normal sponge flow and get squeezed value
     Simulator::simulate(Fp::from(123), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let allocator = &mut Standard::new();
         let value = Element::alloc(dr, allocator, value)?;
         sponge.absorb(dr, &value)?;
@@ -203,15 +176,12 @@ fn test_save_resume_produces_same_output_as_normal_sponge() -> Result<()> {
 
     // Run save/resume flow and get squeezed value
     Simulator::simulate(Fp::from(123), |dr, value| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let allocator = &mut Standard::new();
         let value = Element::alloc(dr, allocator, value)?;
         sponge.absorb(dr, &value)?;
         let state = sponge.save_state(dr).expect("save_state should succeed");
-        let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
+        let mut sponge = Sponge::resume(state, &PoseidonFp);
         let squeezed = sponge.squeeze(dr)?;
         save_resume_output.set(*squeezed.value().take());
         Ok(())
@@ -226,8 +196,6 @@ fn test_save_resume_produces_same_output_as_normal_sponge() -> Result<()> {
 #[test]
 // Misuse: forgetting to squeeze after resuming put sponge in a bad state.
 fn test_absorb_before_squeeze_after_resume() -> Result<()> {
-    let params = Pasta::baked();
-
     let normal_output = Cell::new(Fp::ZERO);
     let bad_resume_output = Cell::new(Fp::ZERO);
 
@@ -235,10 +203,7 @@ fn test_absorb_before_squeeze_after_resume() -> Result<()> {
 
     // Normal flow: absorb v1, absorb v2, squeeze
     Simulator::simulate(witness, |dr, v| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let (v1, v2) = v.cast();
         let allocator = &mut Standard::new();
         let v1 = Element::alloc(dr, allocator, v1)?;
@@ -255,17 +220,14 @@ fn test_absorb_before_squeeze_after_resume() -> Result<()> {
     // switches back to absorb mode mid-stream, producing a different state than
     // the continuous absorb path above.
     Simulator::simulate(witness, |dr, v| {
-        let mut sponge = Sponge::<'_, _, <Pasta as Cycle>::CircuitPoseidon>::new(
-            dr,
-            Pasta::circuit_poseidon(params),
-        );
+        let mut sponge = Sponge::<'_, _, PoseidonFp>::new(dr, &PoseidonFp);
         let (v1, v2) = v.cast();
         let allocator = &mut Standard::new();
         let v1 = Element::alloc(dr, allocator, v1)?;
         let v2 = Element::alloc(dr, allocator, v2)?;
         sponge.absorb(dr, &v1)?;
         let state = sponge.save_state(dr).expect("save_state should succeed");
-        let mut sponge = Sponge::resume(state, Pasta::circuit_poseidon(params));
+        let mut sponge = Sponge::resume(state, &PoseidonFp);
 
         // Misuse: absorb before squeezing corrupts the transcript
         sponge.absorb(dr, &v2)?;

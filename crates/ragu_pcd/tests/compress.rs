@@ -5,26 +5,24 @@
 
 use alloc::vec;
 
-use ragu_arithmetic::{
-    ff::Field,
-    rand::{SeedableRng, rngs::StdRng},
-};
 use ragu_circuits::{
     polynomials::{ProductionRank, sparse},
     registry::CircuitIndex,
     staging::{StageReader, stage_wire_indices, wires_of},
 };
+use ragu_core::pasta::{Fp, Fq, Pasta};
 use ragu_core::{
     Error, Result,
     drivers::{Driver, DriverValue},
     gadgets::{Bound, Kind},
     maybe::Maybe,
 };
-use ragu_pasta::{Fp, Fq, Pasta};
 use ragu_primitives::{
     Element,
     allocator::{Allocator, Standard},
 };
+use rand::{SeedableRng, rngs::StdRng};
+use udon::field::Field;
 
 use super::{CompressedPcd, CompressedProof};
 use crate::{
@@ -104,7 +102,7 @@ fn app() -> App {
     ApplicationBuilder::<Pasta, TestR, HEADER_SIZE>::new()
         .register(Seed)
         .expect("register seed step")
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .expect("failed to create test application")
 }
 

@@ -28,7 +28,6 @@ cargo-fuzz = true
 [features]
 # Preserve the PCD configurations exercised by the moved patcher regressions.
 multicore = ["ragu_pcd/multicore"]
-native-msm = ["ragu_pcd/native-msm"]
 
 [dev-dependencies]
 rayon = "1.11.0"
@@ -37,17 +36,13 @@ rayon = "1.11.0"
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
 # This workspace cannot inherit repo-root [workspace.dependencies], so keep
-# these direct ff/group/pasta_curves/rand versions in sync with the repo-root
-# dependency set.
-ff = { version = "0.14", default-features = false }
-group = { version = "0.14", default-features = false }
-pasta_curves = { package = "zakura-pasta-curves", version = "1.1.0", features = ["deferred"] }
-ragu_arithmetic = { path = "../../crates/ragu_arithmetic" }
+# the direct rand version in sync with the repo-root dependency set. Field and
+# curve types come through ragu_core.
+udon = { package = "zakura-udon", version = "0.1.0", default-features = false, features = ["traits"] }
 ragu_primitives = { path = "../../crates/ragu_primitives" }
-ragu_pasta = { path = "../../crates/ragu_pasta", features = ["baked"] }
 ragu_core = { path = "../../crates/ragu_core" }
 ragu_circuits = { path = "../../crates/ragu_circuits" }
-ragu_pcd = { path = "../../crates/ragu_pcd", features = ["unstable-fuzzing"] }
+ragu_pcd = { path = "../../crates/ragu_pcd", features = ["baked", "unstable-fuzzing"] }
 # The patcher engine (recording driver, repair solver, oracles) that
 # `fuzz_advice_patcher` drives over generated programs.
 ragu_testing = { path = "../../crates/ragu_testing" }

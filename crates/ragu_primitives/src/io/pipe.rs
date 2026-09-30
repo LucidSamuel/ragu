@@ -44,8 +44,8 @@ mod tests {
     use ragu_core::{
         drivers::emulator::{Emulator, Wireless},
         maybe::{Always, MaybeKind},
+        pasta::Fp,
     };
-    use ragu_pasta::Fp;
 
     use super::*;
 

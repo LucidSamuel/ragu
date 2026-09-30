@@ -35,9 +35,10 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_arithmetic::{CurveAffine, ff::Field, msm};
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::Result;
+use udon::curve::Affine;
+use udon::field::Field;
 
 use crate::{
     compress::claims::{Kind, Shape},
@@ -49,7 +50,7 @@ pub(crate) const GROUP: usize = 7;
 
 /// The prover's messages of the fold on one curve.
 #[derive(Clone, Debug)]
-pub(crate) struct Fold<C: CurveAffine> {
+pub(crate) struct Fold<C: Affine> {
     /// The commitment to the first layer's error terms.
     pub inner: C,
     /// The commitment to the second layer's error terms.
@@ -60,7 +61,7 @@ pub(crate) struct Fold<C: CurveAffine> {
     pub outer_epsilon: C::Scalar,
 }
 
-impl<C: CurveAffine> Fold<C> {
+impl<C: Affine> Fold<C> {
     /// Replays the messages on `transcript` in the prover's order and
     /// squeezes the weights where the prover did.
     pub(crate) fn replay<T: IpaTranscript<C>>(
@@ -83,7 +84,7 @@ impl<C: CurveAffine> Fold<C> {
 }
 
 /// One layer's pair of challenges.
-pub(crate) fn squeeze_pair<C: CurveAffine, T: IpaTranscript<C>>(
+pub(crate) fn squeeze_pair<C: Affine, T: IpaTranscript<C>>(
     transcript: &mut T,
 ) -> Result<(C::Scalar, C::Scalar)> {
     Ok((
@@ -216,7 +217,7 @@ impl<F: Field> Weights<F> {
 }
 
 fn power<F: Field>(base: F, exponent: usize) -> F {
-    base.pow_vartime([exponent as u64])
+    base.pow_u64(exponent as u64)
 }
 
 /// The polynomial whose revdot with one holding `weights` as its low
@@ -235,7 +236,7 @@ fn mirrored<F: Field, R: Rank>(weights: impl Iterator<Item = F>) -> sparse::Poly
 /// messages: $\[A\]$ sums every claim's $a$ under its $A$ weight, the dilated
 /// polynomial the circuit claims' $a$ under their $B$ weights, and the raw
 /// polynomial the raw claims' $b$ likewise.
-pub(crate) fn commitments<C: CurveAffine, Id: Copy>(
+pub(crate) fn commitments<C: Affine, Id: Copy>(
     shapes: &[Shape<Id, C::Scalar>],
     weights: &Weights<C::Scalar>,
     commitment: impl Fn(Id) -> C,
@@ -246,7 +247,7 @@ pub(crate) fn commitments<C: CurveAffine, Id: Copy>(
             .into_iter()
             .map(|(weight, id)| (weight, commitment(id)))
             .unzip();
-        msm(&scalars, &points).into()
+        C::msm(&scalars, &points).into()
     };
     let weighted = |side: fn(&Shape<Id, C::Scalar>) -> &[(C::Scalar, Id)],
                     weight: fn(&Weights<C::Scalar>, usize) -> C::Scalar,
