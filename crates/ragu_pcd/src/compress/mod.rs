@@ -19,9 +19,10 @@
 //!   batch polynomial's and the accumulator's into one claim;
 //! - the [`ipa`](crate::ipa) proves it.
 //!
-//! The [`claims`] module records the revdot claims' shapes, what the fold
-//! derives its commitments from, and [`instance`] carries the instance and
-//! restates the decider's remaining checks over it. Both curves run on one
+//! The reduction's [`claims`](revdot::claims) module records the revdot
+//! claims' shapes, what the fold derives its commitments from, and
+//! [`instance`] carries the instance and restates the decider's remaining
+//! checks over it. Both curves run on one
 //! transcript, the native side first at each step. What the decider checks
 //! by recomputing commitments from polynomials needs no counterpart: every
 //! commitment the compressed verifier reads is opened through the IPA, the
@@ -57,7 +58,6 @@ use crate::{
 };
 
 pub(crate) mod batch;
-pub(crate) mod claims;
 pub(crate) mod instance;
 mod prover;
 pub(crate) mod revdot;

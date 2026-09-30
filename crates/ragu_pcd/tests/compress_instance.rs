@@ -16,9 +16,9 @@ use udon::field::Field;
 use super::Instance;
 use crate::{
     Application, ApplicationBuilder, Pcd, RAGU_TAG,
-    compress::{
+    compress::revdot::{
         claims::{self, Kind, Masked},
-        revdot::fold::Derived,
+        fold::Derived,
     },
     internal::{ky, native, nested},
     ipa::CycleTranscript,

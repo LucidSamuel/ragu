@@ -8,7 +8,7 @@
 //! [`Shape`]: which components its $a$ sums, with what weights, and what
 //! [`Kind`] of $b$ goes with it, a committed polynomial of its own, the
 //! dilated $a$ plus the circuit's wiring restriction and $t(z, X)$, or that
-//! restriction alone. The [`fold`](super::revdot::fold) derives the
+//! restriction alone. The [`fold`](super::fold) derives the
 //! commitments it opens from the shapes, and the verifier evaluates the
 //! public parts itself. The compressor, holding the polynomials, uses the
 //! builder for the claims and the shapes for their kinds; both sides
@@ -356,5 +356,5 @@ pub(crate) fn nested_shapes<F: Field>(
 }
 
 #[cfg(test)]
-#[path = "../../tests/compress_claims.rs"]
+#[path = "../../../tests/compress_claims.rs"]
 mod tests;

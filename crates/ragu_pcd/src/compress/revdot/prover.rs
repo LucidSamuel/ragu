@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     Proof,
-    compress::claims::{self, Kind, Masked, NativePolys, NestedPolys, Shape},
+    compress::revdot::claims::{self, Kind, Masked, NativePolys, NestedPolys, Shape},
     internal::{claims::Builder, native, nested},
     ipa::IpaTranscript,
 };

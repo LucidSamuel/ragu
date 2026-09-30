@@ -25,11 +25,9 @@ use ragu_core::{Cycle, Error, Result};
 use ragu_primitives::extract_endoscalar;
 use udon::{curve::Affine, fft::bit_reverse, field::Field};
 
-use super::{
-    claims::Masked,
-    revdot::{
-        OpeningClaim, native_components, native_position, nested_components, nested_position,
-    },
+use super::revdot::{
+    OpeningClaim, claims::Masked, native_components, native_position, nested_components,
+    nested_position,
 };
 use crate::{
     Proof,

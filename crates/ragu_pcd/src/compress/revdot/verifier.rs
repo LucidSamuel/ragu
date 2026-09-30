@@ -16,7 +16,7 @@ use super::{
     invert, openings,
 };
 use crate::{
-    compress::claims::{self, Evaluated, Kind, Masked, Shape},
+    compress::revdot::claims::{self, Evaluated, Kind, Masked, Shape},
     internal::{
         ky::{NativeKy, NestedKy},
         native, nested,

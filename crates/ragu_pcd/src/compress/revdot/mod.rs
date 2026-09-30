@@ -13,7 +13,7 @@
 //!
 //! Both sides take the claims in the decider's order, the prover through
 //! [`claims::Builder`](crate::internal::claims::Builder) and the verifier
-//! through the [`shapes`](super::claims).
+//! through the [`claims`]' shapes.
 //!
 //! The transcript is assumed to have seen the commitments the claims are
 //! over, and $y$ and $z$ to have been squeezed from it.
@@ -27,6 +27,7 @@ use udon::{curve::Affine, field::Field};
 use self::fold::{Derived, Fold};
 use crate::internal::{native, nested};
 
+pub(crate) mod claims;
 pub(crate) mod fold;
 mod prover;
 mod verifier;
