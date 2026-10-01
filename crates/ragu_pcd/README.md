@@ -14,59 +14,31 @@ Bento; `pasta::baked()` adapts them once into Udon's parameter containers withou
 decoding coordinates. The derivation preserves Ragu's existing generators. The
 feature enables `alloc` and supports `no_std`.
 
-## Experimental proof bytes
+## Proof serialization
 
-`Proof::minimize` (through `ragu_primitives::wire::Minimize`) produces a
-`MinimalProof`. Its `Encode::to_bytes` and `Decode::from_bytes` methods carry
-the prover-provided fields and checked commitments. Use
-`Application::verify_minimal` with the accompanying header data to verify a
-decoded proof. Decoding establishes encoding validity; expansion reconstructs
-omitted fields; neither substitutes for verification.
+`Proof::minimize` produces the retained `MinimalProof` representation.
+`Proof::into_minimal` moves its fields when the expanded proof is no longer
+needed, avoiding polynomial-buffer clones. Both methods come from
+`ragu_primitives::wire::Minimize`.
 
-The optional `serde` feature carries the same bytes. The IPA representation
-in [#462](https://github.com/tachyon-zcash/ragu/pull/462) needs its own codec
-integration.
+For storage or transport, create `Application::proof_format(ProofContext)`
+using suite and application identifiers from your trusted setup manifest.
+`ProofFormat::encode` writes the versioned envelope and proof payload;
+`ProofFormat::decode` checks versions, rank, header size and context before
+allocating proof data. Call `Application::verify_minimal` with the accompanying
+header data to accept or reject the decoded proof.
 
-### Compatibility policy
+[WIRE_FORMAT.md](WIRE_FORMAT.md) specifies schema v1, version changes, context
+requirements, resource bounds and migration. The pre-Udon full-proof fixture
+pins the unchanged low-level payload; a separate envelope test pins its header.
+The IPA representation in [#462](https://github.com/tachyon-zcash/ragu/pull/462)
+requires its own codec integration.
 
-These bytes are experimental and are not a stable interchange format. The
-single version byte identifies the experimental envelope, not a proof schema,
-curve suite, rank, application, or registry setup. Until a stable envelope is
-specified, communicating parties must agree out of band on the implementation
-revision, concrete proof types, application configuration and parameters, and
-header interpretation. Successful decoding does not confirm that context.
-
-The pre-Udon fixtures exercise selected primitive encodings and one complete
-leaf proof against the current decoder and verifier. They protect those
-migration cases; they do not promise compatibility with arbitrary past or
-future revisions. Before publishing a stable format, specify schema and
-context identifiers, rules for incompatible-version rejection, and migration
-and compatibility tests. The wire envelope version is distinct from the
-transcript's domain-separation tag.
-
-### Resource limits
-
-Direct decoding requires an explicit `Limits` value. Its defaults allow
-1,048,576 aggregate container elements and 64 MiB of requested vector storage.
-Temporary and normalized polynomial buffers both count. These are resource
-policy limits, not rank-derived bounds or a guarantee that every valid proof
-fits. They do not bound verifier computation, allocator overhead, or buffers
-owned by an outer deserializer.
-
-Serde uses those defaults and separately rejects encoded byte strings over
-64 MiB. Its sequence visitor grows fallibly from observed bytes without
-trusting a size hint. A format's deserializer may buffer input before calling
-the visitor, so applications must also bound input at their transport layer.
-Call the wire decoder directly when an application needs different limits.
-
-Before declaring support for a proof configuration, validate its limits with
-representative seed and recursive proofs and adversarial sparse layouts,
-including normalization storage. A future rank-derived policy must account
-for the number of retained polynomials and protocol vectors as well as rank;
-increasing a global cap alone is not such a policy.
-
-Fixed-length protocol encoding, consuming minimization, and size and timing
-measurements can be evaluated independently of this experimental API.
+The optional Serde adapter on `MinimalProof` carries the low-level payload
+for embedding in an already context-bound container. It uses rank-derived
+encoded-byte and decoded-storage limits and ignores untrusted sequence size
+hints. Applications must separately limit transport/deserializer buffering.
+`ProofFormat::decode_with_limits` supports stricter deployment budgets.
 
 ## License
 

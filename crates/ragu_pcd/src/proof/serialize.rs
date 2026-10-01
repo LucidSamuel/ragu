@@ -2,24 +2,22 @@
 //! format, so every serde data format carries the same bytes and the same
 //! decoding checks apply.
 //!
-//! Encoded inputs are limited to 64 MiB, independently of the decoded storage
-//! budget. Formats without a bytes type need a temporary buffer before the
-//! wire decoder can enforce its own limits.
+//! Encoded and decoded inputs use the schema's rank-derived bounds. Formats
+//! without a bytes type need a temporary buffer before decoding. This adapter
+//! carries the low-level payload; use `ProofFormat` for a context-bound envelope.
 
 use alloc::vec::Vec;
 use core::{fmt, marker::PhantomData};
 
 use ragu_circuits::polynomials::Rank;
 use ragu_core::Cycle;
-use ragu_primitives::wire::{Decode, Encode, Limits};
+use ragu_primitives::wire::{Decode, Encode};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, SeqAccess, Visitor},
 };
 
 use super::MinimalProof;
-
-const MAX_ENCODED_SIZE: usize = 64 << 20;
 
 impl<C: Cycle, R: Rank> Serialize for MinimalProof<C, R>
 where
@@ -64,16 +62,16 @@ where
     }
 
     fn visit_bytes<E: de::Error>(self, bytes: &[u8]) -> Result<Self::Value, E> {
-        if bytes.len() > MAX_ENCODED_SIZE {
+        if bytes.len() > MinimalProof::<C, R>::max_encoded_size() {
             return Err(E::custom("encoded proof exceeds byte limit"));
         }
         // The decoder borrows its error from the input, so it is rendered
         // before the input goes out of scope.
-        MinimalProof::from_bytes(bytes, Limits::default()).map_err(E::custom)
+        MinimalProof::from_bytes(bytes, MinimalProof::<C, R>::decode_limits()).map_err(E::custom)
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
-        let bytes = read_bytes(seq, MAX_ENCODED_SIZE)?;
+        let bytes = read_bytes(seq, MinimalProof::<C, R>::max_encoded_size())?;
         self.visit_bytes(&bytes)
     }
 }

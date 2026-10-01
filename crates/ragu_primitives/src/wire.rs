@@ -4,7 +4,8 @@
 //! [`Encode::encode`] and [`Decode::decode`] compose payloads; [`Encode::to_bytes`]
 //! and [`Decode::from_bytes`] add/check one version byte at the outer boundary.
 //! The caller must select the same schema, field/curve suite and rank. These
-//! experimental bytes do not yet define the production proof format.
+//! low-level bytes do not identify their schema or application context. Domain
+//! formats must provide that envelope (for example `ragu_pcd::ProofFormat`).
 //!
 //! Integers and lengths are little-endian; lengths always occupy eight bytes.
 //! Scalar and point representations are specified by their respective types.
@@ -23,7 +24,7 @@ use udon::{curve::Affine, field::Field};
 #[cfg(test)]
 mod tests;
 
-/// Version of the experimental envelope. Nested payloads have no envelope.
+/// Version of the low-level codec framing. Nested payloads have no envelope.
 pub const VERSION: u8 = 1;
 
 /// The ordinary codec for integers, containers and generated structs.
@@ -34,6 +35,9 @@ pub struct Scalar;
 pub struct Point;
 /// A length-prefixed vector whose elements use codec `C`.
 pub struct Sequence<C>(PhantomData<C>);
+/// A length-prefixed vector whose count must equal [`crate::vec::Len::len`].
+/// The count is checked before reservation or decoding any element.
+pub struct FixedSequence<C, L>(PhantomData<(C, L)>);
 
 /// Generates a struct's minimal form and its ordered byte codecs.
 ///
@@ -50,7 +54,8 @@ pub struct Sequence<C>(PhantomData<C>);
 /// `#[ragu(minimal = Name)]` on the struct. Only named-field structs are
 /// supported. Source generic parameters and bounds are preserved; type and
 /// lifetime parameters must also be used by retained fields.
-/// Minimizing clones provided and checked fields, never derived fields.
+/// `minimize` clones provided and checked fields, never derived fields.
+/// `into_minimal` moves those fields and drops the derived fields.
 /// Expansion remains a handwritten, domain-specific computation.
 /// The annotations declare the access boundary; the derive does not establish
 /// the mathematical correctness of a field's classification.
@@ -105,6 +110,8 @@ pub trait Minimize {
     type Derived;
     /// Clones the provided and checked fields into the minimal representation.
     fn minimize(&self) -> Self::Minimal;
+    /// Moves the retained fields without cloning their polynomial buffers.
+    fn into_minimal(self) -> Self::Minimal;
     /// Reassembles the working representation. The computation of `derived`
     /// is the caller's; this only moves fields into place.
     fn expand(minimal: Self::Minimal, derived: Self::Derived) -> Self;
@@ -133,7 +140,7 @@ pub trait Encode<C = DefaultEncoding> {
     /// Appends the canonical payload, without a version envelope.
     fn encode(&self, output: &mut Vec<u8>);
 
-    /// Encodes one complete value with the prototype version byte.
+    /// Encodes one complete value with the low-level codec version byte.
     fn to_bytes(&self) -> Vec<u8> {
         let mut output = alloc::vec![VERSION];
         self.encode(&mut output);
@@ -493,5 +500,33 @@ impl<T: Decode> Decode for Arc<T> {
     }
     fn decode<'a>(reader: &mut Reader<'a>) -> Result<Self, Error<'a>> {
         T::decode(reader).map(Arc::new)
+    }
+}
+
+impl<T: Encode<C>, C, L: crate::vec::Len> Encode<FixedSequence<C, L>> for Vec<T> {
+    fn encode(&self, output: &mut Vec<u8>) {
+        <Self as Encode<Sequence<C>>>::encode(self, output);
+    }
+}
+impl<T: Decode<C>, C, L: crate::vec::Len> Decode<FixedSequence<C, L>> for Vec<T> {
+    fn min_encoded_len() -> usize {
+        8usize.saturating_add(L::len().saturating_mul(T::min_encoded_len()))
+    }
+    fn decode<'a>(reader: &mut Reader<'a>) -> Result<Self, Error<'a>> {
+        let offset = reader.offset();
+        let bytes = reader.remaining();
+        let count = u64::decode(reader)?;
+        if count != L::len() as u64 {
+            return Err(Error::Invalid {
+                offset,
+                bytes: &bytes[..8],
+                reason: "incorrect fixed sequence length",
+            });
+        }
+        let mut values = reader.reserve::<T>(count, T::min_encoded_len())?;
+        for _ in 0..count {
+            values.push(T::decode(reader)?);
+        }
+        Ok(values)
     }
 }

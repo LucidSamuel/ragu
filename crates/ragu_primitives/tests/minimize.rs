@@ -107,3 +107,17 @@ fn checked_fields_ship_and_visit_their_batch() {
     committed.for_each_checked_nested(&mut nested);
     assert_eq!(nested.0, [(4, 9)]);
 }
+
+#[test]
+fn consuming_minimization_moves_retained_storage() {
+    let values = vec![1u64, 2, 3];
+    let pointer = values.as_ptr();
+    let working = Working {
+        value: values,
+        cache: Cache,
+        scratch: [0; 3],
+    };
+    let minimal = working.into_minimal();
+    assert_eq!(minimal.value.as_ptr(), pointer);
+    assert_eq!(minimal.value, [1, 2, 3]);
+}

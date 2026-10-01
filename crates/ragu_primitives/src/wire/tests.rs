@@ -252,3 +252,35 @@ fn pre_udon_encodings() {
     points::<EpAffine>(include_bytes!("../../tests/fixtures/wire/pallas.bin"));
     points::<EqAffine>(include_bytes!("../../tests/fixtures/wire/vesta.bin"));
 }
+
+#[test]
+fn fixed_sequence_rejects_count_before_reserving_or_decoding() {
+    use crate::vec::ConstLen;
+    type Codec = FixedSequence<DefaultEncoding, ConstLen<2>>;
+    for count in [0u64, 1, 3, u64::MAX] {
+        let bytes = count.to_bytes();
+        let error = <Vec<u64> as Decode<Codec>>::from_bytes(
+            &bytes,
+            Limits {
+                elements: 0,
+                allocation: 0,
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            Error::Invalid {
+                offset: 1,
+                reason: "incorrect fixed sequence length",
+                ..
+            }
+        ));
+    }
+    let values = vec![17u64, 42];
+    let bytes = <Vec<u64> as Encode<Codec>>::to_bytes(&values);
+    assert_eq!(bytes, <Vec<u64> as Encode>::to_bytes(&values));
+    assert_eq!(
+        <Vec<u64> as Decode<Codec>>::from_bytes(&bytes, Limits::default()).unwrap(),
+        values
+    );
+}

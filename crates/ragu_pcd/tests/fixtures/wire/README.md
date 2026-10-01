@@ -40,4 +40,4 @@ SHA-256 and byte lengths:
 The current `pre_udon_proof_decodes_and_verifies` test decodes these exact
 bytes, requires byte-identical re-encoding, and verifies against the matching
 application and header. This covers one complete proof across the migration;
-it is not a compatibility promise for future experimental format changes.
+future schema changes follow the versioning contract in `../../../WIRE_FORMAT.md`.

@@ -38,7 +38,8 @@ fn decoded_proof_preserves_derived_fields_and_rejects_wrong_vector_lengths() {
                 }
                 let malformed = minimal.to_bytes();
                 assert!(
-                    !app.verify_minimal::<_, ()>(decode(&malformed), (), &mut rng).unwrap(),
+                    matches!(MinimalProof::<Pasta, ProductionRank>::from_bytes(&malformed, Limits::default()),
+                        Err(ragu_primitives::wire::Error::Invalid { reason: "incorrect fixed sequence length", .. })),
                     "{} (extra: {extra})", stringify!($field),
                 );
             }

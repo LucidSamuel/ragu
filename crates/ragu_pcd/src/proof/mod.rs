@@ -11,6 +11,8 @@
 
 pub(crate) mod builder;
 mod expand;
+mod format;
+pub use format::{ProofContext, ProofFormat};
 #[cfg(test)]
 #[path = "../../tests/malformed_proofs.rs"]
 mod malformed_proof_tests;
@@ -69,7 +71,7 @@ use ragu_circuits::{
 use ragu_core::{Cycle, Result};
 use ragu_primitives::{
     extract_endoscalar, lift_endoscalar,
-    vec::{FixedVec, Len},
+    vec::{ConstLen, FixedVec, Len},
     wire::{self, Decode, Encode, Minimize},
 };
 use udon::field::Field;
@@ -178,9 +180,9 @@ pub struct Proof<C: Cycle, R: Rank> {
     // Application metadata
     #[ragu(provided)]
     pub(crate) circuit_id: CircuitIndex,
-    #[ragu(provided, codec = wire::Sequence<wire::Scalar>)]
+    #[ragu(provided, codec = format::HeaderSequence<R>)]
     pub(crate) left_header: Vec<C::CircuitField>,
-    #[ragu(provided, codec = wire::Sequence<wire::Scalar>)]
+    #[ragu(provided, codec = format::HeaderSequence<R>)]
     pub(crate) right_header: Vec<C::CircuitField>,
 
     // Native rx polynomials (CircuitField, HostCurve commitment)
@@ -214,7 +216,7 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) native_outer_collapse_rx: sparse::Polynomial<C::CircuitField, R>,
     #[ragu(provided)]
     pub(crate) native_compute_v_rx: sparse::Polynomial<C::CircuitField, R>,
-    #[ragu(provided)]
+    #[ragu(provided, codec = wire::FixedSequence<wire::DefaultEncoding, ConstLen<{ native::NUM_BINDERS }>>)]
     pub(crate) native_bind_challenges_rxs: Vec<sparse::Polynomial<C::CircuitField, R>>,
     #[ragu(provided)]
     pub(crate) native_bind_beta_rx: sparse::Polynomial<C::CircuitField, R>,
@@ -224,7 +226,7 @@ pub struct Proof<C: Cycle, R: Rank> {
     // holding the endoscalar's bits and the interstitials.
     #[ragu(provided)]
     pub(crate) native_bind_endoscalar_rx: sparse::Polynomial<C::CircuitField, R>,
-    #[ragu(provided)]
+    #[ragu(provided, codec = wire::FixedSequence<wire::DefaultEncoding, ConstLen<{ native::NUM_ENDOSCALING_STEPS }>>)]
     pub(crate) native_endoscaling_step_rxs: Vec<sparse::Polynomial<C::CircuitField, R>>,
     #[ragu(provided)]
     pub(crate) native_points_binding_rx: sparse::Polynomial<C::CircuitField, R>,
@@ -260,7 +262,7 @@ pub struct Proof<C: Cycle, R: Rank> {
     bridge_ab_rx: Cached<Arc<sparse::Polynomial<C::ScalarField, R>>>,
 
     // Nested endoscaling data (ScalarField, NestedCurve commitment)
-    #[ragu(provided)]
+    #[ragu(provided, codec = wire::FixedSequence<wire::DefaultEncoding, NumStepsLen>)]
     pub(crate) nested_endoscaling_step_rxs: Vec<sparse::Polynomial<C::ScalarField, R>>,
     #[ragu(provided)]
     pub(crate) nested_endoscalar_rx: sparse::Polynomial<C::ScalarField, R>,
@@ -305,7 +307,7 @@ pub struct Proof<C: Cycle, R: Rank> {
     pub(crate) nested_compute_v_rx: sparse::Polynomial<C::ScalarField, R>,
 
     // Nested endoscaling commitment caches
-    #[ragu(checked = nested_endoscaling_step_rxs, batch = nested, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = nested_endoscaling_step_rxs, batch = nested, codec = wire::FixedSequence<CachedPoint, NumStepsLen>)]
     nested_endoscaling_step_commitments: Vec<Cached<C::NestedCurve>>,
     #[ragu(checked = nested_endoscalar_rx, batch = nested, codec = CachedPoint)]
     nested_endoscalar_commitment: Cached<C::NestedCurve>,
@@ -391,13 +393,13 @@ pub struct Proof<C: Cycle, R: Rank> {
     native_outer_collapse_commitment: Cached<C::HostCurve>,
     #[ragu(checked = native_compute_v_rx, batch = native, codec = CachedPoint)]
     native_compute_v_commitment: Cached<C::HostCurve>,
-    #[ragu(checked = native_bind_challenges_rxs, batch = native, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = native_bind_challenges_rxs, batch = native, codec = wire::FixedSequence<CachedPoint, ConstLen<{ native::NUM_BINDERS }>>)]
     native_bind_challenges_commitments: Vec<Cached<C::HostCurve>>,
     #[ragu(checked = native_bind_beta_rx, batch = native, codec = CachedPoint)]
     native_bind_beta_commitment: Cached<C::HostCurve>,
     #[ragu(checked = native_bind_endoscalar_rx, batch = native, codec = CachedPoint)]
     native_bind_endoscalar_commitment: Cached<C::HostCurve>,
-    #[ragu(checked = native_endoscaling_step_rxs, batch = native, codec = wire::Sequence<CachedPoint>)]
+    #[ragu(checked = native_endoscaling_step_rxs, batch = native, codec = wire::FixedSequence<CachedPoint, ConstLen<{ native::NUM_ENDOSCALING_STEPS }>>)]
     native_endoscaling_step_commitments: Vec<Cached<C::HostCurve>>,
     #[ragu(checked = native_points_binding_rx, batch = native, codec = CachedPoint)]
     native_points_binding_commitment: Cached<C::HostCurve>,

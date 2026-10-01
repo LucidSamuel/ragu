@@ -28,12 +28,21 @@ fn fixture() -> (TestApp, TestProof) {
 
 fn assert_rejected(app: &TestApp, proof: TestProof, field: &str) {
     let bytes = proof.minimize().to_bytes();
-    let minimal = MinimalProof::<Pasta, ProductionRank>::from_bytes(&bytes, Limits::default())
-        .expect("structurally malformed values still have canonical byte encodings");
-    let result = app.verify_minimal::<_, ()>(minimal, (), StdRng::seed_from_u64(5678));
+    // Length violations are rejected by the codec before allocation. Other
+    // malformed values must still be rejected by the verification boundary.
+    if let Ok(minimal) =
+        MinimalProof::<Pasta, ProductionRank>::from_bytes(&bytes, Limits::default())
+    {
+        let result = app.verify_minimal::<_, ()>(minimal, (), StdRng::seed_from_u64(5678));
+        assert!(
+            matches!(&result, Ok(false)),
+            "decoded {field}: got {result:?}"
+        );
+    }
+    let result = app.verify_minimal::<_, ()>(proof.minimize(), (), StdRng::seed_from_u64(5678));
     assert!(
         matches!(&result, Ok(false)),
-        "decoded {field}: expected Ok(false), got {result:?}"
+        "in-memory {field}: got {result:?}"
     );
     let result = app.verify(&proof.carry::<()>(()), StdRng::seed_from_u64(5678));
     assert!(

@@ -197,7 +197,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         ));
     }
     // Preserve the source's parameters and bounds. Parameters used only by
-    // omitted fields are outside this prototype's supported generic shapes.
+    // omitted fields are outside the derive's supported generic shapes.
     let mut generics = input.generics.clone();
     for param in &mut generics.params {
         let attrs = match param {
@@ -345,6 +345,9 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
             type Derived = #derived_name #minimal_args;
             fn minimize(&self) -> Self::Minimal {
                 #minimal_name { #(#ids: ::core::clone::Clone::clone(&self.#ids),)* }
+            }
+            fn into_minimal(self) -> Self::Minimal {
+                #minimal_name { #(#ids: self.#ids,)* }
             }
             fn expand(minimal: Self::Minimal, derived: Self::Derived) -> Self {
                 Self {

@@ -11,16 +11,16 @@
 //! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
 //! - [`pasta`] — Ragu's fixed generators, derived and embedded at build time
 //!   with the `baked` feature.
-//! - [`MinimalProof`] — the wire representation, verified with
-//!   [`Application::verify_minimal`]. The optional `serde` feature encodes it
-//!   as a byte string. Serde decoding limits encoded input to 64 MiB and uses
-//!   [`ragu_primitives::wire::Limits::default`] for decoded storage; direct
-//!   [`ragu_primitives::wire::Decode::from_bytes`] calls accept caller-supplied limits.
+//! - [`MinimalProof`] — the retained proof data, verified with
+//!   [`Application::verify_minimal`]. Use [`Application::proof_format`] with
+//!   trusted [`ProofContext`] identifiers for versioned storage and transport.
 //!
-//! Proof bytes are experimental: the envelope version does not identify the
-//! proof schema, curve suite, rank, application, or registry setup. Callers must
-//! agree on those externally. Default decoding limits are resource policy,
-//! not a guarantee that every valid proof fits; decoding is not verification.
+//! [`ProofFormat`] checks envelope, schema and protocol versions, rank, header
+//! size, suite and application identifiers before decoding proof data. It uses
+//! rank-derived resource budgets; callers can impose a smaller resource policy.
+//! The optional `serde` adapter on `MinimalProof` carries the low-level payload
+//! bytes for embedding in an already context-bound container. Decoding is not
+//! verification. See `crates/ragu_pcd/WIRE_FORMAT.md` for the compatibility contract.
 
 #![no_std]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
@@ -57,7 +57,7 @@ use alloc::collections::BTreeMap;
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
 use header::Header;
-pub use proof::{MinimalProof, Pcd, Proof};
+pub use proof::{MinimalProof, Pcd, Proof, ProofContext, ProofFormat};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
     polynomials::Rank,
