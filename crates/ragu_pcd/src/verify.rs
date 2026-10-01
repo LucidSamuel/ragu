@@ -51,7 +51,7 @@ use udon::{
 };
 
 use crate::{
-    Application, CompressedProof, Pcd, Proof, RAGU_TAG, SelectableBackend,
+    Application, MinimalProof, Pcd, Proof, RAGU_TAG, SelectableBackend,
     header::Header,
     internal::{
         claims,
@@ -400,7 +400,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             && mesh_claim)
     }
 
-    /// Verifies a [`CompressedProof`] for the provided [`Header`].
+    /// Verifies a [`MinimalProof`] for the provided [`Header`].
     ///
     /// The proof is [expanded](Self::expand) first, so the challenges and
     /// the two derived stages the decider checks are ones this application
@@ -410,9 +410,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     ///
     /// Returns `Ok(false)` when a squeezed challenge has no lift, which marks
     /// the proof as malformed rather than an internal error, as in `verify`.
-    pub fn verify_compressed<RNG: CryptoRng, H: Header<C::CircuitField>>(
+    pub fn verify_minimal<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
-        proof: CompressedProof<C, R>,
+        proof: MinimalProof<C, R>,
         data: H::Data,
         rng: RNG,
     ) -> Result<bool> {

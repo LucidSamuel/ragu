@@ -34,7 +34,7 @@ baked = ["alloc", "dep:bento", "dep:lazy_static"]
 default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_acceleration/multicore", "ragu_backend/multicore", "ragu_circuits/multicore", "std"]
 std = ["alloc", "ragu_core/std"]
-# `serde::{Serialize, Deserialize}` for `CompressedProof`, as its wire bytes.
+# `serde::{Serialize, Deserialize}` for `MinimalProof`, as its wire bytes.
 serde = ["dep:serde"]
 # Exposes the hidden `fuzzing` module — proof corruption and the patcher seam
 # over the internal recursion circuits — used by the fuzz harness and the

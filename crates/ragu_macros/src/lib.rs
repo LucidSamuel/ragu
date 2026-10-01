@@ -110,14 +110,14 @@ pub fn derive_gadget_equals(input: TokenStream) -> TokenStream {
     })
 }
 
-// Documentation for the `Compress` derive macro is in `derive@ragu_primitives::wire::Compress`.
+// Documentation for the `Minimize` derive macro is in `derive@ragu_primitives::wire::Minimize`.
 #[allow(missing_docs)]
-#[proc_macro_derive(Compress, attributes(ragu))]
-pub fn derive_compress(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Minimize, attributes(ragu))]
+pub fn derive_minimize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     macro_body(|| {
         let path = path_resolution::RaguPrimitivesPath::resolve()?;
-        derive::compress::derive(input, path)
+        derive::minimize::derive(input, path)
     })
 }
 

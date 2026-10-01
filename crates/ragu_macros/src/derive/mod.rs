@@ -1,8 +1,8 @@
-pub mod compress;
 pub mod consistent;
 pub mod gadget;
 pub mod gadgetequals;
 pub mod gadgetwrite;
+pub mod minimize;
 
 use proc_macro2::Span;
 use syn::{AngleBracketedGenericArguments, GenericArgument, Lifetime, Type, parse_quote};

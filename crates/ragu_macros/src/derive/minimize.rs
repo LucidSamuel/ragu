@@ -46,12 +46,12 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     let name = &input.ident;
     let visibility = &input.vis;
     let wire = quote!(#path::wire);
-    let mut compressed_name = None;
+    let mut minimal_name = None;
     let mut derived_name = None;
     for attr in input.attrs.iter().filter(|a| a.path().is_ident("ragu")) {
         attr.parse_nested_meta(|meta| {
-            let slot = if meta.path.is_ident("compressed") {
-                &mut compressed_name
+            let slot = if meta.path.is_ident("minimal") {
+                &mut minimal_name
             } else if meta.path.is_ident("derived") {
                 &mut derived_name
             } else {
@@ -64,24 +64,24 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
             Ok(())
         })?;
     }
-    let compressed_name = compressed_name.unwrap_or_else(|| format_ident!("{}Compressed", name));
+    let minimal_name = minimal_name.unwrap_or_else(|| format_ident!("{}Minimal", name));
     let derived_name = derived_name.unwrap_or_else(|| format_ident!("{}Derived", name));
-    if compressed_name == *name || derived_name == *name || compressed_name == derived_name {
+    if minimal_name == *name || derived_name == *name || minimal_name == derived_name {
         return Err(Error::new(
             name.span(),
-            "the source, compressed and derived names must all differ",
+            "the source, minimal and derived names must all differ",
         ));
     }
     let Data::Struct(data) = &input.data else {
         return Err(Error::new(
             input.span(),
-            "Compress requires a struct with named fields",
+            "Minimize requires a struct with named fields",
         ));
     };
     let Fields::Named(named) = &data.fields else {
         return Err(Error::new(
             data.fields.span(),
-            "Compress requires a struct with named fields",
+            "Minimize requires a struct with named fields",
         ));
     };
     let mut fields = Vec::new();
@@ -167,7 +167,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         if contains_self(field.ty.to_token_stream()) || contains_self(codec.to_token_stream()) {
             return Err(Error::new(
                 field.span(),
-                "Compress does not support Self in provided field types or codecs",
+                "Minimize does not support Self in provided field types or codecs",
             ));
         }
         let mut field = field.clone();
@@ -176,7 +176,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         fields.push(field);
         codecs.push(codec);
     }
-    let mut docs = format!("Compressed representation of [`{name}`].");
+    let mut docs = format!("Minimal representation of [`{name}`].");
     if !omitted.is_empty() {
         docs.push_str(&format!(
             "\n\nFields marked `derived` and omitted: {}.",
@@ -208,7 +208,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         retain_generated_attrs(attrs);
     }
     let derived_docs = format!(
-        "The fields of [`{name}`] marked `derived`, recomputed from a [`{compressed_name}`] to expand it."
+        "The fields of [`{name}`] marked `derived`, recomputed from a [`{minimal_name}`] to expand it."
     );
     let derived_ids: Vec<_> = derived_fields
         .iter()
@@ -249,7 +249,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         .iter()
         .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
         .collect();
-    let (_, compressed_args, compressed_where) = generics.split_for_impl();
+    let (_, minimal_args, minimal_where) = generics.split_for_impl();
     let mut clone_generics = generics.clone();
     let mut encode_generics = generics.clone();
     let mut decode_generics = generics.clone();
@@ -326,7 +326,7 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
     Ok(quote! {
         #(#cfg)*
         #[doc = #docs]
-        #visibility struct #compressed_name #generics #compressed_where {
+        #visibility struct #minimal_name #generics #minimal_where {
             #(#fields,)*
         }
         #(#visitors)*
@@ -334,35 +334,35 @@ pub fn derive(input: DeriveInput, path: RaguPrimitivesPath) -> Result<TokenStrea
         #[doc = #derived_docs]
         // Plumbing for expansion; a consumer that never expands leaves it unused.
         #[allow(dead_code)]
-        #visibility struct #derived_name #generics #compressed_where {
+        #visibility struct #derived_name #generics #minimal_where {
             #(#derived_fields,)*
             #derived_marker
         }
         #(#cfg)*
         #[automatically_derived]
-        impl #clone_impl #wire::Compress for #name #source_args #clone_where {
-            type Compressed = #compressed_name #compressed_args;
-            type Derived = #derived_name #compressed_args;
-            fn compress(&self) -> Self::Compressed {
-                #compressed_name { #(#ids: ::core::clone::Clone::clone(&self.#ids),)* }
+        impl #clone_impl #wire::Minimize for #name #source_args #clone_where {
+            type Minimal = #minimal_name #minimal_args;
+            type Derived = #derived_name #minimal_args;
+            fn minimize(&self) -> Self::Minimal {
+                #minimal_name { #(#ids: ::core::clone::Clone::clone(&self.#ids),)* }
             }
-            fn expand(compressed: Self::Compressed, derived: Self::Derived) -> Self {
+            fn expand(minimal: Self::Minimal, derived: Self::Derived) -> Self {
                 Self {
-                    #(#ids: compressed.#ids,)*
+                    #(#ids: minimal.#ids,)*
                     #(#derived_ids: derived.#derived_ids,)*
                 }
             }
         }
         #(#cfg)*
         #[automatically_derived]
-        impl #encode_impl #wire::Encode for #compressed_name #compressed_args #encode_where {
+        impl #encode_impl #wire::Encode for #minimal_name #minimal_args #encode_where {
             fn encode(&self, output: &mut #wire::__private::Vec<u8>) {
                 #(<#types as #wire::Encode<#codecs>>::encode(&self.#ids, output);)*
             }
         }
         #(#cfg)*
         #[automatically_derived]
-        impl #decode_impl #wire::Decode for #compressed_name #compressed_args #decode_where {
+        impl #decode_impl #wire::Decode for #minimal_name #minimal_args #decode_where {
             fn min_encoded_len() -> usize {
                 0usize #(.saturating_add(<#types as #wire::Decode<#codecs>>::min_encoded_len()))*
             }
@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn ignores_foreign_metadata_without_consuming_owned_keys() {
         let input = parse_quote! {
-            #[ragu(other = "container", nested(flag), compressed = Package)]
+            #[ragu(other = "container", nested(flag), minimal = Package)]
             struct Working {
                 #[ragu(gadget, other = "field", nested(flag), provided)]
                 value: u64,

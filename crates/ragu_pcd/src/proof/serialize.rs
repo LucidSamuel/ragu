@@ -1,4 +1,4 @@
-//! `serde` support for [`CompressedProof`]: one byte string in the wire
+//! `serde` support for [`MinimalProof`]: one byte string in the wire
 //! format, so every serde data format carries the same bytes and the same
 //! decoding checks apply.
 //!
@@ -17,11 +17,11 @@ use serde::{
     de::{self, SeqAccess, Visitor},
 };
 
-use super::CompressedProof;
+use super::MinimalProof;
 
 const MAX_ENCODED_SIZE: usize = 64 << 20;
 
-impl<C: Cycle, R: Rank> Serialize for CompressedProof<C, R>
+impl<C: Cycle, R: Rank> Serialize for MinimalProof<C, R>
 where
     Self: Encode,
 {
@@ -55,12 +55,12 @@ fn read_bytes<'de, A: SeqAccess<'de>>(mut seq: A, limit: usize) -> Result<Vec<u8
 
 impl<'de, C: Cycle, R: Rank> Visitor<'de> for Bytes<C, R>
 where
-    CompressedProof<C, R>: Decode,
+    MinimalProof<C, R>: Decode,
 {
-    type Value = CompressedProof<C, R>;
+    type Value = MinimalProof<C, R>;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a compressed proof in its wire format")
+        f.write_str("a minimal proof in its wire format")
     }
 
     fn visit_bytes<E: de::Error>(self, bytes: &[u8]) -> Result<Self::Value, E> {
@@ -69,7 +69,7 @@ where
         }
         // The decoder borrows its error from the input, so it is rendered
         // before the input goes out of scope.
-        CompressedProof::from_bytes(bytes, Limits::default()).map_err(E::custom)
+        MinimalProof::from_bytes(bytes, Limits::default()).map_err(E::custom)
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
@@ -78,7 +78,7 @@ where
     }
 }
 
-impl<'de, C: Cycle, R: Rank> Deserialize<'de> for CompressedProof<C, R>
+impl<'de, C: Cycle, R: Rank> Deserialize<'de> for MinimalProof<C, R>
 where
     Self: Decode,
 {

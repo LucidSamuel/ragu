@@ -4,10 +4,10 @@ use ragu_core::{
     maybe::Maybe,
     pasta::Fp,
 };
-use ragu_primitives::{Element, GadgetExt, io::Write, wire::Compress};
+use ragu_primitives::{Element, GadgetExt, io::Write, wire::Minimize};
 
-#[derive(Compress, Gadget, Write)]
-struct CompressFirst<'dr, #[ragu(driver)] D: Driver<'dr>> {
+#[derive(Minimize, Gadget, Write)]
+struct MinimizeFirst<'dr, #[ragu(driver)] D: Driver<'dr>> {
     /// A field shared by both representations.
     #[ragu(gadget, provided)]
     value: Element<'dr, D>,
@@ -17,7 +17,7 @@ struct CompressFirst<'dr, #[ragu(driver)] D: Driver<'dr>> {
     cache: Element<'dr, D>,
 }
 
-#[derive(Gadget, Write, Compress)]
+#[derive(Gadget, Write, Minimize)]
 struct WriteFirst<'dr, #[ragu(driver)] D: Driver<'dr>> {
     #[ragu(provided, gadget)]
     value: Element<'dr, D>,
@@ -31,14 +31,14 @@ struct WriteFirst<'dr, #[ragu(driver)] D: Driver<'dr>> {
 #[test]
 fn shared_namespace_preserves_each_derives_classification() {
     let mut dr = Emulator::execute();
-    let source = CompressFirst {
+    let source = MinimizeFirst {
         value: Element::constant(&mut dr, Fp::from(3)),
         skipped_by_write: Element::constant(&mut dr, Fp::from(5)),
         cache: Element::constant(&mut dr, Fp::from(7)),
     };
-    let compressed = source.compress();
-    assert_eq!(*compressed.value.value().take(), Fp::from(3));
-    assert_eq!(*compressed.skipped_by_write.value().take(), Fp::from(5));
+    let minimal = source.minimize();
+    assert_eq!(*minimal.value.value().take(), Fp::from(3));
+    assert_eq!(*minimal.skipped_by_write.value().take(), Fp::from(5));
     let mut written = Vec::new();
     source.write(&mut dr, &mut written).unwrap();
     let values: Vec<_> = written.iter().map(|v| *v.value().take()).collect();
@@ -53,9 +53,9 @@ fn reversed_derive_order_and_conditional_helpers_compile() {
         skipped_by_write: Element::constant(&mut dr, Fp::from(13)),
         cache: Element::constant(&mut dr, Fp::from(17)),
     };
-    let compressed = source.compress();
-    assert_eq!(*compressed.value.value().take(), Fp::from(11));
-    assert_eq!(*compressed.skipped_by_write.value().take(), Fp::from(13));
+    let minimal = source.minimize();
+    assert_eq!(*minimal.value.value().take(), Fp::from(11));
+    assert_eq!(*minimal.skipped_by_write.value().take(), Fp::from(13));
     let mut written = Vec::new();
     source.write(&mut dr, &mut written).unwrap();
     let values: Vec<_> = written.iter().map(|v| *v.value().take()).collect();

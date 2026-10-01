@@ -1,4 +1,4 @@
-//! Canonical byte encoding for compressed proof data.
+//! Canonical byte encoding for minimal proof data.
 //!
 //! This is separate from the in-circuit element stream in [`crate::io`].
 //! [`Encode::encode`] and [`Decode::decode`] compose payloads; [`Encode::to_bytes`]
@@ -35,7 +35,7 @@ pub struct Point;
 /// A length-prefixed vector whose elements use codec `C`.
 pub struct Sequence<C>(PhantomData<C>);
 
-/// Generates a compressed struct and its ordered byte codecs.
+/// Generates a struct's minimal form and its ordered byte codecs.
 ///
 /// Every field requires one classification:
 ///
@@ -46,11 +46,11 @@ pub struct Sequence<C>(PhantomData<C>);
 ///   `for_each_checked_name` visitor; without it, the visitor is `for_each_checked`.
 ///
 /// Retained fields may select `codec = Scalar` (or another codec).
-/// The default name is `<Name>Compressed`; override it with
-/// `#[ragu(compressed = Name)]` on the struct. Only named-field structs are
+/// The default name is `<Name>Minimal`; override it with
+/// `#[ragu(minimal = Name)]` on the struct. Only named-field structs are
 /// supported. Source generic parameters and bounds are preserved; type and
 /// lifetime parameters must also be used by retained fields.
-/// Compression clones provided and checked fields, never derived fields.
+/// Minimizing clones provided and checked fields, never derived fields.
 /// Expansion remains a handwritten, domain-specific computation.
 /// The annotations declare the access boundary; the derive does not establish
 /// the mathematical correctness of a field's classification.
@@ -60,9 +60,9 @@ pub struct Sequence<C>(PhantomData<C>);
 /// Other keys in the shared `ragu` namespace are ignored.
 ///
 /// ```
-/// use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
-/// #[derive(Compress)]
-/// #[ragu(compressed = Package)]
+/// use ragu_primitives::wire::{Minimize, Decode, Encode, Limits};
+/// #[derive(Minimize)]
+/// #[ragu(minimal = Package)]
 /// struct Desk {
 ///     #[ragu(provided)]
 ///     value: u64,
@@ -70,49 +70,49 @@ pub struct Sequence<C>(PhantomData<C>);
 ///     scratch: u64,
 /// }
 /// let desk = Desk { value: 42, scratch: 9 };
-/// let bytes = desk.compress().to_bytes();
+/// let bytes = desk.minimize().to_bytes();
 /// let package = Package::from_bytes(&bytes, Limits::default()).unwrap();
 /// assert_eq!(package.value, 42);
 /// ```
 ///
 /// An unclassified field is a macro error:
 /// ```compile_fail
-/// use ragu_primitives::wire::Compress;
-/// #[derive(Compress)]
+/// use ragu_primitives::wire::Minimize;
+/// #[derive(Minimize)]
 /// struct Desk { value: u64 }
 /// ```
-/// Omitted fields are unavailable through the compressed type:
+/// Omitted fields are unavailable through the minimal type:
 /// ```compile_fail,E0609
-/// use ragu_primitives::wire::Compress;
-/// #[derive(Compress)]
+/// use ragu_primitives::wire::Minimize;
+/// #[derive(Minimize)]
 /// struct Desk {
 ///     #[ragu(provided)]
 ///     value: u64,
 ///     #[ragu(derived)]
 ///     scratch: u64,
 /// }
-/// let package = Desk { value: 1, scratch: 2 }.compress();
+/// let package = Desk { value: 1, scratch: 2 }.minimize();
 /// let _ = package.scratch;
 /// ```
-pub use ragu_macros::Compress;
+pub use ragu_macros::Minimize;
 
 /// Projects a working representation onto provided and checked fields, and
 /// rebuilds it from them once the derived fields have been recomputed.
-pub trait Compress {
+pub trait Minimize {
     /// Representation that excludes fields classified as derived.
-    type Compressed;
+    type Minimal;
     /// The derived fields alone, as recomputed by the type's own rules.
     type Derived;
-    /// Clones the provided and checked fields into the compressed representation.
-    fn compress(&self) -> Self::Compressed;
+    /// Clones the provided and checked fields into the minimal representation.
+    fn minimize(&self) -> Self::Minimal;
     /// Reassembles the working representation. The computation of `derived`
     /// is the caller's; this only moves fields into place.
-    fn expand(compressed: Self::Compressed, derived: Self::Derived) -> Self;
+    fn expand(minimal: Self::Minimal, derived: Self::Derived) -> Self;
 }
 
 /// Receives a `checked` field together with the field it is checked against.
 ///
-/// `#[derive(Compress)]` generates `for_each_checked`, which visits every
+/// `#[derive(Minimize)]` generates `for_each_checked`, which visits every
 /// `#[ragu(checked = partner)]` field through this trait, so a verifier's
 /// batch of "does this commitment match this polynomial" pairs is the
 /// declaration, not a hand-maintained list.

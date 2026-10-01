@@ -2,10 +2,10 @@
 
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::pasta::Pasta;
-use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
+use ragu_primitives::wire::{Decode, Encode, Limits, Minimize};
 use rand::{SeedableRng, rngs::StdRng};
 
-use super::CompressedProof;
+use super::MinimalProof;
 use crate::ApplicationBuilder;
 
 #[test]
@@ -17,9 +17,9 @@ fn decoded_proof_preserves_derived_fields_and_rejects_wrong_vector_lengths() {
     let pcd = app.bootstrap_pcd();
     assert!(app.verify(&pcd, &mut rng).unwrap());
     let (proof, ()) = pcd.into_parts();
-    let bytes = proof.compress().to_bytes();
+    let bytes = proof.minimize().to_bytes();
     let decode = |bytes: &[u8]| {
-        CompressedProof::<Pasta, ProductionRank>::from_bytes(bytes, Limits::default()).unwrap()
+        MinimalProof::<Pasta, ProductionRank>::from_bytes(bytes, Limits::default()).unwrap()
     };
     let expanded = app.expand(decode(&bytes)).unwrap();
     assert_eq!(proof.test_mismatch(&expanded), None);
@@ -30,15 +30,15 @@ fn decoded_proof_preserves_derived_fields_and_rejects_wrong_vector_lengths() {
     macro_rules! reject_lengths {
         ($($field:ident),* $(,)?) => {$(
             for extra in [false, true] {
-                let mut compressed = proof.compress();
+                let mut minimal = proof.minimize();
                 if extra {
-                    compressed.$field.push(compressed.$field[0].clone());
+                    minimal.$field.push(minimal.$field[0].clone());
                 } else {
-                    compressed.$field.pop().unwrap();
+                    minimal.$field.pop().unwrap();
                 }
-                let malformed = compressed.to_bytes();
+                let malformed = minimal.to_bytes();
                 assert!(
-                    !app.verify_compressed::<_, ()>(decode(&malformed), (), &mut rng).unwrap(),
+                    !app.verify_minimal::<_, ()>(decode(&malformed), (), &mut rng).unwrap(),
                     "{} (extra: {extra})", stringify!($field),
                 );
             }

@@ -1,4 +1,4 @@
-//! Expansion of a [`CompressedProof`] into a [`Proof`]: the derived fields,
+//! Expansion of a [`MinimalProof`] into a [`Proof`]: the derived fields,
 //! recomputed from the provided ones by the same rules [`verify`] holds
 //! them to.
 //!
@@ -8,10 +8,10 @@ use alloc::sync::Arc;
 
 use ragu_circuits::{polynomials::Rank, staging::StageExt as _};
 use ragu_core::{Cycle, Result, drivers::emulator::Emulator, maybe::Maybe};
-use ragu_primitives::{GadgetExt as _, Point, wire::Compress};
+use ragu_primitives::{GadgetExt as _, Point, wire::Minimize};
 use udon::field::Field;
 
-use super::{Cached, CompressedProof, Proof, ProofDerived, bridge_alpha_power};
+use super::{Cached, MinimalProof, Proof, ProofDerived, bridge_alpha_power};
 use crate::{
     Application, RAGU_TAG, SelectableBackend,
     internal::{
@@ -26,7 +26,7 @@ use crate::{
 impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
-    /// Rebuilds a [`Proof`] from its compressed form.
+    /// Rebuilds a [`Proof`] from its minimal form.
     ///
     /// The challenges are squeezed from the transcript over the bridge
     /// commitments in the fuse's schedule, the `ab` bridge stage from the
@@ -36,14 +36,14 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// only values this application would derive itself.
     ///
     /// Expansion does not validate the provided fields or their commitments.
-    /// Use [`verify_compressed`](Self::verify_compressed) to verify an untrusted
-    /// compressed proof before using it in another proof.
+    /// Use [`verify_minimal`](Self::verify_minimal) to verify an untrusted
+    /// minimal proof before using it in another proof.
     ///
     /// # Errors
     ///
     /// Returns an error if a squeezed challenge has no lift, which an honest
     /// transcript produces with negligible probability.
-    pub fn expand(&self, proof: CompressedProof<C, R>) -> Result<Proof<C, R>> {
+    pub fn expand(&self, proof: MinimalProof<C, R>) -> Result<Proof<C, R>> {
         let mut dr = Emulator::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), RAGU_TAG)?;
         macro_rules! absorb {

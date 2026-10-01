@@ -66,7 +66,7 @@ use ragu_core::{Cycle, Result};
 use ragu_primitives::{
     extract_endoscalar, lift_endoscalar,
     vec::{FixedVec, Len},
-    wire::{self, Compress, Decode, Encode},
+    wire::{self, Decode, Encode, Minimize},
 };
 use udon::field::Field;
 
@@ -164,8 +164,8 @@ pub(crate) fn bridge_alpha_power<F: Field>(bridge_alpha: F, idx: nested::RxIndex
 /// derivable from `bridge_alpha` and native commitments; the other seven
 /// carry prover-chosen data (the nested fold's error terms and the nested
 /// batch's values among them) and are primary.
-#[derive(Clone, Compress)]
-#[ragu(compressed = CompressedProof)]
+#[derive(Clone, Minimize)]
+#[ragu(minimal = MinimalProof)]
 pub struct Proof<C: Cycle, R: Rank> {
     /// Shared alpha source for deriving cached bridge polynomial alphas.
     #[ragu(provided, codec = wire::Scalar)]
