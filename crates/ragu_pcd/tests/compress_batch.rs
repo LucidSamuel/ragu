@@ -25,7 +25,7 @@ use crate::{
         ky::{self, NativeKy, NestedKy},
         nested,
     },
-    ipa::{self, Blind, CycleTranscript, IpaCycle, IpaProof, IpaTranscript, MSM, Params},
+    ipa::{self, CycleTranscript, IpaCycle, IpaProof, IpaTranscript, MSM, Params},
 };
 
 type TestR = ProductionRank;
@@ -191,15 +191,7 @@ where
     .unwrap();
     assert_eq!(claim.point, witness.u);
     let params = Params::new(generators, u);
-    let opening = ipa::create_proof(
-        &params,
-        &mut *rng,
-        transcript,
-        &witness.p,
-        Blind(C::Scalar::ZERO),
-        witness.u,
-    )
-    .unwrap();
+    let opening = ipa::create_proof(&params, &mut *rng, transcript, &witness.p, witness.u).unwrap();
     Proved {
         batch: messages,
         p: witness.p,

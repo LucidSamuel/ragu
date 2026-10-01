@@ -12,16 +12,16 @@ use udon::{
     polynomial::evaluate_iter,
 };
 
-use super::{Blind, IpaProof, IpaTranscript, Params};
+use super::{IpaProof, IpaTranscript, Params};
 use crate::multicore::parallelize;
 
-/// Create a polynomial commitment opening proof for the polynomial defined
-/// by the coefficients `px`, the blinding factor `blind` used for the
-/// polynomial commitment, and the point `x` that the polynomial is
-/// evaluated at.
+/// Creates an unblinded opening of `p_poly` at `x_3`.
 ///
-/// This function will panic if the provided polynomial is too large with
-/// respect to the polynomial commitment parameters.
+/// The commitment is $P = \langle p,G\rangle$. A random polynomial $s$ with
+/// $s(x_3) = 0$ masks the coefficients folded by the argument. Neither the
+/// input commitment nor the proof's commitments have Pedersen blinds.
+///
+/// Panics unless the polynomial has exactly `params.n` coefficients.
 ///
 /// **Important:** This function assumes that the provided `transcript` has
 /// already seen the common inputs: the polynomial commitment P, the claimed
@@ -33,7 +33,6 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     mut rng: R,
     transcript: &mut T,
     p_poly: &[C::Scalar],
-    p_blind: Blind<C::Scalar>,
     x_3: C::Scalar,
 ) -> Result<IpaProof<C>> {
     // We're limited to polynomials of degree n - 1.
@@ -49,11 +48,9 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     let s_at_x3 = evaluate_iter(&s_poly[..], x_3);
     // Subtract constant coefficient to get a random polynomial with a root at x_3
     s_poly[0] -= &s_at_x3;
-    // And sample a random blind
-    let s_poly_blind = Blind(C::Scalar::random(|bytes| rng.fill_bytes(bytes)));
 
     // Write a commitment to the random polynomial to the transcript
-    let s_poly_commitment = params.commit(&s_poly, s_poly_blind).to_affine();
+    let s_poly_commitment = params.commit(&s_poly).to_affine();
     transcript.write_point(s_poly_commitment)?;
 
     // Challenge that will ensure that the prover cannot change P but can only
@@ -66,7 +63,7 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     let z = transcript.squeeze_challenge()?;
 
     // We'll be opening `P' = P - [v] G_0 + [ξ] S` to ensure it has a root at
-    // zero.
+    // x_3.
     let mut p_prime_poly: Vec<_> = s_poly
         .iter()
         .zip(p_poly.iter())
@@ -74,11 +71,6 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         .collect();
     let v = evaluate_iter(&p_prime_poly, x_3);
     p_prime_poly[0] -= &v;
-    let p_prime_blind = s_poly_blind * Blind(xi) + p_blind;
-
-    // This accumulates the synthetic blinding factor `f` starting
-    // with the blinding factor for `P'`.
-    let mut f = p_prime_blind.0;
 
     // Initialize the vector `p_prime` as the coefficients of the polynomial.
     let mut p_prime = p_prime_poly;
@@ -115,10 +107,8 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         let r_j = C::msm(&p_prime[0..half], &g_prime[half..]);
         let value_l_j = C::Scalar::sum_of_products_slice(&p_prime[half..], &b[0..half]);
         let value_r_j = C::Scalar::sum_of_products_slice(&p_prime[0..half], &b[half..]);
-        let l_j_randomness = C::Scalar::random(|bytes| rng.fill_bytes(bytes));
-        let r_j_randomness = C::Scalar::random(|bytes| rng.fill_bytes(bytes));
-        let l_j = l_j + &C::msm(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
-        let r_j = r_j + &C::msm(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
+        let l_j = l_j + &(params.u * (value_l_j * &z));
+        let r_j = r_j + &(params.u * (value_r_j * &z));
         let l_j = l_j.to_affine();
         let r_j = r_j.to_affine();
 
@@ -143,10 +133,6 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         // Collapse `G'`
         parallel_generator_collapse(&mut g_prime, u_j);
         g_prime.truncate(half);
-
-        // Update randomness (the synthetic blinding factor at the end)
-        f += &(l_j_randomness * &u_j_inv);
-        f += &(r_j_randomness * &u_j);
     }
 
     // We have fully collapsed `p_prime`, `b`, `G'`
@@ -154,13 +140,11 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     let c = p_prime[0];
 
     transcript.write_scalar(c)?;
-    transcript.write_scalar(f)?;
 
     Ok(IpaProof {
         s_commitment: s_poly_commitment,
         rounds,
         c,
-        f,
     })
 }
 

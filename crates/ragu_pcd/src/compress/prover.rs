@@ -5,7 +5,7 @@ use alloc::borrow::Cow;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{FixedGenerators, Result};
 use rand::CryptoRng;
-use udon::{curve::Affine, field::Field};
+use udon::curve::Affine;
 
 use super::{
     CompressedPcd, CompressedProof, Messages, Sampled,
@@ -18,7 +18,7 @@ use crate::{
     Application, Pcd, SelectableBackend,
     header::Header,
     internal::{ky, native, nested},
-    ipa::{self, Blind, IpaCycle, IpaProof, IpaTranscript, Params},
+    ipa::{self, IpaCycle, IpaProof, IpaTranscript, Params},
 };
 
 /// Batches `openings` over `polys` and opens the batched claim through the
@@ -34,20 +34,7 @@ fn open<P: Affine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
     let (batch, witness) =
         batch::batch::<_, R, _>(polys, &openings.claims, generators, transcript)?;
     let params = Params::with_k(generators, u, R::RANK);
-    let opening = ipa::create_proof(
-        &params,
-        rng,
-        transcript,
-        &witness.p,
-        // Input commitments and the batch quotient have no separate Pedersen
-        // blinds, so their batched opening uses zero.
-        // TODO: If Pedersen blinding is added for hiding, propagate those blinds
-        // through the reductions and batching; a fresh blind here would not
-        // match the batched commitment.
-        // This is the honest prover's input blind, not a verifier constraint.
-        Blind(P::Scalar::ZERO),
-        witness.u,
-    )?;
+    let opening = ipa::create_proof(&params, rng, transcript, &witness.p, witness.u)?;
     Ok((batch, opening))
 }
 

@@ -274,9 +274,6 @@ fn rejects_malformed_messages_without_error() {
         ("zero nested batched value", |p| {
             p.nested.batch.evaluations[0] = Fq::ZERO
         }),
-        ("zero nested IPA blinding", |p| {
-            p.nested.opening.f = Fq::ZERO
-        }),
     ];
     for &(case, edit) in corruptions {
         let mut tampered = proof.clone();
@@ -420,7 +417,9 @@ fn rejects_tampered_messages() {
 
     // The IPA.
     tamper("final coefficient", &|p| p.native.opening.c += Fp::ONE);
-    tamper("nested blinding factor", &|p| p.nested.opening.f += Fq::ONE);
+    tamper("nested final coefficient", &|p| {
+        p.nested.opening.c += Fq::ONE
+    });
     tamper("a round", &|p| {
         let (l, r) = p.native.opening.rounds[0];
         p.native.opening.rounds[0] = (r, l);

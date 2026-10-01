@@ -19,6 +19,9 @@ pub(crate) mod builder;
 #[path = "../../tests/base_case_combinations.rs"]
 mod base_case_combinations_tests;
 #[cfg(test)]
+#[path = "../../tests/compress_blinding.rs"]
+mod compress_blinding_tests;
+#[cfg(test)]
 #[path = "../../tests/recursive_bindings.rs"]
 mod recursive_binding_tests;
 #[cfg(test)]

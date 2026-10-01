@@ -16,7 +16,6 @@ use super::Params;
 pub struct MSM<'a, C: Affine> {
     pub(crate) params: &'a Params<C>,
     g_scalars: Option<Vec<C::Scalar>>,
-    w_scalar: Option<C::Scalar>,
     u_scalar: Option<C::Scalar>,
     // x-coordinate's bytes -> (scalar, x-coordinate, y-coordinate)
     other: BTreeMap<Vec<u8>, (C::Scalar, C::Base, C::Base)>,
@@ -26,14 +25,12 @@ impl<'a, C: Affine> MSM<'a, C> {
     /// Create a new, empty MSM using the provided parameters.
     pub fn new(params: &'a Params<C>) -> Self {
         let g_scalars = None;
-        let w_scalar = None;
         let u_scalar = None;
         let other = BTreeMap::new();
 
         MSM {
             params,
             g_scalars,
-            w_scalar,
             u_scalar,
             other,
         }
@@ -57,10 +54,6 @@ impl<'a, C: Affine> MSM<'a, C> {
 
         if let Some(g_scalars) = &other.g_scalars {
             self.add_to_g_scalars(g_scalars);
-        }
-
-        if let Some(w_scalar) = &other.w_scalar {
-            self.add_to_w_scalar(*w_scalar);
         }
 
         if let Some(u_scalar) = &other.u_scalar {
@@ -111,11 +104,6 @@ impl<'a, C: Affine> MSM<'a, C> {
         }
     }
 
-    /// Add to `w_scalar`
-    pub fn add_to_w_scalar(&mut self, scalar: C::Scalar) {
-        self.w_scalar = self.w_scalar.map_or(Some(scalar), |a| Some(a + &scalar));
-    }
-
     /// Add to `u_scalar`
     pub fn add_to_u_scalar(&mut self, scalar: C::Scalar) {
         self.u_scalar = self.u_scalar.map_or(Some(scalar), |a| Some(a + &scalar));
@@ -133,14 +121,12 @@ impl<'a, C: Affine> MSM<'a, C> {
             other.0 *= factor;
         }
 
-        self.w_scalar = self.w_scalar.map(|a| a * &factor);
         self.u_scalar = self.u_scalar.map(|a| a * &factor);
     }
 
     /// Perform multiexp and check that it results in zero
     pub fn eval(self) -> bool {
         let len = self.g_scalars.as_ref().map(|v| v.len()).unwrap_or(0)
-            + self.w_scalar.map(|_| 1).unwrap_or(0)
             + self.u_scalar.map(|_| 1).unwrap_or(0)
             + self.other.len();
         let mut scalars: Vec<C::Scalar> = Vec::with_capacity(len);
@@ -152,11 +138,6 @@ impl<'a, C: Affine> MSM<'a, C> {
                 .values()
                 .map(|(_, x, y)| C::from_xy(*x, *y).expect("a point's own coordinates")),
         );
-
-        if let Some(w_scalar) = self.w_scalar {
-            scalars.push(w_scalar);
-            bases.push(self.params.w);
-        }
 
         if let Some(u_scalar) = self.u_scalar {
             scalars.push(u_scalar);

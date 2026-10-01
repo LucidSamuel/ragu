@@ -1,14 +1,15 @@
-//! Inner product argument (IPA) for polynomial commitments.
+//! Unblinded inner product argument (IPA) for polynomial commitments.
 //!
-//! Adapted from halo2's `halo2_proofs/src/poly/commitment`: the prover and
-//! verifier keep the original structure, and the batch verifier is not
-//! ported. Fiat-Shamir goes through the [`IpaTranscript`] trait, which the
-//! fuse's transcript implements for both curves as [`CycleTranscript`].
+//! Adapted from halo2's `halo2_proofs/src/poly/commitment`, without Pedersen
+//! blinds. An opening proves knowledge of `p` with `P = <p, G>` and `p(x) = v`.
+//! The masking polynomial `s`, with `s(x) = 0`, is retained to mask the
+//! coefficients folded by the argument. Fiat-Shamir goes through
+//! [`IpaTranscript`], implemented for both curves by [`CycleTranscript`].
 
 use alloc::vec::Vec;
 
 use ragu_core::{Cycle, FixedGenerators};
-use udon::{curve::Affine, field::Field};
+use udon::curve::Affine;
 
 mod msm;
 mod prover;
@@ -29,21 +30,19 @@ pub use verifier::{Accumulator, Guard, verify_proof};
 /// breaks compatibility with existing proofs.
 pub const IPA_TAG: &[u8] = b"ragu-ipa-v1";
 
-/// Log-size IPA opening proof.
+/// Log-size unblinded IPA opening proof.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IpaProof<C: Affine> {
-    /// Commitment to the blinding polynomial $S$.
+    /// Unblinded commitment to the masking polynomial $s$ with $s(x) = 0$.
     pub s_commitment: C,
     /// Cross-term commitments $(L_j, R_j)$, one pair per round.
     pub rounds: Vec<(C, C)>,
     /// Final collapsed coefficient.
     pub c: C::Scalar,
-    /// Synthetic blinding factor.
-    pub f: C::Scalar,
 }
 
 /// A cycle whose parameters also fix the IPA's generator $u$ on each curve:
-/// a point with no known relation to the vector and blinding generators,
+/// a point with no known discrete-log relation to the vector generators,
 /// which the argument uses to bind the claimed value into the commitment it
 /// opens.
 pub trait IpaCycle: Cycle {
@@ -53,15 +52,13 @@ pub trait IpaCycle: Cycle {
     fn nested_u(params: &Self::Params) -> &Self::NestedCurve;
 }
 
-/// The public parameters of the polynomial commitment scheme, mirroring
-/// halo2's `Params<C>`: the vector generators, the blinding generator $W$ and
-/// the generator $U$ that binds the inner product value.
+/// The vector generators and the generator $U$ that binds the inner
+/// product value. Commitments have no separate blinding generator.
 #[derive(Clone, Debug)]
 pub struct Params<C: Affine> {
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<C>,
-    pub(crate) w: C,
     pub(crate) u: C,
 }
 
@@ -96,81 +93,18 @@ impl<C: Affine> Params<C> {
             k,
             n: n as u64,
             g: generators.g()[..n].to_vec(),
-            w: *generators.h(),
             u,
         }
     }
 
-    /// Commits to the polynomial with coefficients `poly` under the blinding
-    /// factor `r`.
+    /// Commits to the polynomial with coefficients `poly` as $\langle p,G\rangle$.
     ///
     /// # Panics
     ///
     /// Panics if `poly` does not have exactly $2^k$ coefficients.
-    pub fn commit(&self, poly: &[C::Scalar], r: Blind<C::Scalar>) -> C::Projective {
+    pub fn commit(&self, poly: &[C::Scalar]) -> C::Projective {
         assert_eq!(poly.len(), self.n as usize);
-
-        let mut tmp_scalars = Vec::with_capacity(poly.len() + 1);
-        let mut tmp_bases = Vec::with_capacity(poly.len() + 1);
-
-        tmp_scalars.extend(poly.iter().copied());
-        tmp_scalars.push(r.0);
-
-        tmp_bases.extend(self.g.iter().copied());
-        tmp_bases.push(self.w);
-
-        C::msm(&tmp_scalars, &tmp_bases)
-    }
-}
-
-/// Wrapper type around a blinding factor, distinguishing it from other
-/// scalars at the type level. Mirrors halo2's `Blind<F>`.
-#[derive(Copy, Clone, Debug)]
-pub struct Blind<F>(pub F);
-
-impl<F: Field> Default for Blind<F> {
-    fn default() -> Self {
-        Blind(F::ONE)
-    }
-}
-
-impl<F: Field> core::ops::Add for Blind<F> {
-    type Output = Self;
-
-    fn add(self, rhs: Blind<F>) -> Self {
-        Blind(self.0 + rhs.0)
-    }
-}
-
-impl<F: Field> core::ops::Mul for Blind<F> {
-    type Output = Self;
-
-    fn mul(self, rhs: Blind<F>) -> Self {
-        Blind(self.0 * rhs.0)
-    }
-}
-
-impl<F: Field> core::ops::AddAssign for Blind<F> {
-    fn add_assign(&mut self, rhs: Blind<F>) {
-        self.0 += rhs.0;
-    }
-}
-
-impl<F: Field> core::ops::MulAssign for Blind<F> {
-    fn mul_assign(&mut self, rhs: Blind<F>) {
-        self.0 *= rhs.0;
-    }
-}
-
-impl<F: Field> core::ops::AddAssign<F> for Blind<F> {
-    fn add_assign(&mut self, rhs: F) {
-        self.0 += rhs;
-    }
-}
-
-impl<F: Field> core::ops::MulAssign<F> for Blind<F> {
-    fn mul_assign(&mut self, rhs: F) {
-        self.0 *= rhs;
+        C::msm(poly, &self.g)
     }
 }
 

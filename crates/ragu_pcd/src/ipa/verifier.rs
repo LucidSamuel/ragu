@@ -61,7 +61,8 @@ impl<'a, C: Affine> Guard<'a, C> {
 
 /// Checks to see if the `proof` is valid, and a point `x` that the polynomial
 /// commitment `P` opens purportedly to the value `v`. The provided `msm`
-/// should evaluate to the commitment `P` being opened.
+/// should evaluate to the unblinded commitment `P = <p, G>` being opened.
+/// The transcript must already bind `P`, `x`, and `v`.
 pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>>(
     params: &'a Params<C>,
     mut msm: MSM<'a, C>,
@@ -118,12 +119,12 @@ pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>>(
     // Our goal is to check that the left hand side of the verifier
     // equation
     //     P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
-    // equals (given b = \mathbf{b}_0, and the prover's values c, f),
+    // equals (given b = \mathbf{b}_0, and the prover's value c),
     // the right-hand side
-    //   = [c] (G'_0 + [b * z] U) + [f] W
+    //   = [c] (G'_0 + [b * z] U)
     // Subtracting the right-hand side from both sides we get
     //   P' + \sum([u_j^{-1}] L_j) + \sum([u_j] R_j)
-    //   + [-c] G'_0 + [-cbz] U + [-f] W
+    //   + [-c] G'_0 + [-cbz] U
     //   = 0
     //
     // Note that the guard returned from this function does not include
@@ -131,13 +132,10 @@ pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>>(
 
     let c = proof.c;
     let neg_c = -c;
-    let f = proof.f;
     transcript.write_scalar(c)?;
-    transcript.write_scalar(f)?;
     let b = compute_b(x, &u);
 
     msm.add_to_u_scalar(neg_c * &b * &z);
-    msm.add_to_w_scalar(-f);
 
     let guard = Guard { msm, neg_c, u };
 

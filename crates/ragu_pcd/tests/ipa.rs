@@ -27,7 +27,7 @@ macro_rules! ipa_tests {
 
             use proptest::prelude::*;
             use ragu_circuits::polynomials::{Rank, TestRank, sparse};
-            use ragu_core::{Cycle, pasta::Pasta};
+            use ragu_core::{Cycle, FixedGenerators, pasta::Pasta};
             use rand::{Rng, SeedableRng, rngs::StdRng};
             use udon::{
                 curve::{Affine, Projective},
@@ -37,8 +37,8 @@ macro_rules! ipa_tests {
 
             use super::{K, fresh};
             use crate::ipa::{
-                Blind, CycleTranscript, Guard, IpaCycle, IpaProof, IpaTranscript, MSM, Params,
-                prover, verifier,
+                CycleTranscript, Guard, IpaCycle, IpaProof, IpaTranscript, MSM, Params, prover,
+                verifier,
             };
 
             type C = $curve;
@@ -75,22 +75,15 @@ macro_rules! ipa_tests {
                 transcript
             }
 
-            /// The prover's side: commit to `poly` under `blind`, open it at
+            /// The prover's side: commit to `poly`, open it at
             /// `x`, and return the claim with its proof.
-            fn open(
-                params: &Params<C>,
-                poly: &[F],
-                blind: Blind<F>,
-                x: F,
-                rng: &mut StdRng,
-            ) -> (C, F, IpaProof<C>) {
-                let commitment = params.commit(poly, blind).to_affine();
+            fn open(params: &Params<C>, poly: &[F], x: F, rng: &mut StdRng) -> (C, F, IpaProof<C>) {
+                let commitment = params.commit(poly).to_affine();
                 let v = evaluate_iter(poly.iter(), x);
 
                 let mut transcript = transcript_for(commitment, x, v);
                 let proof =
-                    prover::create_proof(params, rng, &mut transcript.$side(), poly, blind, x)
-                        .unwrap();
+                    prover::create_proof(params, rng, &mut transcript.$side(), poly, x).unwrap();
                 (commitment, v, proof)
             }
 
@@ -128,14 +121,12 @@ macro_rules! ipa_tests {
                     .eval()
             }
 
-            /// A claim with its proof, on `K`-sized parameters, under a random
-            /// blind.
+            /// A claim with its proof on `K`-sized parameters.
             fn opening(params: &Params<C>, seed: u64) -> (C, F, F, IpaProof<C>) {
                 let mut rng = StdRng::seed_from_u64(seed);
                 let poly = random_poly(1 << K, &mut rng);
-                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
                 let x = F::random(|bytes| rng.fill_bytes(bytes));
-                let (commitment, v, proof) = open(params, &poly, blind, x, &mut rng);
+                let (commitment, v, proof) = open(params, &poly, x, &mut rng);
                 (commitment, x, v, proof)
             }
 
@@ -147,13 +138,121 @@ macro_rules! ipa_tests {
             }
 
             #[test]
-            fn round_trip_without_blinding() {
+            fn rejects_blinded_commitment_after_recomputing_transcript() {
                 let params = params(K);
-                let mut rng = StdRng::seed_from_u64(2);
+                let mut rng = StdRng::seed_from_u64(0x462);
                 let poly = random_poly(1 << K, &mut rng);
                 let x = F::random(|bytes| rng.fill_bytes(bytes));
-                let (commitment, v, proof) = open(&params, &poly, Blind(F::ZERO), x, &mut rng);
-                assert!(check(&params, commitment, x, v, &proof));
+                let v = evaluate_iter(&poly, x);
+                let blind = F::from(0x462);
+
+                // Both the old W and another public base: changing the
+                // blinding generator must not restore blinded openings.
+                for base in [*generators().h(), params.u] {
+                    let commitment = (params.commit(&poly) + &(base * blind)).to_affine();
+                    let mut transcript = transcript_for(commitment, x, v);
+                    let proof =
+                        prover::create_proof(&params, &mut rng, &mut transcript.$side(), &poly, x)
+                            .unwrap();
+                    let mut msm = verify(&params, commitment, x, v, &proof).use_challenges();
+                    assert!(!msm.clone().eval());
+
+                    // The real transcript and round folds agree. Precisely
+                    // the unaccounted-for blind remains in the final MSM;
+                    // reinstating a free cancellation term would accept it.
+                    msm.append_term(-blind, base);
+                    assert!(msm.eval());
+                }
+            }
+
+            #[test]
+            fn rejects_forged_value_or_mask() {
+                let params = params(K);
+                let mut rng = StdRng::seed_from_u64(0x463);
+                let poly = random_poly(1 << K, &mut rng);
+                let commitment = params.commit(&poly).to_affine();
+                let x = F::from(7);
+                let value = evaluate_iter(&poly, x);
+
+                // Try omitting the evaluation-binding round terms, lying
+                // about the value, using s(x) != 0, and combining both lies.
+                for (value_error, mask_at_x, round_u) in [
+                    (F::ONE, F::ZERO, false),
+                    (F::ONE, F::ZERO, true),
+                    (F::ZERO, F::ONE, true),
+                    (F::ONE, F::ONE, true),
+                ] {
+                    let claimed = value + value_error;
+                    let mut transcript = transcript_for(commitment, x, claimed);
+                    let mut side = transcript.$side();
+                    let mut mask = random_poly(1 << K, &mut rng);
+                    let mask_value = evaluate_iter(&mask, x);
+                    mask[0] += mask_at_x - mask_value;
+                    let s_commitment = params.commit(&mask).to_affine();
+                    side.write_point(s_commitment).unwrap();
+                    let xi = side.squeeze_challenge().unwrap();
+                    let z = side.squeeze_challenge().unwrap();
+                    let mut coefficients: Vec<_> =
+                        poly.iter().zip(&mask).map(|(p, s)| *p + xi * s).collect();
+                    coefficients[0] -= claimed;
+                    let mut g = params.g.clone();
+                    let mut powers: Vec<_> =
+                        core::iter::successors(Some(F::ONE), |power| Some(*power * x))
+                            .take(coefficients.len())
+                            .collect();
+                    let mut rounds = Vec::new();
+
+                    // Construct fresh rounds for the malicious polynomial;
+                    // the verifier sees exactly the same transcript.
+                    while coefficients.len() > 1 {
+                        let half = coefficients.len() / 2;
+                        let mut l = C::msm(&coefficients[half..], &g[..half]);
+                        let mut r = C::msm(&coefficients[..half], &g[half..]);
+                        if round_u {
+                            let cross_l =
+                                F::sum_of_products_slice(&coefficients[half..], &powers[..half]);
+                            let cross_r =
+                                F::sum_of_products_slice(&coefficients[..half], &powers[half..]);
+                            l += &(params.u * (z * cross_l));
+                            r += &(params.u * (z * cross_r));
+                        }
+                        let (l, r) = (l.to_affine(), r.to_affine());
+                        side.write_point(l).unwrap();
+                        side.write_point(r).unwrap();
+                        rounds.push((l, r));
+                        let u = side.squeeze_challenge().unwrap();
+                        let inverse = u.invert().unwrap();
+                        for i in 0..half {
+                            let high = coefficients[i + half];
+                            coefficients[i] += inverse * high;
+                            let high_power = powers[i + half];
+                            powers[i] += u * high_power;
+                            g[i] = (g[i].to_projective() + &(g[i + half] * u)).to_affine();
+                        }
+                        coefficients.truncate(half);
+                        g.truncate(half);
+                        powers.truncate(half);
+                    }
+                    let proof = IpaProof {
+                        s_commitment,
+                        rounds,
+                        c: coefficients[0],
+                    };
+                    side.write_scalar(proof.c).unwrap();
+                    let mut msm = verify(&params, commitment, x, claimed, &proof).use_challenges();
+                    assert!(!msm.clone().eval());
+
+                    // Control: cancel exactly the remaining U coefficient.
+                    // With the round terms present, the residual binds
+                    // p(x) - v + xi s(x), so s cannot freely repair a lie.
+                    let correction = if round_u {
+                        z * (-value_error + xi * mask_at_x)
+                    } else {
+                        z * proof.c * powers[0]
+                    };
+                    msm.add_to_u_scalar(correction);
+                    assert!(msm.eval());
+                }
             }
 
             #[test]
@@ -175,25 +274,8 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let (_, x, v, proof) = opening(&params, 5);
                 let mut rng = StdRng::seed_from_u64(6);
-                let other = params
-                    .commit(&random_poly(1 << K, &mut rng), Blind(F::ZERO))
-                    .to_affine();
+                let other = params.commit(&random_poly(1 << K, &mut rng)).to_affine();
                 assert!(!check(&params, other, x, v, &proof));
-            }
-
-            #[test]
-            fn rejects_wrong_blind() {
-                let params = params(K);
-                let mut rng = StdRng::seed_from_u64(7);
-                let poly = random_poly(1 << K, &mut rng);
-                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
-                let x = F::random(|bytes| rng.fill_bytes(bytes));
-                let (commitment, v, _) = open(&params, &poly, blind, x, &mut rng);
-
-                // A proof made under a different blind than the commitment.
-                let other = Blind(blind.0 + F::ONE);
-                let (_, _, proof) = open(&params, &poly, other, x, &mut rng);
-                assert!(!check(&params, commitment, x, v, &proof));
             }
 
             #[test]
@@ -203,10 +285,6 @@ macro_rules! ipa_tests {
 
                 let mut tampered = proof.clone();
                 tampered.c += F::ONE;
-                assert!(!check(&params, commitment, x, v, &tampered));
-
-                let mut tampered = proof.clone();
-                tampered.f += F::ONE;
                 assert!(!check(&params, commitment, x, v, &tampered));
 
                 let mut tampered = proof.clone();
@@ -263,7 +341,7 @@ macro_rules! ipa_tests {
             }
 
             #[test]
-            fn proof_is_deterministic() {
+            fn proof_is_deterministic_with_fixed_rng() {
                 let params = params(K);
                 let (commitment, x, v, proof) = opening(&params, 12);
                 let (commitment_again, x_again, v_again, proof_again) = opening(&params, 12);
@@ -272,7 +350,7 @@ macro_rules! ipa_tests {
                 assert_eq!(proof, proof_again);
             }
 
-            /// A zero-blind `Params::commit` is the native commitment
+            /// `Params::commit` is the native commitment
             /// `sparse::Polynomial` computes under the same generators,
             /// coefficient $i$ on generator $i$, so the IPA opens exactly what
             /// the proof system commits to.
@@ -283,7 +361,7 @@ macro_rules! ipa_tests {
                 let mut rng = StdRng::seed_from_u64(13);
                 let coeffs = random_poly(TestRank::num_coeffs(), &mut rng);
 
-                let ipa = params.commit(&coeffs, Blind(F::ZERO)).to_affine();
+                let ipa = params.commit(&coeffs).to_affine();
                 let native = sparse::Polynomial::<F, TestRank>::from_coeffs(coeffs)
                     .commit_to_affine(generators());
                 assert_eq!(ipa, native);
@@ -341,9 +419,8 @@ macro_rules! ipa_tests {
                 let params = Params::new(generators(), u());
                 let mut rng = StdRng::seed_from_u64(14);
                 let poly = random_poly(params.n as usize, &mut rng);
-                let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
                 let x = F::random(|bytes| rng.fill_bytes(bytes));
-                let (commitment, v, proof) = open(&params, &poly, blind, x, &mut rng);
+                let (commitment, v, proof) = open(&params, &poly, x, &mut rng);
                 assert!(check(&params, commitment, x, v, &proof));
                 assert!(!check(&params, commitment, x, v + F::ONE, &proof));
             }
@@ -363,9 +440,8 @@ macro_rules! ipa_tests {
                     let mut rng = StdRng::seed_from_u64(seed);
                     let n = 1usize << k;
                     let poly = random_poly(n, &mut rng);
-                    let blind = Blind(F::random(|bytes| rng.fill_bytes(bytes)));
                     let x = F::random(|bytes| rng.fill_bytes(bytes));
-                    let (commitment, v, proof) = open(&params, &poly, blind, x, &mut rng);
+                    let (commitment, v, proof) = open(&params, &poly, x, &mut rng);
                     prop_assert!(check(&params, commitment, x, v, &proof));
 
                     // Open a polynomial that differs from the committed one in
@@ -374,7 +450,7 @@ macro_rules! ipa_tests {
                     let mut corrupted = poly.clone();
                     corrupted[index % n] += F::ONE;
                     let (_, v_corrupted, proof_corrupted) =
-                        open(&params, &corrupted, blind, x, &mut rng);
+                        open(&params, &corrupted, x, &mut rng);
                     prop_assert!(!check(&params, commitment, x, v_corrupted, &proof_corrupted));
                 }
             }
