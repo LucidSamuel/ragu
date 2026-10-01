@@ -97,3 +97,22 @@ fn malformed_proof_bytes_are_rejected() {
     wrong_version[0] = ragu_primitives::wire::VERSION.wrapping_add(1);
     assert!(MinimalProof::<C, R>::from_bytes(&wrong_version, Limits::default()).is_err());
 }
+
+/// Decode a complete proof captured with the pre-Udon implementation, without
+/// regenerating it using the current prover or RNG implementation.
+#[test]
+fn pre_udon_proof_decodes_and_verifies() {
+    use ragu_core::pasta::Fp;
+    use ragu_primitives::wire::Scalar;
+
+    let bytes = include_bytes!("fixtures/wire/pre_udon_proof.bin");
+    let header = include_bytes!("fixtures/wire/pre_udon_header.bin");
+    let data = <Fp as Decode<Scalar>>::from_bytes(header, Limits::default()).unwrap();
+    let decoded = MinimalProof::<C, R>::from_bytes(bytes, Limits::default()).unwrap();
+    assert_eq!(decoded.to_bytes(), bytes);
+    assert!(
+        app()
+            .verify_minimal::<_, LeafNode>(decoded, data, StdRng::seed_from_u64(0xdec1de))
+            .unwrap()
+    );
+}

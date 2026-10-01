@@ -3,10 +3,11 @@
 
 use ragu_circuits::polynomials::ProductionRank;
 use ragu_core::pasta::Pasta;
+use ragu_primitives::wire::{Decode, Encode, Limits, Minimize};
 use rand::{SeedableRng, rngs::StdRng};
 use udon::curve::Affine as CurveAffine;
 
-use super::Proof;
+use super::{MinimalProof, Proof};
 use crate::{Application, ApplicationBuilder};
 
 type TestApp = Application<'static, Pasta, ProductionRank, 4>;
@@ -26,6 +27,14 @@ fn fixture() -> (TestApp, TestProof) {
 }
 
 fn assert_rejected(app: &TestApp, proof: TestProof, field: &str) {
+    let bytes = proof.minimize().to_bytes();
+    let minimal = MinimalProof::<Pasta, ProductionRank>::from_bytes(&bytes, Limits::default())
+        .expect("structurally malformed values still have canonical byte encodings");
+    let result = app.verify_minimal::<_, ()>(minimal, (), StdRng::seed_from_u64(5678));
+    assert!(
+        matches!(&result, Ok(false)),
+        "decoded {field}: expected Ok(false), got {result:?}"
+    );
     let result = app.verify(&proof.carry::<()>(()), StdRng::seed_from_u64(5678));
     assert!(
         matches!(&result, Ok(false)),
@@ -107,4 +116,25 @@ fn rejects_identity_instance_commitments() {
         native_points_ab_commitment.0,
         native_points_f_commitment.0,
     );
+}
+
+#[test]
+fn rejects_malformed_child_header_lengths() {
+    let (app, original) = fixture();
+    for left in [true, false] {
+        for length in [0, 3, 5] {
+            let mut proof = original.clone();
+            let header = if left {
+                &mut proof.left_header
+            } else {
+                &mut proof.right_header
+            };
+            header.resize(length, header[0]);
+            assert_rejected(
+                &app,
+                proof,
+                if left { "left_header" } else { "right_header" },
+            );
+        }
+    }
 }

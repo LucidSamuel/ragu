@@ -400,20 +400,29 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
     /// Verifies a [`MinimalProof`] for the provided [`Header`].
     ///
-    /// The proof is [expanded](Self::expand) first, so the challenges and
+    /// The input's vector lengths and required affine point slots are checked
+    /// before [expansion](Self::expand), so malformed inputs are rejected before
+    /// reconstruction can allocate point gadgets. The challenges and
     /// the two derived stages the decider checks are ones this application
     /// computed, never ones the encoder supplied; the expanded proof then
     /// goes through [`verify`](Self::verify) unchanged, including its
     /// structural checks.
     ///
-    /// Returns `Ok(false)` when a squeezed challenge has no lift, which marks
-    /// the proof as malformed rather than an internal error, as in `verify`.
+    /// Returns `Ok(false)` for malformed structure or when a squeezed challenge
+    /// has no lift. Other computation and header-encoding errors propagate,
+    /// as in `verify`.
     pub fn verify_minimal<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         proof: MinimalProof<C, R>,
         data: H::Data,
         rng: RNG,
     ) -> Result<bool> {
+        if !proof.is_well_formed()
+            || proof.left_header.len() != HEADER_SIZE
+            || proof.right_header.len() != HEADER_SIZE
+        {
+            return Ok(false);
+        }
         let proof = match self.expand(proof) {
             Ok(proof) => proof,
             Err(error)

@@ -42,7 +42,9 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// # Errors
     ///
     /// Returns an error if a squeezed challenge has no lift, which an honest
-    /// transcript produces with negligible probability.
+    /// transcript produces with negligible probability, or reconstruction
+    /// encounters an invalid point gadget. For untrusted inputs, use
+    /// [`verify_minimal`](Self::verify_minimal), which checks structure first.
     pub fn expand(&self, proof: MinimalProof<C, R>) -> Result<Proof<C, R>> {
         let mut dr = Emulator::execute();
         let mut transcript = Transcript::new(&mut dr, C::circuit_poseidon(self.params), RAGU_TAG)?;

@@ -16,6 +16,11 @@
 //!   as a byte string. Serde decoding limits encoded input to 64 MiB and uses
 //!   [`ragu_primitives::wire::Limits::default`] for decoded storage; direct
 //!   [`ragu_primitives::wire::Decode::from_bytes`] calls accept caller-supplied limits.
+//!
+//! Proof bytes are experimental: the envelope version does not identify the
+//! proof schema, curve suite, rank, application, or registry setup. Callers must
+//! agree on those externally. Default decoding limits are resource policy,
+//! not a guarantee that every valid proof fits; decoding is not verification.
 
 #![no_std]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
