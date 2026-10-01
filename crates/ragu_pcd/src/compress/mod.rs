@@ -30,15 +30,13 @@
 //! them.
 //!
 //! The transcript squeezes circuit-field elements. The host curve's
-//! challenges are those squeezes; the nested curve's are their endoscalar
-//! lifts, as in the fuse, and so carry 128 bits of entropy. Every check
-//! that holds at a random challenge, the fold's layers, the reduction's
-//! identity, the batch's quotient relation and the IPA's rounds among
-//! them, therefore lets a false claim through with probability about its
-//! degree over $2^{128}$ on the nested curve: the reduction's identity has
-//! degree below $2N$, so about $2^{-114}$ at the production rank. This is
-//! the bound the fuse's nested side has as well; the compressed verifier is
-//! where it becomes the final one.
+//! challenges are those squeezes; the nested curve's preserve their canonical
+//! integers within the two fields' common capacity, rejecting out-of-range
+//! values. For Pasta, the accepted range has $2^{254}$ elements. Under ideal
+//! transcript draws, a nonzero degree-$d$ residual in one nested challenge
+//! therefore vanishes with probability at most $d/2^{254}$. These fresh
+//! compression challenges are checked by the terminal verifier. The fuse's
+//! replayed challenges retain their endoscalar lifts.
 //!
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.

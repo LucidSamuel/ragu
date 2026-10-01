@@ -8,18 +8,47 @@
 //! [`Point`] gadget writes them; host-curve points and scalar-field values
 //! are bridged the way the fuse's bridge stages bridge them, committed on the
 //! nested curve and absorbed as that commitment. Challenges for the host
-//! curve are the raw squeeze, and challenges for the nested curve are its
-//! lifts, as in the fuse.
+//! curve are the raw squeeze. Nested challenges preserve its canonical
+//! integer in the scalar field, rejecting values outside the two fields'
+//! common capacity (254 bits for Pasta).
 
 use ragu_core::{
-    Cycle, FixedGenerators, Result,
+    Cycle, Error, FixedGenerators, Result,
     drivers::emulator::{Emulator, Wireless},
     maybe::{Always, Maybe},
 };
 use ragu_primitives::{Element, GadgetExt, Point};
-use udon::curve::{Affine, Projective};
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
-use crate::internal::{nested, transcript::Transcript};
+use crate::internal::transcript::Transcript;
+
+/// Preserves the canonical integer on the common power-of-two range of the
+/// two fields. Under an ideal uniform squeeze, accepted challenges are
+/// uniform on that range; out-of-range draws fail without another squeeze.
+pub(super) fn convert_challenge<F: Field, T: Field>(challenge: F) -> Result<T> {
+    let capacity = F::CAPACITY.min(T::CAPACITY) as usize;
+    if challenge.to_le_bits().as_ref()[capacity..]
+        .iter()
+        .any(|bit| *bit)
+    {
+        return Err(Error::InvalidWitness(
+            "nested IPA challenge exceeds the common field capacity".into(),
+        ));
+    }
+
+    // Both representations hold the common capacity; any bytes beyond the
+    // shorter representation are zero after the range check.
+    let source = challenge.to_bytes();
+    let mut target = T::ZERO.to_bytes();
+    let len = source.as_ref().len().min(target.as_ref().len());
+    target.as_mut()[..len].copy_from_slice(&source.as_ref()[..len]);
+    T::from_bytes(target).ok_or_else(|| {
+        Error::InvalidWitness("nested IPA challenge is not a canonical scalar".into())
+    })
+}
 
 /// What the IPA needs from a transcript: halo2's `TranscriptWrite`
 /// operations, with the proof carried as a struct rather than written to a
@@ -117,9 +146,11 @@ impl<C: Cycle> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C> {
 
 /// A [`CycleTranscript`] as the nested-curve IPA sees it: a point's
 /// coordinates are in the circuit field, so it is absorbed directly; a scalar
-/// is in the scalar field, so it is bridged; and a challenge is the lift of
-/// the squeeze, as the fuse's nested challenges are, carrying 128 of the
-/// squeeze's bits.
+/// is in the scalar field, so it is bridged; and a challenge preserves the
+/// squeeze's canonical integer within the two fields' common capacity.
+/// For Pasta this gives a $2^{254}$-element challenge space. The fuse's
+/// replayed challenges still use endoscalar lifts; a recursive verifier of
+/// these fresh compression challenges must reproduce this conversion.
 pub struct NestedSide<'a, 'dr, C: Cycle>(&'a mut CycleTranscript<'dr, C>);
 
 impl<C: Cycle> IpaTranscript<C::NestedCurve> for NestedSide<'_, '_, C> {
@@ -132,6 +163,6 @@ impl<C: Cycle> IpaTranscript<C::NestedCurve> for NestedSide<'_, '_, C> {
     }
 
     fn squeeze_challenge(&mut self) -> Result<C::ScalarField> {
-        nested::challenge::<C>(self.0.squeeze()?)
+        convert_challenge(self.0.squeeze()?)
     }
 }

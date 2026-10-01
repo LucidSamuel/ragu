@@ -6,9 +6,13 @@
 //! Small parameters keep the PR gate quick; one full-size round trip per
 //! curve over the baked generators is `#[ignore]`d for the heavy-tests run.
 
-use ragu_core::pasta::Pasta;
+use ragu_core::{
+    Error,
+    pasta::{Fp, Fq, Pasta},
+};
+use udon::field::Field;
 
-use super::{CycleTranscript, IPA_TAG};
+use super::{CycleTranscript, IPA_TAG, transcript::convert_challenge};
 
 const K: u32 = 8;
 
@@ -27,7 +31,7 @@ macro_rules! ipa_tests {
 
             use proptest::prelude::*;
             use ragu_circuits::polynomials::{Rank, TestRank, sparse};
-            use ragu_core::{Cycle, FixedGenerators, pasta::Pasta};
+            use ragu_core::{Cycle, Error, FixedGenerators, pasta::Pasta};
             use rand::{Rng, SeedableRng, rngs::StdRng};
             use udon::{
                 curve::{Affine, Projective},
@@ -43,6 +47,34 @@ macro_rules! ipa_tests {
 
             type C = $curve;
             type F = $field;
+
+            /// Supplies a zero at one IPA round to exercise an exceptional
+            /// challenge without searching for a real transcript preimage.
+            struct ZeroRoundTranscript {
+                round: usize,
+                drawn: usize,
+            }
+
+            impl IpaTranscript<C> for ZeroRoundTranscript {
+                fn write_point(&mut self, _: C) -> crate::Result<()> {
+                    Ok(())
+                }
+
+                fn write_scalar(&mut self, _: F) -> crate::Result<()> {
+                    Ok(())
+                }
+
+                fn squeeze_challenge(&mut self) -> crate::Result<F> {
+                    // xi and z precede the round challenges.
+                    let zero = self.drawn == self.round + 2;
+                    self.drawn += 1;
+                    Ok(if zero {
+                        F::ZERO
+                    } else {
+                        F::from(self.drawn as u64 + 1)
+                    })
+                }
+            }
 
             fn generators() -> &'static <Pasta as Cycle>::$generators_ty {
                 Pasta::$generators_fn(crate::pasta::baked())
@@ -260,6 +292,41 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let (commitment, x, v, proof) = opening(&params, 3);
                 assert!(!check(&params, commitment, x, v + F::ONE, &proof));
+            }
+
+            #[test]
+            fn prover_rejects_zero_round_challenge() {
+                let params = params(K);
+                let mut rng = StdRng::seed_from_u64(15);
+                let poly = random_poly(params.n as usize, &mut rng);
+                for round in 0..K as usize {
+                    let mut transcript = ZeroRoundTranscript { round, drawn: 0 };
+                    assert!(matches!(
+                        prover::create_proof(
+                            &params,
+                            &mut rng,
+                            &mut transcript,
+                            &poly,
+                            F::from(7),
+                        ),
+                        Err(Error::InvalidWitness(_))
+                    ));
+                }
+            }
+
+            #[test]
+            fn verifier_rejects_zero_round_challenge() {
+                let params = params(K);
+                let (commitment, x, v, proof) = opening(&params, 16);
+                for round in 0..K as usize {
+                    let mut transcript = ZeroRoundTranscript { round, drawn: 0 };
+                    let mut msm = MSM::new(&params);
+                    msm.append_term(F::ONE, commitment);
+                    assert!(matches!(
+                        verifier::verify_proof(&params, msm, &mut transcript, &proof, x, v),
+                        Err(Error::InvalidWitness(_))
+                    ));
+                }
             }
 
             #[test]
@@ -503,13 +570,61 @@ fn sides_share_one_transcript() {
     let host_after_nothing = d.host().squeeze_challenge().unwrap();
     assert_ne!(host_after_nothing, host_after_nested);
 
-    // The nested challenge is the lift of the host one at the same state.
+    // Each side consumes a separate squeeze from the shared stream. The
+    // nested challenge preserves its own squeeze's canonical integer,
+    // including the bits above the endoscalar width.
     let mut e = fresh();
-    let host = e.host().squeeze_challenge().unwrap();
+    let first = e.host().squeeze_challenge().unwrap();
+    let second = e.host().squeeze_challenge().unwrap();
     let mut f = fresh();
+    let host = f.host().squeeze_challenge().unwrap();
     let nested = f.nested().squeeze_challenge().unwrap();
-    assert_eq!(
-        nested,
-        crate::internal::nested::challenge::<Pasta>(host).unwrap()
+    assert_eq!(host, first);
+    assert_eq!(Field::to_bytes(&nested), Field::to_bytes(&second));
+    assert_ne!(Field::to_bytes(&nested), Field::to_bytes(&host));
+    assert!(
+        Field::to_le_bits(&nested).as_ref()[128..254]
+            .iter()
+            .any(|bit| *bit)
     );
+}
+
+#[test]
+fn nested_challenge_preserves_full_width() {
+    fn check<F: Field, T: Field>() {
+        let check_value = |value: F| {
+            let converted: T = convert_challenge(value).unwrap();
+            assert_eq!(value.to_le_bits().as_ref(), converted.to_le_bits().as_ref());
+        };
+
+        check_value(F::ZERO);
+        let mut power = F::ONE;
+        for _ in 0..F::CAPACITY.min(T::CAPACITY) {
+            check_value(power);
+            power = power.double();
+        }
+        check_value(power - F::ONE);
+    }
+
+    check::<Fp, Fq>();
+    check::<Fq, Fp>();
+}
+
+#[test]
+fn nested_challenge_rejects_out_of_range() {
+    fn check<F: Field, T: Field>() {
+        let mut limit = F::ONE;
+        for _ in 0..F::CAPACITY.min(T::CAPACITY) {
+            limit = limit.double();
+        }
+        for value in [limit, limit + F::ONE, -F::ONE] {
+            assert!(matches!(
+                convert_challenge::<F, T>(value),
+                Err(Error::InvalidWitness(_))
+            ));
+        }
+    }
+
+    check::<Fp, Fq>();
+    check::<Fq, Fp>();
 }

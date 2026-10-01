@@ -4,7 +4,7 @@
 
 use alloc::vec::Vec;
 
-use ragu_core::Result;
+use ragu_core::{Error, Result};
 use rand::CryptoRng;
 use udon::{
     curve::{Affine, Projective},
@@ -118,7 +118,9 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         rounds.push((l_j, r_j));
 
         let u_j = transcript.squeeze_challenge()?;
-        let u_j_inv = u_j.invert().unwrap(); // TODO, bubble this up
+        let u_j_inv = u_j
+            .invert()
+            .ok_or_else(|| Error::InvalidWitness("IPA round challenge is zero".into()))?;
 
         // Collapse `p_prime` and `b`.
         // TODO: parallelize

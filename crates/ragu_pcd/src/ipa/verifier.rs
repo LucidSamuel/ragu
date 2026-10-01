@@ -95,6 +95,10 @@ pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>>(
         transcript.write_point(r)?;
 
         let u_j = transcript.squeeze_challenge()?;
+        // Batch inversion leaves zero unchanged, but this round needs an inverse.
+        if u_j == C::Scalar::ZERO {
+            return Err(Error::InvalidWitness("IPA round challenge is zero".into()));
+        }
 
         rounds.push((l, r, u_j, /* to be inverted */ u_j));
     }
