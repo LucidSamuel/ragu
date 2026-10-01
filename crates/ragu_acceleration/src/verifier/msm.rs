@@ -76,8 +76,7 @@ fn execute<P: PastaCurve>(
 /// Runs `input` on rayon's pool, with one task per thread.
 #[cfg(feature = "multicore")]
 fn run<P: PastaCurve>(input: &Input<'_, P>) -> ProjectivePoint<P> {
-    let threads = TaskBudget::new(rayon::current_num_threads())
-        .expect("a rayon pool has at least one thread");
+    let threads = TaskBudget::new(maybe_rayon::current_num_threads()).expect("at least one thread");
     run_with(
         input,
         ExecutionOptions::default().with_task_budget(threads),
@@ -98,30 +97,17 @@ fn run_with<P: PastaCurve, X: Executor>(
 ) -> ProjectivePoint<P> {
     let requirements = input
         .requirements(options)
-        .expect("Udon plans every nonempty input without a workspace ceiling");
+        .expect("a nonempty input plans without a workspace ceiling");
     let mut scratch = HeapScratch::new(requirements);
     input
         .execute(options, executor, scratch.borrow())
-        .expect("the scratch is sized from the plan's requirements")
+        .expect("scratch sized from the plan's requirements")
 }
 
 /// Delegates to rayon's work-stealing join, which meets [`Executor`]'s
 /// progress requirement for nested joins.
 #[cfg(feature = "multicore")]
 struct RayonExecutor;
-
-#[cfg(feature = "multicore")]
-impl Executor for RayonExecutor {
-    fn join<L, R, A, B>(&self, left: L, right: R) -> (A, B)
-    where
-        L: FnOnce() -> A + Send,
-        R: FnOnce() -> B + Send,
-        A: Send,
-        B: Send,
-    {
-        rayon::join(left, right)
-    }
-}
 
 /// Heap storage for one plan's requirements.
 struct HeapScratch<C: PastaCurve> {
@@ -157,10 +143,24 @@ impl<C: PastaCurve> HeapScratch<C> {
     }
 }
 
+#[cfg(feature = "multicore")]
+impl Executor for RayonExecutor {
+    fn join<L, R, A, B>(&self, left: L, right: R) -> (A, B)
+    where
+        L: FnOnce() -> A + Send,
+        R: FnOnce() -> B + Send,
+        A: Send,
+        B: Send,
+    {
+        maybe_rayon::join(left, right)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use alloc::vec::Vec;
 
+    use proptest::prelude::*;
     use ragu_backend::{Backend, ReferenceBackend};
     use rand::{Rng, SeedableRng, rngs::StdRng};
     use udon::{
@@ -171,21 +171,31 @@ mod tests {
     use super::planned;
     use crate::AcceleratedBackend;
 
-    /// Lengths around the planner's layout boundaries, up to Ragu's rank.
-    const LENGTHS: [usize; 16] = [
-        0, 1, 2, 3, 15, 16, 17, 63, 64, 65, 255, 256, 257, 1024, 4096, 4097,
-    ];
+    /// One past Ragu's production rank.
+    const MAX_LEN: usize = 4097;
+
+    /// Lengths at the planner's layout boundaries, up to the maximum, or
+    /// anywhere below the first kernel switch.
+    fn arb_len() -> impl Strategy<Value = usize> {
+        prop_oneof![
+            2 => prop::sample::select(
+                &[0usize, 1, 2, 3, 15, 16, 17, 63, 64, 65, 255, 256, 257, 1024, 4096, MAX_LEN][..]
+            ),
+            1 => 0..=512usize,
+        ]
+    }
 
     /// Random scalars with zeros mixed in, over random points with identities
     /// mixed in.
-    fn inputs<C: Affine>(rng: &mut StdRng, len: usize) -> (Vec<C::Scalar>, Vec<C>) {
-        let random = |rng: &mut StdRng| C::Scalar::random(|bytes| rng.fill_bytes(bytes));
+    fn inputs<C: Affine>(seed: u64, len: usize) -> (Vec<C::Scalar>, Vec<C>) {
+        let mut rng = StdRng::seed_from_u64(seed);
+        let mut random = || C::Scalar::random(|bytes| rng.fill_bytes(bytes));
         let scalars = (0..len)
             .map(|i| {
                 if i % 7 == 3 {
                     C::Scalar::ZERO
                 } else {
-                    random(rng)
+                    random()
                 }
             })
             .collect();
@@ -194,55 +204,68 @@ mod tests {
                 if i % 11 == 5 {
                     C::identity()
                 } else {
-                    C::from(C::generator() * random(rng))
+                    C::from(C::generator() * random())
                 }
             })
             .collect();
         (scalars, points)
     }
 
-    fn agrees_with_reference<C: Affine>() {
-        let mut rng = StdRng::seed_from_u64(0x3d5a);
-        for len in LENGTHS {
-            let (scalars, points) = inputs::<C>(&mut rng, len);
-            assert_eq!(
-                AcceleratedBackend::msm(scalars.iter(), points.iter()),
-                ReferenceBackend::msm(scalars.iter(), points.iter()),
-                "length {len}"
-            );
-        }
+    fn check_agrees_with_reference<C: Affine>(
+        seed: u64,
+        len: usize,
+        truncate: usize,
+    ) -> Result<(), TestCaseError> {
+        let (scalars, points) = inputs::<C>(seed, len);
+        prop_assert_eq!(
+            AcceleratedBackend::msm(scalars.iter(), points.iter()),
+            ReferenceBackend::msm(scalars.iter(), points.iter())
+        );
 
         // Unequal lengths truncate to the shorter input, on either side.
-        let (scalars, points) = inputs::<C>(&mut rng, 40);
-        assert_eq!(
-            AcceleratedBackend::msm(scalars[..33].iter(), points.iter()),
-            ReferenceBackend::msm(scalars[..33].iter(), points.iter()),
+        let truncate = truncate.min(len);
+        prop_assert_eq!(
+            AcceleratedBackend::msm(scalars[..truncate].iter(), points.iter()),
+            ReferenceBackend::msm(scalars[..truncate].iter(), points.iter())
         );
-        assert_eq!(
-            AcceleratedBackend::msm(scalars.iter(), points[..21].iter()),
-            ReferenceBackend::msm(scalars.iter(), points[..21].iter()),
+        prop_assert_eq!(
+            AcceleratedBackend::msm(scalars.iter(), points[..truncate].iter()),
+            ReferenceBackend::msm(scalars.iter(), points[..truncate].iter())
         );
+        Ok(())
     }
 
-    #[test]
-    fn pallas_agrees_with_reference() {
-        agrees_with_reference::<AffineAdapter<Pallas>>();
-    }
+    proptest! {
+        // The reference path is serial and unoptimized under test; each case
+        // runs six of its sums.
+        #![proptest_config(ProptestConfig::with_cases(32))]
 
-    #[test]
-    fn vesta_agrees_with_reference() {
-        agrees_with_reference::<AffineAdapter<Vesta>>();
+        #[test]
+        fn pallas_agrees_with_reference(
+            seed in any::<u64>(),
+            len in arb_len(),
+            truncate in 0..=MAX_LEN,
+        ) {
+            check_agrees_with_reference::<AffineAdapter<Pallas>>(seed, len, truncate)?;
+        }
+
+        #[test]
+        fn vesta_agrees_with_reference(
+            seed in any::<u64>(),
+            len in arb_len(),
+            truncate in 0..=MAX_LEN,
+        ) {
+            check_agrees_with_reference::<AffineAdapter<Vesta>>(seed, len, truncate)?;
+        }
     }
 
     #[test]
     fn pasta_adapters_take_the_planned_path() {
-        let mut rng = StdRng::seed_from_u64(0x9e11);
-
-        let (scalars, points) = inputs::<AffineAdapter<Pallas>>(&mut rng, 8);
+        let (scalars, points) = inputs::<AffineAdapter<Pallas>>(0x9e11, 8);
         assert!(planned::<AffineAdapter<Pallas>, Pallas>(&scalars, &points).is_some());
         assert!(planned::<AffineAdapter<Pallas>, Vesta>(&scalars, &points).is_none());
 
-        let (scalars, points) = inputs::<AffineAdapter<Vesta>>(&mut rng, 8);
+        let (scalars, points) = inputs::<AffineAdapter<Vesta>>(0x9e11, 8);
         assert!(planned::<AffineAdapter<Vesta>, Vesta>(&scalars, &points).is_some());
         assert!(planned::<AffineAdapter<Vesta>, Pallas>(&scalars, &points).is_none());
     }

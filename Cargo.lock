@@ -750,9 +750,10 @@ dependencies = [
 name = "ragu_acceleration"
 version = "0.0.0"
 dependencies = [
+ "proptest",
  "ragu_backend",
  "rand 0.10.1",
- "rayon",
+ "tachyon-maybe-rayon",
  "zakura-udon",
 ]
 
