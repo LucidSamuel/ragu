@@ -142,9 +142,7 @@ fn try_extend_runs<F: Field, E>(
     coeffs: impl Iterator<Item = (usize, F)> + Clone,
     mut reserve: impl FnMut(usize) -> Result<Vec<F>, E>,
 ) -> Result<(), E> {
-    let mut nonzero = coeffs
-        .filter(|(_, value)| !bool::from(value.is_zero()))
-        .peekable();
+    let mut nonzero = coeffs.filter(|(_, value)| !value.is_zero()).peekable();
     while let Some((start, first)) = nonzero.next() {
         let mut end = start + 1;
         for (index, _) in nonzero.clone() {

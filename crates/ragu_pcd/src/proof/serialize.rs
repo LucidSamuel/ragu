@@ -9,8 +9,8 @@
 use alloc::vec::Vec;
 use core::{fmt, marker::PhantomData};
 
-use ragu_arithmetic::Cycle;
 use ragu_circuits::polynomials::Rank;
+use ragu_core::Cycle;
 use ragu_primitives::wire::{Decode, Encode, Limits};
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
@@ -92,7 +92,7 @@ mod tests {
     use alloc::string::ToString;
 
     use ragu_circuits::polynomials::ProductionRank;
-    use ragu_pasta::Pasta;
+    use ragu_core::pasta::Pasta;
     use serde::de::{
         DeserializeSeed,
         value::{Error, SeqDeserializer},

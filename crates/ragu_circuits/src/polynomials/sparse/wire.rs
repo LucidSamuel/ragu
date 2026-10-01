@@ -3,8 +3,8 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 
-use ragu_arithmetic::ff::PrimeField;
 use ragu_primitives::wire::{Decode, Encode, Error, Reader, Scalar};
+use udon::field::Field;
 
 use super::{Polynomial, try_extend_runs};
 use crate::polynomials::Rank;
@@ -35,7 +35,7 @@ impl core::error::Error for InvalidBlock {}
 
 // Maximal runs of nonzero coefficients are unique for a polynomial. The wire
 // layout does not inherit the in-memory GAP_TOLERANCE or block boundaries.
-impl<F: PrimeField, R: Rank> Encode for Polynomial<F, R> {
+impl<F: Field, R: Rank> Encode for Polynomial<F, R> {
     fn encode(&self, output: &mut Vec<u8>) {
         let nonzero = self
             .iter_stored_coeffs()
@@ -66,7 +66,7 @@ impl<F: PrimeField, R: Rank> Encode for Polynomial<F, R> {
     }
 }
 
-impl<F: PrimeField, R: Rank> Decode for Polynomial<F, R> {
+impl<F: Field, R: Rank> Decode for Polynomial<F, R> {
     fn min_encoded_len() -> usize {
         8
     }
@@ -165,8 +165,7 @@ mod tests {
     use alloc::vec;
 
     use proptest::prelude::*;
-    use ragu_arithmetic::ff::Field;
-    use ragu_pasta::Fp;
+    use ragu_core::pasta::Fp;
     use ragu_primitives::wire::{Limits, VERSION};
 
     use super::*;

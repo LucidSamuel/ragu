@@ -1,13 +1,15 @@
 //! Compression and expansion using the polynomial and wire codecs.
 
-use ragu_arithmetic::{
-    Cycle,
-    ff::Field,
-    group::{Curve, CurveAffine},
-};
 use ragu_circuits::polynomials::{Rank, TestRank, sparse::Polynomial};
-use ragu_pasta::{EqAffine, Fp, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{EqAffine, Fp, Pasta},
+};
 use ragu_primitives::wire::{self, Compress, Decode, Encode, Limits};
+use udon::{
+    curve::{Affine, Projective},
+    field::Field,
+};
 
 type Poly = Polynomial<Fp, TestRank>;
 
@@ -159,4 +161,14 @@ fn decoder_and_verifier_reject_different_classes_of_tampering() {
     CompressedToyProof::from_bytes(&trailing, Limits::default())
         .err()
         .expect("trailing byte");
+}
+
+#[test]
+fn pre_udon_polynomial_encoding() {
+    // Captured at 887e0abc, before the Udon migration.
+    let bytes = include_bytes!("fixtures/wire/polynomial.bin");
+    let poly = Poly::from_coeffs(vec![Fp::ONE, Fp::ZERO, Fp::from(17), -Fp::ONE]);
+    assert_eq!(poly.to_bytes(), bytes);
+    let decoded = Poly::from_bytes(bytes, Limits::default()).unwrap();
+    assert!(decoded.iter_coeffs().eq(poly.iter_coeffs()));
 }

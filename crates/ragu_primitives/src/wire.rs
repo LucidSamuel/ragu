@@ -18,7 +18,7 @@
 use alloc::{boxed::Box, sync::Arc, vec::Vec};
 use core::{marker::PhantomData, mem::size_of};
 
-use ragu_arithmetic::{ff::PrimeField, group::GroupEncoding};
+use udon::{curve::Affine, field::Field};
 
 #[cfg(test)]
 mod tests;
@@ -28,9 +28,9 @@ pub const VERSION: u8 = 1;
 
 /// The ordinary codec for integers, containers and generated structs.
 pub struct DefaultEncoding;
-/// The canonical [`PrimeField`] representation.
+/// The canonical [`Field`] representation.
 pub struct Scalar;
-/// The checked, compressed [`GroupEncoding`] representation.
+/// The checked, compressed [`Affine`] representation.
 pub struct Point;
 /// A length-prefixed vector whose elements use codec `C`.
 pub struct Sequence<C>(PhantomData<C>);
@@ -385,26 +385,26 @@ impl Decode for usize {
     }
 }
 
-impl<F: PrimeField> Encode<Scalar> for F {
+impl<F: Field> Encode<Scalar> for F {
     fn encode(&self, output: &mut Vec<u8>) {
-        output.extend_from_slice(self.to_repr().as_ref());
+        output.extend_from_slice(Field::to_bytes(self).as_ref());
     }
 }
-impl<F: PrimeField> Decode<Scalar> for F {
+impl<F: Field> Decode<Scalar> for F {
     fn min_encoded_len() -> usize {
-        F::Repr::default().as_ref().len()
+        F::ZERO.to_bytes().as_ref().len()
     }
     fn decode<'a>(reader: &mut Reader<'a>) -> Result<Self, Error<'a>> {
         let offset = reader.offset();
-        let mut repr = F::Repr::default();
+        let mut repr = F::ZERO.to_bytes();
         let bytes = reader.take(repr.as_ref().len())?;
         repr.as_mut().copy_from_slice(bytes);
-        let value = Option::<F>::from(F::from_repr(repr)).ok_or(Error::Invalid {
+        let value = F::from_bytes(repr).ok_or(Error::Invalid {
             offset,
             bytes,
             reason: "non-canonical field element",
         })?;
-        if value.to_repr().as_ref() != bytes {
+        if Field::to_bytes(&value).as_ref() != bytes {
             return Err(Error::Invalid {
                 offset,
                 bytes,
@@ -415,21 +415,21 @@ impl<F: PrimeField> Decode<Scalar> for F {
     }
 }
 
-impl<G: GroupEncoding> Encode<Point> for G {
+impl<G: Affine> Encode<Point> for G {
     fn encode(&self, output: &mut Vec<u8>) {
         output.extend_from_slice(self.to_bytes().as_ref());
     }
 }
-impl<G: GroupEncoding> Decode<Point> for G {
+impl<G: Affine> Decode<Point> for G {
     fn min_encoded_len() -> usize {
-        G::Repr::default().as_ref().len()
+        G::identity().to_bytes().as_ref().len()
     }
     fn decode<'a>(reader: &mut Reader<'a>) -> Result<Self, Error<'a>> {
         let offset = reader.offset();
-        let mut repr = G::Repr::default();
+        let mut repr = G::identity().to_bytes();
         let bytes = reader.take(repr.as_ref().len())?;
         repr.as_mut().copy_from_slice(bytes);
-        let value = Option::<G>::from(G::from_bytes(&repr)).ok_or(Error::Invalid {
+        let value = G::from_bytes(repr).ok_or(Error::Invalid {
             offset,
             bytes,
             reason: "invalid compressed point",

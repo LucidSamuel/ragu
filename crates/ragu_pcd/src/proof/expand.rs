@@ -6,10 +6,10 @@
 
 use alloc::sync::Arc;
 
-use ragu_arithmetic::{Cycle, ff::Field};
 use ragu_circuits::{polynomials::Rank, staging::StageExt as _};
-use ragu_core::{Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Cycle, Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt as _, Point, wire::Compress};
+use udon::field::Field;
 
 use super::{Cached, CompressedProof, Proof, ProofDerived, bridge_alpha_power};
 use crate::{

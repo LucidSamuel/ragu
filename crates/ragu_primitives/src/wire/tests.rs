@@ -1,8 +1,7 @@
 use alloc::{vec, vec::Vec};
 
 use proptest::prelude::*;
-use ragu_arithmetic::{ff::Field, group::prime::PrimeCurveAffine};
-use ragu_pasta::{EpAffine, EqAffine, Fp, Fq};
+use ragu_core::pasta::{EpAffine, EqAffine, Fp, Fq};
 
 use super::*;
 
@@ -31,7 +30,7 @@ fn field_and_point_roundtrips() {
     one[0] = VERSION;
     one[1] = 1;
     assert_eq!(<Fp as Encode<Scalar>>::to_bytes(&Fp::ONE), one);
-    fn fields<F: PrimeField + core::fmt::Debug>() {
+    fn fields<F: Field>() {
         for value in [F::ZERO, F::ONE, -F::ONE, F::from(17)] {
             let bytes = <F as Encode<Scalar>>::to_bytes(&value);
             assert_eq!(
@@ -40,7 +39,7 @@ fn field_and_point_roundtrips() {
             );
         }
     }
-    fn points<G: PrimeCurveAffine + GroupEncoding + core::fmt::Debug>() {
+    fn points<G: Affine>() {
         for value in [G::identity(), G::generator(), -G::generator()] {
             let bytes = <G as Encode<Point>>::to_bytes(&value);
             assert_eq!(
@@ -63,40 +62,47 @@ fn field_and_point_roundtrips() {
 
 #[test]
 fn rejects_noncanonical_representations() {
-    // p, obtained by adding one to the canonical little-endian spelling of p-1.
-    let mut modulus = (-Fp::ONE).to_repr();
-    for byte in modulus.as_mut() {
-        let (next, carry) = byte.overflowing_add(1);
-        *byte = next;
-        if !carry {
-            break;
+    fn fields<F: Field>() {
+        // p, obtained by adding one to the canonical little-endian spelling of p-1.
+        let mut modulus = Field::to_bytes(&(-F::ONE));
+        for byte in modulus.as_mut() {
+            let (next, carry) = byte.overflowing_add(1);
+            *byte = next;
+            if !carry {
+                break;
+            }
         }
+        let mut bytes = vec![VERSION];
+        bytes.extend_from_slice(modulus.as_ref());
+        let Error::Invalid {
+            offset,
+            bytes: offending,
+            ..
+        } = <F as Decode<Scalar>>::from_bytes(&bytes, Limits::default()).unwrap_err()
+        else {
+            panic!("expected a non-canonical field error")
+        };
+        assert_eq!(offset, 1);
+        assert_eq!(offending, modulus.as_ref());
     }
-    let mut bytes = vec![VERSION];
-    bytes.extend_from_slice(modulus.as_ref());
-    let Error::Invalid {
-        offset,
-        bytes: offending,
-        ..
-    } = <Fp as Decode<Scalar>>::from_bytes(&bytes, Limits::default()).unwrap_err()
-    else {
-        panic!("expected a non-canonical field error")
-    };
-    assert_eq!(offset, 1);
-    assert_eq!(offending, modulus.as_ref());
-
-    let mut bytes = vec![0xff; 33];
-    bytes[0] = VERSION;
-    let Error::Invalid {
-        offset,
-        bytes: offending,
-        ..
-    } = <EpAffine as Decode<Point>>::from_bytes(&bytes, Limits::default()).unwrap_err()
-    else {
-        panic!("expected an invalid point error")
-    };
-    assert_eq!(offset, 1);
-    assert_eq!(offending, &bytes[1..]);
+    fn points<G: Affine>() {
+        let mut bytes = vec![0xff; 33];
+        bytes[0] = VERSION;
+        let Error::Invalid {
+            offset,
+            bytes: offending,
+            ..
+        } = <G as Decode<Point>>::from_bytes(&bytes, Limits::default()).unwrap_err()
+        else {
+            panic!("expected an invalid point error")
+        };
+        assert_eq!(offset, 1);
+        assert_eq!(offending, &bytes[1..]);
+    }
+    fields::<Fp>();
+    fields::<Fq>();
+    points::<EpAffine>();
+    points::<EqAffine>();
 }
 
 #[test]
@@ -207,4 +213,42 @@ proptest! {
             prop_assert_eq!(<Vec<u64> as Encode>::to_bytes(&value), bytes);
         }
     }
+}
+
+// Captured at #875's pre-Udon head, 887e0abc. Keep the wire spelling stable
+// when changing arithmetic implementations.
+#[test]
+fn pre_udon_encodings() {
+    fn fields<F: Field>(bytes: &[u8]) {
+        let values = [F::ZERO, F::ONE, -F::ONE, F::from(17)];
+        let encoded: Vec<_> = values
+            .iter()
+            .flat_map(<F as Encode<Scalar>>::to_bytes)
+            .collect();
+        assert_eq!(encoded, bytes);
+        for (value, bytes) in values.iter().zip(bytes.chunks_exact(33)) {
+            assert_eq!(
+                <F as Decode<Scalar>>::from_bytes(bytes, Limits::default()).unwrap(),
+                *value
+            );
+        }
+    }
+    fn points<G: Affine>(bytes: &[u8]) {
+        let values = [G::identity(), G::generator(), -G::generator()];
+        let encoded: Vec<_> = values
+            .iter()
+            .flat_map(<G as Encode<Point>>::to_bytes)
+            .collect();
+        assert_eq!(encoded, bytes);
+        for (value, bytes) in values.iter().zip(bytes.chunks_exact(33)) {
+            assert_eq!(
+                <G as Decode<Point>>::from_bytes(bytes, Limits::default()).unwrap(),
+                *value
+            );
+        }
+    }
+    fields::<Fp>(include_bytes!("../../tests/fixtures/wire/fp.bin"));
+    fields::<Fq>(include_bytes!("../../tests/fixtures/wire/fq.bin"));
+    points::<EpAffine>(include_bytes!("../../tests/fixtures/wire/pallas.bin"));
+    points::<EqAffine>(include_bytes!("../../tests/fixtures/wire/vesta.bin"));
 }

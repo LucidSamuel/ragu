@@ -56,11 +56,11 @@
 use alloc::{boxed::Box, vec::Vec};
 
 use ragu_core::{Error, Result};
+use ragu_primitives::wire::{self, Decode, Encode};
 use udon::{
     fft::{Domain, bit_reverse},
     field::Field,
 };
-use ragu_primitives::wire::{self, Decode, Encode};
 
 use crate::{
     BondingObject, Circuit, WiringObject,

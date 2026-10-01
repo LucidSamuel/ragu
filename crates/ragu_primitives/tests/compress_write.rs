@@ -2,8 +2,8 @@ use ragu_core::{
     drivers::{Driver, emulator::Emulator},
     gadgets::Gadget,
     maybe::Maybe,
+    pasta::Fp,
 };
-use ragu_pasta::Fp;
 use ragu_primitives::{Element, GadgetExt, io::Write, wire::Compress};
 
 #[derive(Compress, Gadget, Write)]

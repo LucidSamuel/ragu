@@ -431,7 +431,7 @@ pub struct Proof<C: Cycle, R: Rank> {
 
 /// The wire codec of a [`Cached`] commitment: the point itself. A marker of
 /// its own keeps the impl clear of the point codec's blanket over every
-/// `GroupEncoding` type, which coherence cannot rule out for `Cached`.
+/// `Affine` type, which coherence cannot rule out for `Cached`.
 struct CachedPoint;
 
 impl<G: Encode<wire::Point>> Encode<CachedPoint> for Cached<G> {

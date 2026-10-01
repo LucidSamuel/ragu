@@ -1,7 +1,7 @@
 //! Proof decoding must preserve values and reject malformed protocol layouts.
 
 use ragu_circuits::polynomials::ProductionRank;
-use ragu_pasta::Pasta;
+use ragu_core::pasta::Pasta;
 use ragu_primitives::wire::{Compress, Decode, Encode, Limits};
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -11,7 +11,7 @@ use crate::ApplicationBuilder;
 #[test]
 fn decoded_proof_preserves_derived_fields_and_rejects_wrong_vector_lengths() {
     let app = ApplicationBuilder::<Pasta, ProductionRank, 4>::new()
-        .finalize(Pasta::baked())
+        .finalize(crate::pasta::baked())
         .unwrap();
     let mut rng = StdRng::seed_from_u64(0x5eed);
     let pcd = app.bootstrap_pcd();
