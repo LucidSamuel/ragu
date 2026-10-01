@@ -106,6 +106,9 @@ impl<'dr, C: Cycle> CycleTranscript<'dr, C> {
     /// Bridges scalar-field values into the transcript the way the fuse's
     /// bridge stages do: committed on the nested curve, then absorbed as that
     /// commitment.
+    ///
+    /// An identity bridge, including the encoding of a single zero scalar,
+    /// is rejected by `absorb`. This can reject otherwise-valid proofs.
     fn bridge(&mut self, values: &[C::ScalarField]) -> Result<()> {
         let g = C::nested_generators(self.params).g();
         let commitment: C::NestedCurve =

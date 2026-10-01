@@ -1,7 +1,10 @@
 //! Unblinded inner product argument (IPA) for polynomial commitments.
 //!
-//! Adapted from halo2's `halo2_proofs/src/poly/commitment`, without Pedersen
-//! blinds. An opening proves knowledge of `p` with `P = <p, G>` and `p(x) = v`.
+//! Adapted from halo2's `halo2_proofs/src/poly/commitment`. Pedersen blinding
+//! with generator `W` is omitted for now because compression currently proves
+//! unblinded relations. An opening proves knowledge of `p` with
+//! `P = <p, G>` and `p(x) = v`.
+//!
 //! The masking polynomial `s`, with `s(x) = 0`, is retained to mask the
 //! coefficients folded by the argument. Fiat-Shamir goes through
 //! [`IpaTranscript`], implemented for both curves by [`CycleTranscript`].
