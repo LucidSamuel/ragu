@@ -93,6 +93,11 @@ name = "criterion_verify"
 path = "benches/criterion/verify.rs"
 harness = false
 
+[[bench]]
+name = "criterion_msm"
+path = "benches/criterion/msm.rs"
+harness = false
+
 [[test]]
 name = "corruption"
 required-features = ["unstable-fuzzing"]
