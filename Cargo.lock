@@ -751,6 +751,8 @@ name = "ragu_acceleration"
 version = "0.0.0"
 dependencies = [
  "ragu_backend",
+ "rand 0.10.1",
+ "rayon",
  "zakura-udon",
 ]
 

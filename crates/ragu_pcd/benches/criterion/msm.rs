@@ -1,13 +1,15 @@
 //! Multiscalar multiplication over the baked host generators at Ragu's sizes.
 //!
-//! `Backend::msm` reaches Udon through `Affine::msm`, which plans serially
-//! over bounded stack scratch. Udon's full path takes scratch sized from the
-//! plan's requirements and a fork/join executor. The groups below measure the
-//! difference, so the backend seam can decide what to expose.
+//! The reference `Backend::msm` reaches Udon through `Affine::msm`, which
+//! plans serially over bounded stack scratch. Udon's full path takes scratch
+//! sized from the plan's requirements and a fork/join executor; the
+//! accelerated backend takes it. The groups below measure the difference, and
+//! what reusing the scratch across calls would add.
 
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use ragu_acceleration::AcceleratedBackend;
 use ragu_backend::{Backend, ReferenceBackend};
 use ragu_core::{
     Cycle, FixedGenerators,
@@ -106,8 +108,12 @@ fn msm_bench(c: &mut Criterion) {
         let size = 1 << log_size;
         let (scalars, bases) = (&scalars[..size], &generators[..size]);
 
-        // Every path must agree with the backend's current result.
+        // Every path must agree with the reference backend.
         let expected: Eq = ReferenceBackend::msm(scalars.iter(), bases.iter());
+        assert_eq!(
+            AcceleratedBackend::msm(scalars.iter(), bases.iter()),
+            expected
+        );
         assert_eq!(
             full_path(scalars, bases, serial, &SerialExecutor),
             expected.into_inner()
@@ -118,8 +124,11 @@ fn msm_bench(c: &mut Criterion) {
         );
 
         group.throughput(Throughput::Elements(size as u64));
-        group.bench_with_input(BenchmarkId::new("backend", size), &size, |b, _| {
+        group.bench_with_input(BenchmarkId::new("reference", size), &size, |b, _| {
             b.iter(|| ReferenceBackend::msm(black_box(scalars).iter(), black_box(bases).iter()))
+        });
+        group.bench_with_input(BenchmarkId::new("accelerated", size), &size, |b, _| {
+            b.iter(|| AcceleratedBackend::msm(black_box(scalars).iter(), black_box(bases).iter()))
         });
         group.bench_with_input(BenchmarkId::new("serial_heap", size), &size, |b, _| {
             b.iter(|| {

@@ -3,9 +3,10 @@
 //! Optimized implementations of Ragu's computational backend.
 //!
 //! Overrides fall back to the defaults of [`ragu_backend::Backend`] where a
-//! method has none. There is no override today: the defaults already run
-//! Udon's MSM through the group vocabulary, and this crate is the home
-//! for the next ones (an external Poseidon, for instance). Overrides of the
+//! method has none. The one override today is `msm`: the default plans Udon's
+//! multiscalar multiplication over bounded stack scratch and runs it
+//! serially, and the override plans it over scratch sized for the input and,
+//! with the `multicore` feature, runs it on rayon's pool. Overrides of the
 //! kernels that `ragu_pcd`'s verifier consults belong in [`verifier`], which
 //! carries a stricter review and testing bar than prover-only overrides. An
 //! override arrives with its differential test against the default it
@@ -16,14 +17,18 @@
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
+extern crate alloc;
+
+use udon::curve::Affine;
+
 pub mod verifier;
 
 /// Ragu's accelerated computational backend, for proving and verification.
 ///
-/// It carries no override yet and computes exactly what
-/// [`ragu_backend::ReferenceBackend`] computes. Selecting this backend in
-/// `ragu_pcd` also uses its verifier-consulted kernels (see [`verifier`]) when
-/// verifying proofs. Select [`AcceleratedProver`] to accelerate proving only.
+/// It computes exactly what [`ragu_backend::ReferenceBackend`] computes.
+/// Selecting this backend in `ragu_pcd` also uses its verifier-consulted
+/// kernels (see [`verifier`]) when verifying proofs. Select
+/// [`AcceleratedProver`] to accelerate proving only.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AcceleratedBackend;
 
@@ -40,6 +45,26 @@ pub struct AcceleratedProver;
 // `AcceleratedProver` must forward every override to `AcceleratedBackend`,
 // one method per override, so the two impl blocks stay comparable and a new
 // override cannot be selected for proving while silently missing here.
-impl ragu_backend::Backend for AcceleratedBackend {}
+impl ragu_backend::Backend for AcceleratedBackend {
+    fn msm<'a, C: Affine, A: IntoIterator<Item = &'a C::Scalar>, B: IntoIterator<Item = &'a C>>(
+        coeffs: A,
+        bases: B,
+    ) -> C::Projective
+    where
+        B::IntoIter: Clone + Sync,
+    {
+        verifier::msm::msm(coeffs, bases)
+    }
+}
 
-impl ragu_backend::Backend for AcceleratedProver {}
+impl ragu_backend::Backend for AcceleratedProver {
+    fn msm<'a, C: Affine, A: IntoIterator<Item = &'a C::Scalar>, B: IntoIterator<Item = &'a C>>(
+        coeffs: A,
+        bases: B,
+    ) -> C::Projective
+    where
+        B::IntoIter: Clone + Sync,
+    {
+        <AcceleratedBackend as ragu_backend::Backend>::msm(coeffs, bases)
+    }
+}

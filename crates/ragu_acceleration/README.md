@@ -5,14 +5,15 @@
 # `ragu_acceleration`
 
 This crate provides Ragu's accelerated computational backend. It inherits the
-defaults from `ragu_backend` except for individually tested overrides, and it
-carries none today: the defaults call Udon's MSM implementation. It is the
-home for the next overrides.
+defaults from `ragu_backend` except for individually tested overrides. The one
+override today is the multiscalar multiplication, planned over scratch sized
+for its input and, with the `multicore` feature, run on rayon's pool. It is
+the home for the next overrides.
 
-It carries no tests of its own: an override arrives with its differential
-test against `ReferenceBackend`, and `ragu_pcd`'s `backend_equivalence` tests
-hold `AcceleratedProver` to the reference end to end, in the `backend
-equivalence` CI lane behind the required `backend-required` check.
+An override arrives with its differential test against `ReferenceBackend`,
+and `ragu_pcd`'s `backend_equivalence` tests hold `AcceleratedProver` to the
+reference end to end, in the `backend equivalence` CI lane behind the
+required `backend-required` check.
 
 ## License
 

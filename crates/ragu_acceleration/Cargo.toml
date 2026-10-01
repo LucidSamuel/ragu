@@ -19,7 +19,7 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 
 [features]
 default = []
-multicore = ["ragu_backend/multicore", "std"]
+multicore = ["ragu_backend/multicore", "std", "dep:rayon"]
 std = ["ragu_backend/std"]
 
 [lib]
@@ -28,3 +28,7 @@ bench = false
 [dependencies]
 udon = { workspace = true }
 ragu_backend = { path = "../ragu_backend", version = "0.0.0", default-features = false }
+rayon = { workspace = true, optional = true }
+
+[dev-dependencies]
+rand = { workspace = true }
