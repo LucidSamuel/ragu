@@ -24,13 +24,10 @@ use ragu_circuits::{
     polynomials::{Rank, sparse},
     registry::CircuitIndex,
 };
-use ragu_core::{Cycle, Result};
+use ragu_core::Result;
 use udon::field::Field;
 
-use crate::{
-    Proof,
-    internal::{claims::Source, native, nested},
-};
+use crate::internal::{claims::Source, native, nested};
 
 /// A claim pinning wires of a committed stage polynomial $Q$ to expected
 /// values: with $E = \sum_j e_j X^{d_j}$ over the wires' degrees and
@@ -118,17 +115,6 @@ impl<Id, F: Field> Masked<Id, F> {
     }
 }
 
-/// One claim evaluated at $r$: $a(r)$, $b(r)$ and the target $k(y)$.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Evaluated<F> {
-    /// $a(r)$.
-    pub a: F,
-    /// $b(r)$.
-    pub b: F,
-    /// The target $k(y)$.
-    pub k: F,
-}
-
 /// What a claim's $b$ is, beside the committed components its shape lists.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Kind {
@@ -151,42 +137,6 @@ pub(crate) struct Shape<Id, F> {
     pub kind: Kind,
     pub a: Vec<(F, Id)>,
     pub b: Vec<(F, Id)>,
-}
-
-/// The decider's polynomial [`Source`] over one proof, the raw accumulator
-/// claim included: what the compressor feeds
-/// [`claims::Builder`](crate::internal::claims::Builder).
-pub(crate) struct NativePolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
-
-impl<'a, C: Cycle, R: Rank> Source for NativePolys<'a, C, R> {
-    type RxComponent = native::RxComponent;
-    type Rx = &'a sparse::Polynomial<C::CircuitField, R>;
-    type AppCircuitId = CircuitIndex;
-
-    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Self::Rx> {
-        once(&self.0[component])
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
-        once(self.0.circuit_id())
-    }
-}
-
-/// The nested counterpart of [`NativePolys`].
-pub(crate) struct NestedPolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
-
-impl<'a, C: Cycle, R: Rank> Source for NestedPolys<'a, C, R> {
-    type RxComponent = nested::RxComponent;
-    type Rx = &'a sparse::Polynomial<C::ScalarField, R>;
-    type AppCircuitId = ();
-
-    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Self::Rx> {
-        once(&self.0[component])
-    }
-
-    fn app_circuits(&self) -> impl Iterator<Item = ()> {
-        empty()
-    }
 }
 
 /// A [`Source`] over one proof's native components, by identity.

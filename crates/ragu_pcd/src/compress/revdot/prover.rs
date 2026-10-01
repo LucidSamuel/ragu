@@ -1,24 +1,28 @@
 //! The prover's side of the reduction.
 
 use alloc::{borrow::Cow, vec, vec::Vec};
+use core::iter::{empty, once};
 
 use ragu_backend::Backend;
 use ragu_circuits::{
     polynomials::{Rank, sparse},
-    registry::Registry,
+    registry::{CircuitIndex, Registry},
 };
 use ragu_core::{Cycle, FixedGenerators, Result};
 use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 
 use super::{
-    Reduction, Witness,
+    Openings, Reduction,
     fold::{self, Derived, Fold, Layout, Weights, squeeze_pair},
-    invert,
+    invert, openings,
 };
 use crate::{
     Proof,
-    compress::revdot::claims::{self, Kind, Masked, NativePolys, NestedPolys, Shape},
-    internal::{claims::Builder, native, nested},
+    compress::revdot::claims::{self, Kind, Masked, Shape},
+    internal::{
+        claims::{Builder, Source},
+        native, nested,
+    },
     ipa::IpaTranscript,
 };
 
@@ -62,6 +66,87 @@ fn decomp_poly<F: Field>(mut c: Vec<F>, n: usize) -> (Vec<F>, Vec<F>) {
     let q = c.split_off(n);
     c.reverse();
     (c, q)
+}
+
+/// What the prover keeps to open the reduction's polynomials in the batch.
+pub(crate) struct Witness<C: Affine, R: Rank> {
+    /// The point the claims were opened at.
+    pub r: C::Scalar,
+    /// $p$, with $n$ coefficients.
+    pub p: Vec<C::Scalar>,
+    /// $q$, padded to $n$ coefficients.
+    pub q: Vec<C::Scalar>,
+    /// The [`Derived`] polynomials, in order.
+    pub derived: Vec<sparse::Polynomial<C::Scalar, R>>,
+    /// Their commitments, as the verifier derives them.
+    pub commitments: Vec<C>,
+}
+
+impl<C: Affine, R: Rank> Witness<C, R> {
+    /// The openings the verifier will require of `reduction`, as
+    /// [`verify_native`](super::verify_native) and
+    /// [`verify_nested`](super::verify_nested) list them, with $p(0)$ read
+    /// off $p$.
+    pub(crate) fn openings(&self, reduction: &Reduction<C>, z: C::Scalar) -> Result<Openings<C>> {
+        let inverse_r = invert(self.r)?;
+        Ok(openings(
+            self.commitments.clone(),
+            reduction,
+            self.r,
+            z,
+            inverse_r,
+            self.p[0],
+        ))
+    }
+
+    /// The polynomials behind an [`Openings`]' commitments, in its order:
+    /// the [`Derived`] ones, then $p$, then $q$.
+    pub(crate) fn polys(&self) -> Vec<Cow<'_, sparse::Polynomial<C::Scalar, R>>> {
+        self.derived
+            .iter()
+            .map(Cow::Borrowed)
+            .chain([
+                Cow::Owned(sparse::Polynomial::from_coeffs(self.p.clone())),
+                Cow::Owned(sparse::Polynomial::from_coeffs(self.q.clone())),
+            ])
+            .collect()
+    }
+}
+
+/// The decider's polynomial [`Source`] over one proof, the raw accumulator
+/// claim included: what the compressor feeds
+/// [`claims::Builder`](crate::internal::claims::Builder).
+pub(crate) struct NativePolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
+
+impl<'a, C: Cycle, R: Rank> Source for NativePolys<'a, C, R> {
+    type RxComponent = native::RxComponent;
+    type Rx = &'a sparse::Polynomial<C::CircuitField, R>;
+    type AppCircuitId = CircuitIndex;
+
+    fn rx(&self, component: native::RxComponent) -> impl Iterator<Item = Self::Rx> {
+        once(&self.0[component])
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
+        once(self.0.circuit_id())
+    }
+}
+
+/// The nested counterpart of [`NativePolys`].
+pub(crate) struct NestedPolys<'a, C: Cycle, R: Rank>(pub &'a Proof<C, R>);
+
+impl<'a, C: Cycle, R: Rank> Source for NestedPolys<'a, C, R> {
+    type RxComponent = nested::RxComponent;
+    type Rx = &'a sparse::Polynomial<C::ScalarField, R>;
+    type AppCircuitId = ();
+
+    fn rx(&self, component: nested::RxComponent) -> impl Iterator<Item = Self::Rx> {
+        once(&self.0[component])
+    }
+
+    fn app_circuits(&self) -> impl Iterator<Item = ()> {
+        empty()
+    }
 }
 
 /// A revdot claim's polynomials.

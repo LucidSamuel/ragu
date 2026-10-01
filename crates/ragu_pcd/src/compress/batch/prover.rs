@@ -6,8 +6,16 @@ use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{FixedGenerators, Result};
 use udon::{curve::Affine, field::Field, polynomial::divide_linear_rev};
 
-use super::{Batch, Witness, check_claims};
+use super::{Batch, check_claims};
 use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
+
+/// What the prover keeps to open the batched claim.
+pub(crate) struct Witness<F> {
+    /// $p$, the polynomial the IPA opens, with $n$ coefficients.
+    pub p: Vec<F>,
+    /// The point $u$ it opens it at.
+    pub u: F,
+}
 
 /// The prover's batch: `polys` are the committed polynomials the `claims`
 /// refer to, in the order their commitments are listed.

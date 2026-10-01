@@ -16,13 +16,24 @@ use super::{
     invert, openings,
 };
 use crate::{
-    compress::revdot::claims::{self, Evaluated, Kind, Masked, Shape},
+    compress::revdot::claims::{self, Kind, Masked, Shape},
     internal::{
         ky::{NativeKy, NestedKy},
         native, nested,
     },
     ipa::IpaTranscript,
 };
+
+/// One claim evaluated at $r$: $a(r)$, $b(r)$ and the target $k(y)$.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Evaluated<F> {
+    /// $a(r)$.
+    pub a: F,
+    /// $b(r)$.
+    pub b: F,
+    /// The target $k(y)$.
+    pub k: F,
+}
 
 /// The verifier's side on one curve: `shapes` are the claims' shapes and
 /// `targets` their $k(y)$, one per claim in claim order; `commitment` gives each

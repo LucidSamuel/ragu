@@ -18,9 +18,8 @@
 //! The transcript is assumed to have seen the commitments the claims are
 //! over, and $y$ and $z$ to have been squeezed from it.
 
-use alloc::{borrow::Cow, vec::Vec};
+use alloc::vec::Vec;
 
-use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Error, Result};
 use udon::{curve::Affine, field::Field};
 
@@ -69,50 +68,6 @@ pub(crate) struct Reduction<C: Affine> {
     pub p_at_inverse_r: C::Scalar,
     /// The claimed $q(r)$.
     pub q_at_r: C::Scalar,
-}
-
-/// What the prover keeps to open the reduction's polynomials in the batch.
-pub(crate) struct Witness<C: Affine, R: Rank> {
-    /// The point the claims were opened at.
-    pub r: C::Scalar,
-    /// $p$, with $n$ coefficients.
-    pub p: Vec<C::Scalar>,
-    /// $q$, padded to $n$ coefficients.
-    pub q: Vec<C::Scalar>,
-    /// The [`Derived`] polynomials, in order.
-    pub derived: Vec<sparse::Polynomial<C::Scalar, R>>,
-    /// Their commitments, as the verifier derives them.
-    pub commitments: Vec<C>,
-}
-
-impl<C: Affine, R: Rank> Witness<C, R> {
-    /// The openings the verifier will require of `reduction`, as
-    /// [`verify_native`] and [`verify_nested`] list them, with $p(0)$ read
-    /// off $p$.
-    pub(crate) fn openings(&self, reduction: &Reduction<C>, z: C::Scalar) -> Result<Openings<C>> {
-        let inverse_r = invert(self.r)?;
-        Ok(openings(
-            self.commitments.clone(),
-            reduction,
-            self.r,
-            z,
-            inverse_r,
-            self.p[0],
-        ))
-    }
-
-    /// The polynomials behind an [`Openings`]' commitments, in its order:
-    /// the [`Derived`] ones, then $p$, then $q$.
-    pub(crate) fn polys(&self) -> Vec<Cow<'_, sparse::Polynomial<C::Scalar, R>>> {
-        self.derived
-            .iter()
-            .map(Cow::Borrowed)
-            .chain([
-                Cow::Owned(sparse::Polynomial::from_coeffs(self.p.clone())),
-                Cow::Owned(sparse::Polynomial::from_coeffs(self.q.clone())),
-            ])
-            .collect()
-    }
 }
 
 /// The native components in the order the instance lists their

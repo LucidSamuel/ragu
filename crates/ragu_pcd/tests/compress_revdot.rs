@@ -15,8 +15,9 @@ use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 type EqAffine = <Pasta as Cycle>::HostCurve;
 
 use super::{
-    Openings, Reduction, Witness,
+    Openings, Reduction,
     fold::{Derived, GROUP, Layout},
+    prover::Witness,
     reduce_native, reduce_nested, verify_native, verify_nested,
 };
 use crate::{

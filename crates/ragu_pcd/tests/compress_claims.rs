@@ -14,7 +14,10 @@ use ragu_core::pasta::{Fp, Fq, Pasta};
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use udon::field::Field;
 
-use super::{Kind, Masked, NativePolys, NestedPolys, Shape};
+use super::{
+    super::prover::{NativePolys, NestedPolys},
+    Kind, Masked, Shape,
+};
 use crate::{
     Application, ApplicationBuilder,
     internal::{claims::Builder, native, nested},

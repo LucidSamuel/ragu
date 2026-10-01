@@ -45,14 +45,6 @@ pub(crate) struct Batched<C: Affine> {
     pub value: C::Scalar,
 }
 
-/// What the prover keeps to open the batched claim.
-pub(crate) struct Witness<F> {
-    /// $p$, the polynomial the IPA opens, with $n$ coefficients.
-    pub p: Vec<F>,
-    /// The point $u$ it opens it at.
-    pub u: F,
-}
-
 /// Rejects conflicting values for the same polynomial index and point.
 /// Identical claims remain in the batch, and distinct polynomial indices
 /// remain distinct even if their commitments happen to be equal.
