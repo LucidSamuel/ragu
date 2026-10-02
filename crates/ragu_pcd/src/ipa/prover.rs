@@ -4,6 +4,7 @@
 
 use alloc::vec::Vec;
 
+use ragu_backend::Backend;
 use ragu_core::{Error, Result};
 use rand::CryptoRng;
 use udon::{
@@ -28,8 +29,8 @@ use crate::multicore::parallelize;
 /// opening v, and the point x. It's probably also nice for the transcript
 /// to have seen the elliptic curve description and the URS, if you want to
 /// be rigorous.
-pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
-    params: &Params<C>,
+pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>, B: Backend>(
+    params: &Params<C, B>,
     mut rng: R,
     transcript: &mut T,
     p_poly: &[C::Scalar],
@@ -103,8 +104,8 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         //
         // TODO: If we modify multiexp to take "extra" bases, we could speed
         // this piece up a bit by combining the multiexps.
-        let l_j = multiexp(&p_prime[half..], &g_prime[0..half]);
-        let r_j = multiexp(&p_prime[0..half], &g_prime[half..]);
+        let l_j = multiexp::<C, B>(&p_prime[half..], &g_prime[0..half]);
+        let r_j = multiexp::<C, B>(&p_prime[0..half], &g_prime[half..]);
         let value_l_j = C::Scalar::sum_of_products_slice(&p_prime[half..], &b[0..half]);
         let value_r_j = C::Scalar::sum_of_products_slice(&p_prime[0..half], &b[half..]);
         let l_j = l_j + &(params.u * (value_l_j * &z));

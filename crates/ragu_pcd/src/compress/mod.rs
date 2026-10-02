@@ -45,6 +45,7 @@
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.
 
+use ragu_backend::Backend;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{Cycle, Result};
 use udon::curve::Affine;
@@ -169,12 +170,12 @@ impl<F> Sampled<F> {
 
 /// The compression's transcript with the statement absorbed: the instance,
 /// then the output header.
-fn transcript<'params, C: Cycle>(
+fn transcript<'params, C: Cycle, B: Backend>(
     params: &'params C::Params,
     instance: &Instance<C>,
     output_header: &[C::CircuitField],
-) -> Result<CycleTranscript<'params, C>> {
-    let mut transcript = CycleTranscript::<C>::new(params, IPA_TAG)?;
+) -> Result<CycleTranscript<'params, C, B>> {
+    let mut transcript = CycleTranscript::<C, B>::new(params, IPA_TAG)?;
     instance.absorb(&mut transcript)?;
     for &element in output_header {
         transcript.host().write_scalar(element)?;

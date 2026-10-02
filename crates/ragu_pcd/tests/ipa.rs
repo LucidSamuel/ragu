@@ -30,6 +30,7 @@ macro_rules! ipa_tests {
             use alloc::vec::Vec;
 
             use proptest::prelude::*;
+            use ragu_backend::ReferenceBackend;
             use ragu_circuits::polynomials::{Rank, TestRank, sparse};
             use ragu_core::{Cycle, Error, FixedGenerators, pasta::Pasta};
             use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -477,9 +478,9 @@ macro_rules! ipa_tests {
 
                 let check = || {
                     for &(n, expected) in &expected {
-                        assert_eq!(multiexp(&scalars[..n], &bases[..n]), expected, "MSM length {n}");
+                        assert_eq!(multiexp::<_, ReferenceBackend>(&scalars[..n], &bases[..n]), expected, "MSM length {n}");
                     }
-                    assert!(multiexp(&cancelling_scalars, &cancelling_bases).is_identity());
+                    assert!(multiexp::<_, ReferenceBackend>(&cancelling_scalars, &cancelling_bases).is_identity());
                 };
 
                 #[cfg(feature = "multicore")]
@@ -497,7 +498,7 @@ macro_rules! ipa_tests {
             #[test]
             #[should_panic(expected = "msm operands must have equal length")]
             fn msm_rejects_mismatched_lengths() {
-                crate::ipa::msm::multiexp(&[F::ONE; 256], &[u(); 255]);
+                crate::ipa::msm::multiexp::<_, ReferenceBackend>(&[F::ONE; 256], &[u(); 255]);
             }
 
             #[cfg(feature = "multicore")]

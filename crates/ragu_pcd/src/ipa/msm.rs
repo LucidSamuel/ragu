@@ -4,6 +4,7 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
+use ragu_backend::{Backend, ReferenceBackend};
 use udon::{
     curve::{Affine, Projective},
     field::Field,
@@ -11,24 +12,29 @@ use udon::{
 
 use super::Params;
 
-/// Evaluates an IPA MSM through the shared Udon executor and scratch adapter.
-pub(super) fn multiexp<C: Affine>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
-    ragu_core::msm(scalars.iter().copied(), bases.iter().copied())
+/// Evaluates an IPA MSM through the selected backend, requiring equal lengths.
+pub(super) fn multiexp<C: Affine, B: Backend>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
+    assert_eq!(
+        scalars.len(),
+        bases.len(),
+        "msm operands must have equal length"
+    );
+    B::msm(scalars, bases)
 }
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
-pub struct MSM<'a, C: Affine> {
-    pub(crate) params: &'a Params<C>,
+pub struct MSM<'a, C: Affine, B: Backend = ReferenceBackend> {
+    pub(crate) params: &'a Params<C, B>,
     g_scalars: Option<Vec<C::Scalar>>,
     u_scalar: Option<C::Scalar>,
     // x-coordinate's bytes -> (scalar, x-coordinate, y-coordinate)
     other: BTreeMap<Vec<u8>, (C::Scalar, C::Base, C::Base)>,
 }
 
-impl<'a, C: Affine> MSM<'a, C> {
+impl<'a, C: Affine, B: Backend> MSM<'a, C, B> {
     /// Create a new, empty MSM using the provided parameters.
-    pub fn new(params: &'a Params<C>) -> Self {
+    pub fn new(params: &'a Params<C, B>) -> Self {
         let g_scalars = None;
         let u_scalar = None;
         let other = BTreeMap::new();
@@ -156,6 +162,6 @@ impl<'a, C: Affine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        multiexp(&scalars, &bases).is_identity()
+        multiexp::<C, B>(&scalars, &bases).is_identity()
     }
 }

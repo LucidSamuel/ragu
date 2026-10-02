@@ -2,6 +2,7 @@
 
 use alloc::borrow::Cow;
 
+use ragu_backend::Backend;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{FixedGenerators, Result};
 use rand::CryptoRng;
@@ -23,7 +24,7 @@ use crate::{
 
 /// Batches `openings` over `polys` and opens the batched claim through the
 /// IPA, on one curve. Returns the batch's messages and the IPA proof.
-fn open<P: Affine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
+fn open<P: Affine, R: Rank, B: Backend, T: IpaTranscript<P>, RNG: CryptoRng>(
     polys: &[Cow<'_, sparse::Polynomial<P::Scalar, R>>],
     openings: &Openings<P>,
     generators: &impl FixedGenerators<P>,
@@ -32,8 +33,8 @@ fn open<P: Affine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
     rng: &mut RNG,
 ) -> Result<(Batch<P>, IpaProof<P>)> {
     let (batch, witness) =
-        batch::batch::<_, R, _>(polys, &openings.claims, generators, transcript)?;
-    let params = Params::with_k(generators, u, R::RANK);
+        batch::batch::<_, R, B, _>(polys, &openings.claims, generators, transcript)?;
+    let params = Params::with_k(generators, u, R::RANK).with_backend::<B>();
     let opening = ipa::create_proof(&params, rng, transcript, &witness.p, witness.u)?;
     Ok((batch, opening))
 }
@@ -65,7 +66,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // evaluate `v` and `v_n` at the replayed `u`.
         let challenges = proof.challenges();
         let output_header = ky::output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?;
-        let mut transcript = transcript(self.params, &instance, &output_header)?;
+        let mut transcript = transcript::<C, B>(self.params, &instance, &output_header)?;
         let native_sampled = Sampled::squeeze(&mut transcript.host())?;
         let nested_sampled = Sampled::squeeze(&mut transcript.nested())?;
 
@@ -100,7 +101,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 .map(Cow::Borrowed),
             );
             let u = *C::host_u(self.params);
-            let (batch, opening) = open::<_, R, _, _>(
+            let (batch, opening) = open::<_, R, B, _, _>(
                 &polys,
                 &openings,
                 generators,
@@ -145,7 +146,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 .map(Cow::Borrowed),
             );
             let u = *C::nested_u(self.params);
-            let (batch, opening) = open::<_, R, _, _>(
+            let (batch, opening) = open::<_, R, B, _, _>(
                 &polys,
                 &openings,
                 generators,

@@ -36,8 +36,9 @@ pub(crate) use sealed::Sealed as TestSealed;
 /// implementations, but cannot provide their own backend implementation.
 /// Each selectable backend also fixes [`Verifier`](Self::Verifier), the
 /// backend whose kernels [`Application::verify`](crate::Application::verify)
-/// consults, so accelerating verification is an explicit choice rather
-/// than a consequence of accelerating proving.
+/// and [`Application::verify_compressed`](crate::Application::verify_compressed)
+/// consult, so accelerating verification is an explicit choice rather than a
+/// consequence of accelerating proving.
 pub trait SelectableBackend: Backend + sealed::Sealed {
     /// The backend whose kernels the verifier consults.
     ///
