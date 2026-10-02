@@ -181,3 +181,7 @@ fn transcript<'params, C: Cycle>(
 #[cfg(test)]
 #[path = "../../tests/compress.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../tests/compress_regressions.rs"]
+mod regression_tests;
