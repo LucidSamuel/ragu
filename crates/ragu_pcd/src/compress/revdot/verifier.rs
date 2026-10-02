@@ -156,6 +156,18 @@ fn public<F: Field, R: Rank, Id>(
     }
 }
 
+/// A circuit's wiring restriction $s_i(r, y)$, read off the registry as the
+/// point $m(\omega^i, r, y)$: the restriction's value at $r$, without
+/// materializing $s_i(X, y)$ as the decider's claim builder must.
+fn restriction_at<F: Field, R: Rank, B: Backend>(
+    registry: &Registry<'_, F, R>,
+    circuit: CircuitIndex,
+    r: F,
+    y: F,
+) -> F {
+    B::registry_wxy(registry, circuit.omega_j(), r, y)
+}
+
 /// The verifier's native side: `commitment` gives each component's
 /// commitment, `registry` the native registry, and `targets` the claims'
 /// $k(y)$ values; the registry is read through the backend `B`.
@@ -171,7 +183,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     transcript: &mut T,
 ) -> Result<Option<Openings<C::HostCurve>>> {
     let shapes = claims::native_shapes(circuit_id, z, masked)?;
-    let restriction = |circuit, r| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r);
+    let restriction = |circuit, r| restriction_at::<_, R, B>(registry, circuit, r, y);
     verify::<_, R, _, _>(
         &shapes,
         native::claims::ky_values(targets),
@@ -195,7 +207,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     transcript: &mut T,
 ) -> Result<Option<Openings<C::NestedCurve>>> {
     let shapes = claims::nested_shapes(z, masked)?;
-    let restriction = |circuit, r| B::sparse_eval(&B::registry_circuit_y(registry, circuit, y), r);
+    let restriction = |circuit, r| restriction_at::<_, R, B>(registry, circuit, r, y);
     verify::<_, R, _, _>(
         &shapes,
         nested::claims::ky_values(targets),
