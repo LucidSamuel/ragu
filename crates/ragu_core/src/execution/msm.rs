@@ -13,7 +13,7 @@ use udon::{
     msm::{Bases, Input, ScalarStorage, Scratch},
 };
 
-use crate::exec::{self, PoolExecutor};
+use super::executor::{self, PoolExecutor};
 
 /// Computes $\sum_i \mathrm{scalars}_i \cdot \mathrm{bases}_i$.
 ///
@@ -60,7 +60,7 @@ fn pasta<C: Affine, P: PastaCurve>(scalars: &dyn Any, bases: &dyn Any) -> Option
     let result = ProjectiveAdapter::new(execute(
         FieldAdapter::as_slice(scalars),
         AffineAdapter::as_slice(bases),
-        exec::options(),
+        executor::options(),
         &PoolExecutor,
     ));
     Some(

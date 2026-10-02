@@ -9,7 +9,7 @@ use udon::{
     field::{Field, FieldAdapter, PallasBase, PallasScalar, PastaField, PrimeModulus},
 };
 
-use crate::exec::{self, PoolExecutor};
+use super::executor::{self, PoolExecutor};
 
 /// Transforms natural-order coefficients into natural-order domain evaluations.
 ///
@@ -72,7 +72,7 @@ fn pasta<M: PrimeModulus>(log_size: u32, values: &mut dyn Any, inverse: bool) ->
         domain,
         FieldAdapter::as_slice_mut(values),
         inverse,
-        exec::options(),
+        executor::options(),
         &PoolExecutor,
     );
     true
