@@ -113,7 +113,7 @@ impl<C: Affine> Params<C> {
     /// Panics if `poly` does not have exactly $2^k$ coefficients.
     pub fn commit(&self, poly: &[C::Scalar]) -> C::Projective {
         assert_eq!(poly.len(), self.n as usize);
-        C::msm(poly, &self.g)
+        msm::multiexp(poly, &self.g)
     }
 }
 

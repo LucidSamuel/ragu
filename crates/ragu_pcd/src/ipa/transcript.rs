@@ -112,7 +112,7 @@ impl<'dr, C: Cycle> CycleTranscript<'dr, C> {
     fn bridge(&mut self, values: &[C::ScalarField]) -> Result<()> {
         let g = C::nested_generators(self.params).g();
         let commitment: C::NestedCurve =
-            C::NestedCurve::msm(values, &g[..values.len()]).to_affine();
+            ragu_core::msm(values.iter().copied(), g[..values.len()].iter().copied()).to_affine();
         self.absorb(commitment)
     }
 

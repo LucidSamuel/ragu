@@ -246,7 +246,7 @@ pub(crate) fn commitments<C: Affine, Id: Copy>(
             .into_iter()
             .map(|(weight, id)| (weight, commitment(id)))
             .unzip();
-        C::msm(&scalars, &points).into()
+        ragu_core::msm(scalars, points).into()
     };
     let weighted = |side: fn(&Shape<Id, C::Scalar>) -> &[(C::Scalar, Id)],
                     weight: fn(&Weights<C::Scalar>, usize) -> C::Scalar,

@@ -10,7 +10,7 @@ use udon::{
     field::Field,
 };
 
-use super::{IpaProof, IpaTranscript, MSM, Params};
+use super::{IpaProof, IpaTranscript, MSM, Params, msm::multiexp};
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ impl<'a, C: Affine> Guard<'a, C> {
     pub fn compute_g(&self) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
 
-        C::msm(&s, &self.msm.params.g).to_affine()
+        multiexp(&s, &self.msm.params.g).to_affine()
     }
 }
 

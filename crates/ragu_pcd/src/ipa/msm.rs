@@ -11,6 +11,11 @@ use udon::{
 
 use super::Params;
 
+/// Evaluates an IPA MSM through the shared Udon executor and scratch adapter.
+pub(super) fn multiexp<C: Affine>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
+    ragu_core::msm(scalars.iter().copied(), bases.iter().copied())
+}
+
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
 pub struct MSM<'a, C: Affine> {
@@ -151,6 +156,6 @@ impl<'a, C: Affine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        C::msm(&scalars, &bases).is_identity()
+        multiexp(&scalars, &bases).is_identity()
     }
 }

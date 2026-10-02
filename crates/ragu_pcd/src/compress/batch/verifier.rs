@@ -87,7 +87,7 @@ pub(crate) fn verify<C: Affine, T: IpaTranscript<C>>(
     let points: Vec<C> = core::iter::once(batch.f)
         .chain(commitments.iter().copied())
         .collect();
-    let commitment = C::msm(&weights, &points).into();
+    let commitment = ragu_core::msm(weights, points).into();
 
     Ok(Batched {
         commitment,

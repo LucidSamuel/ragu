@@ -18,7 +18,7 @@ use ragu_circuits::{
 use ragu_core::FixedGenerators;
 use udon::{curve::Affine, field::Field};
 
-// TODO: Ragu's MSM and FFT don't use Udon's scratch-buffer APIs.
+// TODO: Ragu's FFT doesn't use Udon's scratch-buffer APIs.
 /// A statically dispatched implementation of Ragu's computational operations.
 ///
 /// Every method has a correctness-first default. Implementations may override
@@ -186,10 +186,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
         let coeffs: Vec<C::Scalar> = coeffs.into_iter().copied().collect();
         let bases: Vec<C> = bases.into_iter().copied().collect();
         let len = coeffs.len().min(bases.len());
-        // TODO: expose reusable Udon MSM scratch and an executor through the
-        // backend; the Pasta trait call uses bounded stack scratch and serial
-        // execution.
-        C::msm(&coeffs[..len], &bases[..len])
+        ragu_core::msm(coeffs.into_iter().take(len), bases.into_iter().take(len))
     }
 }
 

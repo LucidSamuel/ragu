@@ -39,10 +39,12 @@ pub mod drivers;
 mod errors;
 pub mod gadgets;
 pub mod maybe;
+mod msm;
 pub mod routines;
 
 pub use drivers::Coeff;
 pub use errors::{Error, Result};
+pub use msm::msm;
 pub use udon::{
     cycle::{Cycle, FixedGenerators},
     poseidon::PoseidonPermutation,
