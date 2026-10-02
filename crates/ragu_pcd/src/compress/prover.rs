@@ -56,6 +56,13 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     ) -> Result<CompressedPcd<C, H>> {
         let proof = pcd.proof();
         let instance = Instance::of::<R, HEADER_SIZE>(proof)?;
+        // The challenges as the proof stores them: a cache of the fuse's own
+        // squeezes, which the decider holds to the transcript. `Instance::of`
+        // reads the stored `u` for `v` and `v_n` the same way. The verifier
+        // reads neither; it replays the challenges from the bridge
+        // commitments through `Instance::challenges`. Should the stored
+        // challenges ever be more than that cache, replay them here too and
+        // evaluate `v` and `v_n` at the replayed `u`.
         let challenges = proof.challenges();
         let output_header = ky::output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?;
         let mut transcript = transcript(self.params, &instance, &output_header)?;

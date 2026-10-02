@@ -208,7 +208,10 @@ fn accepts_a_stale_stored_challenge_the_decider_rejects() {
     // The instance carries none, and the compressed verifier rederives them
     // from the bridge commitments, so a proof whose polynomials were built
     // under the transcript's challenges compresses into a proof of the
-    // honest instance whatever the proof stores beside them.
+    // honest instance. The compressor itself reads the stored `w`, `x`, `y`
+    // and `u` for the wire bindings, the openings and $v$, so this holds for
+    // a stored challenge it does not consume; a stale one of those four
+    // compresses into a proof the verifier rejects instead.
     let app = app();
     let (mut proof, ()) = app.bootstrap_pcd().into_parts();
     proof.mu += Fp::ONE;

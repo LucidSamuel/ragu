@@ -25,9 +25,13 @@
 //! checks over it. Both curves run on one
 //! transcript, the native side first at each step. What the decider checks
 //! by recomputing commitments from polynomials needs no counterpart: every
-//! commitment the compressed verifier reads is opened through the IPA, the
-//! stage commitments inside the fold's challenge-weighted combinations of
-//! them.
+//! polynomial commitment the compressed verifier reads is opened through
+//! the IPA, the stage commitments inside the fold's challenge-weighted
+//! combinations of them. The one point the instance carries that commits
+//! to no polynomial, the nested challenge stage's commitment without its
+//! $\beta$ term, is bound as the decider binds it: it enters the native
+//! unified instance's $k(y)$, which the `bind_challenges` circuits' claims
+//! hold it to.
 //!
 //! The transcript squeezes circuit-field elements. The host curve's
 //! challenges are those squeezes; the nested curve's preserve their canonical
