@@ -8,10 +8,12 @@ use udon::{
         Affine, AffineAdapter, AffinePoint, Pallas, PastaCurve, Point, ProjectiveAdapter,
         ProjectivePoint, Vesta,
     },
-    exec::{ExecutionOptions, Executor, TaskBudget},
+    exec::{ExecutionOptions, Executor},
     field::{FieldAdapter, PastaField},
     msm::{Bases, Input, ScalarStorage, Scratch},
 };
+
+use crate::exec::{self, PoolExecutor};
 
 /// Computes $\sum_i \mathrm{scalars}_i \cdot \mathrm{bases}_i$.
 ///
@@ -55,12 +57,10 @@ fn pasta<C: Affine, P: PastaCurve>(scalars: &dyn Any, bases: &dyn Any) -> Option
     let scalars = scalars
         .downcast_ref::<Vec<FieldAdapter<P::Scalar>>>()
         .expect("the selected Pasta curve's scalar type");
-    let options = ExecutionOptions::default()
-        .with_task_budget(TaskBudget::new(worker_count()).expect("at least one worker"));
     let result = ProjectiveAdapter::new(execute(
         FieldAdapter::as_slice(scalars),
         AffineAdapter::as_slice(bases),
-        options,
+        exec::options(),
         &PoolExecutor,
     ));
     Some(
@@ -97,60 +97,15 @@ fn execute<C: PastaCurve, X: Executor>(
         .expect("scratch was sized for these inputs and execution options")
 }
 
-// Match maybe-rayon's serial fallback on WebAssembly without atomics.
-#[cfg(all(
-    feature = "multicore",
-    not(all(target_arch = "wasm32", not(target_feature = "atomics")))
-))]
-fn worker_count() -> usize {
-    maybe_rayon::current_num_threads()
-}
-
-#[cfg(not(all(
-    feature = "multicore",
-    not(all(target_arch = "wasm32", not(target_feature = "atomics")))
-)))]
-fn worker_count() -> usize {
-    1
-}
-
-struct PoolExecutor;
-
-impl Executor for PoolExecutor {
-    fn join<L, R, A, B>(&self, left: L, right: R) -> (A, B)
-    where
-        L: FnOnce() -> A + Send,
-        R: FnOnce() -> B + Send,
-        A: Send,
-        B: Send,
-    {
-        #[cfg(all(
-            feature = "multicore",
-            not(all(target_arch = "wasm32", not(target_feature = "atomics")))
-        ))]
-        {
-            maybe_rayon::join(left, right)
-        }
-        #[cfg(not(all(
-            feature = "multicore",
-            not(all(target_arch = "wasm32", not(target_feature = "atomics")))
-        )))]
-        {
-            // Also completes the right job if the left one panics, as the
-            // Executor contract requires.
-            udon::exec::SerialExecutor.join(left, right)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    extern crate std;
-
-    use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use core::sync::atomic::{AtomicUsize, Ordering};
 
     use rand::{Rng, SeedableRng, rngs::StdRng};
-    use udon::{exec::SerialExecutor, field::Field};
+    use udon::{
+        exec::{SerialExecutor, TaskBudget},
+        field::Field,
+    };
 
     use super::*;
 
@@ -209,18 +164,5 @@ mod tests {
     #[test]
     fn vesta_plan_uses_executor() {
         planned_msm::<Vesta>();
-    }
-
-    #[test]
-    fn executor_completes_right_job_after_left_panic() {
-        let completed = AtomicBool::new(false);
-        let result = std::panic::catch_unwind(|| {
-            PoolExecutor.join(
-                || panic!("left job"),
-                || completed.store(true, Ordering::Relaxed),
-            )
-        });
-        assert!(result.is_err());
-        assert!(completed.load(Ordering::Relaxed));
     }
 }

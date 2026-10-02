@@ -18,7 +18,6 @@ use ragu_circuits::{
 use ragu_core::FixedGenerators;
 use udon::{curve::Affine, field::Field};
 
-// TODO: Ragu's FFT doesn't use Udon's scratch-buffer APIs.
 /// A statically dispatched implementation of Ragu's computational operations.
 ///
 /// Every method has a correctness-first default. Implementations may override

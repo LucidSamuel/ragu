@@ -37,12 +37,12 @@ fn poly_mul<F: Field>(a: &[F], b: &[F], out: &mut Vec<F>) {
     let mut rhs = vec![F::ZERO; size];
     lhs[..n].copy_from_slice(a);
     rhs[..n].copy_from_slice(b);
-    domain.transform(&mut lhs);
-    domain.transform(&mut rhs);
+    ragu_core::fft(domain, &mut lhs);
+    ragu_core::fft(domain, &mut rhs);
     for (l, r) in lhs.iter_mut().zip(&rhs) {
         *l *= r;
     }
-    domain.inverse_transform(&mut lhs);
+    ragu_core::ifft(domain, &mut lhs);
     lhs.truncate(size - 1);
     *out = lhs;
 }
