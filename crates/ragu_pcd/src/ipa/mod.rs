@@ -5,6 +5,12 @@
 //! unblinded relations. An opening proves knowledge of `p` with
 //! `P = <p, G>` and `p(x) = v`.
 //!
+//! Unblinded round commitments can be the identity for valid openings, which
+//! [`CycleTranscript`] rejects. With two coefficients and `x = 0`, `R` is
+//! necessarily the identity. This is a temporary completeness limitation;
+//! future blinding would need to cover the round commitments to remove this
+//! deterministic failure.
+//!
 //! The masking polynomial `s`, with `s(x) = 0`, is retained to mask the
 //! coefficients folded by the argument. Fiat-Shamir goes through
 //! [`IpaTranscript`], implemented for both curves by [`CycleTranscript`].
