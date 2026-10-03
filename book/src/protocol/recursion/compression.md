@@ -146,20 +146,3 @@ $$
 $$
 
 **Output:** accept only if both curves pass.
-
-## Implementation notes
-
-- Groups have at most seven claims; $m=12,n=11$ per curve.
-- One `IPA_TAG` transcript absorbs the instance and output header before any
-  draw, then each prover message before the next challenge. Both curves consume
-  distinct draws; derived commitments and targets are bound through these inputs.
-- On Pasta, native draws are raw $\mathbb F_p$ squeezes. Fresh nested draws
-  convert canonically to $\mathbb F_q$ on $[0,2^{254})$, rejecting out-of-range
-  values without resampling. Fuse's separate `RAGU_TAG` replay uses endoscalar
-  lifts for nested challenges.
-- Reject malformed lengths, undefined inverses, and conflicting values at the
-  same polynomial index and point. Keep identical repeats and distinct indices
-  with equal commitments.
-- Identity encodings, including zero scalar bridges, can reject valid proofs.
-  Evaluations are not hiding. Soundness assumes commitment binding, IPA security,
-  and the Fiat–Shamir model.
