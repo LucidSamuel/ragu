@@ -17,7 +17,7 @@ use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 type EpAffine = <Pasta as Cycle>::NestedCurve;
 type EqAffine = <Pasta as Cycle>::HostCurve;
 
-use super::{Batch, Batched, batch, verify};
+use super::{Batch, Batched, batch, verifier::verify};
 use crate::{
     Application, ApplicationBuilder, Proof,
     compress::revdot::{self, OpeningClaim, Openings, Reduction},

@@ -2,11 +2,36 @@
 
 use alloc::vec::Vec;
 
-use ragu_core::{Error, Result};
+use ragu_circuits::polynomials::Rank;
+use ragu_core::{Error, FixedGenerators, Result};
 use udon::{curve::Affine, field::Field};
 
 use super::{Batch, Batched, check_claims};
-use crate::{compress::revdot::OpeningClaim, ipa::IpaTranscript};
+use crate::{
+    compress::revdot::{OpeningClaim, Openings},
+    ipa::{self, IpaProof, IpaTranscript, MSM, Params},
+};
+
+/// Derives the batched commitment, point, and value from `openings` and
+/// `batch`, then checks `opening` against that claim through the IPA.
+pub(crate) fn verify_openings<P: Affine, R: Rank, T: IpaTranscript<P>>(
+    openings: &Openings<P>,
+    batch: &Batch<P>,
+    opening: &IpaProof<P>,
+    generators: &impl FixedGenerators<P>,
+    u: P,
+    transcript: &mut T,
+) -> Result<bool> {
+    let claim = verify(&openings.commitments, &openings.claims, batch, transcript)?;
+    let params = Params::with_k(generators, u, R::RANK);
+    let mut msm = MSM::new(&params);
+    msm.append_term(P::Scalar::ONE, claim.commitment);
+    Ok(
+        ipa::verify_proof(&params, msm, transcript, opening, claim.point, claim.value)?
+            .use_challenges()
+            .eval(),
+    )
+}
 
 /// The verifier's batch: `commitments` are the polynomials the `claims`
 /// refer to. Returns the claim the IPA must prove.

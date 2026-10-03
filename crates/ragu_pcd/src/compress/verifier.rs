@@ -1,46 +1,19 @@
 //! The verifier's side of the compression: [`Application::verify_compressed`].
 
 use ragu_circuits::polynomials::Rank;
-use ragu_core::{Error, FixedGenerators, Result};
-use udon::{curve::Affine, field::Field};
+use ragu_core::{Error, Result};
 
-use super::{
-    CompressedPcd, Sampled,
-    batch::{self, Batch},
-    revdot::{self, Openings},
-    transcript,
-};
+use super::{CompressedPcd, Sampled, batch, revdot, transcript};
 use crate::{
     Application, RAGU_TAG, SelectableBackend,
     header::Header,
     internal::ky,
-    ipa::{self, CycleTranscript, IpaCycle, IpaProof, IpaTranscript, MSM, Params},
+    ipa::{CycleTranscript, IpaCycle},
 };
 
 /// The backend whose kernels [`Application::verify_compressed`] consults for
 /// the selected backend `B`, as [`Application::verify`] does.
 type Verifier<B> = <B as SelectableBackend>::Verifier;
-
-/// Derives the batched claim of `openings` from `batch` and checks `opening`
-/// against it through the IPA, on one curve.
-fn check<P: Affine, R: Rank, T: IpaTranscript<P>>(
-    openings: &Openings<P>,
-    batch: &Batch<P>,
-    opening: &IpaProof<P>,
-    generators: &impl FixedGenerators<P>,
-    u: P,
-    transcript: &mut T,
-) -> Result<bool> {
-    let claim = batch::verify(&openings.commitments, &openings.claims, batch, transcript)?;
-    let params = Params::with_k(generators, u, R::RANK);
-    let mut msm = MSM::new(&params);
-    msm.append_term(P::Scalar::ONE, claim.commitment);
-    Ok(
-        ipa::verify_proof(&params, msm, transcript, opening, claim.point, claim.value)?
-            .use_challenges()
-            .eval(),
-    )
-}
 
 impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
@@ -55,8 +28,9 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
     /// the selected backend, as in [`verify`](Self::verify). The batch's
     /// commitment combination and the IPA's multiscalar multiplications do
-    /// not: they call [`Affine::msm`] directly, Udon's kernel every backend
-    /// must agree with, so no backend can alter them either.
+    /// not: they call [`Affine::msm`](udon::curve::Affine::msm) directly,
+    /// Udon's kernel every backend must agree with, so no backend can alter
+    /// them either.
     pub fn verify_compressed<H: Header<C::CircuitField>>(
         &self,
         pcd: &CompressedPcd<C, H>,
@@ -144,7 +118,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             );
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            proof_check!(check::<_, R, _>(
+            proof_check!(batch::verify_openings::<_, R, _>(
                 &openings,
                 &proof.native.batch,
                 &proof.native.opening,
@@ -182,7 +156,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             )?;
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            proof_check!(check::<_, R, _>(
+            proof_check!(batch::verify_openings::<_, R, _>(
                 &openings,
                 &proof.nested.batch,
                 &proof.nested.opening,
