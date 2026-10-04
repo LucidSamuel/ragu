@@ -4,7 +4,7 @@
 
 use alloc::{vec, vec::Vec};
 
-use ragu_backend::{Backend, ReferenceBackend};
+use ragu_backend::ReferenceBackend;
 use ragu_core::{Error, Result};
 use udon::{
     curve::{Affine, Projective},
@@ -12,10 +12,11 @@ use udon::{
 };
 
 use super::{IpaProof, IpaTranscript, MSM, Params, msm::multiexp};
+use crate::SelectableBackend;
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
-pub struct Guard<'a, C: Affine, B: Backend = ReferenceBackend> {
+pub struct Guard<'a, C: Affine, B: SelectableBackend = ReferenceBackend> {
     msm: MSM<'a, C, B>,
     neg_c: C::Scalar,
     u: Vec<C::Scalar>,
@@ -32,7 +33,7 @@ pub struct Accumulator<C: Affine> {
     pub u: Vec<C::Scalar>,
 }
 
-impl<'a, C: Affine, B: Backend> Guard<'a, C, B> {
+impl<'a, C: Affine, B: SelectableBackend> Guard<'a, C, B> {
     /// Lets caller supply the challenges and obtain an MSM with updated
     /// scalars and points.
     pub fn use_challenges(mut self) -> MSM<'a, C, B> {
@@ -64,7 +65,7 @@ impl<'a, C: Affine, B: Backend> Guard<'a, C, B> {
 /// commitment `P` opens purportedly to the value `v`. The provided `msm`
 /// should evaluate to the unblinded commitment `P = <p, G>` being opened.
 /// The transcript must already bind `P`, `x`, and `v`.
-pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>, B: Backend>(
+pub fn verify_proof<'a, C: Affine, T: IpaTranscript<C>, B: SelectableBackend>(
     params: &'a Params<C, B>,
     mut msm: MSM<'a, C, B>,
     transcript: &mut T,

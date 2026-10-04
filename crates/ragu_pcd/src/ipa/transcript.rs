@@ -14,7 +14,7 @@
 
 use core::marker::PhantomData;
 
-use ragu_backend::{Backend, ReferenceBackend};
+use ragu_backend::ReferenceBackend;
 use ragu_core::{
     Cycle, Error, FixedGenerators, Result,
     drivers::emulator::{Emulator, Wireless},
@@ -26,7 +26,7 @@ use udon::{
     field::Field,
 };
 
-use crate::internal::transcript::Transcript;
+use crate::{SelectableBackend, internal::transcript::Transcript};
 
 /// Preserves the canonical integer on the common power-of-two range of the
 /// two fields. Under an ideal uniform squeeze, accepted challenges are
@@ -70,8 +70,22 @@ pub trait IpaTranscript<C: Affine> {
 /// The fuse's transcript, opened for the IPAs of both curves: one sponge over
 /// the circuit field, executed at concrete values through the [`Emulator`]
 /// driver, with the cycle's parameters at hand for bridging. Bridge commitments
-/// use the backend `B`.
-pub struct CycleTranscript<'dr, C: Cycle, B: Backend = ReferenceBackend> {
+/// use the Ragu-owned backend `B`.
+///
+/// ```compile_fail,E0277
+/// use ragu_backend::Backend;
+/// use ragu_core::Cycle;
+/// use ragu_pcd::ipa::{CycleTranscript, IPA_TAG};
+///
+/// #[derive(Clone, Copy, Debug, Default)]
+/// struct CustomBackend;
+/// impl Backend for CustomBackend {}
+///
+/// fn transcript<C: Cycle>(params: &C::Params) {
+///     let _ = CycleTranscript::<C, CustomBackend>::new(params, IPA_TAG);
+/// }
+/// ```
+pub struct CycleTranscript<'dr, C: Cycle, B: SelectableBackend = ReferenceBackend> {
     dr: Emulator<Wireless<Always<()>, C::CircuitField>>,
     transcript:
         Transcript<'dr, Emulator<Wireless<Always<()>, C::CircuitField>>, C::CircuitPoseidon>,
@@ -79,7 +93,7 @@ pub struct CycleTranscript<'dr, C: Cycle, B: Backend = ReferenceBackend> {
     backend: PhantomData<B>,
 }
 
-impl<'dr, C: Cycle, B: Backend> CycleTranscript<'dr, C, B> {
+impl<'dr, C: Cycle, B: SelectableBackend> CycleTranscript<'dr, C, B> {
     /// Creates a transcript over the cycle's circuit-field Poseidon,
     /// domain-separated by `tag`.
     pub fn new(params: &'dr C::Params, tag: &[u8]) -> Result<Self> {
@@ -131,11 +145,11 @@ impl<'dr, C: Cycle, B: Backend> CycleTranscript<'dr, C, B> {
 /// coordinates are in the scalar field, so it is bridged; a scalar is in the
 /// circuit field, so it is absorbed directly; and a challenge is the raw
 /// squeeze, as the fuse's native challenges are.
-pub struct HostSide<'a, 'dr, C: Cycle, B: Backend = ReferenceBackend>(
+pub struct HostSide<'a, 'dr, C: Cycle, B: SelectableBackend = ReferenceBackend>(
     &'a mut CycleTranscript<'dr, C, B>,
 );
 
-impl<C: Cycle, B: Backend> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C, B> {
+impl<C: Cycle, B: SelectableBackend> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C, B> {
     fn write_point(&mut self, point: C::HostCurve) -> Result<()> {
         let Some((x, y)) = point.coordinates() else {
             return Err(ragu_core::Error::InvalidWitness(
@@ -161,11 +175,11 @@ impl<C: Cycle, B: Backend> IpaTranscript<C::HostCurve> for HostSide<'_, '_, C, B
 /// For Pasta this gives a $2^{254}$-element challenge space. The fuse's
 /// replayed challenges still use endoscalar lifts; a recursive verifier of
 /// these fresh compression challenges must reproduce this conversion.
-pub struct NestedSide<'a, 'dr, C: Cycle, B: Backend = ReferenceBackend>(
+pub struct NestedSide<'a, 'dr, C: Cycle, B: SelectableBackend = ReferenceBackend>(
     &'a mut CycleTranscript<'dr, C, B>,
 );
 
-impl<C: Cycle, B: Backend> IpaTranscript<C::NestedCurve> for NestedSide<'_, '_, C, B> {
+impl<C: Cycle, B: SelectableBackend> IpaTranscript<C::NestedCurve> for NestedSide<'_, '_, C, B> {
     fn write_point(&mut self, point: C::NestedCurve) -> Result<()> {
         self.0.absorb(point)
     }

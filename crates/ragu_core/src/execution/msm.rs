@@ -63,6 +63,8 @@ fn pasta<C: Affine, P: PastaCurve>(scalars: &dyn Any, bases: &dyn Any) -> Option
         executor::options(),
         &PoolExecutor,
     ));
+    #[cfg(test)]
+    tests::record_dispatch();
     Some(
         *(&result as &dyn Any)
             .downcast_ref::<C::Projective>()
@@ -99,7 +101,12 @@ fn execute<C: PastaCurve, X: Executor>(
 
 #[cfg(test)]
 mod tests {
-    use core::sync::atomic::{AtomicUsize, Ordering};
+    extern crate std;
+
+    use core::{
+        cell::Cell,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     use rand::{Rng, SeedableRng, rngs::StdRng};
     use udon::{
@@ -108,6 +115,14 @@ mod tests {
     };
 
     use super::*;
+
+    std::thread_local! {
+        static PASTA_DISPATCHES: Cell<usize> = const { Cell::new(0) };
+    }
+
+    pub(super) fn record_dispatch() {
+        PASTA_DISPATCHES.set(PASTA_DISPATCHES.get() + 1);
+    }
 
     struct CountingExecutor(AtomicUsize);
 
@@ -152,8 +167,15 @@ mod tests {
             "Udon must use the supplied executor"
         );
 
-        // Exercise the generic adapter's checked dispatch as well.
-        assert_eq!(msm(scalars, bases), expected);
+        // Numerical agreement alone cannot distinguish dispatch from fallback.
+        // Observe this call independently of the direct executor check above.
+        let dispatches = PASTA_DISPATCHES.get();
+        assert_eq!(crate::msm(scalars, bases), expected);
+        assert_eq!(
+            PASTA_DISPATCHES.get(),
+            dispatches + 1,
+            "MSM must dispatch to Udon's Pasta planner"
+        );
     }
 
     #[test]

@@ -9,13 +9,14 @@ use udon::{curve::Affine, field::Field};
 
 use super::{Batch, Batched, check_claims};
 use crate::{
+    SelectableBackend,
     compress::revdot::{OpeningClaim, Openings},
     ipa::{self, IpaProof, IpaTranscript, MSM, Params},
 };
 
 /// Derives the batched commitment, point, and value from `openings` and
 /// `batch`, then checks `opening` against that claim through the IPA.
-pub(crate) fn verify_openings<P: Affine, R: Rank, B: Backend, T: IpaTranscript<P>>(
+pub(crate) fn verify_openings<P: Affine, R: Rank, B: SelectableBackend, T: IpaTranscript<P>>(
     openings: &Openings<P>,
     batch: &Batch<P>,
     opening: &IpaProof<P>,

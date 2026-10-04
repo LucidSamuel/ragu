@@ -4,7 +4,6 @@
 
 use alloc::vec::Vec;
 
-use ragu_backend::Backend;
 use ragu_core::{Error, Result};
 use rand::CryptoRng;
 use udon::{
@@ -14,7 +13,7 @@ use udon::{
 };
 
 use super::{IpaProof, IpaTranscript, Params, msm::multiexp};
-use crate::multicore::parallelize;
+use crate::{SelectableBackend, multicore::parallelize};
 
 /// Creates an unblinded opening of `p_poly` at `x_3`.
 ///
@@ -29,7 +28,7 @@ use crate::multicore::parallelize;
 /// opening v, and the point x. It's probably also nice for the transcript
 /// to have seen the elliptic curve description and the URS, if you want to
 /// be rigorous.
-pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>, B: Backend>(
+pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>, B: SelectableBackend>(
     params: &Params<C, B>,
     mut rng: R,
     transcript: &mut T,

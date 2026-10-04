@@ -4,16 +4,20 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
-use ragu_backend::{Backend, ReferenceBackend};
+use ragu_backend::ReferenceBackend;
 use udon::{
     curve::{Affine, Projective},
     field::Field,
 };
 
 use super::Params;
+use crate::SelectableBackend;
 
 /// Evaluates an IPA MSM through the selected backend, requiring equal lengths.
-pub(super) fn multiexp<C: Affine, B: Backend>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
+pub(super) fn multiexp<C: Affine, B: SelectableBackend>(
+    scalars: &[C::Scalar],
+    bases: &[C],
+) -> C::Projective {
     assert_eq!(
         scalars.len(),
         bases.len(),
@@ -24,7 +28,7 @@ pub(super) fn multiexp<C: Affine, B: Backend>(scalars: &[C::Scalar], bases: &[C]
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
-pub struct MSM<'a, C: Affine, B: Backend = ReferenceBackend> {
+pub struct MSM<'a, C: Affine, B: SelectableBackend = ReferenceBackend> {
     pub(crate) params: &'a Params<C, B>,
     g_scalars: Option<Vec<C::Scalar>>,
     u_scalar: Option<C::Scalar>,
@@ -32,7 +36,7 @@ pub struct MSM<'a, C: Affine, B: Backend = ReferenceBackend> {
     other: BTreeMap<Vec<u8>, (C::Scalar, C::Base, C::Base)>,
 }
 
-impl<'a, C: Affine, B: Backend> MSM<'a, C, B> {
+impl<'a, C: Affine, B: SelectableBackend> MSM<'a, C, B> {
     /// Create a new, empty MSM using the provided parameters.
     pub fn new(params: &'a Params<C, B>) -> Self {
         let g_scalars = None;

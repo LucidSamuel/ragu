@@ -48,7 +48,7 @@ jobs:
           -- -D warnings
       - name: Run native PCD backend equivalence
         env:
-          # Each case builds three applications and runs seed/seed/fuse/verify.
+          # Each case builds three applications and exercises both proof formats.
           PROPTEST_CASES: "4"
         run: >-
           cargo test --release -p ragu_pcd --no-default-features

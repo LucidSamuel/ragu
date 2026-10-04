@@ -30,7 +30,7 @@ use super::revdot::{
     nested_position,
 };
 use crate::{
-    Proof,
+    Proof, SelectableBackend,
     internal::{
         ky::{self, NativeKy, NestedKy},
         native::{self, stages as native_stages, unified as native_unified},
@@ -248,7 +248,7 @@ impl<C: Cycle> Instance<C> {
     /// Absorbs the instance into `transcript`: the circuit id and the
     /// headers, then every commitment and scalar of each curve, so that
     /// every challenge squeezed afterwards depends on all of it.
-    pub(crate) fn absorb<B: Backend>(
+    pub(crate) fn absorb<B: SelectableBackend>(
         &self,
         transcript: &mut CycleTranscript<'_, C, B>,
     ) -> Result<()> {
@@ -309,7 +309,7 @@ impl<C: Cycle> Instance<C> {
     /// `transcript`, which must be fresh under the fuse's tag, in the fuse's
     /// schedule. Returns `None` if `pre_beta` lies outside the endoscalar
     /// range.
-    pub(crate) fn challenges<B: Backend>(
+    pub(crate) fn challenges<B: SelectableBackend>(
         &self,
         transcript: &mut CycleTranscript<'_, C, B>,
     ) -> Result<Option<nested::Challenges<C::CircuitField>>> {

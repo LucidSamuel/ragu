@@ -18,9 +18,11 @@
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 
-use ragu_backend::{Backend, ReferenceBackend};
+use ragu_backend::ReferenceBackend;
 use ragu_core::{Cycle, FixedGenerators};
 use udon::curve::Affine;
+
+use crate::SelectableBackend;
 
 mod msm;
 mod prover;
@@ -67,7 +69,7 @@ pub trait IpaCycle: Cycle {
 /// product value. Commitments have no separate blinding generator.
 /// The backend `B` evaluates commitments and the IPA's MSMs.
 #[derive(Clone, Debug)]
-pub struct Params<C: Affine, B: Backend = ReferenceBackend> {
+pub struct Params<C: Affine, B: SelectableBackend = ReferenceBackend> {
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<C>,
@@ -112,10 +114,25 @@ impl<C: Affine> Params<C> {
     }
 }
 
-impl<C: Affine, B: Backend> Params<C, B> {
+impl<C: Affine, B: SelectableBackend> Params<C, B> {
     /// Selects the backend used for commitments, proving, and verification
     /// with these parameters. The generators are unchanged.
-    pub fn with_backend<NewB: Backend>(self) -> Params<C, NewB> {
+    /// Only Ragu-owned backends may be selected through [`SelectableBackend`].
+    ///
+    /// ```compile_fail,E0277
+    /// use ragu_backend::Backend;
+    /// use ragu_pcd::ipa::Params;
+    /// use udon::curve::Affine;
+    ///
+    /// #[derive(Clone, Copy, Debug, Default)]
+    /// struct CustomBackend;
+    /// impl Backend for CustomBackend {}
+    ///
+    /// fn select<C: Affine>(params: Params<C>) {
+    ///     let _ = params.with_backend::<CustomBackend>();
+    /// }
+    /// ```
+    pub fn with_backend<NewB: SelectableBackend>(self) -> Params<C, NewB> {
         Params {
             k: self.k,
             n: self.n,

@@ -75,6 +75,8 @@ fn pasta<M: PrimeModulus>(log_size: u32, values: &mut dyn Any, inverse: bool) ->
         executor::options(),
         &PoolExecutor,
     );
+    #[cfg(test)]
+    tests::record_dispatch(inverse);
     true
 }
 
@@ -102,13 +104,38 @@ fn execute<M: PrimeModulus, E: Executor>(
 mod tests {
     extern crate std;
 
-    use core::sync::atomic::{AtomicUsize, Ordering};
+    use core::{
+        cell::Cell,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
 
     use rand::{Rng, SeedableRng, rngs::StdRng};
     use udon::exec::{SerialExecutor, TaskBudget};
 
     use super::*;
     use crate::pasta::{Fp, Fq};
+
+    std::thread_local! {
+        static PASTA_DISPATCHES: Cell<[usize; 2]> = const { Cell::new([0; 2]) };
+    }
+
+    pub(super) fn record_dispatch(inverse: bool) {
+        let mut dispatches = PASTA_DISPATCHES.get();
+        dispatches[usize::from(inverse)] += 1;
+        PASTA_DISPATCHES.set(dispatches);
+    }
+
+    fn assert_pasta_dispatch(inverse: bool, f: impl FnOnce()) {
+        let mut expected = PASTA_DISPATCHES.get();
+        expected[usize::from(inverse)] += 1;
+        f();
+        assert_eq!(
+            PASTA_DISPATCHES.get(),
+            expected,
+            "{} must dispatch to Udon's Pasta planner",
+            if inverse { "IFFT" } else { "FFT" }
+        );
+    }
 
     fn check_field<F: Field>() {
         let check = || {
@@ -126,7 +153,7 @@ mod tests {
                 let mut expected = input.clone();
                 domain.transform(&mut expected);
                 let mut actual = input.clone();
-                fft(domain, &mut actual);
+                assert_pasta_dispatch(false, || crate::fft(domain, &mut actual));
                 assert_eq!(actual, expected);
 
                 // Direct Horner evaluation is independent of both FFT paths
@@ -143,7 +170,7 @@ mod tests {
                     }
                 }
 
-                ifft(domain, &mut actual);
+                assert_pasta_dispatch(true, || crate::ifft(domain, &mut actual));
                 assert_eq!(actual, input);
 
                 // Compare inverses on arbitrary evaluations as well, so
@@ -151,7 +178,7 @@ mod tests {
                 expected.clone_from(&input);
                 domain.inverse_transform(&mut expected);
                 actual.clone_from(&input);
-                ifft(domain, &mut actual);
+                assert_pasta_dispatch(true, || crate::ifft(domain, &mut actual));
                 assert_eq!(actual, expected);
             }
         };

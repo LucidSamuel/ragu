@@ -8,10 +8,12 @@ use ragu_backend::Backend;
 
 mod sealed {
     use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
-    use ragu_backend::{Backend, ReferenceBackend};
+    use ragu_backend::ReferenceBackend;
+
+    use super::SelectableBackend;
 
     pub trait Sealed {
-        type Verifier: Backend;
+        type Verifier: SelectableBackend;
     }
 
     impl Sealed for ReferenceBackend {
@@ -45,7 +47,7 @@ pub trait SelectableBackend: Backend + sealed::Sealed {
     /// `ReferenceBackend` and `AcceleratedBackend` verify with their own
     /// kernels; `AcceleratedProver` proves with the accelerated kernels
     /// and verifies with the reference ones.
-    type Verifier: Backend;
+    type Verifier: SelectableBackend;
 }
 
 impl<T: Backend + sealed::Sealed> SelectableBackend for T {

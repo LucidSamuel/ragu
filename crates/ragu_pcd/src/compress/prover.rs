@@ -2,7 +2,6 @@
 
 use alloc::borrow::Cow;
 
-use ragu_backend::Backend;
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{FixedGenerators, Result};
 use rand::CryptoRng;
@@ -24,7 +23,7 @@ use crate::{
 
 /// Batches `openings` over `polys` and opens the batched claim through the
 /// IPA, on one curve. Returns the batch's messages and the IPA proof.
-fn open<P: Affine, R: Rank, B: Backend, T: IpaTranscript<P>, RNG: CryptoRng>(
+fn open<P: Affine, R: Rank, B: SelectableBackend, T: IpaTranscript<P>, RNG: CryptoRng>(
     polys: &[Cow<'_, sparse::Polynomial<P::Scalar, R>>],
     openings: &Openings<P>,
     generators: &impl FixedGenerators<P>,

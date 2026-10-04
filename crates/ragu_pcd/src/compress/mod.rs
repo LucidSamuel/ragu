@@ -45,7 +45,6 @@
 //! Like an uncompressed proof, a compressed proof is not hiding: the
 //! openings it carries are evaluations of the witness polynomials.
 
-use ragu_backend::Backend;
 use ragu_circuits::polynomials::Rank;
 use ragu_core::{Cycle, Result};
 use udon::curve::Affine;
@@ -56,6 +55,7 @@ use self::{
     revdot::{Reduction, fold::Derived, native_components, nested_components},
 };
 use crate::{
+    SelectableBackend,
     header::Header,
     ipa::{CycleTranscript, IPA_TAG, IpaProof, IpaTranscript},
 };
@@ -170,7 +170,7 @@ impl<F> Sampled<F> {
 
 /// The compression's transcript with the statement absorbed: the instance,
 /// then the output header.
-fn transcript<'params, C: Cycle, B: Backend>(
+fn transcript<'params, C: Cycle, B: SelectableBackend>(
     params: &'params C::Params,
     instance: &Instance<C>,
     output_header: &[C::CircuitField],
