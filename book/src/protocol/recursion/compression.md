@@ -26,8 +26,8 @@ sequenceDiagram
 **Output:** circuit, bonding, accumulator, and selected-wire relations
 $\operatorname{revdot}(a_i,b_i)=k_i$, described by commitments and public terms.
 
-Run phases **2–4 completely on the native curve, then the nested curve**, using
-each curve's scalar field.
+After phase 1 establishes claims for both curves, run phases 2–3 on the native
+curve, then repeat on the nested curve.
 
 ## 2. Revdot claims → polynomial-opening claims
 
@@ -114,35 +114,7 @@ v&=\beta^n\sum_{j=0}^{m-1}\alpha^{m-1-j}\frac{z_{i_j}-y_j}{u-x_j}
 \end{aligned}
 $$
 
-**Output:** one opening claim $([H],u,v)$ for the IPA to verify.
+**Output:** one opening claim $([H],u,v)$.
 
-## 4. Batched opening → IPA verification
-
-```mermaid
-sequenceDiagram
-    participant P as Prover
-    participant V as Verifier
-    Note over P: Sample random s with s(u) = 0
-    P->>V: [s]
-    V->>P: ξ, ζ
-    Note over P: Prove H − v + ξs vanishes at u
-    Note over V: Initialize b = (1, u, …, uᴰ⁻¹)<br/>and a copy of G
-    loop k rounds
-        P->>V: Cross-term commitments Lⱼ, Rⱼ
-        V->>P: tⱼ (reject zero)
-        Note over P: Fold coefficient vector
-        Note over V: Fold G and b
-    end
-    P->>V: Final scalar c
-    Note over V: Check IPA equation
-```
-
-V folds $G\leftarrow G_L+t_jG_R$, $b\leftarrow b_L+t_jb_R$, obtaining
-$G_*,b_*$. Using the original $G_0$, it checks
-
-$$
-[H]-vG_0+\xi[s]+\sum_{j=0}^{k-1}(t_j^{-1}L_j+t_jR_j)
-=c(G_*+\zeta b_*U).
-$$
-
-**Output:** accept only if both curves pass.
+P and V then run an IPA to verify that $[H]$ commits to a polynomial with
+$H(u)=v$.
