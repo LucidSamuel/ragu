@@ -3,8 +3,8 @@
 //! path with the direct check. Each curve's suite runs on the fuse's
 //! transcript through the view that curve's IPA uses.
 //!
-//! Small parameters keep the PR gate quick; one full-size round trip per
-//! curve over the baked generators is `#[ignore]`d for the heavy-tests run.
+//! Small parameters cover the adversarial cases; each curve also runs a
+//! full-size round trip over the baked generators in the regular test suite.
 
 use ragu_core::{
     Error,
@@ -590,7 +590,6 @@ macro_rules! ipa_tests {
             }
 
             #[test]
-            #[ignore]
             fn round_trip_full_size() {
                 let params = Params::new(generators(), u());
                 let mut rng = StdRng::seed_from_u64(14);
