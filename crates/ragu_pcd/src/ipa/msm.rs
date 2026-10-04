@@ -4,12 +4,24 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
+use ragu_backend::Backend;
 use udon::{
     curve::{Affine, Projective},
     field::Field,
 };
 
 use super::Params;
+use crate::SelectableBackend;
+
+/// Evaluates an IPA MSM through the selected backend, requiring equal lengths.
+pub(super) fn multiexp<C: Affine, B: Backend>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
+    assert_eq!(
+        scalars.len(),
+        bases.len(),
+        "msm operands must have equal length"
+    );
+    B::msm(scalars, bases)
+}
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
@@ -124,8 +136,8 @@ impl<'a, C: Affine> MSM<'a, C> {
         self.u_scalar = self.u_scalar.map(|a| a * &factor);
     }
 
-    /// Perform multiexp and check that it results in zero
-    pub fn eval(self) -> bool {
+    /// Perform multiexp through backend `B` and check that it results in zero.
+    pub fn eval<B: SelectableBackend>(self) -> bool {
         let len = self.g_scalars.as_ref().map(|v| v.len()).unwrap_or(0)
             + self.u_scalar.map(|_| 1).unwrap_or(0)
             + self.other.len();
@@ -151,6 +163,6 @@ impl<'a, C: Affine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        C::msm(&scalars, &bases).is_identity()
+        multiexp::<C, B>(&scalars, &bases).is_identity()
     }
 }

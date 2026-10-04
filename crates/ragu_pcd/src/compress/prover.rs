@@ -23,18 +23,18 @@ use crate::{
 
 /// Batches `openings` over `polys` and opens the batched claim through the
 /// IPA, on one curve. Returns the batch's messages and the IPA proof.
-fn open<P: Affine, R: Rank, T: IpaTranscript<P>, RNG: CryptoRng>(
+fn open<P: Affine, R: Rank, B: SelectableBackend>(
     polys: &[Cow<'_, sparse::Polynomial<P::Scalar, R>>],
     openings: &Openings<P>,
     generators: &impl FixedGenerators<P>,
     u: P,
-    transcript: &mut T,
-    rng: &mut RNG,
+    transcript: &mut impl IpaTranscript<P>,
+    rng: &mut impl CryptoRng,
 ) -> Result<(Batch<P>, IpaProof<P>)> {
     let (batch, witness) =
-        batch::batch::<_, R, _>(polys, &openings.claims, generators, transcript)?;
+        batch::batch::<_, R, B>(polys, &openings.claims, generators, transcript)?;
     let params = Params::with_k(generators, u, R::RANK);
-    let opening = ipa::create_proof(&params, rng, transcript, &witness.p, witness.u)?;
+    let opening = ipa::create_proof::<B, _>(&params, rng, transcript, &witness.p, witness.u)?;
     Ok((batch, opening))
 }
 
@@ -65,7 +65,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // evaluate `v` and `v_n` at the replayed `u`.
         let challenges = proof.challenges();
         let output_header = ky::output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?;
-        let mut transcript = transcript(self.params, &instance, &output_header)?;
+        let mut transcript = transcript::<C, B>(self.params, &instance, &output_header)?;
         let native_sampled = Sampled::squeeze(&mut transcript.host())?;
         let nested_sampled = Sampled::squeeze(&mut transcript.nested())?;
 
@@ -75,7 +75,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             let Sampled { w, y, z, sigma } = native_sampled;
             let masked =
                 instance.native_bindings::<R, B, HEADER_SIZE>(&challenges, registry, sigma)?;
-            let (reduction, witness) = revdot::reduce_native::<C, R, B, _>(
+            let (reduction, witness) = revdot::reduce_native::<C, R, B>(
                 proof,
                 registry,
                 generators,
@@ -100,7 +100,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 .map(Cow::Borrowed),
             );
             let u = *C::host_u(self.params);
-            let (batch, opening) = open::<_, R, _, _>(
+            let (batch, opening) = open::<_, R, B>(
                 &polys,
                 &openings,
                 generators,
@@ -120,7 +120,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             let generators = C::nested_generators(self.params);
             let Sampled { w, y, z, sigma } = nested_sampled;
             let masked = instance.nested_bindings::<R, B>(&challenges, registry, sigma)?;
-            let (reduction, witness) = revdot::reduce_nested::<C, R, B, _>(
+            let (reduction, witness) = revdot::reduce_nested::<C, R, B>(
                 proof,
                 registry,
                 generators,
@@ -145,7 +145,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 .map(Cow::Borrowed),
             );
             let u = *C::nested_u(self.params);
-            let (batch, opening) = open::<_, R, _, _>(
+            let (batch, opening) = open::<_, R, B>(
                 &polys,
                 &openings,
                 generators,

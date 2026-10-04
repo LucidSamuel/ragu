@@ -543,9 +543,27 @@ impl<F: Field, R: Rank> Registry<'_, F, R> {
     /// # Panics
     ///
     /// Panics if `evals.len()` does not equal the registry's domain size.
-    pub fn interpolate_xy(&self, mut evals: Vec<F>) -> sparse::Polynomial<F, R> {
+    pub fn interpolate_xy(&self, evals: Vec<F>) -> sparse::Polynomial<F, R> {
+        self.interpolate_xy_with(evals, ragu_core::ifft)
+    }
+
+    /// Interpolates as [`interpolate_xy`](Self::interpolate_xy), using the
+    /// supplied inverse FFT.
+    ///
+    /// `ifft` must match [`ragu_core::ifft`]: it transforms natural-order
+    /// domain evaluations into normalized coefficients, preserving the length.
+    ///
+    /// # Panics
+    ///
+    /// Panics before calling `ifft` if `evals.len()` does not equal the
+    /// registry's domain size.
+    pub fn interpolate_xy_with(
+        &self,
+        mut evals: Vec<F>,
+        ifft: impl FnOnce(Domain<F>, &mut Vec<F>),
+    ) -> sparse::Polynomial<F, R> {
         assert_eq!(evals.len(), self.domain.size());
-        self.domain.inverse_transform(&mut evals);
+        ifft(self.domain, &mut evals);
         sparse::Polynomial::from_coeffs(evals)
     }
 

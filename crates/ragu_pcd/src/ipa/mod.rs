@@ -20,6 +20,8 @@ use alloc::vec::Vec;
 use ragu_core::{Cycle, FixedGenerators};
 use udon::curve::Affine;
 
+use crate::SelectableBackend;
+
 mod msm;
 mod prover;
 mod transcript;
@@ -107,13 +109,14 @@ impl<C: Affine> Params<C> {
     }
 
     /// Commits to the polynomial with coefficients `poly` as $\langle p,G\rangle$.
+    /// Uses the selected backend `B` to evaluate the commitment.
     ///
     /// # Panics
     ///
     /// Panics if `poly` does not have exactly $2^k$ coefficients.
-    pub fn commit(&self, poly: &[C::Scalar]) -> C::Projective {
+    pub fn commit<B: SelectableBackend>(&self, poly: &[C::Scalar]) -> C::Projective {
         assert_eq!(poly.len(), self.n as usize);
-        C::msm(poly, &self.g)
+        msm::multiexp::<C, B>(poly, &self.g)
     }
 }
 

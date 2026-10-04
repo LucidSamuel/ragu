@@ -12,8 +12,8 @@ use udon::{
     polynomial::evaluate_iter,
 };
 
-use super::{IpaProof, IpaTranscript, Params};
-use crate::multicore::parallelize;
+use super::{IpaProof, IpaTranscript, Params, msm::multiexp};
+use crate::{SelectableBackend, multicore::parallelize};
 
 /// Creates an unblinded opening of `p_poly` at `x_3`.
 ///
@@ -28,10 +28,10 @@ use crate::multicore::parallelize;
 /// opening v, and the point x. It's probably also nice for the transcript
 /// to have seen the elliptic curve description and the URS, if you want to
 /// be rigorous.
-pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
+pub fn create_proof<B: SelectableBackend, C: Affine>(
     params: &Params<C>,
-    mut rng: R,
-    transcript: &mut T,
+    mut rng: impl CryptoRng,
+    transcript: &mut impl IpaTranscript<C>,
     p_poly: &[C::Scalar],
     x_3: C::Scalar,
 ) -> Result<IpaProof<C>> {
@@ -50,7 +50,7 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
     s_poly[0] -= &s_at_x3;
 
     // Write a commitment to the random polynomial to the transcript
-    let s_poly_commitment = params.commit(&s_poly).to_affine();
+    let s_poly_commitment = params.commit::<B>(&s_poly).to_affine();
     transcript.write_point(s_poly_commitment)?;
 
     // Challenge that will ensure that the prover cannot change P but can only
@@ -103,8 +103,8 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>>(
         //
         // TODO: If we modify multiexp to take "extra" bases, we could speed
         // this piece up a bit by combining the multiexps.
-        let l_j = C::msm(&p_prime[half..], &g_prime[0..half]);
-        let r_j = C::msm(&p_prime[0..half], &g_prime[half..]);
+        let l_j = multiexp::<C, B>(&p_prime[half..], &g_prime[0..half]);
+        let r_j = multiexp::<C, B>(&p_prime[0..half], &g_prime[half..]);
         let value_l_j = C::Scalar::sum_of_products_slice(&p_prime[half..], &b[0..half]);
         let value_r_j = C::Scalar::sum_of_products_slice(&p_prime[0..half], &b[half..]);
         let l_j = l_j + &(params.u * (value_l_j * &z));

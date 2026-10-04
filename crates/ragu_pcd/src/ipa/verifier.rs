@@ -10,7 +10,8 @@ use udon::{
     field::Field,
 };
 
-use super::{IpaProof, IpaTranscript, MSM, Params};
+use super::{IpaProof, IpaTranscript, MSM, Params, msm::multiexp};
+use crate::SelectableBackend;
 
 /// A guard returned by the verifier
 #[derive(Debug, Clone)]
@@ -51,11 +52,11 @@ impl<'a, C: Affine> Guard<'a, C> {
         (self.msm, accumulator)
     }
 
-    /// Computes G = ⟨s, params.g⟩
-    pub fn compute_g(&self) -> C {
+    /// Computes G = ⟨s, params.g⟩ through backend `B`.
+    pub fn compute_g<B: SelectableBackend>(&self) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
 
-        C::msm(&s, &self.msm.params.g).to_affine()
+        multiexp::<C, B>(&s, &self.msm.params.g).to_affine()
     }
 }
 

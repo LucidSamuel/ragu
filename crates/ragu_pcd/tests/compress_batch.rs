@@ -108,9 +108,14 @@ fn duplicate_claims<C: Affine>(generators: &impl FixedGenerators<C>) {
         claim(1, repeated.point),
         repeated,
     ];
-    let (messages, witness) =
-        batch::<C, TestRank, _>(&polys, &claims, generators, &mut BatchTranscript::new()).unwrap();
-    let batched = verify(
+    let (messages, witness) = batch::<C, TestRank, ReferenceBackend>(
+        &polys,
+        &claims,
+        generators,
+        &mut BatchTranscript::new(),
+    )
+    .unwrap();
+    let batched = verify::<_, ReferenceBackend, _>(
         &commitments,
         &claims,
         &messages,
@@ -131,14 +136,14 @@ fn duplicate_claims<C: Affine>(generators: &impl FixedGenerators<C>) {
     conflicting[3].value -= C::Scalar::ONE;
     let mut verifier = BatchTranscript::new();
     assert!(matches!(
-        verify(&commitments, &conflicting, &messages, &mut verifier),
+        verify::<_, ReferenceBackend, _>(&commitments, &conflicting, &messages, &mut verifier),
         Err(Error::InvalidWitness(_))
     ));
     verifier.assert_unused();
 
     let mut prover = BatchTranscript::new();
     assert!(matches!(
-        batch::<C, TestRank, _>(&polys, &conflicting, generators, &mut prover),
+        batch::<C, TestRank, ReferenceBackend>(&polys, &conflicting, generators, &mut prover),
         Err(Error::InvalidWitness(_))
     ));
     prover.assert_unused();
@@ -181,8 +186,8 @@ where
     T: IpaTranscript<C>,
 {
     let (messages, witness) =
-        batch::<C, R, _>(polys, &openings.claims, generators, transcript).unwrap();
-    let claim = verify(
+        batch::<C, R, ReferenceBackend>(polys, &openings.claims, generators, transcript).unwrap();
+    let claim = verify::<_, ReferenceBackend, _>(
         &openings.commitments,
         &openings.claims,
         &messages,
@@ -191,7 +196,10 @@ where
     .unwrap();
     assert_eq!(claim.point, witness.u);
     let params = Params::new(generators, u);
-    let opening = ipa::create_proof(&params, &mut *rng, transcript, &witness.p, witness.u).unwrap();
+    let opening = ipa::create_proof::<ReferenceBackend, _>(
+        &params, &mut *rng, transcript, &witness.p, witness.u,
+    )
+    .unwrap();
     Proved {
         batch: messages,
         p: witness.p,
@@ -214,7 +222,7 @@ where
     C: Affine,
     T: IpaTranscript<C>,
 {
-    let claim = verify(
+    let claim = verify::<_, ReferenceBackend, _>(
         &openings.commitments,
         &openings.claims,
         messages,
@@ -227,7 +235,7 @@ where
     ipa::verify_proof(&params, msm, transcript, opening, claim.point, claim.value)
         .unwrap()
         .use_challenges()
-        .eval()
+        .eval::<ReferenceBackend>()
 }
 
 /// A verifier transcript that has replayed the native reduction.
@@ -240,7 +248,7 @@ fn native_verifier(
     reduction: &Reduction<EqAffine>,
 ) -> (CycleTranscript<'static, Pasta>, Openings<EqAffine>) {
     let mut t = transcript();
-    let openings = revdot::verify_native::<Pasta, TestR, ReferenceBackend, _>(
+    let openings = revdot::verify_native::<Pasta, TestR, ReferenceBackend>(
         proof.circuit_id(),
         |component| proof.native_commitment(component),
         &app.native_registry,
@@ -274,7 +282,7 @@ fn native_batch_opens_through_the_ipa() {
 
     // The reduction, on the prover's and the verifier's transcripts.
     let mut prover = transcript();
-    let (reduction, witness) = revdot::reduce_native::<Pasta, TestR, ReferenceBackend, _>(
+    let (reduction, witness) = revdot::reduce_native::<Pasta, TestR, ReferenceBackend>(
         proof,
         &app.native_registry,
         generators,
@@ -394,7 +402,7 @@ fn nested_batch_opens_through_the_ipa() {
     };
 
     let mut prover = transcript();
-    let (reduction, witness) = revdot::reduce_nested::<Pasta, TestR, ReferenceBackend, _>(
+    let (reduction, witness) = revdot::reduce_nested::<Pasta, TestR, ReferenceBackend>(
         proof,
         &app.nested_registry,
         generators,
@@ -406,7 +414,7 @@ fn nested_batch_opens_through_the_ipa() {
     .unwrap();
     let nested_verifier = || {
         let mut t = transcript();
-        let openings = revdot::verify_nested::<Pasta, TestR, ReferenceBackend, _>(
+        let openings = revdot::verify_nested::<Pasta, TestR, ReferenceBackend>(
             commitment,
             &app.nested_registry,
             y,
