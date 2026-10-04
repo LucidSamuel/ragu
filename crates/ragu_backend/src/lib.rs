@@ -130,12 +130,9 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// Overrides must match [`Registry::interpolate_xy`] exactly.
     fn registry_interpolate_xy<F: Field, R: Rank>(
         registry: &Registry<'_, F, R>,
-        mut evals: Vec<F>,
+        evals: Vec<F>,
     ) -> sparse::Polynomial<F, R> {
-        let domain = F::domain(registry.log2_domain()).expect("registry domain exists");
-        assert_eq!(evals.len(), domain.size());
-        Self::ifft(domain, &mut evals);
-        sparse::Polynomial::from_coeffs(evals)
+        registry.interpolate_xy_with(evals, Self::ifft)
     }
 
     /// Computes the circuit restriction $s_i(X, y)$ selected by `circuit`.
