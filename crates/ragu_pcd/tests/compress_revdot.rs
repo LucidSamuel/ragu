@@ -129,7 +129,7 @@ fn native_round(app: &Application<'static, Pasta, TestR, HEADER_SIZE>, seed: u64
     let targets = native_targets(&pcd, y);
     let proof = pcd.into_parts().0;
     let mut t = transcript();
-    let (reduction, witness) = reduce_native::<Pasta, TestR, ReferenceBackend, _>(
+    let (reduction, witness) = reduce_native::<Pasta, TestR, ReferenceBackend>(
         &proof,
         &app.native_registry,
         Pasta::host_generators(crate::pasta::baked()),
@@ -155,7 +155,7 @@ fn verify_native_round(
     reduction: &Reduction<EqAffine>,
 ) -> Option<Openings<EqAffine>> {
     let mut t = transcript();
-    verify_native::<Pasta, TestR, ReferenceBackend, _>(
+    verify_native::<Pasta, TestR, ReferenceBackend>(
         round.proof.circuit_id(),
         |component| round.proof.native_commitment(component),
         &app.native_registry,
@@ -246,7 +246,7 @@ fn nested_reduction_verifies() {
     let generators = Pasta::nested_generators(crate::pasta::baked());
 
     let mut t = transcript();
-    let (reduction, witness) = reduce_nested::<Pasta, TestR, ReferenceBackend, _>(
+    let (reduction, witness) = reduce_nested::<Pasta, TestR, ReferenceBackend>(
         proof,
         &app.nested_registry,
         generators,
@@ -268,7 +268,7 @@ fn nested_reduction_verifies() {
     };
     let verify = |reduction: &Reduction<_>| {
         let mut t = transcript();
-        verify_nested::<Pasta, TestR, ReferenceBackend, _>(
+        verify_nested::<Pasta, TestR, ReferenceBackend>(
             commitment,
             &app.nested_registry,
             y,

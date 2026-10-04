@@ -25,11 +25,11 @@ pub(crate) struct Witness<F> {
 ///
 /// Fails if claims assign different values to the same polynomial at the
 /// same point, or if a transcript operation fails.
-pub(crate) fn batch<C: Affine, R: Rank, B: Backend, T: IpaTranscript<C>>(
+pub(crate) fn batch<C: Affine, R: Rank, B: Backend>(
     polys: &[Cow<'_, sparse::Polynomial<C::Scalar, R>>],
     claims: &[OpeningClaim<C::Scalar>],
     generators: &impl FixedGenerators<C>,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C>,
 ) -> Result<(Batch<C>, Witness<C::Scalar>)> {
     check_claims(claims)?;
     let alpha = transcript.squeeze_challenge()?;

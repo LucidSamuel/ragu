@@ -97,7 +97,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 registry,
                 sigma,
             )?;
-            let Some(mut openings) = proof_check!(revdot::verify_native::<C, R, Verifier<B>, _>(
+            let Some(mut openings) = proof_check!(revdot::verify_native::<C, R, Verifier<B>>(
                 instance.circuit_id,
                 |component| instance.native_commitment(component),
                 registry,
@@ -118,7 +118,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             );
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            proof_check!(batch::verify_openings::<_, R, Verifier<B>, _>(
+            proof_check!(batch::verify_openings::<_, R, Verifier<B>>(
                 &openings,
                 &proof.native.batch,
                 &proof.native.opening,
@@ -136,7 +136,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             let Sampled { w, y, z, sigma } = nested_sampled;
             let masked =
                 instance.nested_bindings::<R, Verifier<B>>(&challenges, registry, sigma)?;
-            let Some(mut openings) = proof_check!(revdot::verify_nested::<C, R, Verifier<B>, _>(
+            let Some(mut openings) = proof_check!(revdot::verify_nested::<C, R, Verifier<B>>(
                 |component| instance.nested_commitment(component),
                 registry,
                 y,
@@ -156,7 +156,7 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             )?;
             openings.commitments.extend(commitments);
             openings.claims.extend(claims);
-            proof_check!(batch::verify_openings::<_, R, Verifier<B>, _>(
+            proof_check!(batch::verify_openings::<_, R, Verifier<B>>(
                 &openings,
                 &proof.nested.batch,
                 &proof.nested.opening,

@@ -64,9 +64,9 @@ pub(crate) struct Fold<C: Affine> {
 impl<C: Affine> Fold<C> {
     /// Replays the messages on `transcript` in the prover's order and
     /// squeezes the weights where the prover did.
-    pub(crate) fn replay<T: IpaTranscript<C>>(
+    pub(crate) fn replay(
         &self,
-        transcript: &mut T,
+        transcript: &mut impl IpaTranscript<C>,
     ) -> Result<Weights<C::Scalar>> {
         transcript.write_point(self.inner)?;
         let (mu, nu) = squeeze_pair(transcript)?;
@@ -84,8 +84,8 @@ impl<C: Affine> Fold<C> {
 }
 
 /// One layer's pair of challenges.
-pub(crate) fn squeeze_pair<C: Affine, T: IpaTranscript<C>>(
-    transcript: &mut T,
+pub(crate) fn squeeze_pair<C: Affine>(
+    transcript: &mut impl IpaTranscript<C>,
 ) -> Result<(C::Scalar, C::Scalar)> {
     Ok((
         transcript.squeeze_challenge()?,

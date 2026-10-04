@@ -40,14 +40,14 @@ pub(crate) struct Evaluated<F> {
 /// component's commitment and `public` each kind of claim's public parts
 /// of $a$ and $b$ at a point. Returns the opening claims the batch must
 /// prove, or `None` if the reduction does not hold.
-fn verify<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
+fn verify<C: Affine, R: Rank, B: Backend, Id: Copy>(
     shapes: &[Shape<Id, C::Scalar>],
     targets: impl Iterator<Item = C::Scalar>,
     commitment: impl Fn(Id) -> C,
     public: impl Fn(Kind, C::Scalar) -> (C::Scalar, C::Scalar),
     reduction: &Reduction<C>,
     z: C::Scalar,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C>,
 ) -> Result<Option<Openings<C>>> {
     let n = R::num_coeffs();
     if reduction.openings.len() != Derived::ALL.len() {
@@ -171,7 +171,7 @@ fn restriction_at<F: Field, R: Rank, B: Backend>(
 /// The verifier's native side: `commitment` gives each component's
 /// commitment, `registry` the native registry, and `targets` the claims'
 /// $k(y)$ values; the registry is read through the backend `B`.
-pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::HostCurve>>(
+pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend>(
     circuit_id: CircuitIndex,
     commitment: impl Fn(native::RxComponent) -> C::HostCurve,
     registry: &Registry<'_, C::CircuitField, R>,
@@ -180,11 +180,11 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
     targets: &NativeKy<C::CircuitField>,
     masked: &[Masked<native::RxComponent, C::CircuitField>],
     reduction: &Reduction<C::HostCurve>,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C::HostCurve>,
 ) -> Result<Option<Openings<C::HostCurve>>> {
     let shapes = claims::native_shapes(circuit_id, z, masked)?;
     let restriction = |circuit, r| restriction_at::<_, R, B>(registry, circuit, r, y);
-    verify::<_, R, B, _, _>(
+    verify::<_, R, B, _>(
         &shapes,
         native::claims::ky_values(targets),
         commitment,
@@ -196,7 +196,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
 }
 
 /// The verifier's nested side, as [`verify_native`] takes its inputs.
-pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::NestedCurve>>(
+pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend>(
     commitment: impl Fn(nested::RxComponent) -> C::NestedCurve,
     registry: &Registry<'_, C::ScalarField, R>,
     y: C::ScalarField,
@@ -204,11 +204,11 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
     targets: &NestedKy<C::ScalarField>,
     masked: &[Masked<nested::RxComponent, C::ScalarField>],
     reduction: &Reduction<C::NestedCurve>,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C::NestedCurve>,
 ) -> Result<Option<Openings<C::NestedCurve>>> {
     let shapes = claims::nested_shapes(z, masked)?;
     let restriction = |circuit, r| restriction_at::<_, R, B>(registry, circuit, r, y);
-    verify::<_, R, B, _, _>(
+    verify::<_, R, B, _>(
         &shapes,
         nested::claims::ky_values(targets),
         commitment,

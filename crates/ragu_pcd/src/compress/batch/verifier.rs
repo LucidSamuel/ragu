@@ -16,13 +16,13 @@ use crate::{
 
 /// Derives the batched commitment, point, and value from `openings` and
 /// `batch`, then checks `opening` against that claim through the IPA.
-pub(crate) fn verify_openings<P: Affine, R: Rank, B: SelectableBackend, T: IpaTranscript<P>>(
+pub(crate) fn verify_openings<P: Affine, R: Rank, B: SelectableBackend>(
     openings: &Openings<P>,
     batch: &Batch<P>,
     opening: &IpaProof<P>,
     generators: &impl FixedGenerators<P>,
     u: P,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<P>,
 ) -> Result<bool> {
     let claim = batch.verify::<B>(openings, transcript)?;
     let params = Params::with_k(generators, u, R::RANK);

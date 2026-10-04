@@ -197,13 +197,13 @@ type Folded<C, R> = (
 
 /// The prover's fold on one curve, over `claims` in claim order with their
 /// `shapes`: commits each layer's error terms and squeezes its weights.
-fn fold_claims<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
+fn fold_claims<C: Affine, R: Rank, B: Backend, Id: Copy>(
     claims: &[Claim<'_, C::Scalar, R>],
     shapes: &[Shape<Id, C::Scalar>],
     masked: &[Masked<Id, C::Scalar>],
     commitment: impl Fn(Id) -> C,
     generators: &impl FixedGenerators<C>,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C>,
 ) -> Result<Folded<C, R>> {
     let layout = Layout::new(claims.len());
 
@@ -298,18 +298,18 @@ fn fold_claims<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
 /// The prover's reduction on one curve: `claims` are the $(a_i, b_i)$ in
 /// claim order and `shapes` their shapes, `masked` the wire bindings the
 /// claims end with, and `commitment` gives each component's commitment.
-fn reduce<C: Affine, R: Rank, B: Backend, Id: Copy, T: IpaTranscript<C>>(
+fn reduce<C: Affine, R: Rank, B: Backend, Id: Copy>(
     claims: &[Claim<'_, C::Scalar, R>],
     shapes: &[Shape<Id, C::Scalar>],
     masked: &[Masked<Id, C::Scalar>],
     commitment: impl Fn(Id) -> C,
     generators: &impl FixedGenerators<C>,
     z: C::Scalar,
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C>,
 ) -> Result<(Reduction<C>, Witness<C, R>)> {
     let n = R::num_coeffs();
     let (messages, folded, derived, commitments) =
-        fold_claims::<C, R, B, Id, T>(claims, shapes, masked, commitment, generators, transcript)?;
+        fold_claims::<C, R, B, Id>(claims, shapes, masked, commitment, generators, transcript)?;
     let rho = transcript.squeeze_challenge()?;
 
     // t = \sum_i \rho^i a_i b_i over the folded claims.
@@ -384,14 +384,14 @@ fn masked_claims<'a, F: Field, R: Rank, Id: Copy>(
 }
 
 /// The prover's native reduction of `proof`'s claims at `y` and `z`.
-pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::HostCurve>>(
+pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend>(
     proof: &Proof<C, R>,
     registry: &Registry<'_, C::CircuitField, R>,
     generators: &C::HostGenerators,
     y: C::CircuitField,
     z: C::CircuitField,
     masked: &[Masked<native::RxComponent, C::CircuitField>],
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C::HostCurve>,
 ) -> Result<(Reduction<C::HostCurve>, Witness<C::HostCurve, R>)> {
     let mut builder = Builder::<_, C::CircuitField, R, B>::new(registry, y, z);
     native::claims::build(&NativePolys(proof), &mut builder)?;
@@ -402,7 +402,7 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
         .chain(masked_claims(|component| &proof[component], masked))
         .collect();
     let shapes = claims::native_shapes(proof.circuit_id(), z, masked)?;
-    reduce::<_, R, B, _, _>(
+    reduce::<_, R, B, _>(
         &claims,
         &shapes,
         masked,
@@ -415,14 +415,14 @@ pub(crate) fn reduce_native<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::H
 
 /// The prover's nested reduction of `proof`'s claims at the nested `y` and
 /// `z`.
-pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::NestedCurve>>(
+pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend>(
     proof: &Proof<C, R>,
     registry: &Registry<'_, C::ScalarField, R>,
     generators: &C::NestedGenerators,
     y: C::ScalarField,
     z: C::ScalarField,
     masked: &[Masked<nested::RxComponent, C::ScalarField>],
-    transcript: &mut T,
+    transcript: &mut impl IpaTranscript<C::NestedCurve>,
 ) -> Result<(Reduction<C::NestedCurve>, Witness<C::NestedCurve, R>)> {
     let mut builder = Builder::<_, C::ScalarField, R, B>::new(registry, y, z);
     nested::claims::build(&NestedPolys(proof), &mut builder)?;
@@ -433,7 +433,7 @@ pub(crate) fn reduce_nested<C: Cycle, R: Rank, B: Backend, T: IpaTranscript<C::N
         .chain(masked_claims(|component| &proof[component], masked))
         .collect();
     let shapes = claims::nested_shapes(z, masked)?;
-    reduce::<_, R, B, _, _>(
+    reduce::<_, R, B, _>(
         &claims,
         &shapes,
         masked,

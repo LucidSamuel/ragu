@@ -158,7 +158,7 @@ struct Sampled<F> {
 }
 
 impl<F> Sampled<F> {
-    fn squeeze<P: Affine<Scalar = F>, T: IpaTranscript<P>>(transcript: &mut T) -> Result<Self> {
+    fn squeeze<P: Affine<Scalar = F>>(transcript: &mut impl IpaTranscript<P>) -> Result<Self> {
         Ok(Sampled {
             w: transcript.squeeze_challenge()?,
             y: transcript.squeeze_challenge()?,
