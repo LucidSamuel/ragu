@@ -4,6 +4,7 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
+use ragu_backend::Backend;
 use udon::{
     curve::{Affine, Projective},
     field::Field,
@@ -13,10 +14,7 @@ use super::Params;
 use crate::SelectableBackend;
 
 /// Evaluates an IPA MSM through the selected backend, requiring equal lengths.
-pub(super) fn multiexp<C: Affine, B: SelectableBackend>(
-    scalars: &[C::Scalar],
-    bases: &[C],
-) -> C::Projective {
+pub(super) fn multiexp<C: Affine, B: Backend>(scalars: &[C::Scalar], bases: &[C]) -> C::Projective {
     assert_eq!(
         scalars.len(),
         bases.len(),
