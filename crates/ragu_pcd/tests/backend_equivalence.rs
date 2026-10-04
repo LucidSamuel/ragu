@@ -9,17 +9,24 @@ use ragu_circuits::{
     registry::CircuitIndex,
 };
 use ragu_core::{
-    Cycle, Result,
+    Cycle, FixedGenerators, Result,
     drivers::{Driver, DriverValue},
     pasta::{Fp, Fq, Pasta},
 };
 use ragu_primitives::allocator::Standard;
 use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field_element};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use udon::{fft::Domain, field::Field};
+use udon::{curve::Affine, fft::Domain, field::Field};
 
 use crate::{
     Application, ApplicationBuilder, CompressedPcd, CompressedProof, Pcd, Proof, SelectableBackend,
+    compress::{
+        Messages,
+        batch::Batch,
+        instance::{Child, Instance, NestedChild},
+        revdot::{Reduction, fold::Fold},
+    },
+    ipa::{CycleTranscript, IPA_TAG, IpaTranscript},
     step::{Encoded, Index, Step},
 };
 
@@ -76,6 +83,33 @@ impl Backend for TrackingBackend {
 }
 
 impl crate::backend::TestSealed for TrackingBackend {
+    type Verifier = Self;
+}
+
+/// Test backend whose MSM is deterministic but wrong: the reference result
+/// plus the generator. A prover and a verifier sharing it agree with each
+/// other, which is what same-backend verification cannot detect.
+#[derive(Clone, Copy, Debug, Default)]
+struct SkewedBackend;
+
+impl Backend for SkewedBackend {
+    fn msm<
+        'a,
+        C: Affine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+    >(
+        coeffs: A,
+        bases: Bases,
+    ) -> C::Projective
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        ReferenceBackend::msm(coeffs, bases) + C::generator().to_projective()
+    }
+}
+
+impl crate::backend::TestSealed for SkewedBackend {
     type Verifier = Self;
 }
 
@@ -494,6 +528,63 @@ fn check_compressed_proofs_match(
     actual: &CompressedProof<Pasta>,
     backend: &str,
 ) -> TestCaseResult {
+    // Exhaustive patterns: adding a field to a transmitted struct fails to
+    // compile until the comparison below is reviewed, as `Proof::test_mismatch`
+    // does for uncompressed proofs. `Messages` is one type on both curves.
+    let CompressedProof {
+        instance,
+        native,
+        nested: _,
+    } = expected;
+    let Instance {
+        circuit_id: _,
+        left_header: _,
+        right_header: _,
+        native: _,
+        native_registry_xy: _,
+        native_p: _,
+        nested: _,
+        nested_registry_xy: _,
+        nested_p: _,
+        nested_challenges_partial: _,
+        bridge_alpha: _,
+        c: _,
+        v: _,
+        nested_c: _,
+        nested_v: _,
+        left: Child { x: _, y: _, id: _ },
+        right: Child { x: _, y: _, id: _ },
+        a_at_u: _,
+        b_at_u: _,
+        nested_left: NestedChild { x: _, y: _ },
+        nested_right: NestedChild { x: _, y: _ },
+        nested_a_at_u: _,
+        nested_b_at_u: _,
+    } = instance;
+    let Messages {
+        reduction,
+        batch,
+        opening: _,
+    } = native;
+    let Reduction {
+        fold,
+        p: _,
+        q: _,
+        openings: _,
+        p_at_inverse_r: _,
+        q_at_r: _,
+    } = reduction;
+    let Fold {
+        inner: _,
+        outer: _,
+        inner_epsilon: _,
+        outer_epsilon: _,
+    } = fold;
+    let Batch {
+        f: _,
+        evaluations: _,
+    } = batch;
+
     macro_rules! compare_fields {
         ($($($field:ident).+),+ $(,)?) => {
             $(prop_assert_eq!(
@@ -677,6 +768,56 @@ fn selected_backend_dispatch_reaches_protocol_phases() {
     assert!(app.verify_compressed(&compressed).unwrap());
     let [msm, _, _] = TrackingBackend::calls();
     assert_dispatch("compressed verification", &[("MSM", msm)]);
+}
+
+/// The transcript's bridge commitments go through the selected backend, so a
+/// wrong `msm` changes the challenges without disturbing the agreement of a
+/// prover and a verifier that share it. Every selectable backend, and the
+/// verifier each selects, must derive the reference's challenges; a backend
+/// whose `msm` deviates must not, or this check could not catch an override.
+#[test]
+fn bridge_challenges_match_the_reference() {
+    fn challenges<B: SelectableBackend>() -> [Fp; 2] {
+        let params = ragu_pcd::pasta::baked();
+        let mut transcript = CycleTranscript::<Pasta, B>::new(params, IPA_TAG).unwrap();
+        // A host point bridges its two coordinates and a nested scalar bridges
+        // one value; squeeze after each so both shapes reach the result.
+        transcript
+            .host()
+            .write_point(Pasta::host_generators(params).g()[1])
+            .unwrap();
+        let after_point = transcript.host().squeeze_challenge().unwrap();
+        transcript.nested().write_scalar(Fq::from(7)).unwrap();
+        let after_scalar = transcript.host().squeeze_challenge().unwrap();
+        [after_point, after_scalar]
+    }
+
+    let reference = challenges::<ReferenceBackend>();
+    assert_eq!(
+        challenges::<AcceleratedBackend>(),
+        reference,
+        "AcceleratedBackend"
+    );
+    assert_eq!(
+        challenges::<<AcceleratedBackend as SelectableBackend>::Verifier>(),
+        reference,
+        "AcceleratedBackend's verifier"
+    );
+    assert_eq!(
+        challenges::<AcceleratedProver>(),
+        reference,
+        "AcceleratedProver"
+    );
+    assert_eq!(
+        challenges::<<AcceleratedProver as SelectableBackend>::Verifier>(),
+        reference,
+        "AcceleratedProver's verifier"
+    );
+    assert_ne!(
+        challenges::<SkewedBackend>(),
+        reference,
+        "a deviating msm must change the challenges"
+    );
 }
 
 proptest! {
