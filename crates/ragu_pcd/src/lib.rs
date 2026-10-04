@@ -5,10 +5,13 @@
 //! - [`ApplicationBuilder`] / [`Application`] — configure, build, then
 //!   [`seed`](Application::seed), [`fuse`](Application::fuse),
 //!   [`rerandomize`](Application::rerandomize), and
-//!   [`verify`](Application::verify) proofs.
+//!   [`verify`](Application::verify) proofs, or
+//!   [`compress`](Application::compress) them and
+//!   [`verify_compressed`](Application::verify_compressed) the result.
 //! - [`step::Step`] — the trait that defines computation nodes (transitions).
 //! - [`header::Header`] — the trait that defines succinct state representations.
 //! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
+//! - [`CompressedProof`] / [`CompressedPcd`] — their compressed forms.
 //! - [`pasta`] — Ragu's fixed generators, derived and embedded at build time
 //!   with the `baked` feature.
 
@@ -30,6 +33,7 @@ mod backend;
 #[cfg(test)]
 #[path = "../tests/backend_equivalence/mod.rs"]
 mod backend_equivalence;
+mod compress;
 mod fuse;
 // The fuzzing surface. Gates itself behind `unstable-fuzzing` with an inner
 // `#![cfg]` and hides itself from the docs, so no feature attribute appears
@@ -37,6 +41,7 @@ mod fuse;
 pub mod fuzzing;
 pub mod header;
 mod internal;
+pub mod ipa;
 mod multicore;
 pub mod pasta;
 mod proof;
@@ -46,6 +51,7 @@ mod verify;
 use alloc::collections::BTreeMap;
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
+pub use compress::{CompressedPcd, CompressedProof};
 use header::Header;
 pub use proof::{Pcd, Proof};
 use ragu_backend::ReferenceBackend;

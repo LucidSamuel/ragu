@@ -3,7 +3,8 @@
 //! `pasta_curves` supplies hash-to-curve. Compressed encodings bridge its
 //! output to Udon's checked nonidentity affine points at build time. Each
 //! artifact contains the vector generators in order, followed by the blinding
-//! generator, stored in Udon's Montgomery representation.
+//! generator and the IPA's generator, stored in Udon's Montgomery
+//! representation.
 
 use std::{fs, io::Result, path::Path};
 
@@ -18,7 +19,8 @@ const DOMAIN_PREFIX: &str = "Ragu-Parameters";
 const DEFAULT_EP_K: usize = 13;
 const DEFAULT_EQ_K: usize = 13;
 
-/// `n` vector generators from `0 || i`, then the blinding generator from `1`.
+/// `n` vector generators from `0 || i`, then the blinding generator from `1`,
+/// then the IPA's generator from `2`.
 fn points_for_curve<C: PastaCurve>(
     hash: impl Fn(&[u8]) -> [u8; 32],
     n: usize,
@@ -27,13 +29,14 @@ fn points_for_curve<C: PastaCurve>(
         let point = Point::<C>::from_bytes(hash(message)).expect("a valid Pasta point encoding");
         *point.as_affine().expect("no generated point is identity")
     };
-    let mut points = Vec::with_capacity(n + 1);
+    let mut points = Vec::with_capacity(n + 2);
     for index in 0..u32::try_from(n).expect("generator indices fit in u32") {
         let mut message = [0u8; 5];
         message[1..].copy_from_slice(&index.to_le_bytes());
         points.push(point(&message));
     }
     points.push(point(&[1]));
+    points.push(point(&[2]));
     points
 }
 

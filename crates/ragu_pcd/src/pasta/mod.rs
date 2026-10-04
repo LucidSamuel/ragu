@@ -26,6 +26,7 @@ mod tests {
     use udon::curve::Affine;
 
     use super::*;
+    use crate::ipa::IpaCycle;
 
     #[test]
     fn baked_parameters_have_the_expected_shape() {
@@ -45,5 +46,14 @@ mod tests {
         assert!(!vesta.g().contains(vesta.h()));
         assert_ne!(pallas.g()[0], pallas.g()[1]);
         assert_ne!(vesta.g()[0], vesta.g()[1]);
+
+        // The IPA's generator: a further hash-to-curve output on each curve.
+        let (pallas_u, vesta_u) = (Pasta::nested_u(params), Pasta::host_u(params));
+        assert!(!pallas_u.is_identity());
+        assert!(!vesta_u.is_identity());
+        assert_ne!(pallas_u, pallas.h());
+        assert_ne!(vesta_u, vesta.h());
+        assert!(!pallas.g().contains(pallas_u));
+        assert!(!vesta.g().contains(vesta_u));
     }
 }
