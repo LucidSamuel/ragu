@@ -17,7 +17,7 @@ use udon::{curve::Affine, field::Field, polynomial::evaluate_iter};
 type EpAffine = <Pasta as Cycle>::NestedCurve;
 type EqAffine = <Pasta as Cycle>::HostCurve;
 
-use super::{Batch, Batched, batch};
+use super::{Batch, Batched, batch, verifier::verify};
 use crate::{
     Application, ApplicationBuilder, Proof,
     compress::revdot::{self, OpeningClaim, Openings, Reduction},
@@ -115,13 +115,13 @@ fn duplicate_claims<C: Affine>(generators: &impl FixedGenerators<C>) {
         &mut BatchTranscript::new(),
     )
     .unwrap();
-    let mut openings = Openings {
-        commitments: commitments.to_vec(),
-        claims: claims.to_vec(),
-    };
-    let batched = messages
-        .verify::<ReferenceBackend>(&openings, &mut BatchTranscript::new())
-        .unwrap();
+    let batched = verify::<_, ReferenceBackend, _>(
+        &commitments,
+        &claims,
+        &messages,
+        &mut BatchTranscript::new(),
+    )
+    .unwrap();
     assert_eq!(batched.point, witness.u);
     assert_eq!(batched.value, evaluate_iter(&witness.p, witness.u));
     assert_eq!(
@@ -134,10 +134,9 @@ fn duplicate_claims<C: Affine>(generators: &impl FixedGenerators<C>) {
     let mut conflicting = claims;
     conflicting[0].value += C::Scalar::ONE;
     conflicting[3].value -= C::Scalar::ONE;
-    openings.claims = conflicting.to_vec();
     let mut verifier = BatchTranscript::new();
     assert!(matches!(
-        messages.verify::<ReferenceBackend>(&openings, &mut verifier),
+        verify::<_, ReferenceBackend, _>(&commitments, &conflicting, &messages, &mut verifier),
         Err(Error::InvalidWitness(_))
     ));
     verifier.assert_unused();
@@ -188,9 +187,13 @@ where
 {
     let (messages, witness) =
         batch::<C, R, ReferenceBackend>(polys, &openings.claims, generators, transcript).unwrap();
-    let claim = messages
-        .verify::<ReferenceBackend>(openings, verifier_transcript)
-        .unwrap();
+    let claim = verify::<_, ReferenceBackend, _>(
+        &openings.commitments,
+        &openings.claims,
+        &messages,
+        verifier_transcript,
+    )
+    .unwrap();
     assert_eq!(claim.point, witness.u);
     let params = Params::new(generators, u);
     let opening = ipa::create_proof::<ReferenceBackend, _>(
@@ -219,9 +222,13 @@ where
     C: Affine,
     T: IpaTranscript<C>,
 {
-    let claim = messages
-        .verify::<ReferenceBackend>(openings, transcript)
-        .unwrap();
+    let claim = verify::<_, ReferenceBackend, _>(
+        &openings.commitments,
+        &openings.claims,
+        messages,
+        transcript,
+    )
+    .unwrap();
     let params = Params::new(generators, u);
     let mut msm = MSM::new(&params);
     msm.append_term(C::Scalar::ONE, claim.commitment);
