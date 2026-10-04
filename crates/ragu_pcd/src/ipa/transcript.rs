@@ -71,20 +71,6 @@ pub trait IpaTranscript<C: Affine> {
 /// the circuit field, executed at concrete values through the [`Emulator`]
 /// driver, with the cycle's parameters at hand for bridging. Bridge commitments
 /// use the Ragu-owned backend `B`.
-///
-/// ```compile_fail,E0277
-/// use ragu_backend::Backend;
-/// use ragu_core::Cycle;
-/// use ragu_pcd::ipa::{CycleTranscript, IPA_TAG};
-///
-/// #[derive(Clone, Copy, Debug, Default)]
-/// struct CustomBackend;
-/// impl Backend for CustomBackend {}
-///
-/// fn transcript<C: Cycle>(params: &C::Params) {
-///     let _ = CycleTranscript::<C, CustomBackend>::new(params, IPA_TAG);
-/// }
-/// ```
 pub struct CycleTranscript<'dr, C: Cycle, B: SelectableBackend = ReferenceBackend> {
     dr: Emulator<Wireless<Always<()>, C::CircuitField>>,
     transcript:

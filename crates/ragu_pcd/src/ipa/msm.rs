@@ -4,7 +4,6 @@
 
 use alloc::{collections::BTreeMap, vec, vec::Vec};
 
-use ragu_backend::ReferenceBackend;
 use udon::{
     curve::{Affine, Projective},
     field::Field,
@@ -28,17 +27,17 @@ pub(super) fn multiexp<C: Affine, B: SelectableBackend>(
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
-pub struct MSM<'a, C: Affine, B: SelectableBackend = ReferenceBackend> {
-    pub(crate) params: &'a Params<C, B>,
+pub struct MSM<'a, C: Affine> {
+    pub(crate) params: &'a Params<C>,
     g_scalars: Option<Vec<C::Scalar>>,
     u_scalar: Option<C::Scalar>,
     // x-coordinate's bytes -> (scalar, x-coordinate, y-coordinate)
     other: BTreeMap<Vec<u8>, (C::Scalar, C::Base, C::Base)>,
 }
 
-impl<'a, C: Affine, B: SelectableBackend> MSM<'a, C, B> {
+impl<'a, C: Affine> MSM<'a, C> {
     /// Create a new, empty MSM using the provided parameters.
-    pub fn new(params: &'a Params<C, B>) -> Self {
+    pub fn new(params: &'a Params<C>) -> Self {
         let g_scalars = None;
         let u_scalar = None;
         let other = BTreeMap::new();
@@ -139,8 +138,8 @@ impl<'a, C: Affine, B: SelectableBackend> MSM<'a, C, B> {
         self.u_scalar = self.u_scalar.map(|a| a * &factor);
     }
 
-    /// Perform multiexp and check that it results in zero
-    pub fn eval(self) -> bool {
+    /// Perform multiexp through backend `B` and check that it results in zero.
+    pub fn eval<B: SelectableBackend>(self) -> bool {
         let len = self.g_scalars.as_ref().map(|v| v.len()).unwrap_or(0)
             + self.u_scalar.map(|_| 1).unwrap_or(0)
             + self.other.len();

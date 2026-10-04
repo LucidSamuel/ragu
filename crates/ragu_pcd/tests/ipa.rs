@@ -111,12 +111,18 @@ macro_rules! ipa_tests {
             /// The prover's side: commit to `poly`, open it at
             /// `x`, and return the claim with its proof.
             fn open(params: &Params<C>, poly: &[F], x: F, rng: &mut StdRng) -> (C, F, IpaProof<C>) {
-                let commitment = params.commit(poly).to_affine();
+                let commitment = params.commit::<ReferenceBackend>(poly).to_affine();
                 let v = evaluate_iter(poly.iter(), x);
 
                 let mut transcript = transcript_for(commitment, x, v);
-                let proof =
-                    prover::create_proof(params, rng, &mut transcript.$side(), poly, x).unwrap();
+                let proof = prover::create_proof::<ReferenceBackend, _>(
+                    params,
+                    rng,
+                    &mut transcript.$side(),
+                    poly,
+                    x,
+                )
+                .unwrap();
                 (commitment, v, proof)
             }
 
@@ -151,7 +157,7 @@ macro_rules! ipa_tests {
             fn check(params: &Params<C>, commitment: C, x: F, v: F, proof: &IpaProof<C>) -> bool {
                 verify(params, commitment, x, v, proof)
                     .use_challenges()
-                    .eval()
+                    .eval::<ReferenceBackend>()
             }
 
             /// A claim with its proof on the provided parameters.
@@ -182,19 +188,25 @@ macro_rules! ipa_tests {
                 // Both the old W and another public base: changing the
                 // blinding generator must not restore blinded openings.
                 for base in [*generators().h(), params.u] {
-                    let commitment = (params.commit(&poly) + &(base * blind)).to_affine();
+                    let commitment =
+                        (params.commit::<ReferenceBackend>(&poly) + &(base * blind)).to_affine();
                     let mut transcript = transcript_for(commitment, x, v);
-                    let proof =
-                        prover::create_proof(&params, &mut rng, &mut transcript.$side(), &poly, x)
-                            .unwrap();
+                    let proof = prover::create_proof::<ReferenceBackend, _>(
+                        &params,
+                        &mut rng,
+                        &mut transcript.$side(),
+                        &poly,
+                        x,
+                    )
+                    .unwrap();
                     let mut msm = verify(&params, commitment, x, v, &proof).use_challenges();
-                    assert!(!msm.clone().eval());
+                    assert!(!msm.clone().eval::<ReferenceBackend>());
 
                     // The real transcript and round folds agree. Precisely
                     // the unaccounted-for blind remains in the final MSM;
                     // reinstating a free cancellation term would accept it.
                     msm.append_term(-blind, base);
-                    assert!(msm.eval());
+                    assert!(msm.eval::<ReferenceBackend>());
                 }
             }
 
@@ -203,7 +215,7 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let mut rng = StdRng::seed_from_u64(0x463);
                 let poly = random_poly(1 << K, &mut rng);
-                let commitment = params.commit(&poly).to_affine();
+                let commitment = params.commit::<ReferenceBackend>(&poly).to_affine();
                 let x = F::from(7);
                 let value = evaluate_iter(&poly, x);
 
@@ -221,7 +233,7 @@ macro_rules! ipa_tests {
                     let mut mask = random_poly(1 << K, &mut rng);
                     let mask_value = evaluate_iter(&mask, x);
                     mask[0] += mask_at_x - mask_value;
-                    let s_commitment = params.commit(&mask).to_affine();
+                    let s_commitment = params.commit::<ReferenceBackend>(&mask).to_affine();
                     side.write_point(s_commitment).unwrap();
                     let xi = side.squeeze_challenge().unwrap();
                     let z = side.squeeze_challenge().unwrap();
@@ -273,7 +285,7 @@ macro_rules! ipa_tests {
                     };
                     side.write_scalar(proof.c).unwrap();
                     let mut msm = verify(&params, commitment, x, claimed, &proof).use_challenges();
-                    assert!(!msm.clone().eval());
+                    assert!(!msm.clone().eval::<ReferenceBackend>());
 
                     // Control: cancel exactly the remaining U coefficient.
                     // With the round terms present, the residual binds
@@ -284,7 +296,7 @@ macro_rules! ipa_tests {
                         z * proof.c * powers[0]
                     };
                     msm.add_to_u_scalar(correction);
-                    assert!(msm.eval());
+                    assert!(msm.eval::<ReferenceBackend>());
                 }
             }
 
@@ -303,7 +315,7 @@ macro_rules! ipa_tests {
                 for round in 0..K as usize {
                     let mut transcript = ZeroRoundTranscript { round, drawn: 0 };
                     assert!(matches!(
-                        prover::create_proof(
+                        prover::create_proof::<ReferenceBackend, _>(
                             &params,
                             &mut rng,
                             &mut transcript,
@@ -342,7 +354,9 @@ macro_rules! ipa_tests {
                 let params = params(K);
                 let (_, x, v, proof) = opening(&params, 5);
                 let mut rng = StdRng::seed_from_u64(6);
-                let other = params.commit(&random_poly(1 << K, &mut rng)).to_affine();
+                let other = params
+                    .commit::<ReferenceBackend>(&random_poly(1 << K, &mut rng))
+                    .to_affine();
                 assert!(!check(&params, other, x, v, &proof));
             }
 
@@ -389,7 +403,7 @@ macro_rules! ipa_tests {
                 // it checks the opening at, so its challenges diverge from the
                 // prover's.
                 let guard = verify_seeing(&params, commitment, x + F::ONE, x, v, &proof).unwrap();
-                assert!(!guard.use_challenges().eval());
+                assert!(!guard.use_challenges().eval::<ReferenceBackend>());
             }
 
             #[test]
@@ -398,14 +412,14 @@ macro_rules! ipa_tests {
                 let (commitment, x, v, proof) = opening(&params, 11);
                 let guard = verify(&params, commitment, x, v, &proof);
 
-                let g = guard.compute_g();
+                let g = guard.compute_g::<ReferenceBackend>();
                 let (msm, accumulator) = guard.clone().use_g(g);
-                assert!(msm.eval());
+                assert!(msm.eval::<ReferenceBackend>());
                 assert_eq!(accumulator.g, g);
                 assert_eq!(accumulator.u.len(), K as usize);
 
                 let (msm, _) = guard.use_g(params.g[0]);
-                assert!(!msm.eval());
+                assert!(!msm.eval::<ReferenceBackend>());
             }
 
             #[test]
@@ -429,7 +443,7 @@ macro_rules! ipa_tests {
                 let mut rng = StdRng::seed_from_u64(13);
                 let coeffs = random_poly(TestRank::num_coeffs(), &mut rng);
 
-                let ipa = params.commit(&coeffs).to_affine();
+                let ipa = params.commit::<ReferenceBackend>(&coeffs).to_affine();
                 let native = sparse::Polynomial::<F, TestRank>::from_coeffs(coeffs)
                     .commit_to_affine(generators());
                 assert_eq!(ipa, native);
@@ -457,10 +471,12 @@ macro_rules! ipa_tests {
 
                 // Include empty, small and large inputs, and lengths that
                 // do not divide evenly among the workers.
-                let expected: Vec<_> = [0, 1, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1025, 8193]
-                    .into_iter()
-                    .map(|n| (n, C::msm(&scalars[..n], &bases[..n])))
-                    .collect();
+                let expected: Vec<_> = [
+                    0, 1, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1025, 8193,
+                ]
+                .into_iter()
+                .map(|n| (n, C::msm(&scalars[..n], &bases[..n])))
+                .collect();
 
                 // Separate cancellation pairs with one zero term in the middle.
                 let cancelling_scalars: Vec<_> = scalars[..256]
@@ -478,9 +494,16 @@ macro_rules! ipa_tests {
 
                 let check = || {
                     for &(n, expected) in &expected {
-                        assert_eq!(multiexp::<_, ReferenceBackend>(&scalars[..n], &bases[..n]), expected, "MSM length {n}");
+                        assert_eq!(
+                            multiexp::<_, ReferenceBackend>(&scalars[..n], &bases[..n]),
+                            expected,
+                            "MSM length {n}"
+                        );
                     }
-                    assert!(multiexp::<_, ReferenceBackend>(&cancelling_scalars, &cancelling_bases).is_identity());
+                    assert!(
+                        multiexp::<_, ReferenceBackend>(&cancelling_scalars, &cancelling_bases)
+                            .is_identity()
+                    );
                 };
 
                 #[cfg(feature = "multicore")]
@@ -533,37 +556,37 @@ macro_rules! ipa_tests {
                 let mut a = MSM::new(&params);
                 a.append_term(F::ONE, base);
                 // a = [1] P
-                assert!(!a.clone().eval());
+                assert!(!a.clone().eval::<ReferenceBackend>());
                 a.append_term(F::ONE, base);
                 // a = [1+1] P
-                assert!(!a.clone().eval());
+                assert!(!a.clone().eval::<ReferenceBackend>());
                 a.append_term(-F::ONE, base_viol);
                 // a = [1+1] P + [-1] 2P
-                assert!(a.clone().eval());
+                assert!(a.clone().eval::<ReferenceBackend>());
                 let b = a.clone();
 
                 // Append a point that is the negation of an existing one.
                 a.append_term(F::from(4), -base);
                 // a = [1+1-4] P + [-1] 2P
-                assert!(!a.clone().eval());
+                assert!(!a.clone().eval::<ReferenceBackend>());
                 a.append_term(F::from(2), base_viol);
                 // a = [1+1-4] P + [-1+2] 2P
-                assert!(a.clone().eval());
+                assert!(a.clone().eval::<ReferenceBackend>());
 
                 // Add two MSMs with common bases.
                 a.scale(F::from(3));
                 a.add_msm(&b);
                 // a = [3*(1+1)+(1+1-4)] P + [3*(-1)+(-1+2)] 2P
-                assert!(a.clone().eval());
+                assert!(a.clone().eval::<ReferenceBackend>());
 
                 let mut c = MSM::new(&params);
                 c.append_term(F::from(2), base);
                 c.append_term(F::ONE, -base_viol);
                 // c = [2] P + [1] (-2P)
-                assert!(c.clone().eval());
+                assert!(c.clone().eval::<ReferenceBackend>());
                 // Add two MSMs with bases that differ only in sign.
                 a.add_msm(&c);
-                assert!(a.eval());
+                assert!(a.eval::<ReferenceBackend>());
             }
 
             #[test]

@@ -28,10 +28,10 @@ use crate::{SelectableBackend, multicore::parallelize};
 /// opening v, and the point x. It's probably also nice for the transcript
 /// to have seen the elliptic curve description and the URS, if you want to
 /// be rigorous.
-pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>, B: SelectableBackend>(
-    params: &Params<C, B>,
-    mut rng: R,
-    transcript: &mut T,
+pub fn create_proof<B: SelectableBackend, C: Affine>(
+    params: &Params<C>,
+    mut rng: impl CryptoRng,
+    transcript: &mut impl IpaTranscript<C>,
     p_poly: &[C::Scalar],
     x_3: C::Scalar,
 ) -> Result<IpaProof<C>> {
@@ -50,7 +50,7 @@ pub fn create_proof<C: Affine, R: CryptoRng, T: IpaTranscript<C>, B: SelectableB
     s_poly[0] -= &s_at_x3;
 
     // Write a commitment to the random polynomial to the transcript
-    let s_poly_commitment = params.commit(&s_poly).to_affine();
+    let s_poly_commitment = params.commit::<B>(&s_poly).to_affine();
     transcript.write_point(s_poly_commitment)?;
 
     // Challenge that will ensure that the prover cannot change P but can only

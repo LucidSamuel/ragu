@@ -33,8 +33,8 @@ fn open<P: Affine, R: Rank, B: SelectableBackend, T: IpaTranscript<P>, RNG: Cryp
 ) -> Result<(Batch<P>, IpaProof<P>)> {
     let (batch, witness) =
         batch::batch::<_, R, B, _>(polys, &openings.claims, generators, transcript)?;
-    let params = Params::with_k(generators, u, R::RANK).with_backend::<B>();
-    let opening = ipa::create_proof(&params, rng, transcript, &witness.p, witness.u)?;
+    let params = Params::with_k(generators, u, R::RANK);
+    let opening = ipa::create_proof::<B, _>(&params, rng, transcript, &witness.p, witness.u)?;
     Ok((batch, opening))
 }
 
