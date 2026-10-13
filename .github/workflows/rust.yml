@@ -249,11 +249,16 @@ jobs:
       - name: Fuzz target census
         run: qa/fuzz/check_targets.sh
 
+      # `--locked` on every cargo call in this workspace: `qa/fuzz` has its
+      # own Cargo.lock, and until now the cron's `circuit_lint --locked` was
+      # the only strict reader of it. A dependency added to a workspace crate
+      # without regenerating that lock passed PR CI and then failed every
+      # scheduled campaign at the lint step (#887).
       - name: Test fuzz support library
         working-directory: qa/fuzz
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
-        run: cargo test --lib
+        run: cargo test --locked --lib
 
       # These ignored library tests include the fixed mutation sweeps and
       # bounded generated cases. Execute them here on every Rust/fuzz PR.
@@ -275,7 +280,7 @@ jobs:
         working-directory: qa/fuzz
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
-        run: cargo check --bins
+        run: cargo check --locked --bins
 
   docs:
     name: docs

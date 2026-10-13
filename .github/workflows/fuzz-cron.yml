@@ -24,9 +24,11 @@ on:
   workflow_dispatch:
     inputs:
       duration:
-        description: 'Seconds per target (default 18000 = 5 hours)'
+        # Empty by default so each target keeps its own budget (18000 s,
+        # or the matrix override); a value here applies to every target.
+        description: 'Seconds per target (empty = per-target default, 18000 = 5 hours)'
         required: false
-        default: '18000'
+        default: ''
       use_dict:
         description: 'Pass -dict=dict.txt to libFuzzer'
         type: boolean
@@ -121,6 +123,20 @@ jobs:
           - fuzz_internal_circuits
           - fuzz_completeness
           - fuzz_registry
+        # Per-target overrides; everything else takes the defaults the run
+        # step spells out.
+        include:
+          # Costs seconds per input, so some units cross the 120-second
+          # default and libFuzzer files them as timeouts rather than as
+          # slow inputs (#887).
+          - target: fuzz_pcd_lifecycle
+            input_timeout: 600
+          # Synthesizes real circuits. After the Udon migration the build,
+          # a five-hour campaign and the bounded cmin no longer fit under
+          # the six-hour ceiling, and the cancellation lands before the
+          # corpus is saved, so the next run restores a stale cache (#887).
+          - target: fuzz_internal_circuits
+            duration: 14400
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -178,7 +194,8 @@ jobs:
       - name: Run fuzz target
         working-directory: qa/fuzz
         env:
-          DURATION: ${{ github.event.inputs.duration || '18000' }}
+          DURATION: ${{ github.event.inputs.duration || matrix.duration || '18000' }}
+          INPUT_TIMEOUT: ${{ matrix.input_timeout || '120' }}
           USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
           # Route the toolchain through env (rustup picks it up
           # automatically) rather than `cargo +TOOLCHAIN`, so the
@@ -216,15 +233,14 @@ jobs:
           # implicit, an OOM or a hang reads as an unexplained job failure.
           # These are deliberately generous — this campaign hunts logic bugs,
           # and `hardening` below is where tight limits do the squeezing.
-          # `fuzz_internal_circuits` synthesizes real circuits and can spend
-          # seconds on a single input, so the per-input timeout has to clear
-          # that by a wide margin.
+          # Targets that need more per-input time or a shorter campaign to
+          # fit the job ceiling say so in the matrix `include` above.
           cargo fuzz run --fuzz-dir . "$FUZZ_TARGET" $CORPUS_DIRS -- \
             $DICT_FLAG \
             -max_len=1024 \
             -rss_limit_mb=4096 \
             -malloc_limit_mb=2048 \
-            -timeout=120 \
+            -timeout="$INPUT_TIMEOUT" \
             -max_total_time="$DURATION" 2>&1 | tee fuzz-run.log
 
       - name: Save fuzz corpus
@@ -292,7 +308,8 @@ jobs:
         if: always()
         working-directory: qa/fuzz
         env:
-          DURATION: ${{ github.event.inputs.duration || '18000' }}
+          DURATION: ${{ github.event.inputs.duration || matrix.duration || '18000' }}
+          INPUT_TIMEOUT: ${{ matrix.input_timeout || '120' }}
           USE_DICT: ${{ github.event.inputs.use_dict || 'false' }}
           FUZZ_TARGET: ${{ matrix.target }}
           RUN_ID: ${{ github.run_id }}
@@ -303,6 +320,7 @@ jobs:
             echo "Target:   ${FUZZ_TARGET}"
             echo "Run:      ${RUN_ID} (${EVENT_NAME})"
             echo "Duration: ${DURATION}s"
+            echo "Timeout:  ${INPUT_TIMEOUT}s per input"
             echo "Dict:     ${USE_DICT}"
             echo ""
             echo "=== Early NEW coverage events (up to 20) ==="
@@ -331,7 +349,11 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: stats-${{ matrix.target }}
-          path: qa/fuzz/fuzz-stats-${{ matrix.target }}.txt
+          # The full libFuzzer log rides along so a failure with no crash
+          # artifact can still be read after the job log expires.
+          path: |
+            qa/fuzz/fuzz-stats-${{ matrix.target }}.txt
+            qa/fuzz/fuzz-run.log
           # Stats are tiny; keep them longer than crashes so we have a
           # historical record across the 30-day crash-artifact window.
           retention-days: 90
