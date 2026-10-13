@@ -133,9 +133,29 @@ jobs:
             echo "run-id=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          RUN_ID=$(gh api \
-            "repos/${REPO}/actions/workflows/fuzz-cron.yml/runs?status=completed&per_page=20" \
-            --jq '[.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure")][0].id // empty')
+          # The newest completed campaign is not necessarily one that
+          # uploaded a corpus: a run that died at source lint has no
+          # artifacts at all, and taking its id made every established
+          # target look as if it had never been fuzzed (#887). Walk back to
+          # the newest run that still holds this target's corpus. Ten runs
+          # is three weeks of campaigns, and keeps the per-job API calls
+          # well inside the token's hourly budget across the matrix.
+          # Each API call lands in its own assignment so a failed request
+          # stops the step under `set -e` instead of reading as "no corpus"
+          # (an empty run list) or "has a corpus" (an empty count).
+          RUNS=$(gh api \
+            "repos/${REPO}/actions/workflows/fuzz-cron.yml/runs?status=completed&per_page=10" \
+            --jq '.workflow_runs[] | select(.conclusion == "success" or .conclusion == "failure") | .id')
+          RUN_ID=""
+          for id in $RUNS; do
+            COUNT=$(gh api "repos/${REPO}/actions/runs/${id}/artifacts?name=corpus-${TARGET}" \
+              --jq '[.artifacts[] | select(.expired | not)] | length')
+            case "$COUNT" in
+              0) ;;
+              [1-9]*) RUN_ID="$id"; break ;;
+              *) echo "::error::unexpected artifact count '${COUNT}' for run ${id}"; exit 1 ;;
+            esac
+          done
           if [ -z "$RUN_ID" ]; then
             echo "No completed fuzz-cron run to take a corpus from."
           else
