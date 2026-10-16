@@ -37,8 +37,12 @@ use crate::{
 static TRACKING_MSM_CALLS: AtomicUsize = AtomicUsize::new(0);
 static TRACKING_FFT_CALLS: AtomicUsize = AtomicUsize::new(0);
 static TRACKING_IFFT_CALLS: AtomicUsize = AtomicUsize::new(0);
+static TRACKING_WORK_CALLS: AtomicUsize = AtomicUsize::new(0);
+static TRACKING_MSM_PAIRS: AtomicUsize = AtomicUsize::new(0);
+static TRACKING_MSM_TRIPLES: AtomicUsize = AtomicUsize::new(0);
 
-/// Test backend that records MSM and transform dispatch, including worker threads.
+/// Test backend that records MSM, transform and independent-work dispatch,
+/// including worker threads.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct TrackingBackend;
 
@@ -47,18 +51,33 @@ impl TrackingBackend {
         TRACKING_MSM_CALLS.store(0, Ordering::Relaxed);
         TRACKING_FFT_CALLS.store(0, Ordering::Relaxed);
         TRACKING_IFFT_CALLS.store(0, Ordering::Relaxed);
+        TRACKING_WORK_CALLS.store(0, Ordering::Relaxed);
+        TRACKING_MSM_PAIRS.store(0, Ordering::Relaxed);
+        TRACKING_MSM_TRIPLES.store(0, Ordering::Relaxed);
     }
 
-    fn calls() -> [usize; 3] {
+    fn calls() -> [usize; 4] {
         [
             TRACKING_MSM_CALLS.load(Ordering::Relaxed),
             TRACKING_FFT_CALLS.load(Ordering::Relaxed),
             TRACKING_IFFT_CALLS.load(Ordering::Relaxed),
+            TRACKING_WORK_CALLS.load(Ordering::Relaxed),
         ]
     }
 }
 
 impl Backend for TrackingBackend {
+    fn map<I: IntoIterator, T: Send>(
+        inputs: I,
+        work: impl Fn(I::Item) -> T + Sync,
+    ) -> impl Iterator<Item = T>
+    where
+        I::Item: Send,
+    {
+        TRACKING_WORK_CALLS.fetch_add(1, Ordering::Relaxed);
+        ReferenceBackend::map(inputs, work)
+    }
+
     fn msm<
         'a,
         C: udon::curve::Affine,
@@ -75,6 +94,30 @@ impl Backend for TrackingBackend {
         ReferenceBackend::msm(coeffs, bases)
     }
 
+    fn msm_batch<
+        'a,
+        C: Affine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+        const N: usize,
+    >(
+        inputs: [(A, Bases); N],
+    ) -> [C::Projective; N]
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        match N {
+            2 => {
+                TRACKING_MSM_PAIRS.fetch_add(1, Ordering::Relaxed);
+            }
+            3 => {
+                TRACKING_MSM_TRIPLES.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+        inputs.map(|(coeffs, bases)| Self::msm(coeffs, bases))
+    }
+
     fn fft<F: Field>(domain: Domain<F>, values: &mut Vec<F>) {
         TRACKING_FFT_CALLS.fetch_add(1, Ordering::Relaxed);
         ReferenceBackend::fft(domain, values);
@@ -83,6 +126,11 @@ impl Backend for TrackingBackend {
     fn ifft<F: Field>(domain: Domain<F>, values: &mut Vec<F>) {
         TRACKING_IFFT_CALLS.fetch_add(1, Ordering::Relaxed);
         ReferenceBackend::ifft(domain, values);
+    }
+
+    fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+        TRACKING_WORK_CALLS.fetch_add(1, Ordering::Relaxed);
+        ReferenceBackend::for_each_mut(values, work);
     }
 }
 
@@ -871,24 +919,45 @@ fn selected_backend_dispatch_reaches_protocol_phases() {
     TrackingBackend::reset_calls();
     let (fused, ()) = app.fuse(&mut rng, UnitStep, (), left, right).unwrap();
     // Fuse interpolates registry restrictions with IFFT; it needs no FFT.
-    let [msm, _, ifft] = TrackingBackend::calls();
+    let [msm, _, ifft, _] = TrackingBackend::calls();
     assert_dispatch("Fuse", &[("MSM", msm), ("IFFT", ifft)]);
 
     TrackingBackend::reset_calls();
     assert!(app.verify(&fused, &mut rng).unwrap());
-    let [msm, _, _] = TrackingBackend::calls();
+    let [msm, _, _, _] = TrackingBackend::calls();
     assert_dispatch("uncompressed verification", &[("MSM", msm)]);
 
     TrackingBackend::reset_calls();
     let compressed = app.compress(&fused, &mut rng).unwrap();
-    let [msm, fft, ifft] = TrackingBackend::calls();
-    assert_dispatch("compression", &[("MSM", msm), ("FFT", fft), ("IFFT", ifft)]);
+    let [msm, fft, ifft, work] = TrackingBackend::calls();
+    assert_dispatch(
+        "compression",
+        &[
+            ("MSM", msm),
+            ("FFT", fft),
+            ("IFFT", ifft),
+            ("independent work", work),
+        ],
+    );
 
     // Compressed verification needs MSMs but does not require transforms.
     TrackingBackend::reset_calls();
     assert!(app.verify_compressed(&compressed).unwrap());
-    let [msm, _, _] = TrackingBackend::calls();
-    assert_dispatch("compressed verification", &[("MSM", msm)]);
+    let [msm, _, _, work] = TrackingBackend::calls();
+    assert_dispatch(
+        "compressed verification",
+        &[("MSM", msm), ("independent work", work)],
+    );
+    assert_eq!(
+        TRACKING_MSM_PAIRS.load(Ordering::Relaxed),
+        1,
+        "stage commitments"
+    );
+    assert_eq!(
+        TRACKING_MSM_TRIPLES.load(Ordering::Relaxed),
+        2,
+        "folded commitments on both curves"
+    );
 }
 
 /// The transcript's bridge commitments go through the selected backend, so a

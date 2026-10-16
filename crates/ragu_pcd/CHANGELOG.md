@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Compressed verification batches the independent MSMs for its three derived
+  fold commitments on each curve and its two recomputed nested stages through
+  the selected verifier backend. Compression shares the fold-commitment batch.
 - Arithmetic and MSMs now use Udon from Zakura Common; the `native-msm`
   feature is no longer needed.
 - Baked Pasta parameters are loaded through `ragu_pcd::pasta::baked`.
