@@ -16,7 +16,11 @@ use ragu_core::{
 use ragu_primitives::allocator::Standard;
 use ragu_testing::strategies::{bounded_edge_usize, edge_u64, nonzero_prime_field_element};
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use udon::{curve::Affine, fft::Domain, field::Field};
+use udon::{
+    curve::{Affine, Projective},
+    fft::Domain,
+    field::Field,
+};
 
 use crate::{
     Application, ApplicationBuilder, CompressedPcd, CompressedProof, Pcd, Proof, SelectableBackend,
@@ -722,6 +726,123 @@ fn check_compressed_pcd_equivalence(
     Ok(())
 }
 
+static CALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Clone, Copy, Debug, Default)]
+struct CustomBackend;
+
+impl Backend for CustomBackend {
+    fn msm<
+        'a,
+        C: Affine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+    >(
+        coeffs: A,
+        bases: Bases,
+    ) -> C::Projective
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        CALLS.fetch_add(1, Ordering::Relaxed);
+        ReferenceBackend::msm(coeffs, bases)
+    }
+}
+
+#[test]
+fn batch_preserves_truncation_order_and_default_msm_override() {
+    fn check<C: Affine>() {
+        let scalars = [
+            C::Scalar::ONE,
+            C::Scalar::from(2),
+            C::Scalar::from(3),
+            C::Scalar::ZERO,
+        ];
+        let generator = C::generator();
+        let bases = [generator, -generator];
+        let inputs = [
+            (&scalars[..], &bases[..]),
+            (&scalars[..1], &bases[..]),
+            (&scalars[..0], &bases[..]),
+            (&scalars[..], &bases[..0]),
+            (&scalars[3..], &bases[..]),
+        ];
+        let expected = inputs.map(|(scalars, bases)| ReferenceBackend::msm(scalars, bases));
+        assert_eq!(ReferenceBackend::msm_batch(inputs), expected);
+        assert_eq!(AcceleratedBackend::msm_batch(inputs), expected);
+        assert_eq!(AcceleratedProver::msm_batch(inputs), expected);
+        CALLS.store(0, Ordering::Relaxed);
+        assert_eq!(CustomBackend::msm_batch(inputs), expected);
+        assert_eq!(CALLS.load(Ordering::Relaxed), inputs.len());
+        assert!(expected[2..].iter().all(|point| point.is_identity()));
+
+        let empty: [(&[C::Scalar], &[C]); 0] = [];
+        assert_eq!(ReferenceBackend::msm_batch(empty), []);
+        assert_eq!(AcceleratedBackend::msm_batch(empty), []);
+        assert_eq!(AcceleratedProver::msm_batch(empty), []);
+    }
+
+    check::<ragu_core::pasta::EpAffine>();
+    check::<ragu_core::pasta::EqAffine>();
+}
+
+#[test]
+fn serial_map_prepares_one_input_at_a_time() {
+    fn check<B: Backend>() {
+        let completed = AtomicUsize::new(0);
+        let inputs = (0..5).inspect(|&index| {
+            assert_eq!(completed.load(Ordering::Relaxed), index);
+        });
+        let results = B::map(inputs, |index| {
+            completed.fetch_add(1, Ordering::Relaxed);
+            index * 7
+        });
+        assert_eq!(completed.load(Ordering::Relaxed), 0);
+        assert_eq!(results.collect::<Vec<_>>(), [0, 7, 14, 21, 28]);
+        assert_eq!(completed.load(Ordering::Relaxed), 5);
+    }
+    check::<ReferenceBackend>();
+    #[cfg(not(feature = "multicore"))]
+    {
+        check::<AcceleratedBackend>();
+        check::<AcceleratedProver>();
+    }
+}
+
+#[test]
+fn backend_map_preserves_owned_inputs_and_result_order() {
+    fn check<B: Backend>(count: usize) {
+        let calls: Vec<_> = (0..count).map(|_| AtomicUsize::new(0)).collect();
+        // Non-Copy inputs and outputs exercise ownership across worker threads.
+        let inputs = (0..count).map(|index| alloc::vec![index]);
+        let results: Vec<_> = B::map(inputs, |mut input| {
+            let index = input[0];
+            calls[index].fetch_add(1, Ordering::Relaxed);
+            input.push(index * 7);
+            input
+        })
+        .collect();
+        let expected: Vec<_> = (0..count)
+            .map(|index| alloc::vec![index, index * 7])
+            .collect();
+        assert_eq!(results, expected);
+        assert!(calls.iter().all(|calls| calls.load(Ordering::Relaxed) == 1));
+    }
+    for workers in [1, 4] {
+        maybe_rayon::ThreadPoolBuilder::new()
+            .num_threads(workers)
+            .build()
+            .unwrap()
+            .install(|| {
+                for count in [0, 1, 17, 100] {
+                    check::<ReferenceBackend>(count);
+                    check::<AcceleratedBackend>(count);
+                    check::<AcceleratedProver>(count);
+                }
+            });
+    }
+}
+
 #[test]
 fn selected_backend_dispatch_reaches_protocol_phases() {
     let app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
@@ -1267,6 +1388,98 @@ mod proof_equivalence {
             }
 
             None
+        }
+    }
+}
+
+mod independent_polynomials {
+    use alloc::vec::Vec;
+
+    use ragu_acceleration::{AcceleratedBackend, AcceleratedProver};
+    use ragu_backend::ReferenceBackend;
+    use ragu_circuits::polynomials::TestRank;
+    use ragu_core::{Cycle, pasta::Pasta};
+
+    use super::*;
+
+    fn evaluate<B: Backend, F: Field, R: Rank, const N: usize>(
+        inputs: [(&sparse::Polynomial<F, R>, F); N],
+    ) -> Vec<F> {
+        B::map(inputs, |(poly, point)| B::sparse_eval(poly, point)).collect()
+    }
+
+    fn check<C: Affine>(generators: &impl FixedGenerators<C>) {
+        let polys: [_; 3] = core::array::from_fn(|i| {
+            sparse::Polynomial::<C::Scalar, TestRank>::from_coeffs(
+                (0..TestRank::num_coeffs())
+                    .map(|degree| {
+                        if i == 1 || (degree + i) % 3 == 0 {
+                            C::Scalar::ZERO
+                        } else {
+                            C::Scalar::from((degree * 7 + i + 1) as u64)
+                        }
+                    })
+                    .collect(),
+            )
+        });
+        let expected = polys
+            .each_ref()
+            .map(|poly| ReferenceBackend::sparse_commit(poly, generators));
+        assert_eq!(
+            ReferenceBackend::sparse_commit_batch(polys.each_ref(), generators),
+            expected
+        );
+        assert_eq!(
+            AcceleratedBackend::sparse_commit_batch(polys.each_ref(), generators),
+            expected
+        );
+        assert_eq!(
+            AcceleratedProver::sparse_commit_batch(polys.each_ref(), generators),
+            expected
+        );
+        let empty: [&sparse::Polynomial<C::Scalar, TestRank>; 0] = [];
+        assert_eq!(
+            AcceleratedBackend::sparse_commit_batch(empty, generators),
+            []
+        );
+
+        let inputs = [
+            (&polys[2], C::Scalar::from(7)),
+            (&polys[0], C::Scalar::ZERO),
+            (&polys[1], C::Scalar::ONE),
+            (&polys[2], C::Scalar::from(2)),
+        ];
+        // A dense Horner evaluation is independent of the sparse evaluator.
+        let expected = inputs.map(|(poly, point)| {
+            let coefficients: Vec<_> = poly.iter_coeffs().collect();
+            coefficients
+                .into_iter()
+                .rev()
+                .fold(C::Scalar::ZERO, |sum, coefficient| {
+                    sum * point + coefficient
+                })
+        });
+        assert_eq!(evaluate::<ReferenceBackend, _, _, 4>(inputs), expected);
+        assert_eq!(evaluate::<AcceleratedBackend, _, _, 4>(inputs), expected);
+        assert_eq!(evaluate::<AcceleratedProver, _, _, 4>(inputs), expected);
+        assert_eq!(
+            evaluate::<AcceleratedBackend, C::Scalar, TestRank, 0>([]),
+            []
+        );
+    }
+
+    #[test]
+    fn independent_polynomials_preserve_results_and_order() {
+        let params = crate::pasta::baked();
+        for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+            maybe_rayon::ThreadPoolBuilder::new()
+                .num_threads(workers)
+                .build()
+                .unwrap()
+                .install(|| {
+                    check::<ragu_core::pasta::EqAffine>(Pasta::host_generators(params));
+                    check::<ragu_core::pasta::EpAffine>(Pasta::nested_generators(params));
+                });
         }
     }
 }
