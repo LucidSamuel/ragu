@@ -93,6 +93,12 @@ name = "criterion_verify"
 path = "benches/criterion/verify.rs"
 harness = false
 
+[[bench]]
+name = "criterion_compress"
+path = "benches/criterion/compress.rs"
+harness = false
+required-features = ["multicore"]
+
 [[test]]
 name = "corruption"
 required-features = ["unstable-fuzzing"]
