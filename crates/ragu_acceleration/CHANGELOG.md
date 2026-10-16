@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Fuse uses backend-selected MSM batches and parallel error-term and polynomial
+  evaluation scheduling.
 - Compression error terms and per-claim verifier evaluations use Udon's scoped
   scheduler; the reference backend evaluates them serially.
 - Independent Pasta MSMs share Udon's batch planner through `AcceleratedBackend`;

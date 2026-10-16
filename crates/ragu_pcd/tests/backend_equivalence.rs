@@ -891,6 +891,35 @@ fn backend_map_preserves_owned_inputs_and_result_order() {
     }
 }
 
+/// The default iterator must not prepare a parallel work buffer in Fuse.
+#[derive(Clone, Copy, Debug, Default)]
+struct SerialFuseBackend;
+
+impl Backend for SerialFuseBackend {
+    fn for_each_mut<T: Send>(_values: &mut [T], _work: impl Fn(usize, &mut T) + Sync) {
+        panic!("the serial Fuse path must retain its original iterators")
+    }
+}
+
+impl crate::backend::TestSealed for SerialFuseBackend {
+    type Verifier = ReferenceBackend;
+}
+
+#[test]
+fn serial_fuse_keeps_individual_msms_and_original_iteration() {
+    let app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
+        .with_backend::<SerialFuseBackend>()
+        .register(UnitStep)
+        .unwrap()
+        .finalize(ragu_pcd::pasta::baked())
+        .unwrap();
+    let mut rng = StdRng::seed_from_u64(0);
+    let (left, ()) = app.seed(&mut rng, UnitStep, ()).unwrap();
+    let (right, ()) = app.seed(&mut rng, UnitStep, ()).unwrap();
+    let (fused, ()) = app.fuse(&mut rng, UnitStep, (), left, right).unwrap();
+    assert!(app.verify(&fused, &mut rng).unwrap());
+}
+
 #[test]
 fn selected_backend_dispatch_reaches_protocol_phases() {
     let app = ApplicationBuilder::<Pasta, ProductionRank, TEST_HEADER_SIZE>::new()
@@ -919,8 +948,16 @@ fn selected_backend_dispatch_reaches_protocol_phases() {
     TrackingBackend::reset_calls();
     let (fused, ()) = app.fuse(&mut rng, UnitStep, (), left, right).unwrap();
     // Fuse interpolates registry restrictions with IFFT; it needs no FFT.
-    let [msm, _, ifft, _] = TrackingBackend::calls();
-    assert_dispatch("Fuse", &[("MSM", msm), ("IFFT", ifft)]);
+    let [msm, _, ifft, work] = TrackingBackend::calls();
+    assert_dispatch(
+        "Fuse",
+        &[("MSM", msm), ("IFFT", ifft), ("independent work", work)],
+    );
+    assert_eq!(
+        TRACKING_MSM_PAIRS.load(Ordering::Relaxed),
+        2,
+        "Fuse registry commitment pairs"
+    );
 
     TrackingBackend::reset_calls();
     assert!(app.verify(&fused, &mut rng).unwrap());
