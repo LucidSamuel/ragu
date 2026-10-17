@@ -2,6 +2,11 @@
 //!
 //! Optimized implementations of Ragu's computational backend.
 //!
+//! Both types share a [`ragu_backend::Backend`] implementation. `ragu_pcd`'s sealed
+//! `SelectableBackend::Verifier` mapping pairs [`AcceleratedBackend`] with itself
+//! and [`AcceleratedProver`] with [`ragu_backend::ReferenceBackend`]. Ordinary and
+//! compressed verification call the mapped backend directly.
+//!
 //! Overrides fall back to the defaults of [`ragu_backend::Backend`] where a
 //! method has none. Independent Pasta MSMs share Udon's batch planner,
 //! scratch, and execution budget; the reference backend runs them separately.
