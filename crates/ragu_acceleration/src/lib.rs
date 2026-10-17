@@ -20,6 +20,7 @@
 
 extern crate alloc;
 
+#[cfg(feature = "multicore")]
 use alloc::vec::Vec;
 
 use ragu_backend::Backend;
@@ -45,10 +46,21 @@ pub struct AcceleratedBackend;
 #[derive(Clone, Copy, Debug, Default)]
 pub struct AcceleratedProver;
 
-// `AcceleratedProver` must forward every override to `AcceleratedBackend`,
-// one method per override, so the two impl blocks stay comparable and a new
-// override cannot be selected for proving while silently missing here.
-impl Backend for AcceleratedBackend {
+// Define the overrides once so both backends always use the same proving
+// kernels. `ragu_pcd` selects their verification backends separately.
+macro_rules! impl_accelerated_backends {
+    ($($method:item)*) => {
+        impl Backend for AcceleratedBackend {
+            $($method)*
+        }
+
+        impl Backend for AcceleratedProver {
+            $($method)*
+        }
+    };
+}
+
+impl_accelerated_backends! {
     #[cfg(feature = "multicore")]
     fn map<I: IntoIterator, T: Send>(
         inputs: I,
@@ -80,48 +92,10 @@ impl Backend for AcceleratedBackend {
     where
         Bases::IntoIter: Clone + Sync,
     {
-        let inputs = inputs.map(|(coeffs, bases)| {
-            let coeffs: Vec<_> = coeffs.into_iter().copied().collect();
-            let bases: Vec<_> = bases.into_iter().copied().collect();
-            let len = coeffs.len().min(bases.len());
-            (coeffs.into_iter().take(len), bases.into_iter().take(len))
-        });
-        ragu_core::msm_batch(inputs)
+        verifier::msm_batch(inputs)
     }
 
     fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
         verifier::for_each_mut(values, work);
-    }
-}
-
-impl Backend for AcceleratedProver {
-    #[cfg(feature = "multicore")]
-    fn map<I: IntoIterator, T: Send>(
-        inputs: I,
-        work: impl Fn(I::Item) -> T + Sync,
-    ) -> impl Iterator<Item = T>
-    where
-        I::Item: Send,
-    {
-        AcceleratedBackend::map(inputs, work)
-    }
-
-    fn msm_batch<
-        'a,
-        C: Affine,
-        A: IntoIterator<Item = &'a C::Scalar>,
-        Bases: IntoIterator<Item = &'a C>,
-        const N: usize,
-    >(
-        inputs: [(A, Bases); N],
-    ) -> [C::Projective; N]
-    where
-        Bases::IntoIter: Clone + Sync,
-    {
-        AcceleratedBackend::msm_batch(inputs)
-    }
-
-    fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
-        AcceleratedBackend::for_each_mut(values, work);
     }
 }

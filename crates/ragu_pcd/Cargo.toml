@@ -82,6 +82,7 @@ harness = false
 name = "criterion_fuse"
 path = "benches/criterion/fuse.rs"
 harness = false
+required-features = ["multicore"]
 
 [[bench]]
 name = "criterion_registry"

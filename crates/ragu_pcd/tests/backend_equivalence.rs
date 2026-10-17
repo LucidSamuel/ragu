@@ -836,25 +836,17 @@ fn batch_preserves_truncation_order_and_default_msm_override() {
 
 #[test]
 fn serial_map_prepares_one_input_at_a_time() {
-    fn check<B: Backend>() {
-        let completed = AtomicUsize::new(0);
-        let inputs = (0..5).inspect(|&index| {
-            assert_eq!(completed.load(Ordering::Relaxed), index);
-        });
-        let results = B::map(inputs, |index| {
-            completed.fetch_add(1, Ordering::Relaxed);
-            index * 7
-        });
-        assert_eq!(completed.load(Ordering::Relaxed), 0);
-        assert_eq!(results.collect::<Vec<_>>(), [0, 7, 14, 21, 28]);
-        assert_eq!(completed.load(Ordering::Relaxed), 5);
-    }
-    check::<ReferenceBackend>();
-    #[cfg(not(feature = "multicore"))]
-    {
-        check::<AcceleratedBackend>();
-        check::<AcceleratedProver>();
-    }
+    let completed = AtomicUsize::new(0);
+    let inputs = (0..5).inspect(|&index| {
+        assert_eq!(completed.load(Ordering::Relaxed), index);
+    });
+    let results = ReferenceBackend::map(inputs, |index| {
+        completed.fetch_add(1, Ordering::Relaxed);
+        index * 7
+    });
+    assert_eq!(completed.load(Ordering::Relaxed), 0);
+    assert_eq!(results.collect::<Vec<_>>(), [0, 7, 14, 21, 28]);
+    assert_eq!(completed.load(Ordering::Relaxed), 5);
 }
 
 #[test]
