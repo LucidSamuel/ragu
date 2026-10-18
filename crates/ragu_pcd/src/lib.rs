@@ -354,7 +354,9 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     }
 
     fn prevent_duplicate_suffixes<H: Header<C::CircuitField>>(&mut self) -> Result<()> {
-        if H::SUFFIX.is_internal() && TypeId::of::<H>() != TypeId::of::<()>() {
+        if H::SUFFIX.get() < header::NUM_INTERNAL_SUFFIXES as u64
+            && TypeId::of::<H>() != TypeId::of::<()>()
+        {
             return Err(Error::Initialization(
                 "only the unit Header () may use a reserved internal suffix".into(),
             ));

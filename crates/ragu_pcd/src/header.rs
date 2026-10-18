@@ -24,7 +24,7 @@ use udon::field::Field;
 ///
 /// [`Bootstrap`]: crate::step::internal::bootstrap::Bootstrap
 /// [`Step`]: crate::step::Step
-const NUM_INTERNAL_SUFFIXES: u8 = 3;
+pub(crate) const NUM_INTERNAL_SUFFIXES: u8 = 3;
 
 /// Internal representation of a [`Suffix`] distinguishing internal vs.
 /// application suffixes.
@@ -70,11 +70,6 @@ impl Suffix {
             HeaderSuffix::Internal(i) => i as u64,
             HeaderSuffix::Application(i) => (i + NUM_INTERNAL_SUFFIXES as usize) as u64,
         }
-    }
-
-    /// Returns true if this is an internal [`Header`] suffix.
-    pub(crate) const fn is_internal(&self) -> bool {
-        matches!(self.suffix, HeaderSuffix::Internal(_))
     }
 
     /// Creates a new internal-defined [`Header`] suffix. Only called internally
