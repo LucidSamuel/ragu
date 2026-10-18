@@ -35,7 +35,7 @@ flowchart TB
 
 The following diagram is a high-level dependency sketch for the main library
 crates in the Ragu workspace. It omits the placeholder `ragu_gadgets` crate,
-the `ragu_testing` test helpers, dev-dependencies, and most external utility
+the `ragu_testing` test helpers, dev-dependencies, and external utility
 dependencies. Arrows point
 from a crate to the crates it depends on. The arithmetic comes from outside
 the workspace: [`udon`](https://docs.rs/crate/zakura-udon/0.1.0/source/) implements the
@@ -53,7 +53,9 @@ flowchart BT
     prims["ragu_primitives<br/><i>standard library:<br/>gadgets, Poseidon, etc.</i>"]
     circuits["ragu_circuits<br/><i>protocol impl &<br/>circuit building</i>"]
     pcd["ragu_pcd<br/><i>recursive proof circuits,<br/>Ragu generator parameters</i>"]
-    ragu["ragu<br/><i>public API crate</i>"]
+    backend["ragu_backend<br/><i>kernels & reference backend</i>"]
+    acceleration["ragu_acceleration<br/><i>acceleration implementations</i>"]
+    ragu["ragu<br/><i>optional API mock</i>"]
 
     core --> udon
     core --> macros
@@ -67,21 +69,24 @@ flowchart BT
     pcd --> circuits
     pcd --> core
     pcd --> prims
-    ragu --> core
-    ragu --> prims
-    ragu --> circuits
-    ragu --> pcd
+    pcd --> backend
+    pcd --> acceleration
+    backend --> udon
+    backend --> core
+    backend --> circuits
+    acceleration --> udon
+    acceleration --> backend
+    ragu -.->|mock| core
+    ragu -.->|mock| udon
 ```
 
 ## Project Structure
 
 Ragu is developed as a Cargo workspace.
 
-* **`ragu`**: This is the primary crate (at the repository root) that is
-  intended for users to import. Most of the remaining crates are transitive
-  dependencies of `ragu`. This crate aims to present a stable and minimal
-  API for the entire construction, and may deliberately expose less
-  functionality than the other crates are capable of providing.
+* **`ragu`**: The repository-root crate provides an opt-in API mock through
+  its `mock` feature. Applications using the real proof implementation depend
+  on `ragu_pcd` and the circuit and primitive crates they use directly.
 * `crates/`
     * **`ragu_macros`**: Internal crate that contains procedural macros both
       used within the project and exposed to users in other crates.

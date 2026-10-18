@@ -13,6 +13,8 @@ scheduled.
 
 ## Quick start
 
+Run the following commands from `qa/fuzz`.
+
 ```bash
 # Run every target for 30 seconds, sequentially. ASAN off by default
 # (~70% throughput win on simulator-heavy targets).
