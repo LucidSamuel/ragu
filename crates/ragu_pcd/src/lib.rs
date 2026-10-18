@@ -12,6 +12,8 @@
 //! - [`header::Header`] — the trait that defines succinct state representations.
 //! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
 //! - [`CompressedProof`] / [`CompressedPcd`] — their compressed forms.
+//! - [`profile`] — the proof shapes: the standard profile wallets prove in,
+//!   and the aggregator profile that will carry decompression.
 //! - [`pasta`] — Ragu's fixed generators, derived and embedded at build time
 //!   with the `baked` feature.
 
@@ -41,6 +43,7 @@ mod internal;
 pub mod ipa;
 mod multicore;
 pub mod pasta;
+pub mod profile;
 mod proof;
 pub mod step;
 mod verify;
@@ -50,6 +53,7 @@ use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
 pub use compress::{CompressedPcd, CompressedProof};
 use header::Header;
+use profile::ProfiledCycle;
 pub use proof::{Pcd, Proof};
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::{
@@ -120,7 +124,7 @@ pub struct ApplicationBuilder<
     _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend> Default
+impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend> Default
     for ApplicationBuilder<'_, C, R, HEADER_SIZE, B>
 {
     fn default() -> Self {
@@ -128,7 +132,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend> Default
     }
 }
 
-impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     ApplicationBuilder<'params, C, R, HEADER_SIZE, B>
 {
     /// Create an empty [`ApplicationBuilder`] for proof-carrying data.
@@ -250,7 +254,7 @@ impl<'params, C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // 2. Internal circuits and masks
         // 3. Internal steps
         let (total_circuits, log2_circuits) =
-            internal::native::total_circuit_counts(self.num_application_steps);
+            internal::native::total_circuit_counts::<C::Profile>(self.num_application_steps);
 
         // First, register internal circuits and masks
         self.native_registry = internal::native::register_all::<C, R, HEADER_SIZE>(
@@ -404,7 +408,7 @@ pub struct Application<
     _marker: PhantomData<([(); HEADER_SIZE], B)>,
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Seed a new computation by running a [`Step`] declaring `()` for both of

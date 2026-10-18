@@ -18,16 +18,19 @@ use core::iter::once;
 
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Result, drivers::Driver};
-use ragu_primitives::Element;
+use ragu_primitives::{Element, vec::Len};
 use udon::field::Field;
 
 use super::{InternalCircuitIndex, NUM_INSTANCE_CIRCUITS, RxComponent, RxIndex};
-use crate::internal::claims::{Builder, Source, sum_polynomials};
+use crate::{
+    internal::claims::{Builder, Source, sum_polynomials},
+    profile::Profile,
+};
 
 /// Trait for processing nested claim values into accumulated outputs.
 ///
 /// This trait defines how to process rx values from a [`Source`].
-pub trait Processor<Rx> {
+pub trait Processor<P: Profile, Rx> {
     /// Processes a raw claim with `a` and `b` traces provided directly
     /// ($k(y) = c$).
     fn raw_claim(&mut self, a: Rx, b: Rx);
@@ -62,7 +65,8 @@ pub trait Processor<Rx> {
     ) -> Result<()>;
 }
 
-impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend> Processor<&'rx sparse::Polynomial<F, R>>
+impl<'m, 'rx, P: Profile, F: Field, R: Rank, B: ragu_backend::Backend>
+    Processor<P, &'rx sparse::Polynomial<F, R>>
     for Builder<'m, 'rx, Cow<'rx, sparse::Polynomial<F, R>>, F, R, B>
 {
     fn raw_claim(&mut self, a: &'rx sparse::Polynomial<F, R>, b: &'rx sparse::Polynomial<F, R>) {
@@ -75,7 +79,7 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend> Processor<&'rx sparse
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
     ) {
-        let circuit_id = id.circuit_index();
+        let circuit_id = id.circuit_index::<P>();
         let rx = sum_polynomials(rxs);
         self.circuit_impl(circuit_id, rx);
     }
@@ -85,7 +89,7 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend> Processor<&'rx sparse
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
     ) -> Result<()> {
-        let circuit_id = id.circuit_index();
+        let circuit_id = id.circuit_index::<P>();
         let folded = self.fold_bonding_groups(groups);
         self.bonding_impl(circuit_id, folded);
         Ok(())
@@ -104,10 +108,10 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend> Processor<&'rx sparse
 ///    and the loading circuit, each folded across proofs
 ///
 /// This ordering must match the ky_elements ordering from [`ky_values`].
-pub fn build<S, P>(source: &S, processor: &mut P) -> Result<()>
+pub fn build<P: Profile, S, Pr>(source: &S, processor: &mut Pr) -> Result<()>
 where
     S: Source<RxComponent = RxComponent>,
-    P: Processor<S::Rx>,
+    Pr: Processor<P, S::Rx>,
 {
     use RxComponent::{AbA, AbB, Rx};
 
@@ -116,7 +120,7 @@ where
         processor.raw_claim(a, b);
     }
 
-    for &id in &InternalCircuitIndex::ALL {
+    for id in InternalCircuitIndex::all::<P>() {
         use InternalCircuitIndex::*;
         match id {
             EndoscalingStep(step) => {
@@ -169,7 +173,7 @@ where
                 processor.bonding_claim(id, source.rx(Rx(RxIndex::PointsStage)))?;
             }
             PointsFinalStaged => {
-                let num_steps = super::NUM_ENDOSCALING_STEPS;
+                let num_steps = super::NumSteps::<P>::len();
                 let final_rxs = (0..num_steps)
                     .flat_map(|step| source.rx(Rx(RxIndex::EndoscalingStep(step as u32))));
                 processor.bonding_claim(id, final_rxs)?;
@@ -254,8 +258,8 @@ pub trait KySource {
 /// Build an iterator over $k(y)$ values in nested claim order: the
 /// [`ky_prefix`] of the raw and circuit claims, followed by infinite zeros
 /// (for stage checks).
-pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
-    ky_prefix(source).chain(core::iter::repeat(source.zero()))
+pub fn ky_values<P: Profile, S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    ky_prefix::<P, _>(source).chain(core::iter::repeat(source.zero()))
 }
 
 /// Build a finite iterator over the raw and circuit claims' $k(y)$ values,
@@ -267,8 +271,8 @@ pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
 ///   checks, interleaved across proofs exactly as [`build`] emits them)
 /// - `NUM_INSTANCE_CIRCUITS` copies of the per-proof unified $k(y)$ values
 ///   (for the instance circuit checks, interleaved the same way)
-pub fn ky_prefix<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
-    let num_steps = super::NUM_ENDOSCALING_STEPS;
+pub fn ky_prefix<P: Profile, S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    let num_steps = super::NumSteps::<P>::len();
 
     source
         .raw_c()

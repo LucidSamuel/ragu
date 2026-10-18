@@ -44,7 +44,9 @@ fn recomputed_stages_match_across_backends() {
     // commitment without changing the already replayed challenges.
     for stage in [nested::RxIndex::ChallengeStage, nested::RxIndex::BridgeAB] {
         let mut tampered = instance.clone();
-        let index = super::super::nested_position(nested::RxComponent::Rx(stage));
+        let index = super::super::nested_position::<crate::profile::Standard>(
+            nested::RxComponent::Rx(stage),
+        );
         tampered.nested[index] = -tampered.nested[index];
         check(&tampered, false);
     }

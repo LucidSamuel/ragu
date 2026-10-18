@@ -18,11 +18,14 @@ use ragu_circuits::{
     registry::CircuitIndex,
 };
 use ragu_core::{Result, drivers::Driver};
-use ragu_primitives::Element;
+use ragu_primitives::{Element, vec::Len};
 use udon::field::Field;
 
-use super::{InternalCircuitIndex, NUM_BINDERS, NUM_ENDOSCALING_STEPS, RxComponent, RxIndex};
-use crate::internal::claims::{Builder, Source, sum_polynomials};
+use super::{InternalCircuitIndex, NUM_BINDERS, NumSteps, RxComponent, RxIndex};
+use crate::{
+    internal::claims::{Builder, Source, sum_polynomials},
+    profile::Profile,
+};
 
 /// Number of circuits using unified $k(y)$ in [`build`].
 ///
@@ -67,7 +70,7 @@ const POINTS_INPUT_STAGES: [RxIndex; 5] = [
 ///   $xz$. Both the `ax` and `bx` vectors derive from this shared evaluation:
 ///   `ax` uses $r\_i(xz)$ directly (since $A$ has no dilation), while `bx` adds
 ///   $s\_y + t(xz)$.
-pub trait Processor<Rx, AppCircuitId> {
+pub trait Processor<P: Profile, Rx, AppCircuitId> {
     /// Processes a raw claim with `a` and `b` traces provided directly.
     /// ($k(y) = c$).
     fn raw_claim(&mut self, a: Rx, b: Rx);
@@ -110,8 +113,8 @@ pub trait Processor<Rx, AppCircuitId> {
     ) -> Result<()>;
 }
 
-impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend>
-    Processor<&'rx sparse::Polynomial<F, R>, CircuitIndex>
+impl<'m, 'rx, P: Profile, F: Field, R: Rank, B: ragu_backend::Backend>
+    Processor<P, &'rx sparse::Polynomial<F, R>, CircuitIndex>
     for Builder<'m, 'rx, Cow<'rx, sparse::Polynomial<F, R>>, F, R, B>
 {
     fn raw_claim(&mut self, a: &'rx sparse::Polynomial<F, R>, b: &'rx sparse::Polynomial<F, R>) {
@@ -128,7 +131,7 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend>
         id: InternalCircuitIndex,
         rxs: impl Iterator<Item = &'rx sparse::Polynomial<F, R>>,
     ) {
-        let circuit_id = id.circuit_index();
+        let circuit_id = id.circuit_index::<P>();
         let rx = sum_polynomials(rxs);
         self.circuit_impl(circuit_id, rx);
     }
@@ -138,7 +141,7 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend>
         id: InternalCircuitIndex,
         groups: impl Iterator<Item = impl Iterator<Item = &'rx sparse::Polynomial<F, R>>>,
     ) -> Result<()> {
-        let circuit_id = id.circuit_index();
+        let circuit_id = id.circuit_index::<P>();
         let folded = self.fold_bonding_groups(groups);
         self.bonding_impl(circuit_id, folded);
         Ok(())
@@ -154,10 +157,10 @@ impl<'m, 'rx, F: Field, R: Rank, B: ragu_backend::Backend>
 /// This ordering must match the $k(y)$ ordering in
 /// [`inner_collapse`](crate::internal::native::circuits::inner_collapse)
 /// and `compute_outer_error` in the fuse implementation.
-pub fn build<S, P>(source: &S, processor: &mut P) -> Result<()>
+pub fn build<P: Profile, S, Pr>(source: &S, processor: &mut Pr) -> Result<()>
 where
     S: Source<RxComponent = RxComponent>,
-    P: Processor<S::Rx, S::AppCircuitId>,
+    Pr: Processor<P, S::Rx, S::AppCircuitId>,
 {
     use RxComponent::*;
     use RxIndex::*;
@@ -173,7 +176,7 @@ where
     }
 
     // Internal circuits and stages in canonical order.
-    for &id in &InternalCircuitIndex::ALL {
+    for id in InternalCircuitIndex::all::<P>() {
         use InternalCircuitIndex::*;
         match id {
             // hashes_1: Hashes1 + Preamble + OuterError
@@ -356,7 +359,7 @@ where
                 processor.bonding_claim(
                     id,
                     source.rx(Rx(BindEndoscalar)).chain(
-                        (0..NUM_ENDOSCALING_STEPS as u32)
+                        (0..NumSteps::<P>::len() as u32)
                             .flat_map(|step| source.rx(Rx(RxIndex::EndoscalingStep(step)))),
                     ),
                 )?;
@@ -389,7 +392,7 @@ pub trait KySource {
 
     /// One value of $1$ per proof, for the endoscaling step checks.
     ///
-    /// Repeated [`NUM_ENDOSCALING_STEPS`] times; the `+ Clone` bound is
+    /// Repeated once per profile endoscaling step; the `+ Clone` bound is
     /// required for `repeat_n` in [`ky_prefix`].
     fn ones(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
@@ -397,32 +400,24 @@ pub trait KySource {
     fn zero(&self) -> Self::Ky;
 }
 
-/// Build an iterator over $k(y)$ values in claim order.
-///
-/// Chains the $k(y)$ sources in the order required by [`build`]: the
-/// [`ky_prefix`] of the raw and circuit claims, followed by infinite zeros
-/// for stage claims.
-pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
-    ky_prefix(source).chain(core::iter::repeat(source.zero()))
+/// Build an iterator over $k(y)$ values in claim order: the finite
+/// [`ky_prefix`] followed by infinite zeros for stage claims.
+pub fn ky_values<P: Profile, S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    ky_prefix::<P, _>(source).chain(core::iter::repeat(source.zero()))
 }
 
-/// Build a finite iterator over the raw and circuit claims' $k(y)$ values,
-/// in claim order: [`ky_values`] before the stage claims' zeros.
+/// The finite raw and circuit claim targets, in [`build`] order, before
+/// the stage claims' zeros. The endoscaling targets follow profile `P`.
 ///
-/// Chains the $k(y)$ sources in the order required by [`build`],
-/// with `unified_ky` repeated [`NUM_UNIFIED_CIRCUITS`] times and `ones`
-/// [`NUM_ENDOSCALING_STEPS`] times.
-///
-/// The `unified_ky` and `unified_bridge_ky` values are computed by
-/// [`ProofInputs::unified_ky_values`](super::stages::preamble::ProofInputs::unified_ky_values)
-/// via Horner evaluation of the circuit instance polynomial.
-pub fn ky_prefix<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+/// The unified values come from
+/// [`ProofInputs::unified_ky_values`](super::stages::preamble::ProofInputs::unified_ky_values).
+pub fn ky_prefix<P: Profile, S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     source
         .raw_c()
         .chain(source.application_ky())
         .chain(source.unified_bridge_ky())
         .chain(repeat_n(source.unified_ky(), NUM_UNIFIED_CIRCUITS).flatten())
-        .chain(repeat_n(source.ones(), NUM_ENDOSCALING_STEPS).flatten())
+        .chain(repeat_n(source.ones(), NumSteps::<P>::len()).flatten())
 }
 
 pub struct TwoProofKySource<'dr, D: Driver<'dr>> {
