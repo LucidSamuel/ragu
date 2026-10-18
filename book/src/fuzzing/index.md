@@ -11,10 +11,8 @@ root, so the nightly toolchain and libFuzzer flags it needs stay out of the
 main build. There are 28 targets, plus tools for extracting Ragu's field
 constants into a fuzzer dictionary and linting circuit source without execution.
 
-The harness enables `ragu_pcd`'s `unstable-fuzzing` feature in its own
-`Cargo.toml`. This exposes `ragu_pcd::fuzzing`, the internal proof-corruption
-and circuit-patcher interface. It is not part of the stable public API;
-ordinary application dependencies do not need this feature.
+The harness enables `ragu_pcd`'s `unstable-fuzzing` feature, which exposes
+the internal `ragu_pcd::fuzzing` module. It is not part of the public API.
 
 ## The shared substrate
 

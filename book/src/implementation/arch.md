@@ -35,7 +35,7 @@ flowchart TB
 
 The following diagram is a high-level dependency sketch for the main library
 crates in the Ragu workspace. It omits the placeholder `ragu_gadgets` crate,
-the `ragu_testing` test helpers, dev-dependencies, and most external utility
+the `ragu_testing` test helpers, dev-dependencies, and external utility
 dependencies. Arrows point
 from a crate to the crates it depends on. The arithmetic comes from outside
 the workspace: [`udon`](https://docs.rs/crate/zakura-udon/0.1.0/source/) implements the
@@ -44,10 +44,6 @@ Pasta fields, curves, cycle traits, and Poseidon parameter interfaces;
 `ragu_primitives` and `ragu_circuits` extend that layer with gadgets and
 protocol logic; and `ragu_pcd` ties those pieces together for recursive proofs
 and owns Ragu's fixed generator derivation and loading.
-`ragu_backend` defines computational kernels and their reference implementations;
-`ragu_acceleration` provides the selectable acceleration implementations.
-The optional `bento` dependency stores the generated points loaded by the
-`ragu_pcd/baked` feature.
 
 ```mermaid
 flowchart BT
@@ -59,7 +55,6 @@ flowchart BT
     pcd["ragu_pcd<br/><i>recursive proof circuits,<br/>Ragu generator parameters</i>"]
     backend["ragu_backend<br/><i>kernels & reference backend</i>"]
     acceleration["ragu_acceleration<br/><i>acceleration implementations</i>"]
-    bento["bento<br/><i>generated point storage</i>"]
     ragu["ragu<br/><i>optional API mock</i>"]
 
     core --> udon
@@ -76,7 +71,6 @@ flowchart BT
     pcd --> prims
     pcd --> backend
     pcd --> acceleration
-    pcd -.->|baked| bento
     backend --> udon
     backend --> core
     backend --> circuits
