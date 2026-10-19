@@ -52,8 +52,10 @@ pub const HEADER_SIZE: usize = 103;
 const NUM_APP_STEPS: usize = 6000;
 
 type Preamble = preamble::Stage<Pasta, R, HEADER_SIZE>;
-type OuterError = outer_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
-type InnerError = inner_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters>;
+type OuterError =
+    outer_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters<crate::profile::Standard>>;
+type InnerError =
+    inner_error::Stage<Pasta, R, HEADER_SIZE, RevdotParameters<crate::profile::Standard>>;
 type Query = query::Stage<Pasta, R, HEADER_SIZE>;
 type Eval = eval::Stage<Pasta, R, HEADER_SIZE>;
 type NestedCurve = <Pasta as ragu_core::Cycle>::NestedCurve;
@@ -85,20 +87,20 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
             Pasta,
             R,
             HEADER_SIZE,
-            RevdotParameters,
+            RevdotParameters<crate::profile::Standard>,
         >::new(pasta, log2_circuits)),
         InternalCircuitIndex::Hashes2Circuit => counts(native::circuits::hashes_2::Circuit::<
             Pasta,
             R,
             HEADER_SIZE,
-            RevdotParameters,
+            RevdotParameters<crate::profile::Standard>,
         >::new(pasta)),
         InternalCircuitIndex::InnerCollapseCircuit => {
             counts(native::circuits::inner_collapse::Circuit::<
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new())
         }
         InternalCircuitIndex::OuterCollapseCircuit => {
@@ -106,7 +108,7 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new())
         }
         InternalCircuitIndex::ComputeVCircuit => {
@@ -119,7 +121,7 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
             Pasta,
             R,
             HEADER_SIZE,
-            RevdotParameters,
+            RevdotParameters<crate::profile::Standard>,
         >::new(pasta)),
         InternalCircuitIndex::BindEndoscalarCircuit => {
             counts(native::circuits::bind_endoscalar::Circuit::<Pasta, R>::new())
@@ -142,7 +144,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new(pasta, log2_circuits))
         }
         InternalCircuitIndex::Hashes2Circuit => {
@@ -150,7 +152,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new(pasta))
         }
         InternalCircuitIndex::InnerCollapseCircuit => {
@@ -158,7 +160,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new())
         }
         InternalCircuitIndex::OuterCollapseCircuit => {
@@ -166,7 +168,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new())
         }
         InternalCircuitIndex::ComputeVCircuit => {
@@ -182,7 +184,7 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 Pasta,
                 R,
                 HEADER_SIZE,
-                RevdotParameters,
+                RevdotParameters<crate::profile::Standard>,
             >::new(crate::pasta::baked()))
         }
         InternalCircuitIndex::BindEndoscalarCircuit => {
@@ -439,7 +441,8 @@ fn test_nested_circuit_constraint_counts() {
     // The native batch has one point more than a multiple of four, so every
     // endoscaling step walks four points and lays out the same; the pins
     // below are per variant.
-    let steps = crate::internal::endoscalar::num_steps::<{ nested::ENDOSCALINGS_PER_STEP }>(
+    let steps = crate::internal::endoscalar::num_steps(
+        nested::ENDOSCALINGS_PER_STEP,
         nested::NUM_ENDOSCALING_POINTS,
     );
     let mut expected = alloc::vec::Vec::new();
@@ -697,6 +700,26 @@ fn test_rx_index_all_exhaustive() {
     assert_eq!(collected.as_slice(), RxIndex::ALL);
 }
 
+/// Values with the same step count can still differ in the extension's
+/// parts. The shape tells them apart, which is what the conservative
+/// equality of two values asserts before pairing their wires.
+#[test]
+fn test_values_shapes_follow_the_profile() {
+    use crate::profile::Standard;
+
+    let standard = InternalCircuitValues::from_fn::<Standard>(|_| ());
+    let mut wider = InternalCircuitValues::from_fn::<Standard>(|_| ());
+    wider.extension_circuits.push(());
+    assert_eq!(standard.num_steps(), wider.num_steps());
+    assert_ne!(standard.shape(), wider.shape());
+
+    let standard = RxValues::from_fn::<Standard>(|_| ());
+    let mut wider = RxValues::from_fn::<Standard>(|_| ());
+    wider.extension_stages.push(());
+    assert_eq!(standard.num_steps(), wider.num_steps());
+    assert_ne!(standard.shape(), wider.shape());
+}
+
 /// The generic lists resize the constant ones, so in the standard profile
 /// they are the constant ones.
 #[test]
@@ -712,4 +735,271 @@ fn test_standard_lists_are_the_constants() {
         nested::InternalCircuitIndex::ALL
     );
     assert_eq!(nested::RxIndex::all::<Standard>(), nested::RxIndex::ALL);
+}
+
+/// An extension circuit's claim takes its rx and the stages it loads per
+/// proof, an extension stage's bonding its rx across proofs, and a final
+/// mask's the circuits it names, with the circuits' $k(y)$ one.
+#[test]
+fn test_extension_claims_follow_the_declaration() {
+    use alloc::vec::Vec;
+
+    use ragu_circuits::registry::CircuitIndex;
+    use ragu_primitives::vec::Len;
+
+    use crate::{
+        internal::{
+            claims::Source,
+            native::{
+                RxComponent::{self, Rx},
+                RxIndex::{ExtensionCircuit, ExtensionStage},
+                claims::{KySource, Processor, build, ky_values},
+            },
+        },
+        profile::{Profile, testing::Wider},
+    };
+
+    /// Two proofs' components, each tagged with its proof.
+    struct TwoProofs;
+
+    impl Source for TwoProofs {
+        type RxComponent = RxComponent;
+        type Rx = (usize, RxComponent);
+        type AppCircuitId = CircuitIndex;
+
+        fn rx(&self, component: RxComponent) -> impl Iterator<Item = Self::Rx> {
+            [(0, component), (1, component)].into_iter()
+        }
+
+        fn app_circuits(&self) -> impl Iterator<Item = CircuitIndex> {
+            [CircuitIndex::new(0), CircuitIndex::new(1)].into_iter()
+        }
+    }
+
+    type Claim = (InternalCircuitIndex, Vec<(usize, RxComponent)>);
+
+    #[derive(Default)]
+    struct Recorder {
+        circuits: Vec<Claim>,
+        bondings: Vec<Claim>,
+    }
+
+    impl Processor<Wider, (usize, RxComponent), CircuitIndex> for Recorder {
+        fn raw_claim(&mut self, _: (usize, RxComponent), _: (usize, RxComponent)) {}
+
+        fn circuit_claim(&mut self, _: CircuitIndex, _: (usize, RxComponent)) {}
+
+        fn internal_circuit_claim(
+            &mut self,
+            id: InternalCircuitIndex,
+            rxs: impl Iterator<Item = (usize, RxComponent)>,
+        ) {
+            self.circuits.push((id, rxs.collect()));
+        }
+
+        fn grouped_bonding_claim(
+            &mut self,
+            id: InternalCircuitIndex,
+            groups: impl Iterator<Item = impl Iterator<Item = (usize, RxComponent)>>,
+        ) -> Result<()> {
+            self.bondings.push((id, groups.flatten().collect()));
+            Ok(())
+        }
+    }
+
+    let mut recorder = Recorder::default();
+    build::<Wider, _, _>(&TwoProofs, &mut recorder).unwrap();
+
+    let extension = Wider::native_extension();
+    let circuits = &recorder.circuits;
+    let tail = circuits.len() - 2 * extension.circuits.len();
+    assert!(
+        matches!(
+            circuits[tail - 1].0,
+            InternalCircuitIndex::EndoscalingStep(_)
+        ),
+        "the extension circuits follow the walk"
+    );
+    for (k, loads) in extension.circuits.iter().enumerate() {
+        for proof in 0..2 {
+            let (id, rxs) = &circuits[tail + 2 * k + proof];
+            assert_eq!(*id, InternalCircuitIndex::ExtensionCircuit(k as u32));
+            let expected: Vec<_> = [Rx(ExtensionCircuit(k as u32))]
+                .into_iter()
+                .chain(loads.iter().map(|&stage| Rx(ExtensionStage(stage))))
+                .map(|component| (proof, component))
+                .collect();
+            assert_eq!(*rxs, expected);
+        }
+    }
+
+    let bondings = &recorder.bondings;
+    let tail = bondings.len() - extension.bondings();
+    for stage in 0..extension.stages {
+        let (id, rxs) = &bondings[tail + stage];
+        assert_eq!(*id, InternalCircuitIndex::ExtensionBonding(stage as u32));
+        let expected = [
+            (0, Rx(ExtensionStage(stage as u32))),
+            (1, Rx(ExtensionStage(stage as u32))),
+        ];
+        assert_eq!(*rxs, expected);
+    }
+    for (mask, named) in extension.final_masks.iter().enumerate() {
+        let (id, rxs) = &bondings[tail + extension.stages + mask];
+        assert_eq!(
+            *id,
+            InternalCircuitIndex::ExtensionBonding((extension.stages + mask) as u32)
+        );
+        let expected: Vec<_> = named
+            .iter()
+            .flat_map(|&k| [(0, Rx(ExtensionCircuit(k))), (1, Rx(ExtensionCircuit(k)))])
+            .collect();
+        assert_eq!(*rxs, expected);
+    }
+
+    /// $k(y)$ values that tell the sources apart.
+    struct Tagged;
+
+    impl KySource for Tagged {
+        type Ky = u32;
+
+        fn raw_c(&self) -> impl Iterator<Item = u32> {
+            [10, 11].into_iter()
+        }
+
+        fn application_ky(&self) -> impl Iterator<Item = u32> {
+            [20, 21].into_iter()
+        }
+
+        fn unified_bridge_ky(&self) -> impl Iterator<Item = u32> {
+            [30, 31].into_iter()
+        }
+
+        fn unified_ky(&self) -> impl Iterator<Item = u32> + Clone {
+            [40, 41].into_iter()
+        }
+
+        fn ones(&self) -> impl Iterator<Item = u32> + Clone {
+            [1, 1].into_iter()
+        }
+
+        fn statement_ky(&self) -> impl Iterator<Item = u32> + Clone {
+            [60, 61].into_iter()
+        }
+
+        fn zero(&self) -> u32 {
+            0
+        }
+    }
+
+    let targets: Vec<u32> = ky_values::<Wider, _>(&Tagged)
+        .take(recorder.circuits.len() + 6)
+        .collect();
+    let ones = targets.iter().filter(|&&ky| ky == 1).count();
+    let steps = native::NumSteps::<Wider>::len();
+    assert_eq!(ones, 2 * (steps + extension.circuits.len()));
+    let first_one = targets.iter().position(|&ky| ky == 1).unwrap();
+    assert!(
+        targets[first_one..first_one + ones]
+            .iter()
+            .all(|&ky| ky == 1)
+    );
+    assert!(targets[first_one + ones..].iter().all(|&ky| ky == 0));
+}
+
+/// The hooks register a profile's extension, and an application over a
+/// profile with an extension exceeds the gate budget, since the fuse's own
+/// circuits grow with every polynomial a proof carries.
+#[test]
+fn test_extension_hooks_register_and_the_fuse_overflows() {
+    use ragu_circuits::registry::RegistryBuilder;
+
+    use crate::profile::{Profile, Profiled, testing::Hooked};
+
+    type C = Profiled<Pasta, Hooked>;
+    let params = crate::pasta::baked();
+
+    let registry = RegistryBuilder::<Fp, R>::new();
+    let registry =
+        Hooked::register_native_circuit::<Pasta, R, HEADER_SIZE>(0, registry, params).unwrap();
+    assert_eq!(registry.num_internal_circuits(), 1);
+    let registry =
+        Hooked::register_native_bonding::<Pasta, R, HEADER_SIZE>(0, registry, params).unwrap();
+    let registry =
+        Hooked::register_native_bonding::<Pasta, R, HEADER_SIZE>(1, registry, params).unwrap();
+    assert_eq!(registry.num_internal_circuits(), 3);
+
+    let registry = RegistryBuilder::<Fq, R>::new();
+    let registry = Hooked::register_nested_circuit::<Pasta, R>(0, registry, params).unwrap();
+    let registry = Hooked::register_nested_bonding::<Pasta, R>(0, registry, params).unwrap();
+    let registry = Hooked::register_nested_bonding::<Pasta, R>(1, registry, params).unwrap();
+    assert_eq!(registry.num_internal_circuits(), 3);
+
+    let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(params);
+    assert!(
+        matches!(result, Err(Error::GateBoundExceeded { .. })),
+        "two polynomials per side already overflow a fuse circuit"
+    );
+}
+
+/// A profile's registration hook must register exactly one entry, so that
+/// the layout's indices stay the registry's: a hook registering none or
+/// two is refused.
+#[test]
+fn test_a_hook_registers_exactly_one_entry() {
+    use ragu_circuits::registry::RegistryBuilder;
+
+    use crate::profile::{Profile, testing::Hooked};
+
+    let params = crate::pasta::baked();
+    let one =
+        |registry| Hooked::register_native_circuit::<Pasta, R, HEADER_SIZE>(0, registry, params);
+
+    let registry = RegistryBuilder::<Fp, R>::new();
+    let registry = super::register_one(registry, "native", "circuit", 0, one).unwrap();
+    assert_eq!(registry.num_internal_circuits(), 1);
+
+    let registry = RegistryBuilder::<Fp, R>::new();
+    assert!(super::register_one(registry, "native", "circuit", 0, Ok).is_err());
+
+    let registry = RegistryBuilder::<Fp, R>::new();
+    let two = |registry| one(registry).and_then(one);
+    assert!(super::register_one(registry, "nested", "bonding", 1, two).is_err());
+}
+
+/// The fold's groups are the standard profile's for the standard profile,
+/// pinned, and grow with a profile's claims so that every claim has a slot.
+#[test]
+fn test_fold_groups_follow_the_profile() {
+    use ragu_primitives::vec::Len;
+
+    use crate::{
+        internal::fold_revdot::Parameters,
+        profile::{Standard, testing::Wider},
+    };
+
+    assert_eq!(native::num_claims::<Standard>(), 93);
+    assert_eq!(nested::num_claims::<Standard>(), 78);
+    assert_eq!(
+        native::NumFoldGroups::<Standard>::len(),
+        native::NUM_FOLD_GROUPS
+    );
+    assert_eq!(
+        nested::NumFoldGroups::<Standard>::len(),
+        nested::NUM_FOLD_GROUPS
+    );
+
+    fn capacity<FP: Parameters>() -> usize {
+        FP::NumGroups::len() * FP::GroupSize::len()
+    }
+    assert!(capacity::<native::RevdotParameters<Standard>>() >= native::num_claims::<Standard>());
+    assert!(capacity::<nested::RevdotParameters<Standard>>() >= nested::num_claims::<Standard>());
+
+    // Wider adds two native circuits and four bondings, one nested circuit
+    // and two bondings, and lengthens both walks by a few steps.
+    assert!(native::num_claims::<Wider>() > native::num_claims::<Standard>() + 7);
+    assert!(nested::num_claims::<Wider>() > nested::num_claims::<Standard>() + 4);
+    assert!(capacity::<native::RevdotParameters<Wider>>() >= native::num_claims::<Wider>());
+    assert!(capacity::<nested::RevdotParameters<Wider>>() >= nested::num_claims::<Wider>());
+    assert!(nested::NumFoldGroups::<Wider>::len() > nested::NUM_FOLD_GROUPS);
 }

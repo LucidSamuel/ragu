@@ -298,6 +298,46 @@ where
                 }
             }
 
+            // An extension circuit: its rx and the extension stages it loads.
+            // Its k(y) is 1, or the statement's for the statement circuit
+            // (see `ky_values`).
+            ExtensionCircuit(k) => {
+                let extension = P::native_extension();
+                let mut per_proof: Vec<Vec<S::Rx>> = Vec::new();
+                for index in [RxIndex::ExtensionCircuit(k)].into_iter().chain(
+                    extension.circuits[k as usize]
+                        .iter()
+                        .map(|&stage| RxIndex::ExtensionStage(stage)),
+                ) {
+                    for (i, rx) in source.rx(Rx(index)).enumerate() {
+                        if per_proof.len() <= i {
+                            per_proof.push(Vec::new());
+                        }
+                        per_proof[i].push(rx);
+                    }
+                }
+                for rxs in per_proof {
+                    processor.internal_circuit_claim(id, rxs.into_iter());
+                }
+            }
+
+            // An extension bonding: a stage's mask over its rx, or a final
+            // mask over its circuits' rxs
+            ExtensionBonding(j) => {
+                let extension = P::native_extension();
+                if (j as usize) < extension.stages {
+                    processor.bonding_claim(id, source.rx(Rx(RxIndex::ExtensionStage(j))))?;
+                } else {
+                    processor.bonding_claim(
+                        id,
+                        extension
+                            .final_mask(j as usize)
+                            .iter()
+                            .flat_map(|&k| source.rx(Rx(RxIndex::ExtensionCircuit(k)))),
+                    )?;
+                }
+            }
+
             // Native stages (aggregated across all proofs)
             PreambleStage => {
                 processor.bonding_claim(id, source.rx(Rx(Preamble)))?;
@@ -396,6 +436,12 @@ pub trait KySource {
     /// required for `repeat_n` in [`ky_prefix`].
     fn ones(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
+    /// One value per proof for the statement circuit of the profile's
+    /// native extension: the $k(y)$ of the output header it exposes, as
+    /// [`statement_ky`](super::stages::preamble::ProofInputs::statement_ky)
+    /// computes it, and none for a profile without one.
+    fn statement_ky(&self) -> impl Iterator<Item = Self::Ky> + Clone;
+
     /// The zero value for stage claims.
     fn zero(&self) -> Self::Ky;
 }
@@ -418,6 +464,22 @@ pub fn ky_prefix<P: Profile, S: KySource>(source: &S) -> impl Iterator<Item = S:
         .chain(source.unified_bridge_ky())
         .chain(repeat_n(source.unified_ky(), NUM_UNIFIED_CIRCUITS).flatten())
         .chain(repeat_n(source.ones(), NumSteps::<P>::len()).flatten())
+        .chain({
+            let extension = P::native_extension();
+            let ones: Vec<S::Ky> = source.ones().collect();
+            let statement: Vec<S::Ky> = source.statement_ky().collect();
+            assert!(
+                extension.statement.is_none() || statement.len() == ones.len(),
+                "a profile with a statement circuit takes one statement value per proof"
+            );
+            (0..extension.circuits.len() as u32).flat_map(move |circuit| {
+                if extension.statement == Some(circuit) {
+                    statement.clone()
+                } else {
+                    ones.clone()
+                }
+            })
+        })
 }
 
 pub struct TwoProofKySource<'dr, D: Driver<'dr>> {
@@ -429,18 +491,24 @@ pub struct TwoProofKySource<'dr, D: Driver<'dr>> {
     pub right_bridge: Element<'dr, D>,
     pub left_unified: Element<'dr, D>,
     pub right_unified: Element<'dr, D>,
+    pub left_statement: Option<Element<'dr, D>>,
+    pub right_statement: Option<Element<'dr, D>>,
     pub one: Element<'dr, D>,
     pub zero: Element<'dr, D>,
 }
 
 impl<'dr, D: Driver<'dr>> TwoProofKySource<'dr, D> {
-    /// Create a [`TwoProofKySource`] from child k(y) outputs and raw c values.
+    /// Create a [`TwoProofKySource`] from child k(y) outputs, raw c values
+    /// and the statement circuit's k(y) values, `None` for a profile without
+    /// one.
     pub fn new(
         dr: &mut D,
         left_raw_c: Element<'dr, D>,
         right_raw_c: Element<'dr, D>,
         left_ky: &super::stages::outer_error::ChildKyOutputs<'dr, D>,
         right_ky: &super::stages::outer_error::ChildKyOutputs<'dr, D>,
+        left_statement: Option<Element<'dr, D>>,
+        right_statement: Option<Element<'dr, D>>,
     ) -> Self {
         Self {
             left_raw_c,
@@ -451,6 +519,8 @@ impl<'dr, D: Driver<'dr>> TwoProofKySource<'dr, D> {
             right_bridge: right_ky.unified_bridge.clone(),
             left_unified: left_ky.unified.clone(),
             right_unified: right_ky.unified.clone(),
+            left_statement,
+            right_statement,
             one: Element::one(),
             zero: Element::zero(dr),
         }
@@ -478,6 +548,13 @@ impl<'dr, D: Driver<'dr>> KySource for TwoProofKySource<'dr, D> {
 
     fn ones(&self) -> impl Iterator<Item = Element<'dr, D>> + Clone {
         once(self.one.clone()).chain(once(self.one.clone()))
+    }
+
+    fn statement_ky(&self) -> impl Iterator<Item = Element<'dr, D>> + Clone {
+        self.left_statement
+            .iter()
+            .chain(self.right_statement.iter())
+            .cloned()
     }
 
     fn zero(&self) -> Element<'dr, D> {

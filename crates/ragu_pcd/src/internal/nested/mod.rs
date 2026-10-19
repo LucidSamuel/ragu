@@ -83,19 +83,30 @@ impl<P: Profile> Len for NumPoints<P> {
     }
 }
 
-/// The endoscalings a nested step performs: what fits a step beside the
-/// stages it reserves, which hold every point the walk consumes.
+/// The endoscalings a nested step performs in the standard profile: what
+/// fits a step beside the stages it reserves, which hold every point the
+/// walk consumes, at the production rank. A profile sets its own
+/// ([`Profile::NESTED_ENDOSCALINGS_PER_STEP`]).
 pub const ENDOSCALINGS_PER_STEP: usize = 4;
+
+/// Length type for the endoscalings a nested step performs in profile `P`.
+pub struct Endoscalings<P: Profile>(PhantomData<P>);
+
+impl<P: Profile> Len for Endoscalings<P> {
+    fn len() -> usize {
+        P::NESTED_ENDOSCALINGS_PER_STEP
+    }
+}
 
 /// Number of endoscaling steps, derived from [`NUM_ENDOSCALING_POINTS`] via
 /// [`endoscalar::num_steps`].
 pub(crate) const NUM_ENDOSCALING_STEPS: usize =
-    endoscalar::num_steps::<ENDOSCALINGS_PER_STEP>(NUM_ENDOSCALING_POINTS);
+    endoscalar::num_steps(ENDOSCALINGS_PER_STEP, NUM_ENDOSCALING_POINTS);
 
 /// Length type for the nested endoscaling steps in profile `P`, derived from
 /// [`NumPoints`] via [`endoscalar::num_steps`]. The standard profile's is
 /// [`NUM_ENDOSCALING_STEPS`].
-pub type NumSteps<P> = endoscalar::NumStepsLen<NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+pub type NumSteps<P> = endoscalar::NumStepsLen<NumPoints<P>, Endoscalings<P>>;
 
 /// Length type for the nested rx polynomials, [`RxIndex::num`].
 pub struct NumRx<P: Profile>(PhantomData<P>);
@@ -117,21 +128,21 @@ impl<P: Profile> Len for NumInternal<P> {
 
 /// The nested points stage, over the native batch's commitments, for host
 /// curve `C` in profile `P`.
-pub type PointsStage<C, P> = endoscalar::PointsStage<C, NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+pub type PointsStage<C, P> = endoscalar::PointsStage<C, NumPoints<P>, Endoscalings<P>>;
 
 /// The nested points stage's witness.
-pub type PointsWitness<C, P> = endoscalar::PointsWitness<C, NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+pub type PointsWitness<C, P> = endoscalar::PointsWitness<C, NumPoints<P>, Endoscalings<P>>;
 
 /// The nested points stage's output gadget.
-pub type Points<'dr, D, C, P> = endoscalar::Points<'dr, D, C, NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+pub type Points<'dr, D, C, P> = endoscalar::Points<'dr, D, C, NumPoints<P>, Endoscalings<P>>;
 
 /// A nested endoscaling step.
 pub type EndoscalingStep<C, R, P> =
-    endoscalar::EndoscalingStep<C, R, NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+    endoscalar::EndoscalingStep<C, R, NumPoints<P>, Endoscalings<P>>;
 
 /// A nested endoscaling step's witness.
 pub type EndoscalingStepWitness<'source, C, P> =
-    endoscalar::EndoscalingStepWitness<'source, C, NumPoints<P>, ENDOSCALINGS_PER_STEP>;
+    endoscalar::EndoscalingStepWitness<'source, C, NumPoints<P>, Endoscalings<P>>;
 
 /// The number of circuits whose public input is the nested [`unified`]
 /// instance: export, collapse and compute-v.
@@ -147,19 +158,65 @@ pub const NUM_FIXED_RX: usize = NUM_INSTANCE_CIRCUITS + 11;
 /// loading circuit.
 pub const NUM_FIXED_INTERNAL: usize = NUM_FIXED_RX + 3;
 
-/// Parameters for folding the children's nested-field revdot claims.
-///
-/// Two children contribute one raw accumulator claim each, one circuit claim
-/// each per endoscaling step and per instance circuit, and one bonding claim
-/// per bonding kind (each bonding kind is $z$-folded across both children):
-/// 78 claims today, over twenty-eight steps, three instance circuits and
-/// fourteen bonding kinds. `12 x 7` leaves a little room.
-#[derive(Clone, Copy, Default)]
-pub struct RevdotParameters;
+/// The groups the standard profile's nested claims fold into. Two children
+/// contribute one raw accumulator claim each, one circuit claim each per
+/// endoscaling step and per instance circuit, and one bonding claim per
+/// bonding kind (each bonding kind is $z$-folded across both children): 78
+/// claims, over twenty-eight steps, three instance circuits and fourteen
+/// bonding kinds, in 12 groups of 7, which leaves a little room.
+pub const NUM_FOLD_GROUPS: usize = 12;
 
-impl Parameters for RevdotParameters {
-    type NumGroups = ConstLen<12>;
-    type GroupSize = ConstLen<7>;
+/// The nested revdot claims of profile `P` the fuse folds: two children's
+/// raw claims, each internal circuit's claim per child, and each bonding's
+/// claim across both.
+pub fn num_claims<P: Profile>() -> usize {
+    let (circuits, bondings) =
+        InternalCircuitIndex::all::<P>()
+            .into_iter()
+            .fold((0, 0), |(circuits, bondings), id| {
+                if id.is_bonding() {
+                    (circuits, bondings + 1)
+                } else {
+                    (circuits + 1, bondings)
+                }
+            });
+    2 + 2 * circuits + bondings
+}
+
+/// Length type for the nested fold's groups in profile `P`: the standard
+/// profile's [`NUM_FOLD_GROUPS`], or as many groups of
+/// [`FOLD_GROUP_SIZE`](super::native::FOLD_GROUP_SIZE) as the profile's
+/// [`num_claims`] need, whichever is more.
+pub struct NumFoldGroups<P: Profile>(PhantomData<P>);
+
+impl<P: Profile> Len for NumFoldGroups<P> {
+    fn len() -> usize {
+        NUM_FOLD_GROUPS.max(num_claims::<P>().div_ceil(super::native::FOLD_GROUP_SIZE))
+    }
+}
+
+/// Parameters for folding the children's nested revdot claims in profile
+/// `P`: [`NumFoldGroups`] groups of
+/// [`FOLD_GROUP_SIZE`](super::native::FOLD_GROUP_SIZE).
+pub struct RevdotParameters<P: Profile>(PhantomData<P>);
+
+impl<P: Profile> Clone for RevdotParameters<P> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<P: Profile> Copy for RevdotParameters<P> {}
+
+impl<P: Profile> Default for RevdotParameters<P> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<P: Profile> Parameters for RevdotParameters<P> {
+    type NumGroups = NumFoldGroups<P>;
+    type GroupSize = ConstLen<{ super::native::FOLD_GROUP_SIZE }>;
 }
 
 /// Derives the nested-field counterpart of a native Fiat-Shamir challenge.
@@ -249,6 +306,9 @@ pub enum InternalCircuitIndex {
     Collapse,
     /// Circuit computing the nested batch evaluation $v_n$.
     ComputeV,
+    /// A circuit of the profile's nested extension (see
+    /// [`Extension`](crate::profile::Extension)).
+    ExtensionCircuit(u32),
     /// `EndoscalarStage` stage mask.
     EndoscalarStage,
     /// `PointsStage` stage mask.
@@ -278,6 +338,10 @@ pub enum InternalCircuitIndex {
     ChallengeFinalStaged,
     /// Loading circuit over all nested stages.
     Loading,
+    /// A bonding of the profile's nested extension, a stage's mask or a
+    /// final mask, in [`Extension::bondings`](crate::profile::Extension::bondings)
+    /// order.
+    ExtensionBonding(u32),
 }
 
 impl InternalCircuitIndex {
@@ -296,7 +360,8 @@ impl InternalCircuitIndex {
     /// in [`RegistryBuilder::finalize()`](ragu_circuits::registry::RegistryBuilder::finalize)
     /// (circuits before masks), since [`circuit_index()`](Self::circuit_index)
     /// derives indices from position in this array. This is the standard
-    /// profile's list; [`all`](Self::all) resizes its walk for any other.
+    /// profile's list; [`all`](Self::all) resizes its walk and adds the
+    /// extension for any other.
     pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
     const fn all_slots() -> [Option<Self>; Self::NUM] {
@@ -335,13 +400,16 @@ impl InternalCircuitIndex {
     /// The number of internal circuits registered by [`register_all`] in
     /// profile `P`, equal to the length of [`all`](Self::all).
     pub fn num<P: Profile>() -> usize {
-        NumSteps::<P>::len() + NUM_FIXED_INTERNAL
+        NumSteps::<P>::len() + NUM_FIXED_INTERNAL + P::nested_extension().internal()
     }
 
     /// All variants in canonical iteration order, for profile `P`:
-    /// [`ALL`](Self::ALL) with the walk resized to the profile's steps.
+    /// [`ALL`](Self::ALL) with the walk resized to the profile's steps, the
+    /// profile's extension circuits after the instance circuits and its
+    /// bondings last.
     pub fn all<P: Profile>() -> Vec<Self> {
         let num_steps = NumSteps::<P>::len();
+        let extension = P::nested_extension();
         let mut all = Vec::with_capacity(Self::num::<P>());
         for &id in &Self::ALL {
             match id {
@@ -349,9 +417,14 @@ impl InternalCircuitIndex {
                     all.extend((0..num_steps as u32).map(Self::EndoscalingStep))
                 }
                 Self::EndoscalingStep(_) => {}
+                Self::ComputeV => {
+                    all.push(id);
+                    all.extend((0..extension.circuits.len() as u32).map(Self::ExtensionCircuit));
+                }
                 id => all.push(id),
             }
         }
+        all.extend((0..extension.bondings() as u32).map(Self::ExtensionBonding));
         assert_eq!(all.len(), Self::num::<P>());
         all
     }
@@ -366,6 +439,19 @@ impl InternalCircuitIndex {
             .position(|&v| v == self)
             .expect("every variant appears in all");
         CircuitIndex::new(pos)
+    }
+
+    /// Whether `self` is registered as a bonding, a stage's mask, a final
+    /// mask or the loading circuit's, rather than as a circuit.
+    pub fn is_bonding(self) -> bool {
+        use InternalCircuitIndex::*;
+        match self {
+            EndoscalingStep(_) | Export | Collapse | ComputeV | ExtensionCircuit(_) => false,
+            EndoscalarStage | PointsStage | PointsFinalStaged | BridgePreamble | BridgeSPrime
+            | BridgeInnerError | BridgeOuterError | BridgeAB | BridgeQuery | BridgeF
+            | BridgeEval | ChallengeStage | ChallengeFinalStaged | Loading
+            | ExtensionBonding(_) => true,
+        }
     }
 }
 
@@ -384,6 +470,8 @@ pub enum RxIndex {
     Collapse,
     /// Compute-v circuit rx polynomial.
     ComputeV,
+    /// The rx polynomial of a circuit of the profile's nested extension.
+    ExtensionCircuit(u32),
     /// EndoscalarStage rx polynomial.
     EndoscalarStage,
     /// PointsStage rx polynomial.
@@ -406,6 +494,8 @@ pub enum RxIndex {
     BridgeEval,
     /// Challenge stage rx polynomial.
     ChallengeStage,
+    /// The rx polynomial of a stage of the profile's nested extension.
+    ExtensionStage(u32),
 }
 
 impl RxIndex {
@@ -434,8 +524,8 @@ impl RxIndex {
     ///
     /// Must maintain the same ordering convention as
     /// [`native::RxIndex::ALL`](super::native::RxIndex::ALL). This is the
-    /// standard profile's list; [`all`](Self::all) resizes its walk for any
-    /// other.
+    /// standard profile's list; [`all`](Self::all) resizes its walk and adds
+    /// the extension for any other.
     pub const ALL: [Self; Self::NUM] = super::const_fns::unwrap_all(Self::all_slots());
 
     const fn all_slots() -> [Option<Self>; Self::NUM] {
@@ -471,13 +561,15 @@ impl RxIndex {
     /// The number of rx components in the nested field in profile `P`,
     /// equal to the length of [`all`](Self::all).
     pub fn num<P: Profile>() -> usize {
-        NumSteps::<P>::len() + NUM_FIXED_RX
+        NumSteps::<P>::len() + NUM_FIXED_RX + P::NESTED_EXTENSION
     }
 
     /// All variants in canonical order (circuits, then stages), for profile
-    /// `P`: [`ALL`](Self::ALL) with the walk resized to the profile's steps.
+    /// `P`: [`ALL`](Self::ALL) with the walk resized to the profile's steps,
+    /// then the profile's extension circuits' and stages' polynomials.
     pub fn all<P: Profile>() -> Vec<Self> {
         let num_steps = NumSteps::<P>::len();
+        let extension = P::nested_extension();
         let mut all = Vec::with_capacity(Self::num::<P>());
         for &id in &Self::ALL {
             match id {
@@ -488,6 +580,8 @@ impl RxIndex {
                 id => all.push(id),
             }
         }
+        all.extend((0..extension.circuits.len() as u32).map(Self::ExtensionCircuit));
+        all.extend((0..extension.stages as u32).map(Self::ExtensionStage));
         assert_eq!(all.len(), Self::num::<P>());
         all
     }
@@ -536,7 +630,9 @@ pub mod stages {
 /// before application steps.
 pub fn register_all<'params, C: ProfiledCycle, R: Rank>(
     mut registry: RegistryBuilder<'params, C::ScalarField, R>,
+    params: &'params C::Params,
 ) -> Result<RegistryBuilder<'params, C::ScalarField, R>> {
+    C::Profile::check()?;
     let initial_internal_circuits = registry.num_internal_circuits();
 
     // Circuits first, then masks — matching RegistryBuilder::finalize()
@@ -615,6 +711,16 @@ pub fn register_all<'params, C: ProfiledCycle, R: Rank>(
             Loading => {
                 let circuit = circuits::loading::Circuit::<C::HostCurve, R, C::Profile>::new();
                 registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
+            }
+            ExtensionCircuit(k) => {
+                super::register_one(registry, "nested", "circuit", k, |registry| {
+                    C::Profile::register_nested_circuit::<C::Base, R>(k as usize, registry, params)
+                })?
+            }
+            ExtensionBonding(j) => {
+                super::register_one(registry, "nested", "bonding", j, |registry| {
+                    C::Profile::register_nested_bonding::<C::Base, R>(j as usize, registry, params)
+                })?
             }
         };
     }

@@ -361,7 +361,7 @@ mod folding {
         profile::ProfiledCycle,
     };
 
-    type P = nested::RevdotParameters;
+    type P = nested::RevdotParameters<crate::profile::Standard>;
 
     /// The two children's `k(y)` values as plain scalars.
     struct ChildValues {
@@ -466,7 +466,8 @@ mod folding {
         // Two raw claims, one circuit claim per endoscaling step and per
         // instance circuit per child, and one bonding claim per bonding kind
         // folded across both children.
-        let steps = crate::internal::endoscalar::num_steps::<{ nested::ENDOSCALINGS_PER_STEP }>(
+        let steps = crate::internal::endoscalar::num_steps(
+            nested::ENDOSCALINGS_PER_STEP,
             nested::NUM_ENDOSCALING_POINTS,
         );
         let circuits = steps + nested::NUM_INSTANCE_CIRCUITS;

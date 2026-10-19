@@ -167,6 +167,7 @@ fn claim_targets_match_positional_ky_values() {
         unified: Fp::from(3),
         unified_bridge: Fp::from(5),
         application: Fp::from(7),
+        statement: None,
     };
     let masked = [Masked::new(
         native::RxComponent::AbA,

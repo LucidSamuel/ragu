@@ -1,13 +1,13 @@
 use alloc::vec::Vec;
 
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::MultiStage};
-use ragu_core::Result;
+use ragu_core::{Error, Result};
 use rand::CryptoRng;
 
 use crate::{
     Application,
     internal::{native, native::total_circuit_counts, nested},
-    profile::ProfiledCycle,
+    profile::{Profile, ProfiledCycle},
     proof::ProofBuilder,
 };
 
@@ -27,11 +27,11 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         preamble_witness: &native::stages::preamble::Witness<'_, C, R, HEADER_SIZE>,
         native_outer_error_witness: &native::stages::outer_error::Witness<
             C,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >,
         native_inner_error_witness: &native::stages::inner_error::Witness<
             C,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >,
         query_witness: &native::stages::query::Witness<C>,
         eval_witness: &native::stages::eval::Witness<C>,
@@ -73,7 +73,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             C,
             R,
             HEADER_SIZE,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >::new(
             self.params,
             total_circuit_counts::<C::Profile>(self.num_application_steps).1,
@@ -94,7 +94,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             C,
             R,
             HEADER_SIZE,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >::new(self.params)
         .trace(native::circuits::hashes_2::Witness {
             unified,
@@ -111,7 +111,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             C,
             R,
             HEADER_SIZE,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >::new()
         .trace(native::circuits::inner_collapse::Witness {
             preamble_witness,
@@ -130,7 +130,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             C,
             R,
             HEADER_SIZE,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >::new()
         .trace(native::circuits::outer_collapse::Witness {
             unified,
@@ -195,7 +195,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             C,
             R,
             HEADER_SIZE,
-            native::RevdotParameters,
+            native::RevdotParameters<C::Profile>,
         >::new(self.params)
         .trace(native::circuits::bind_beta::Witness {
             unified,
@@ -237,6 +237,22 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         builder.set_native_bind_beta_rx(bind_beta_rx);
         builder.set_native_bind_endoscalar_rx(bind_endoscalar_rx);
 
+        // The profile's extension: its prover fills every circuit's and
+        // stage's polynomial over the context the application holds.
+        let extension = C::Profile::native_extension();
+        let rxs = C::Profile::native_extension_rxs::<C::Base, R, HEADER_SIZE, B, RNG>(
+            &self.context,
+            &self.native_registry,
+            rng,
+        )?;
+        if rxs.circuits.len() != extension.circuits.len() || rxs.stages.len() != extension.stages {
+            return Err(Error::Initialization(
+                "the profile's prover did not fill its native extension".into(),
+            ));
+        }
+        builder.set_native_extension_circuit_rxs(rxs.circuits);
+        builder.set_native_extension_stage_rxs(rxs.stages);
+
         Ok(())
     }
 
@@ -254,8 +270,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         nested_points: &nested::PointsWitness<C::HostCurve, C::Profile>,
         nested_preamble_witness: &nested::stages::preamble::Witness<C::HostCurve, C::Profile>,
         nested_s_prime_witness: &nested::stages::s_prime::Witness<C::HostCurve>,
-        nested_inner_error_witness: &nested::stages::inner_error::Witness<C::HostCurve>,
-        nested_outer_error_witness: &nested::stages::outer_error::Witness<C::HostCurve>,
+        nested_inner_error_witness: &nested::stages::inner_error::Witness<C::HostCurve, C::Profile>,
+        nested_outer_error_witness: &nested::stages::outer_error::Witness<C::HostCurve, C::Profile>,
         nested_ab_witness: &nested::stages::ab::Witness<C::HostCurve>,
         nested_query_witness: &nested::stages::query::Witness<C::HostCurve, C::Profile>,
         nested_f_witness: &nested::stages::f::Witness<C::HostCurve>,
@@ -347,6 +363,20 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         builder.set_nested_export_rx(export_rx);
         builder.set_nested_collapse_rx(collapse_rx);
         builder.set_nested_compute_v_rx(compute_v_rx);
+
+        let extension = C::Profile::nested_extension();
+        let rxs = C::Profile::nested_extension_rxs::<C::Base, R, HEADER_SIZE, B, RNG>(
+            &self.context,
+            &self.nested_registry,
+            rng,
+        )?;
+        if rxs.circuits.len() != extension.circuits.len() || rxs.stages.len() != extension.stages {
+            return Err(Error::Initialization(
+                "the profile's prover did not fill its nested extension".into(),
+            ));
+        }
+        builder.set_nested_extension_circuit_rxs(rxs.circuits);
+        builder.set_nested_extension_stage_rxs(rxs.stages);
 
         Ok(())
     }
