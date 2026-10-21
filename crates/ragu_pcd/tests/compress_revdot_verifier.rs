@@ -168,6 +168,7 @@ fn claim_targets_match_positional_ky_values() {
         unified_bridge: Fp::from(5),
         application: Fp::from(7),
         statement: None,
+        binding: None,
     };
     let masked = [Masked::new(
         native::RxComponent::AbA,
@@ -191,6 +192,7 @@ fn claim_targets_match_positional_ky_values() {
     let nested_ky = NestedKy {
         c: Fq::from(2),
         unified: Fq::from(3),
+        binding: None,
     };
     let masked = [Masked::new(
         nested::RxComponent::AbA,

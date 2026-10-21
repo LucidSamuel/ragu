@@ -44,7 +44,7 @@ pub mod circuits {
 
 use crate::{
     internal::{endoscalar, fold_revdot::Parameters},
-    profile::{Profile, ProfiledCycle, Shape},
+    profile::{BondingSlot, CircuitSlot, Profile, ProfiledCycle, Shape},
 };
 
 /// The number of curve points the nested walk folds for a native batch of
@@ -107,6 +107,15 @@ pub(crate) const NUM_ENDOSCALING_STEPS: usize =
 /// [`NumPoints`] via [`endoscalar::num_steps`]. The standard profile's is
 /// [`NUM_ENDOSCALING_STEPS`].
 pub type NumSteps<P> = endoscalar::NumStepsLen<NumPoints<P>, Endoscalings<P>>;
+
+/// Length type for the stages of the profile's nested extension.
+pub struct NumExtensionStages<P: Profile>(PhantomData<P>);
+
+impl<P: Profile> Len for NumExtensionStages<P> {
+    fn len() -> usize {
+        P::nested_extension().stages
+    }
+}
 
 /// Length type for the nested rx polynomials, [`RxIndex::num`].
 pub struct NumRx<P: Profile>(PhantomData<P>);
@@ -712,16 +721,18 @@ pub fn register_all<'params, C: ProfiledCycle, R: Rank>(
                 let circuit = circuits::loading::Circuit::<C::HostCurve, R, C::Profile>::new();
                 registry.register_bonding(MultiStage::new(circuit).into_bonding_object()?)
             }
-            ExtensionCircuit(k) => {
-                super::register_one(registry, "nested", "circuit", k, |registry| {
-                    C::Profile::register_nested_circuit::<C::Base, R>(k as usize, registry, params)
-                })?
-            }
-            ExtensionBonding(j) => {
-                super::register_one(registry, "nested", "bonding", j, |registry| {
-                    C::Profile::register_nested_bonding::<C::Base, R>(j as usize, registry, params)
-                })?
-            }
+            ExtensionCircuit(k) => C::Profile::register_nested_circuit::<C::Base, R>(
+                k as usize,
+                CircuitSlot::new(registry),
+                params,
+            )?
+            .into_registry(),
+            ExtensionBonding(j) => C::Profile::register_nested_bonding::<C::Base, R>(
+                j as usize,
+                BondingSlot::new(registry),
+                params,
+            )?
+            .into_registry(),
         };
     }
 
