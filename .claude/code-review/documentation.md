@@ -8,6 +8,21 @@ rules, see `.claude/review-shared/writing.md` and `.claude/review-shared/math.md
 For book vs. rustdoc placement rules, see
 `.claude/review-shared/surface-placement.md`.
 
+## Accuracy and Evidence
+
+- Check changed claims against the implementation and relevant callers. Verify
+  accepted inputs, defaults, return values, errors, side effects, and examples.
+- Identify who establishes documented preconditions and whether the API enforces
+  them or relies on its caller. Flag a contract that promises more than the
+  implementation provides, with a concrete conflicting path.
+- Prioritize misleading behavior or contract descriptions over prose polish.
+  Support wording suggestions with a specific ambiguity or project convention.
+- Distinguish documented guarantees from behavior observed in a few tests. Check
+  that claims about validation identify what was actually checked and its scope.
+- When a change affects another documented use of the API, cite the resulting
+  inconsistency and recommend updating the authoritative explanation rather than
+  duplicating documentation.
+
 ## Prose in Doc Comments
 
 - Write doc comments as complete sentences with proper punctuation.

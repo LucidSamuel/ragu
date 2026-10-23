@@ -19,12 +19,14 @@ readability, maintainability, and consistency with project conventions.
 
 ## Code Structure
 
-- Functions should do one thing. If a function has sections separated by blank
-  lines with different purposes, consider splitting it.
+- Functions should have a coherent purpose. Consider splitting distinct
+  responsibilities when doing so clarifies data flow or invariant ownership.
 - Avoid deep nesting. Prefer early returns, `let-else`, or extracting helpers.
-  More than 3 levels of indentation is a code smell.
-- Keep functions short enough to fit on one screen (~50 lines). Long functions
-  hide bugs.
+  More than 3 levels of indentation is a prompt to inspect complexity, not a
+  violation by itself.
+- Treat roughly 50 lines as a readability heuristic. Explain what makes a long
+  function difficult to follow before recommending a split; preserve cohesive
+  sequences when extraction would obscure their order or shared invariants.
 - Group related items together. Private helpers should be near their callers.
 
 ## API Design
@@ -36,6 +38,21 @@ readability, maintainability, and consistency with project conventions.
   this easy.
 - Default trait implementations should be overridable for performance without
   changing semantics.
+- Make invariant ownership clear: identify which constructor or caller validates
+  a value and which operations must preserve its validity. Check that conversions
+  and mutation cannot bypass the intended boundary.
+
+## Compatibility and Configuration
+
+- Trace changes to accepted inputs, defaults, return values, error behavior, and
+  public types through their callers. Judge deliberate API changes against the
+  intended new contract and check that affected uses migrate consistently.
+- Review feature flags and dependency changes for unintended requirements,
+  especially supported `no_std`, disabled-default-feature, and serial builds.
+  Check affected configurations rather than assuming the default build covers
+  every supported use.
+- Recommend abstractions or refactors to address a concrete duplication, misuse,
+  or maintenance problem. Keep the proposed change proportional to that problem.
 
 ## What Not to Do
 
