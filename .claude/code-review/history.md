@@ -8,18 +8,14 @@ a static read of the code would miss.
 ## Procedure
 
 1. Identify the files and functions being reviewed.
-2. Use the supplied review revision, not an unrelated local branch. Start with
-   `git log --oneline -20 {revision} -- {file}` to see recent evolution, then
-   inspect the relevant commit diffs rather than relying on commit subjects.
-3. Run `git blame -L {start},{end} {revision} -- {file}` on the specific lines
-   under review. For local changes, also inspect the captured diff and contents;
-   committed history does not explain uncommitted behavior.
-4. If the reviewed code modifies or extends an existing function, check what the
-   function and its affected callers looked like at the comparison base. Follow
-   renames or search older history when a relevant invariant remains unexplained.
-5. Connect historical intent to the current contract and a reachable failure.
-   Previous code, commit messages, and old review approvals are context, not
-   proof that the behavior was correct or must remain unchanged.
+2. Run `git log --oneline -20 {revision} -- {file}` at the supplied revision and
+   inspect relevant commit diffs.
+3. Run `git blame -L {start},{end} {revision} -- {file}` on reviewed lines. For
+   local changes, also inspect the captured diff and contents.
+4. Compare changed functions and affected callers with the comparison base.
+   Follow renames or older history to clarify unexplained invariants.
+5. Assess historical intent against the current contract. Old code, messages, or
+   approvals do not establish correctness or require preserving old behavior.
 
 ## What to Look For
 
@@ -38,10 +34,9 @@ a static read of the code would miss.
   its replacement still detects the original failure and exercises the affected
   path.
 
-Cite the relevant revision and explain what invariant was lost. Distinguish
-reintroduced defects from inherited limitations and deliberate contract changes.
-If history is unavailable or shallow, report that limit instead of inventing
-design rationale.
+Cite the revision and lost invariant; distinguish regressions from inherited
+limitations or deliberate contract changes. Report unavailable or shallow
+history as a limit rather than inventing rationale.
 
 ## What NOT to Look For
 

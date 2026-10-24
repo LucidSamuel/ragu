@@ -9,16 +9,13 @@ focus-specific policy file.
 - For diff reviews, report defects introduced, worsened, or made reachable by
   the change. Follow effects into unchanged code, but exclude unrelated existing
   issues. For whole-file or concept reviews, assess the requested scope directly.
-- Use the supplied review snapshot. Read complete affected functions and relevant
-  callers, tests, and configuration to establish how a suspected failure is
-  reached and whether another layer already handles it.
+- Use the supplied snapshot. Read full affected functions and relevant callers,
+  tests, and configuration before reporting findings.
 
 ## Project Conventions
 
-Documented project conventions are authoritative, including naming, code
-structure, API design, documentation, and mathematical notation. Generic review
-guidance must not weaken these policies. A demonstrated policy violation is
-actionable without proving a runtime bug.
+Documented project conventions are authoritative and must not be weakened by
+generic guidance. A demonstrated violation is actionable without a runtime bug.
 
 ## Finding Requirements
 
@@ -35,9 +32,8 @@ concerns and unrun checks separately.
 - **suggestion**: Improvement that would make the code clearer, more idiomatic,
   or easier to maintain, but isn't wrong as-is.
 
-For suggestions without a documented policy basis, explain the specific
-readability, misuse, or maintenance problem and the benefit of the proposed
-change. Avoid preference-only rewrites unsupported by project policy.
+Suggestions without a policy basis must identify a concrete readability, misuse,
+or maintenance problem and explain the benefit of the change.
 
 ## Synced Content
 
