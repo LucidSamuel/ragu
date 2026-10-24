@@ -13,39 +13,50 @@ focus-specific policy file.
   callers, tests, and configuration to establish how a suspected failure is
   reached and whether another layer already handles it.
 
+## Project Conventions
+
+Documented project conventions are authoritative, including naming, code
+structure, API design, documentation, and mathematical notation. Generic review
+guidance must not weaken these policies. A demonstrated policy violation is
+actionable without proving a runtime bug.
+
 ## Finding Requirements
 
 Each finding must include:
 
 - **Location**: The smallest useful file/line range, preferably in the diff for
   a change review. Cite affected callers as supporting context.
-- **Issue**: A reachable triggering condition, the expected and actual behavior,
-  and the concrete consequence. Identify the affected caller or contract and,
-  for a diff review, explain how the change causes the problem. For suggestions,
-  describe the concrete clarity or maintenance problem instead of inventing a
-  behavioral defect.
-- **Evidence**: A reproducer or a complete code argument supporting the claim.
-  State what was verified and which assumptions remain. A runnable
-  reproducer is useful but is not required for a defect established by the code.
+- **Issue**: For a behavioral defect, give a reachable triggering condition,
+  expected and actual behavior, the affected caller or contract, and the
+  consequence. For a policy violation, identify the rule and the code or text
+  that violates it. For a suggestion, explain the concrete clarity or maintenance
+  problem. In a diff review, explain how the change introduces or worsens the
+  issue.
+- **Evidence**: Support a behavioral defect with a reproducer or a complete code
+  argument. Support a policy violation by citing the rule and the conflicting
+  code or text. State what was verified and which assumptions remain; a runnable
+  reproducer is not required for a policy violation or a defect established by
+  the code.
 - **Suggestion**: A concrete correction and, where useful, a regression check
   that distinguishes the broken and corrected behavior.
 - **Severity**: `must-fix` or `suggestion`, justified by the consequence or the
-  explicit project requirement being violated.
+  project convention being violated.
 
 Confidence describes the strength of the evidence; severity describes the
-consequence. Report unconfirmed failure paths as open questions, separate from
-confirmed findings. Missing validation is not by itself a production defect.
+consequence or policy violation. Report unconfirmed behavioral concerns as open
+questions, separate from confirmed defects and demonstrated policy violations.
+Missing validation is not by itself a production defect.
 
 ## Severity Levels
 
-- **must-fix**: Correctness bug, safety issue, violation of an explicit project
-  requirement, or documentation that is actively misleading.
+- **must-fix**: Correctness bug, safety issue, clear violation of project
+  conventions, or documentation that is actively misleading.
 - **suggestion**: Improvement that would make the code clearer, more idiomatic,
   or easier to maintain, but isn't wrong as-is.
 
-Style heuristics alone do not justify `must-fix`. For suggestions, explain the
-specific readability, misuse, or maintenance problem and the benefit of the
-proposed change. Avoid preference-only rewrites.
+For suggestions without a documented policy basis, explain the specific
+readability, misuse, or maintenance problem and the benefit of the proposed
+change. Avoid preference-only rewrites unsupported by project policy.
 
 ## Synced Content
 

@@ -19,14 +19,12 @@ readability, maintainability, and consistency with project conventions.
 
 ## Code Structure
 
-- Functions should have a coherent purpose. Consider splitting distinct
-  responsibilities when doing so clarifies data flow or invariant ownership.
+- Functions should do one thing. If a function has sections separated by blank
+  lines with different purposes, consider splitting it.
 - Avoid deep nesting. Prefer early returns, `let-else`, or extracting helpers.
-  More than 3 levels of indentation is a prompt to inspect complexity, not a
-  violation by itself.
-- Treat roughly 50 lines as a readability heuristic. Explain what makes a long
-  function difficult to follow before recommending a split; preserve cohesive
-  sequences when extraction would obscure their order or shared invariants.
+  More than 3 levels of indentation is a code smell.
+- Keep functions short enough to fit on one screen (~50 lines). Long functions
+  hide bugs.
 - Group related items together. Private helpers should be near their callers.
 
 ## API Design

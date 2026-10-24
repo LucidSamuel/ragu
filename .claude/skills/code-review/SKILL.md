@@ -45,6 +45,8 @@ snapshot and unfinished work. Do not combine evidence from different snapshots.
 
 The wrapping engine controls model selection, agent count, and scheduling.
 This skill defines the review coverage, context, and evidence requirements.
+Every applicable policy area must be evaluated, including its required shared
+policies. Grouping areas must preserve that coverage regardless of agent count.
 
 1. Use Glob to find all `.claude/code-review/*.md` files.
 2. Read `.claude/code-review/standards.md` (master standards shared by all
@@ -68,9 +70,9 @@ This skill defines the review coverage, context, and evidence requirements.
    > or selected contents, and paths to matching full files and context. State
    > whether this is a diff, whole-file, or concept review.}
    >
-   > {If the scope is a diff, add: "Follow affected callers and surrounding code
-   > to establish the failure path; report only issues introduced, worsened, or
-   > made reachable by the change."}
+   > {If the scope is a diff, add: "Read affected callers and surrounding code
+   > for context. Report only issues introduced, worsened, or made reachable
+   > by the change."}
    >
    > {If the scope is a narrow range, add: "Focus findings on the selected range.
    > Read surrounding code and callers to understand its behavior."}
@@ -90,7 +92,7 @@ This skill defines the review coverage, context, and evidence requirements.
    >   type errors) — automated checks run separately
    > - Pedantic nitpicks or style preferences not backed by project policy
    > - An intentional behavior change solely because it differs from the old
-   >   behavior — still check that it implements the intended new contract
+   >   behavior — still check the intended new contract and project policies
    > - The specific lint diagnostic explicitly waived by an ignore/allow
    >   attribute — still review that code for independent correctness issues
    >
@@ -106,19 +108,30 @@ This skill defines the review coverage, context, and evidence requirements.
    > Stay within the assigned review areas. Be specific. If you find no real
    > issues, say so — don't manufacture problems.
 
-## Step 3: Run Relevant Checks
+## Step 3: Run Required Checks and Targeted Tests
 
 Use `justfile` and the relevant `.github/workflows/` files to identify the
-repository's commands, toolchains, and feature configurations. Run applicable
-formatting, lint, and documentation checks, and select targeted tests that
-exercise the changed behavior. Inspect existing coverage and incorporate useful
-test targets proposed by reviewers. Compilation and lint success do not replace
-behavioral tests.
+repository's commands, toolchains, and feature configurations. Rust code and
+build-configuration reviews require these baseline checks:
 
-Run shared checks once against the reviewed snapshot. Scale validation to the
-change: start with affected tests and broaden for failures, shared behavior, or
-repository requirements. Documentation-only edits do not automatically require
-the full Rust test suite.
+1. Formatting with the repository's pinned nightly rustfmt and configuration.
+2. Workspace Clippy with the repository's required targets/features and warnings
+   denied.
+3. Rustdoc with the repository's required features, private items included, and
+   warnings denied.
+
+Run targeted tests that exercise changed behavior. Inspect existing coverage and
+incorporate useful test targets proposed by reviewers. Targeted tests supplement
+the baseline checks; compilation and lint success do not replace behavioral
+tests.
+Run shared checks once against the reviewed snapshot, and broaden testing for
+failures, shared behavior, or repository requirements.
+
+For documentation-only changes, run checks for the edited surface, such as
+rustdoc for API comments or the book build for book content. Record which Rust
+checks are not applicable and why; the full Rust suite is not required solely
+for prose or review-policy edits. If a required check cannot run, report
+incomplete validation and the reason rather than silently waiving it.
 
 Record commands, relevant configuration, and results. For targeted tests, verify
 that the intended cases actually ran and record passed/failed/ignored counts;
@@ -129,11 +142,14 @@ review finding.
 
 ## Step 4: Validate Candidate Findings
 
-Before synthesis, check each candidate against the full affected code and its
-callers. Try to disprove it: look for existing validation, unreachable triggering
-conditions, or an intentional contract change that satisfies the new contract.
+Before synthesis, check each candidate against the full affected code, relevant
+callers, and applicable project policies. For behavioral defects, try to disprove
+the failure path: look for existing validation, unreachable triggering conditions,
+or an intentional contract change that satisfies the new contract. For policy
+violations, verify the cited rule and the conflicting code or text; absence of a
+runtime bug does not invalidate the finding.
 For diff reviews, establish how the change introduces, worsens, or exposes the
-failure; its existence at the comparison base does not rule out a regression
+issue; its existence at the comparison base does not rule out a regression
 in severity or reachability. Verify the consequence and the cited locations.
 
 Use a focused reproducer where useful; a complete code argument can also
@@ -144,8 +160,10 @@ at different locations.
 
 ## Step 5: Synthesize
 
-Track completed and incomplete review areas from the engine's results. Missing
-or failed review work means incomplete coverage, not an absence of findings.
+Account for every discovered review area in the engine's results: completed,
+incomplete, or not applicable with a reason. Every applicable area must be
+evaluated before coverage is complete. Missing or failed review work means
+incomplete coverage, not an absence of findings.
 Present:
 
 - The reviewed scope and snapshot, coverage completion, and check results
@@ -174,8 +192,9 @@ For findings the user requests to fix:
 
 1. Read the target file to get the current content.
 2. Apply the correction, preserving unrelated edits.
-3. Run relevant regression tests and repository-required checks for the fixes.
-   Use `just ci_local` when full validation is required.
+3. Run relevant regression tests. For Rust code or build-configuration fixes,
+   run `just ci_local`; for documentation-only fixes, use the surface-specific
+   checks described in Step 3.
 4. Report what changed, the validation results, and any remaining findings.
 
 Keep findings the user skips as deferred, with a reason if supplied. Choosing
