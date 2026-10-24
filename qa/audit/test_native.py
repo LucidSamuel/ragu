@@ -18,7 +18,7 @@ import runner
 
 
 def message(block, reason):
-    return {"id": "msg_local_test", "type": "message", "role": "assistant", "model": "claude-fable-5-1",
+    return {"id": "msg_local_test", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
             "content": [block], "stop_reason": reason, "stop_sequence": None,
             "usage": {"input_tokens": 100, "output_tokens": 20}}
 
@@ -44,7 +44,7 @@ class FakeAPI(BaseHTTPRequestHandler):
         skill = runner.SKILLS[min(index, 3)]
         if self.headers.get("x-api-key") != "dummy-local-key":
             self.server.errors.append("apiKeyHelper did not supply the dummy key")
-        if payload.get("model") != "claude-fable-5-1" or payload.get("output_config", {}).get("effort") != "max":
+        if payload.get("model") != "claude-opus-5-5" or payload.get("output_config", {}).get("effort") != "xhigh":
             self.server.errors.append("configured model/effort was not sent to the API")
         if turn == 0:
             if f"TRUSTED-SKILL-CONTENT-{skill}" not in json.dumps(payload.get("messages")):
@@ -158,7 +158,7 @@ class NativeTests(unittest.TestCase):
                 values["ANTHROPIC_BASE_URL"] = f"http://127.0.0.1:{server.server_port}"
                 return values
 
-            run = {"head": "a" * 40, "base": "b" * 40, "configuration": "b" * 40, "model": "claude-fable-5-1", "effort": "max"}
+            run = {"head": "a" * 40, "base": "b" * 40, "configuration": "b" * 40, "model": "claude-opus-5-5", "effort": "xhigh"}
             try:
                 with patch.object(runner, "prepare", return_value=run["base"]), patch.object(runner, "environment", side_effect=environment), \
                      patch.object(subprocess, "run", side_effect=lambda *args, **kwargs: original_subprocess(*args, **{**kwargs, "timeout": 120})), \

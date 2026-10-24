@@ -10,7 +10,7 @@ After this workflow lands on `main`:
    `ragu-audit-model`, containing secret `ANTHROPIC_API_KEY`.
    Keep these credentials out of repository and organization-wide secrets.
 3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
-   `RAGU_AUDIT_MODEL=claude-fable-5-1`, and `RAGU_AUDIT_EFFORT=max`.
+   `RAGU_AUDIT_MODEL=claude-opus-5-5`, and `RAGU_AUDIT_EFFORT=xhigh`.
    The same model and effort apply to all four passes and their subagents.
    Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true`, open or update a PR, and post `/ragu-audit` as

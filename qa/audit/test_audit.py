@@ -16,7 +16,7 @@ ENV = {
     "GITHUB_REPOSITORY": github.REPOSITORY, "GITHUB_REF": "refs/heads/main",
     "GITHUB_WORKFLOW_SHA": BASE, "GITHUB_RUN_ID": "40027821675", "GITHUB_RUN_ATTEMPT": "1",
     "GITHUB_ACTOR": "alice", "GITHUB_TRIGGERING_ACTOR": "alice",
-    "RAGU_AUDIT_MODEL": "claude-fable-5-1", "RAGU_AUDIT_EFFORT": "max", "RAGU_AUDIT_APP_ID": "17",
+    "RAGU_AUDIT_MODEL": "claude-opus-5-5", "RAGU_AUDIT_EFFORT": "xhigh", "RAGU_AUDIT_APP_ID": "17",
 }
 
 
@@ -250,11 +250,11 @@ class AuditTests(unittest.TestCase):
 
     def test_cli_environment_has_no_inherited_credentials(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "dummy-key", "GH_TOKEN": "dummy-token", "AWS_SECRET_ACCESS_KEY": "dummy-aws"}):
-            values = runner.environment({"model": "claude-fable-5-1", "effort": "max"}, self.out)
+            values = runner.environment({"model": "claude-opus-5-5", "effort": "xhigh"}, self.out)
         for key in ("ANTHROPIC_API_KEY", "GH_TOKEN", "AWS_SECRET_ACCESS_KEY"):
             self.assertNotIn(key, values)
         self.assertEqual(values["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"], "1")
-        self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "max")
+        self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
 
     def test_sandbox_cannot_fall_back_or_write_control_paths(self):
         root, source, work, out, private, plugin = [self.out / name for name in ("root", "source", "work", "reports", "private", "plugin")]
