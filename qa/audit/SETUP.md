@@ -12,7 +12,7 @@ After this workflow lands on `main`:
 3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
    `RAGU_AUDIT_MODEL=claude-fable-5-1`, and `RAGU_AUDIT_EFFORT=max`.
    The same model and effort apply to all four passes and their subagents.
-   Claude Code is pinned to 2.1.310 in the runner and workflow.
+   Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true`, open or update a PR, and post `/ragu-audit` as
    a new PR conversation comment. The command requires live write, maintain, or
    admin permission; PR updates only queue a blocked check and spend no model

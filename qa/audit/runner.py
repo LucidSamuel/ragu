@@ -54,7 +54,7 @@ def prepare(root, run, work):
 def settings(root, source, work, out, private, plugin):
     # apiKeyHelper runs outside the Bash sandbox. PR tests cannot read its file
     # or inspect parent-process memory through /proc. No key enters the CLI env.
-    deny_read = [str(private), "/proc", str(Path.home() / ".ssh"), str(Path.home() / ".aws")]
+    deny_read = [str(private), "/proc", "/run", "/var/run", str(Path.home() / ".ssh"), str(Path.home() / ".aws")]
     protected = [root, root / ".git", out, private, plugin, work / "control"]
     protected += [work / skill / ".git" for skill in SKILLS]
     protected += [work / skill / ".claude" for skill in SKILLS]
