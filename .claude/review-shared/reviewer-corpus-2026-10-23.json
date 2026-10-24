@@ -1,0 +1,1264 @@
+{
+  "repository": "tachyon-zcash/ragu",
+  "retrieved_at": "2026-10-23T21:24:27.558518+00:00",
+  "pr_count": 621,
+  "pr_range": [
+    2,
+    914
+  ],
+  "oldest_pr": "2025-10-02T01:32:02Z",
+  "newest_pr": "2026-10-23T18:53:35Z",
+  "all_review_events": 2312,
+  "all_inline_comments": 3113,
+  "all_pr_discussion_comments": 884,
+  "targets": {
+    "TalDerei": {
+      "records": 3218,
+      "nonempty": 2278,
+      "distinct_prs": 460,
+      "words": 55138,
+      "by_kind": {
+        "inline": 1689,
+        "review": 1126,
+        "discussion": 403
+      },
+      "nonempty_by_kind": {
+        "inline": 1689,
+        "discussion": 403,
+        "review": 186
+      },
+      "external_nonempty": 1245,
+      "own_pr_nonempty": 1033,
+      "external_prs": 229,
+      "review_states": {
+        "COMMENTED": 952,
+        "APPROVED": 164,
+        "CHANGES_REQUESTED": 10
+      },
+      "dates": [
+        "2025-10-06T21:57:17Z",
+        "2026-10-23T21:05:07Z"
+      ]
+    },
+    "ebfull": {
+      "records": 1712,
+      "nonempty": 1126,
+      "distinct_prs": 352,
+      "words": 37350,
+      "by_kind": {
+        "discussion": 106,
+        "inline": 873,
+        "review": 733
+      },
+      "nonempty_by_kind": {
+        "discussion": 106,
+        "inline": 873,
+        "review": 147
+      },
+      "external_nonempty": 845,
+      "own_pr_nonempty": 281,
+      "external_prs": 211,
+      "review_states": {
+        "COMMENTED": 301,
+        "APPROVED": 259,
+        "CHANGES_REQUESTED": 173
+      },
+      "dates": [
+        "2025-10-06T17:33:38Z",
+        "2026-09-29T03:48:34Z"
+      ]
+    },
+    "alxiong": {
+      "records": 740,
+      "nonempty": 494,
+      "distinct_prs": 146,
+      "words": 23262,
+      "by_kind": {
+        "inline": 352,
+        "review": 300,
+        "discussion": 88
+      },
+      "nonempty_by_kind": {
+        "inline": 352,
+        "discussion": 88,
+        "review": 54
+      },
+      "external_nonempty": 268,
+      "own_pr_nonempty": 226,
+      "external_prs": 80,
+      "review_states": {
+        "COMMENTED": 256,
+        "APPROVED": 34,
+        "CHANGES_REQUESTED": 8,
+        "DISMISSED": 2
+      },
+      "dates": [
+        "2025-11-27T08:14:39Z",
+        "2026-10-23T14:09:04Z"
+      ]
+    }
+  },
+  "raw_files": {
+    "pr-pages.json": "bb4cc4754e28c1b8ac982536b3bfead90779d4782849a3a6fd7401519cb10573",
+    "inline-pages.json": "962c511d326d9ab80f3d4689dfc5ebf63afc0875b48966d57ddc5ef09c02f7ba",
+    "discussion-pages.json": "5e712c1ca3bd8988a930612dda3827ca8750e90efee4ed9f57583da4da39aab2"
+  },
+  "scope": "All accessible PRs in tachyon-zcash/ragu; not cross-repository GitHub history.",
+  "method": {
+    "review_events": "GraphQL pullRequests(first:50), paginated; reviews(first:100) for every PR, with nested completeness assertions.",
+    "inline_comments": "REST repos/tachyon-zcash/ragu/pulls/comments, per_page=100, all pages.",
+    "discussion_comments": "REST repos/tachyon-zcash/ragu/issues/comments, per_page=100, all pages; filtered to collected PR numbers.",
+    "source_role": "Reviewer-side feedback is primary. Own-PR responses, other participants, and review states provide context.",
+    "inference": "Themes and comparative emphasis are qualitative inferences from authored feedback, not statistical estimates or personality claims.",
+    "limitations": [
+      "Deleted or inaccessible comments and unsubmitted drafts are not recoverable.",
+      "The capture is a paginated retrieval, not an atomic GitHub snapshot.",
+      "The collection indexes review feedback; it does not re-audit all historical PR diffs.",
+      "Examples do not prove current findings or establish that all account-attributed comments were handwritten."
+    ]
+  },
+  "selected_sources": {
+    "TalDerei": [
+      {
+        "id": "2552100054",
+        "kind": "inline",
+        "pr": 100,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/100#discussion_r2552100054",
+        "theme": "Trace the instance into verification",
+        "body_sha256": "0b40520ab2a93f80e4d52eb043d85622710efbee6e3869a6ec36613bfe5ba559"
+      },
+      {
+        "id": "2561813338",
+        "kind": "inline",
+        "pr": 146,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/146#discussion_r2561813338",
+        "theme": "Trace the instance into verification",
+        "body_sha256": "ebf939633ade9d3169e29a2e9378e5d3984c271910bee763916c6f5e155888c3"
+      },
+      {
+        "id": "3249546364",
+        "kind": "inline",
+        "pr": 701,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/701#discussion_r3249546364",
+        "theme": "Trace the instance into verification",
+        "body_sha256": "62c250f264c7ec8594c7d6e6650606caa53b3a0bab81b87efdf94739541fd15a"
+      },
+      {
+        "id": "2656606596",
+        "kind": "inline",
+        "pr": 290,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/290#discussion_r2656606596",
+        "theme": "Check order and complete coverage",
+        "body_sha256": "a53fde6632078d97cebb58e11c3371d75b0add4e78274d6cb771f85d7d75b193"
+      },
+      {
+        "id": "2652372046",
+        "kind": "inline",
+        "pr": 284,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/284#discussion_r2652372046",
+        "theme": "Check order and complete coverage",
+        "body_sha256": "2c8f7a0cf88dbb0f6af69ae2a3c2730f47e44d9193eb1ff0ddedfc48ac777b8c"
+      },
+      {
+        "id": "3118212297",
+        "kind": "inline",
+        "pr": 656,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/656#discussion_r3118212297",
+        "theme": "Check order and complete coverage",
+        "body_sha256": "375b062c1b9d54a104d20d8acbde61719891eadcaf68c86d79ebb890627159b5"
+      },
+      {
+        "id": "2702571349",
+        "kind": "inline",
+        "pr": 353,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/353#discussion_r2702571349",
+        "theme": "Make tests reach the behavior they claim",
+        "body_sha256": "981ea94743cf2e2a29a49d97fa61defb41e3224f6e04eb3dd3fc5189bf048083"
+      },
+      {
+        "id": "3886738550",
+        "kind": "review",
+        "pr": 524,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/524#pullrequestreview-3886738550",
+        "theme": "Make tests reach the behavior they claim",
+        "body_sha256": "59f55db7b9d587bc47cbfa653a3843a3242e88400f65d3947f286e38ce9e1ed1"
+      },
+      {
+        "id": "5247298217",
+        "kind": "discussion",
+        "pr": 787,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/787#issuecomment-5247298217",
+        "theme": "Make tests reach the behavior they claim",
+        "body_sha256": "8af2db348f041222c49ded2a8e5b14fb5661e630e06c08a08f2c5232ca5a3749"
+      },
+      {
+        "id": "2834794564",
+        "kind": "inline",
+        "pr": 498,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/498#discussion_r2834794564",
+        "theme": "Use meaningful corruption baselines and controls",
+        "body_sha256": "ce327b8b7565ec8eef841b25b6878499812c542eee2bf1911d0e5a59b43a295c"
+      },
+      {
+        "id": "2834797610",
+        "kind": "inline",
+        "pr": 498,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/498#discussion_r2834797610",
+        "theme": "Use meaningful corruption baselines and controls",
+        "body_sha256": "137fdf935a5b4d6b9bca69c2fc7261505e835a6cb2c7b0c48dae9886516a7376"
+      },
+      {
+        "id": "2834824678",
+        "kind": "inline",
+        "pr": 498,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/498#discussion_r2834824678",
+        "theme": "Use meaningful corruption baselines and controls",
+        "body_sha256": "097ca0cdc6c98a52da7b0b9b25fcd6394e473a37cfa0c985f8d6fcb0d061324e"
+      },
+      {
+        "id": "2834851830",
+        "kind": "inline",
+        "pr": 467,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/467#discussion_r2834851830",
+        "theme": "Use meaningful corruption baselines and controls",
+        "body_sha256": "491745f5d1b68cd9d467a530235db36da5a11614c6f2412bb8643adfd9c9ae6c"
+      },
+      {
+        "id": "3834001639",
+        "kind": "review",
+        "pr": 417,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/417#pullrequestreview-3834001639",
+        "theme": "Use meaningful corruption baselines and controls",
+        "body_sha256": "4a55567008d1e84a7cb687a6668eeafe6e34eee63ee299488ba91a0ffe0bfe6e"
+      },
+      {
+        "id": "2621623629",
+        "kind": "inline",
+        "pr": 253,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/253#discussion_r2621623629",
+        "theme": "Exercise dimensions and boundary conditions",
+        "body_sha256": "3fa586b54394047ea6aad07df5be447d789c182e7a03d25701ae1d75858a4da3"
+      },
+      {
+        "id": "2624793958",
+        "kind": "inline",
+        "pr": 253,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/253#discussion_r2624793958",
+        "theme": "Exercise dimensions and boundary conditions",
+        "body_sha256": "b2c143cf32d3273ccf974a9845de6181c7d6e03e867c6af44789f5cc7156d7f2"
+      },
+      {
+        "id": "2595440634",
+        "kind": "inline",
+        "pr": 182,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/182#discussion_r2595440634",
+        "theme": "Exercise dimensions and boundary conditions",
+        "body_sha256": "0f63ff7659112e4f7a342683e8aaaaeefde1595845760297605273cd9304d7ed"
+      },
+      {
+        "id": "3318545075",
+        "kind": "inline",
+        "pr": 741,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/741#discussion_r3318545075",
+        "theme": "Preserve context-free gadget obligations",
+        "body_sha256": "8d4374fc3a3fcc16d39d734a6c64b0226c31e35910def65ba5e432753e78082f"
+      },
+      {
+        "id": "3324507089",
+        "kind": "inline",
+        "pr": 741,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/741#discussion_r3324507089",
+        "theme": "Preserve context-free gadget obligations",
+        "body_sha256": "d78a5853322898a926971126e7fdcfaa3dff747e4b3cb1e2ae7ea3f1e5fa26e4"
+      },
+      {
+        "id": "3368526199",
+        "kind": "inline",
+        "pr": 760,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/760#discussion_r3368526199",
+        "theme": "Preserve context-free gadget obligations",
+        "body_sha256": "524654ece16bdf9f8848c902cfb51dce1e26e8680de478f2b6f86a6365e412a4"
+      },
+      {
+        "id": "2525771368",
+        "kind": "inline",
+        "pr": 106,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/106#discussion_r2525771368",
+        "theme": "Keep the consumer and dependency graph in view",
+        "body_sha256": "95c25286fd63f0c57c568f20da3a0486d28463c1da6da8115a8c1d0f48f8dafa"
+      },
+      {
+        "id": "3249535033",
+        "kind": "inline",
+        "pr": 701,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/701#discussion_r3249535033",
+        "theme": "Keep the consumer and dependency graph in view",
+        "body_sha256": "bb963f041d0f50be8be7c87200eb872b8590fdc8ced3bba59f6c65a7a5748f67"
+      },
+      {
+        "id": "3249546364",
+        "kind": "inline",
+        "pr": 701,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/701#discussion_r3249546364",
+        "theme": "Keep the consumer and dependency graph in view",
+        "body_sha256": "62c250f264c7ec8594c7d6e6650606caa53b3a0bab81b87efdf94739541fd15a"
+      },
+      {
+        "id": "4239813599",
+        "kind": "review",
+        "pr": 699,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/699#pullrequestreview-4239813599",
+        "theme": "Keep the consumer and dependency graph in view",
+        "body_sha256": "771d37c403903ba692427c3ce383e8e9ce440a2fffbf9a98c701b5a7708f517e"
+      },
+      {
+        "id": "3891358193",
+        "kind": "review",
+        "pr": 527,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/527#pullrequestreview-3891358193",
+        "theme": "Avoid moving internal distinctions onto the caller",
+        "body_sha256": "3c1be7763a60f027b67c5989bbff5462ec9d1c8a094d91637bfae68d00529751"
+      },
+      {
+        "id": "3906039835",
+        "kind": "review",
+        "pr": 527,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/527#pullrequestreview-3906039835",
+        "theme": "Avoid moving internal distinctions onto the caller",
+        "body_sha256": "7f059960d1bc7649842602595f9f870e1d59e9778978b9da0afaf6e4982ba5a0"
+      },
+      {
+        "id": "3249586774",
+        "kind": "inline",
+        "pr": 701,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/701#discussion_r3249586774",
+        "theme": "Avoid moving internal distinctions onto the caller",
+        "body_sha256": "331d7cdaa1d86aeb4ce171a0046357e082ebcd84d441012315ad528686cf2719"
+      },
+      {
+        "id": "3932909504",
+        "kind": "review",
+        "pr": 561,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/561#pullrequestreview-3932909504",
+        "theme": "Inspect real memory and computation costs",
+        "body_sha256": "dfc6a396dd3f89b9da82ef62a72fae117cd4a46ae1bf2fbac2a76aabe2314888"
+      },
+      {
+        "id": "2921333457",
+        "kind": "inline",
+        "pr": 561,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/561#discussion_r2921333457",
+        "theme": "Inspect real memory and computation costs",
+        "body_sha256": "1e99f6fc39ad790ee8b358c7d8376f8f159c3cb6ac37da1702dbfba2e1d4840d"
+      },
+      {
+        "id": "2815115896",
+        "kind": "inline",
+        "pr": 479,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/479#discussion_r2815115896",
+        "theme": "Inspect real memory and computation costs",
+        "body_sha256": "53b15c4ccc4083a66a334540cc3a27faff9681859bfee7cf30fe6ccb5a920062"
+      },
+      {
+        "id": "2869645946",
+        "kind": "inline",
+        "pr": 515,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/515#discussion_r2869645946",
+        "theme": "Inspect real memory and computation costs",
+        "body_sha256": "48b87bc8b0044eb983b0448019ca4a9b21e5e82b0819d189e25dd2c0fa1ef98a"
+      },
+      {
+        "id": "2673582846",
+        "kind": "inline",
+        "pr": 304,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/304#discussion_r2673582846",
+        "theme": "Keep explanations faithful across surfaces",
+        "body_sha256": "7b1c1b6c9bf97682cc6ca3ecf1350b8939084c4ca4cee4d25293dc4ad357ead1"
+      },
+      {
+        "id": "3063171821",
+        "kind": "inline",
+        "pr": 635,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/635#discussion_r3063171821",
+        "theme": "Keep explanations faithful across surfaces",
+        "body_sha256": "5575ea657576d30c050a83cb57a805b448b761c94c203ec447441d49a8ec8753"
+      },
+      {
+        "id": "2969707616",
+        "kind": "inline",
+        "pr": 602,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/602#discussion_r2969707616",
+        "theme": "Keep explanations faithful across surfaces",
+        "body_sha256": "5dcbfd68f662b81c0006e420fd17dc525c4f5eee22d5420697219b4a099849b5"
+      },
+      {
+        "id": "3076054316",
+        "kind": "inline",
+        "pr": 644,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/644#discussion_r3076054316",
+        "theme": "Keep explanations faithful across surfaces",
+        "body_sha256": "4c1d1168796ec42bf9b3612e69db35920a8cdb7399d3f8b85db64ff3d4fafd49"
+      },
+      {
+        "id": "3949390494",
+        "kind": "review",
+        "pr": 561,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/561#pullrequestreview-3949390494",
+        "theme": "Separate optional redesign from a reviewable change",
+        "body_sha256": "4b3da626541476debecc104360a1c54d993fa4776f3316effdadd559f26d0657"
+      },
+      {
+        "id": "4239813599",
+        "kind": "review",
+        "pr": 699,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/699#pullrequestreview-4239813599",
+        "theme": "Separate optional redesign from a reviewable change",
+        "body_sha256": "771d37c403903ba692427c3ce383e8e9ce440a2fffbf9a98c701b5a7708f517e"
+      },
+      {
+        "id": "3782168391",
+        "kind": "review",
+        "pr": 456,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/456#pullrequestreview-3782168391",
+        "theme": "Separate optional redesign from a reviewable change",
+        "body_sha256": "ec47594b60aae503dc2528b9b7503a8690fe34ff4168ccf18299e979d1cd434e"
+      },
+      {
+        "id": "3981804544",
+        "kind": "review",
+        "pr": 596,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/596#pullrequestreview-3981804544",
+        "theme": "Separate optional redesign from a reviewable change",
+        "body_sha256": "fe75854ed8dad0568d9ec7a5c777f615224e78666ce22df2dffe844b3adfb168"
+      },
+      {
+        "id": "3581042653",
+        "kind": "review",
+        "pr": 253,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/253#pullrequestreview-3581042653",
+        "theme": "Calibrate conclusions and revise assumptions",
+        "body_sha256": "37070864a0c6d37e4227897301fa25e0254227def312e575b75bd4ae21bbf206"
+      },
+      {
+        "id": "2850384279",
+        "kind": "inline",
+        "pr": 508,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/508#discussion_r2850384279",
+        "theme": "Calibrate conclusions and revise assumptions",
+        "body_sha256": "eb25dee98b4a08789c3ca782a1990eb7b8180ea536d0fac667938e038145434a"
+      },
+      {
+        "id": "2820225247",
+        "kind": "inline",
+        "pr": 353,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/353#discussion_r2820225247",
+        "theme": "Calibrate conclusions and revise assumptions",
+        "body_sha256": "4f8b6f85ab05085e79cf72ff1ba81f7fe2b9678188d15e09ef0adcfb80ff7e89"
+      },
+      {
+        "id": "4361788775",
+        "kind": "discussion",
+        "pr": 669,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/669#issuecomment-4361788775",
+        "theme": "Calibrate conclusions and revise assumptions",
+        "body_sha256": "305981624b575c5d9d667ecb2e5d4c5efb0eeae3908ec56c680e4bcd2622c3d1"
+      }
+    ],
+    "ebfull": [
+      {
+        "id": "3684407242",
+        "kind": "review",
+        "pr": 363,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/363#pullrequestreview-3684407242",
+        "theme": "Protect the invariant at its origin",
+        "body_sha256": "923e2690a835b51bec1a5159ef02db18ffb3803ec7a5e01256fe80027c8b14f5"
+      },
+      {
+        "id": "3773365744",
+        "kind": "inline",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#discussion_r3773365744",
+        "theme": "Protect the invariant at its origin",
+        "body_sha256": "83436bc222e16aa532a498eba211d7eaac06949d02060b8c7d1ff37f79896e3e"
+      },
+      {
+        "id": "3162443886",
+        "kind": "inline",
+        "pr": 449,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/449#discussion_r3162443886",
+        "theme": "Protect the invariant at its origin",
+        "body_sha256": "fd2edfb4c62b997db03c53f750730260b2c79160c33feb40e5b4868a16186b65"
+      },
+      {
+        "id": "2561007007",
+        "kind": "inline",
+        "pr": 125,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/125#discussion_r2561007007",
+        "theme": "Check actual constraints and completeness",
+        "body_sha256": "a244b0535318759f6536b7b3db2d47bd77664b86a2ae713b449481face741c41"
+      },
+      {
+        "id": "3614099166",
+        "kind": "review",
+        "pr": 277,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/277#pullrequestreview-3614099166",
+        "theme": "Check actual constraints and completeness",
+        "body_sha256": "7a08b6c27c656f170f5ae620de1c0cb5b37d1a2c5f989bac1cd2949f31f68a1d"
+      },
+      {
+        "id": "3074272525",
+        "kind": "inline",
+        "pr": 643,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/643#discussion_r3074272525",
+        "theme": "Check actual constraints and completeness",
+        "body_sha256": "ded35b95d95931f858f7735d7a429e4749f43b2a1f3934e947e4ddb5ba0aff62"
+      },
+      {
+        "id": "3773563864",
+        "kind": "inline",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#discussion_r3773563864",
+        "theme": "Distinguish wire contracts from witness facts",
+        "body_sha256": "90d663a7c331ebcd8b0403ed48256b2181838e9512a69999f24c6e7b3fc305d6"
+      },
+      {
+        "id": "3327065924",
+        "kind": "inline",
+        "pr": 744,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/744#discussion_r3327065924",
+        "theme": "Distinguish wire contracts from witness facts",
+        "body_sha256": "943dcb6c9ecc21ae1536c55d8bc819686cc9acb72364247bf45244a38e2210d1"
+      },
+      {
+        "id": "4924584023",
+        "kind": "review",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#pullrequestreview-4924584023",
+        "theme": "Distinguish wire contracts from witness facts",
+        "body_sha256": "c2ff8e7b18b3f416147bcccdcddc2a88724f7bff24a26d4754898a19c7390ccf"
+      },
+      {
+        "id": "3699671189",
+        "kind": "review",
+        "pr": 383,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/383#pullrequestreview-3699671189",
+        "theme": "Locate the designated stage enforcer",
+        "body_sha256": "fbd183d3ac8a7738c52c66580e626933d8318620f3b0e1643c609d733e45ec28"
+      },
+      {
+        "id": "2751836503",
+        "kind": "inline",
+        "pr": 388,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/388#discussion_r2751836503",
+        "theme": "Locate the designated stage enforcer",
+        "body_sha256": "5c52ab5d82b912b5ae9ab1347637193b58b0f7ab61a1d7c41766edc3fecad3b4"
+      },
+      {
+        "id": "3520853194",
+        "kind": "review",
+        "pr": 166,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/166#pullrequestreview-3520853194",
+        "theme": "Locate the designated stage enforcer",
+        "body_sha256": "1037e481a72011e2f391a88a6d4def503c04b9595439e72de0bf6aa7a3ef145a"
+      },
+      {
+        "id": "2795138549",
+        "kind": "inline",
+        "pr": 422,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/422#discussion_r2795138549",
+        "theme": "Demand a concrete consumer for an abstraction",
+        "body_sha256": "26cddca65ab64a16b0ba81ef7c3dfe2e61c333f87804b761a9cf20414eb2e1c0"
+      },
+      {
+        "id": "3759789481",
+        "kind": "review",
+        "pr": 415,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/415#pullrequestreview-3759789481",
+        "theme": "Demand a concrete consumer for an abstraction",
+        "body_sha256": "7f002ec7d5ee3e6bee6fe7112dc0d4548e76cb6fc690200376e556439e25438b"
+      },
+      {
+        "id": "3856938959",
+        "kind": "discussion",
+        "pr": 415,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/415#issuecomment-3856938959",
+        "theme": "Demand a concrete consumer for an abstraction",
+        "body_sha256": "a8860479243a31cd922ed15a8c0945abdf531ce970a7d1b6c0cb4df44d4fb911"
+      },
+      {
+        "id": "3873967791",
+        "kind": "review",
+        "pr": 514,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/514#pullrequestreview-3873967791",
+        "theme": "Demand a concrete consumer for an abstraction",
+        "body_sha256": "79304c857f56724481eb66eb8ecfe1c94f70acea6b9770610f525192ad15ed6b"
+      },
+      {
+        "id": "3792131344",
+        "kind": "discussion",
+        "pr": 374,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/374#issuecomment-3792131344",
+        "theme": "Keep implementation details at the proper layer",
+        "body_sha256": "4b863bab6459da5f84a81e277003a15a48dd76197e096b845666c18f1426551e"
+      },
+      {
+        "id": "2740504406",
+        "kind": "inline",
+        "pr": 390,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/390#discussion_r2740504406",
+        "theme": "Keep implementation details at the proper layer",
+        "body_sha256": "8fd0e26d78d20fa5ecdf92f08afbb5d974d71a98d11e7482f005f7cfdafc3df7"
+      },
+      {
+        "id": "3836120250",
+        "kind": "review",
+        "pr": 504,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/504#pullrequestreview-3836120250",
+        "theme": "Keep implementation details at the proper layer",
+        "body_sha256": "3fe7805b93d20a1ec315c76cab313882478ff7facd3989288f5db7c64f28e3c5"
+      },
+      {
+        "id": "3787778809",
+        "kind": "review",
+        "pr": 413,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/413#pullrequestreview-3787778809",
+        "theme": "Keep implementation details at the proper layer",
+        "body_sha256": "b1d4a3ed56c72a5a6b646df625d623851b1ad2d96e97013f6195a171322f1971"
+      },
+      {
+        "id": "3673432132",
+        "kind": "review",
+        "pr": 352,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/352#pullrequestreview-3673432132",
+        "theme": "Preserve valid specialization and reuse",
+        "body_sha256": "15e7228bf5fd88fefb580834851855447003915e41d1368993d1bd95e3e1d66f"
+      },
+      {
+        "id": "2553809635",
+        "kind": "inline",
+        "pr": 125,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/125#discussion_r2553809635",
+        "theme": "Preserve valid specialization and reuse",
+        "body_sha256": "5a453bd889d5c6649bc35cf35d25008fa8f04ad43192fa77bf631e7f26fa30f1"
+      },
+      {
+        "id": "2972014430",
+        "kind": "inline",
+        "pr": 600,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/600#discussion_r2972014430",
+        "theme": "Preserve valid specialization and reuse",
+        "body_sha256": "d3bade23ea1231155b68a9e06cede935cdbb91fb70c2e6b8e9757c03ffc7add8"
+      },
+      {
+        "id": "2756499118",
+        "kind": "inline",
+        "pr": 413,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/413#discussion_r2756499118",
+        "theme": "Reason about routine identity and outputs separately",
+        "body_sha256": "3e0b89a851e7e25cbff5b2ab0dbdbe1019bf6f134939d04f0e2a9f29a35bee74"
+      },
+      {
+        "id": "3991763656",
+        "kind": "discussion",
+        "pr": 511,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/511#issuecomment-3991763656",
+        "theme": "Reason about routine identity and outputs separately",
+        "body_sha256": "886fee9ae9e63e6f1f05178595014cb6000d7a403cafda2f65fb857938eae71f"
+      },
+      {
+        "id": "4356337542",
+        "kind": "discussion",
+        "pr": 669,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/669#issuecomment-4356337542",
+        "theme": "Reason about routine identity and outputs separately",
+        "body_sha256": "ff356447fd3abfb439f770161e887b944a25f7e83e3e4c1f3a4e160def406439"
+      },
+      {
+        "id": "2870647360",
+        "kind": "inline",
+        "pr": 476,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/476#discussion_r2870647360",
+        "theme": "Keep deferred execution ordered and scoped",
+        "body_sha256": "cda912382b2619c22072d34ce2176677e6dec8e02c73e7c67d35fa12e2ed28d2"
+      },
+      {
+        "id": "2870660203",
+        "kind": "inline",
+        "pr": 476,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/476#discussion_r2870660203",
+        "theme": "Keep deferred execution ordered and scoped",
+        "body_sha256": "95db54036530508c4a67d0e7ba6e284654ad6a2bbb96feb11a3e5f350ec2028a"
+      },
+      {
+        "id": "3874209363",
+        "kind": "review",
+        "pr": 476,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/476#pullrequestreview-3874209363",
+        "theme": "Keep deferred execution ordered and scoped",
+        "body_sha256": "88056f8fa9905dcc5dd3da57c764adc7ddc697bdc3d187a4668faeff537f672e"
+      },
+      {
+        "id": "3338147591",
+        "kind": "review",
+        "pr": 46,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/46#pullrequestreview-3338147591",
+        "theme": "Use the right cost model and evidence",
+        "body_sha256": "2eb3365672251864c4f8a6c33cfef097d8b49df16c380c751462d3749ad5baf6"
+      },
+      {
+        "id": "3773464503",
+        "kind": "discussion",
+        "pr": 366,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/366#issuecomment-3773464503",
+        "theme": "Use the right cost model and evidence",
+        "body_sha256": "ee59ccfd1162cfdd41c3996a727599906981a55b9ccd26a28c256047de29e2da"
+      },
+      {
+        "id": "2732823770",
+        "kind": "inline",
+        "pr": 391,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/391#discussion_r2732823770",
+        "theme": "Use the right cost model and evidence",
+        "body_sha256": "14f63355b60694be39574b81d7ea6bd4d7d2a0b0718ba27fd7149d8af3f748d7"
+      },
+      {
+        "id": "4017674770",
+        "kind": "discussion",
+        "pr": 479,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/479#issuecomment-4017674770",
+        "theme": "Use the right cost model and evidence",
+        "body_sha256": "7e1fcccbc5459085c9ba143b637756ef0a66217da5d97e71306aad86a17772fe"
+      },
+      {
+        "id": "2588661270",
+        "kind": "inline",
+        "pr": 153,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/153#discussion_r2588661270",
+        "theme": "Test semantics independently of representation",
+        "body_sha256": "c5a9170539bfdf8b43ff9a96696522412db5676a4730b595e8fa371f70d5eb99"
+      },
+      {
+        "id": "2528081181",
+        "kind": "inline",
+        "pr": 101,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/101#discussion_r2528081181",
+        "theme": "Test semantics independently of representation",
+        "body_sha256": "dc6e11e8ff66bce0bc7bb12050ed0a6eb9ad29b964c1f20f5fc7156b442c5a1f"
+      },
+      {
+        "id": "2881409658",
+        "kind": "inline",
+        "pr": 522,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/522#discussion_r2881409658",
+        "theme": "Test semantics independently of representation",
+        "body_sha256": "f0c628432f25f63f89609f4ca1e1288aae86ea3887e1ed647e419a1dcc21ff26"
+      },
+      {
+        "id": "2737184214",
+        "kind": "inline",
+        "pr": 396,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/396#discussion_r2737184214",
+        "theme": "Document the contract, not the diff",
+        "body_sha256": "37d8f43713e6a0cee9957aa47bb961ff62d9ad3362dc828d4480b8caeebf7738"
+      },
+      {
+        "id": "2792107891",
+        "kind": "inline",
+        "pr": 424,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/424#discussion_r2792107891",
+        "theme": "Document the contract, not the diff",
+        "body_sha256": "b59b7e3b8fd5e5cb87eccc6a3b08b9b3437e7b6c0b205552669e905861bfb0dc"
+      },
+      {
+        "id": "3558604790",
+        "kind": "review",
+        "pr": 209,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/209#pullrequestreview-3558604790",
+        "theme": "Document the contract, not the diff",
+        "body_sha256": "6432f61b56b9efae46c558012ce455505f42647820d2874c8dd5ea188743b9f9"
+      },
+      {
+        "id": "2983372596",
+        "kind": "inline",
+        "pr": 532,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/532#discussion_r2983372596",
+        "theme": "Document the contract, not the diff",
+        "body_sha256": "2adec436ed0250cced5329569bca09d9b5f560ccf920bda94c2523c1b2fbf041"
+      },
+      {
+        "id": "3069072246",
+        "kind": "inline",
+        "pr": 634,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/634#discussion_r3069072246",
+        "theme": "Document the contract, not the diff",
+        "body_sha256": "3f88f8f935a8569a493ad5f53cd79cc58e18b8ff8f463d386c048895e89b9565"
+      },
+      {
+        "id": "2972072931",
+        "kind": "inline",
+        "pr": 532,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/532#discussion_r2972072931",
+        "theme": "Keep useful context despite a brevity policy",
+        "body_sha256": "2c42d88135e007f39c584a9b731bd956fc0f51b0c7a56155d7fb7b633527221e"
+      },
+      {
+        "id": "2903069252",
+        "kind": "inline",
+        "pr": 532,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/532#discussion_r2903069252",
+        "theme": "Keep useful context despite a brevity policy",
+        "body_sha256": "9ebe2fb1dd3aed949c020c04914859a41ed321f064a4958b691181fd6e3e57ea"
+      },
+      {
+        "id": "2903080866",
+        "kind": "inline",
+        "pr": 532,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/532#discussion_r2903080866",
+        "theme": "Keep useful context despite a brevity policy",
+        "body_sha256": "28f46f316aab1dcff9890d06da534b6de3febc1ebf2a6303080e5ae7b2f313d5"
+      },
+      {
+        "id": "3088756213",
+        "kind": "inline",
+        "pr": 652,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/652#discussion_r3088756213",
+        "theme": "Keep useful context despite a brevity policy",
+        "body_sha256": "297b3a44be4639bb9817b272f3f1ea6a93d1ebc61b8c97922cfbeb88fe7d446d"
+      },
+      {
+        "id": "3797687940",
+        "kind": "inline",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#discussion_r3797687940",
+        "theme": "Use trait guarantees and structured error conditions",
+        "body_sha256": "0404c9beb961e51a7740a27ced9942a34af7f33699814db0726b4d75ae590f78"
+      },
+      {
+        "id": "3797687949",
+        "kind": "inline",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#discussion_r3797687949",
+        "theme": "Use trait guarantees and structured error conditions",
+        "body_sha256": "8470e80011d1e625df4f879f6ad27d1868b9ed41c81f7a13b7e6f5ca8d1dc643"
+      },
+      {
+        "id": "3797687961",
+        "kind": "inline",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#discussion_r3797687961",
+        "theme": "Use trait guarantees and structured error conditions",
+        "body_sha256": "fd7ea15105db61213068be5d9e9f7446596754d6679b1dc3d3d2649ffe0ba516"
+      },
+      {
+        "id": "4953246649",
+        "kind": "review",
+        "pr": 767,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/767#pullrequestreview-4953246649",
+        "theme": "Use trait guarantees and structured error conditions",
+        "body_sha256": "fef4d3df07714a6faf2bc4b5679bebec444ef3e44c3be6e7bca5b4d48c160576"
+      },
+      {
+        "id": "2434411467",
+        "kind": "inline",
+        "pr": 46,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/46#discussion_r2434411467",
+        "theme": "Keep features and CI obligations coherent",
+        "body_sha256": "c211109478c563688c2c1e796eb80b6327f58696383b657abd40d29403c7f7c9"
+      },
+      {
+        "id": "2434455827",
+        "kind": "inline",
+        "pr": 46,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/46#discussion_r2434455827",
+        "theme": "Keep features and CI obligations coherent",
+        "body_sha256": "4b5121e5852f97d95f5470f9dd0c3e8e95bd8f45b783c8f39b8147cae2eaa64f"
+      },
+      {
+        "id": "3294883740",
+        "kind": "inline",
+        "pr": 732,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/732#discussion_r3294883740",
+        "theme": "Keep features and CI obligations coherent",
+        "body_sha256": "87d56f79b9303825f78912be34b595fb1b701558017b70f42098abaff00aeba0"
+      },
+      {
+        "id": "2709842501",
+        "kind": "inline",
+        "pr": 365,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/365#discussion_r2709842501",
+        "theme": "Distinguish preferences from blockers",
+        "body_sha256": "daf49b35a0e0089c0a863b2b4cb190fcc64dd92e7455c51b9d221185d129e826"
+      },
+      {
+        "id": "3558604790",
+        "kind": "review",
+        "pr": 209,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/209#pullrequestreview-3558604790",
+        "theme": "Distinguish preferences from blockers",
+        "body_sha256": "6432f61b56b9efae46c558012ce455505f42647820d2874c8dd5ea188743b9f9"
+      },
+      {
+        "id": "3688359515",
+        "kind": "review",
+        "pr": 364,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/364#pullrequestreview-3688359515",
+        "theme": "Distinguish preferences from blockers",
+        "body_sha256": "a10da656a7da9eb2c15d3bfa103006e297aaf30082edbac539a4e51b24b42527"
+      },
+      {
+        "id": "3722139043",
+        "kind": "review",
+        "pr": 320,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/320#pullrequestreview-3722139043",
+        "theme": "Distinguish preferences from blockers",
+        "body_sha256": "1cd926627b69315819dccffe80128a70173843a7be0841db167359f5f875535f"
+      },
+      {
+        "id": "2977409436",
+        "kind": "inline",
+        "pr": 610,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/610#discussion_r2977409436",
+        "theme": "Distinguish preferences from blockers",
+        "body_sha256": "e4d0d62e202d26124ef4ce8e9f0ddfd3bc752b17c0c166fe6bc03017162cec37"
+      }
+    ],
+    "alxiong": [
+      {
+        "id": "2575852295",
+        "kind": "inline",
+        "pr": 141,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/141#discussion_r2575852295",
+        "theme": "Fix objects before deriving their checking challenges",
+        "body_sha256": "71e36ec9a63570bdd5e0f194a1290a81fa8eaf3a4525bc8b1447f0445202d40c"
+      },
+      {
+        "id": "2580662294",
+        "kind": "inline",
+        "pr": 141,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/141#discussion_r2580662294",
+        "theme": "Fix objects before deriving their checking challenges",
+        "body_sha256": "bbe14afd74252727da45be94d0661d88a5875e460e353cbbbf8c537058c8a428"
+      },
+      {
+        "id": "2582044995",
+        "kind": "inline",
+        "pr": 141,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/141#discussion_r2582044995",
+        "theme": "Fix objects before deriving their checking challenges",
+        "body_sha256": "a3029639b244d97e05f023ae464c4889c3ed6f76fffde4597fd3163fada3f163"
+      },
+      {
+        "id": "2572708189",
+        "kind": "inline",
+        "pr": 35,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/35#discussion_r2572708189",
+        "theme": "Check state transitions and mathematical roles",
+        "body_sha256": "7af9ae114d527a9b16b93db61b0208bc39d47e8647a56095934f986c4723a41a"
+      },
+      {
+        "id": "2575562887",
+        "kind": "inline",
+        "pr": 142,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/142#discussion_r2575562887",
+        "theme": "Check state transitions and mathematical roles",
+        "body_sha256": "3087b502a3348c10dac226ea634de3435d4fd5365743c6e8984cbaed4b90fc02"
+      },
+      {
+        "id": "4360423601",
+        "kind": "inline",
+        "pr": 909,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/909#discussion_r4360423601",
+        "theme": "Check state transitions and mathematical roles",
+        "body_sha256": "2986850188b3864bfd417334bf5669a756007e9cf6780de80f8763e0f9650b67"
+      },
+      {
+        "id": "2819927503",
+        "kind": "inline",
+        "pr": 353,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/353#discussion_r2819927503",
+        "theme": "Refute your own proposed attack",
+        "body_sha256": "7cb2501a8f07dba0e9f09d583af06a2d8e7a39a9b2ae88c19f528b7bb63504c6"
+      },
+      {
+        "id": "2820276476",
+        "kind": "inline",
+        "pr": 353,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/353#discussion_r2820276476",
+        "theme": "Refute your own proposed attack",
+        "body_sha256": "c2a1b6bd02085f6f08adeab4b8caac0e6e4f8166b695ab99d446a41c5263fb04"
+      },
+      {
+        "id": "4189901815",
+        "kind": "review",
+        "pr": 688,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/688#pullrequestreview-4189901815",
+        "theme": "Separate completeness, soundness, and verifier visibility",
+        "body_sha256": "9925b6fa157fa26923b8a048920ac39632c606e85588829df0a9a475d87a6b31"
+      },
+      {
+        "id": "4225586815",
+        "kind": "review",
+        "pr": 688,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/688#pullrequestreview-4225586815",
+        "theme": "Separate completeness, soundness, and verifier visibility",
+        "body_sha256": "4e1099ec132ef9417a4cbdff719c28030e2c5108dc5860d6a867b585541d7227"
+      },
+      {
+        "id": "4476640663",
+        "kind": "discussion",
+        "pr": 688,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/688#issuecomment-4476640663",
+        "theme": "Separate completeness, soundness, and verifier visibility",
+        "body_sha256": "e7c964882bfcec7fad5b99c79d26d931391b6fe9195b8ebbbaa162324cc86917"
+      },
+      {
+        "id": "2833513490",
+        "kind": "inline",
+        "pr": 496,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/496#discussion_r2833513490",
+        "theme": "Localize invariants instead of relying on coordination",
+        "body_sha256": "7b1205a8ff9cda4fd3a1abbab44453e0b603102855c1a923f59b1245527aae4d"
+      },
+      {
+        "id": "3938099458",
+        "kind": "discussion",
+        "pr": 458,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/458#issuecomment-3938099458",
+        "theme": "Localize invariants instead of relying on coordination",
+        "body_sha256": "1e9c2115c9c1df55ec582c6ca9242232a11a5a4f27139429345d921c6077a612"
+      },
+      {
+        "id": "3085920395",
+        "kind": "inline",
+        "pr": 647,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/647#discussion_r3085920395",
+        "theme": "Localize invariants instead of relying on coordination",
+        "body_sha256": "27ef0f6d60f5db299ee2704fdb7c2dc4d3b89bf2991c8480f196d75574b6166d"
+      },
+      {
+        "id": "3117578030",
+        "kind": "inline",
+        "pr": 557,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/557#discussion_r3117578030",
+        "theme": "Localize invariants instead of relying on coordination",
+        "body_sha256": "764c4a7985298412d50b3e974cae837f9bf409d909e3773ff9314a4fa23da9aa"
+      },
+      {
+        "id": "2853564105",
+        "kind": "inline",
+        "pr": 503,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/503#discussion_r2853564105",
+        "theme": "Match identity to its actual consumer",
+        "body_sha256": "09acc945bece8fede1f8543f026b2e792f14b8e8cfa5e9e022ce3d948dffba1d"
+      },
+      {
+        "id": "2909283519",
+        "kind": "inline",
+        "pr": 511,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/511#discussion_r2909283519",
+        "theme": "Match identity to its actual consumer",
+        "body_sha256": "70ac7a0f6937187eef6286aa8f90ab1c17e197eccd904d24587ee46250349f76"
+      },
+      {
+        "id": "2937837091",
+        "kind": "inline",
+        "pr": 557,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/557#discussion_r2937837091",
+        "theme": "Match identity to its actual consumer",
+        "body_sha256": "f7055f7a2bee540d92ca157e3f87ab77ae9246cf0ad8d2d82011110c618227d4"
+      },
+      {
+        "id": "2878983741",
+        "kind": "inline",
+        "pr": 511,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/511#discussion_r2878983741",
+        "theme": "Match identity to its actual consumer",
+        "body_sha256": "114cc3600b077698ecf6566fb151749273015a9d06d2fb959feb83d4f2258d59"
+      },
+      {
+        "id": "2730487632",
+        "kind": "inline",
+        "pr": 390,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/390#discussion_r2730487632",
+        "theme": "Measure the actual workload and concurrency",
+        "body_sha256": "a64dc7c7d11e5aa3da5b38a6a5d94e95794ce9244a29b1621dbbb75f2ee24c26"
+      },
+      {
+        "id": "3951819893",
+        "kind": "discussion",
+        "pr": 476,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/476#issuecomment-3951819893",
+        "theme": "Measure the actual workload and concurrency",
+        "body_sha256": "4b920fe8630d89e15f41638dc0f413c65c813f47ffaa5688bb4b0b0ea05b961b"
+      },
+      {
+        "id": "4302177082",
+        "kind": "discussion",
+        "pr": 589,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/589#issuecomment-4302177082",
+        "theme": "Measure the actual workload and concurrency",
+        "body_sha256": "a9eb0773fc0e37e955f05dd2e06e2877da9d670bee9eaf720fa8ae72ca101e61"
+      },
+      {
+        "id": "2867434236",
+        "kind": "inline",
+        "pr": 510,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/510#discussion_r2867434236",
+        "theme": "Measure the actual workload and concurrency",
+        "body_sha256": "5f71ff0a2c7c9489f1e60b91353cfc4dc0ce9787e6bfded9a2d998e50852168a"
+      },
+      {
+        "id": "3757895136",
+        "kind": "discussion",
+        "pr": 329,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/329#issuecomment-3757895136",
+        "theme": "Prefer useful concrete APIs to speculative generality",
+        "body_sha256": "6a87058c5d47e8ae9dfdce46228c7b07c84433f48d66571b7133029e8a63643f"
+      },
+      {
+        "id": "3883322458",
+        "kind": "discussion",
+        "pr": 449,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/449#issuecomment-3883322458",
+        "theme": "Prefer useful concrete APIs to speculative generality",
+        "body_sha256": "baecdb7833bde11a75a93d2be80b241f6e6566a2c25bc971bef5fc54ffaff4a0"
+      },
+      {
+        "id": "3954519398",
+        "kind": "review",
+        "pr": 564,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/564#pullrequestreview-3954519398",
+        "theme": "Prefer useful concrete APIs to speculative generality",
+        "body_sha256": "f2c418ed4e14988afb9c0fa85c4a83d01623ee94e23dff4a932e7e02b54d7094"
+      },
+      {
+        "id": "3260287570",
+        "kind": "inline",
+        "pr": 704,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/704#discussion_r3260287570",
+        "theme": "Prefer useful concrete APIs to speculative generality",
+        "body_sha256": "0903a2961cf9db7aa13a4661804aa07bce2dc7f4653fc27a7a92ccb327babcc2"
+      },
+      {
+        "id": "3517488113",
+        "kind": "inline",
+        "pr": 802,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/802#discussion_r3517488113",
+        "theme": "Improve existing abstractions before adding mirrors or boilerplate",
+        "body_sha256": "1168fda13791489a939eb64c9cff8e6c5efe2007878e09e0bc6d3c305e76adbf"
+      },
+      {
+        "id": "4161750730",
+        "kind": "review",
+        "pr": 449,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/449#pullrequestreview-4161750730",
+        "theme": "Improve existing abstractions before adding mirrors or boilerplate",
+        "body_sha256": "fdb0a0ef3eacb315ca8497d9436585a4b7ac880c696400751fadcbe30e48ae77"
+      },
+      {
+        "id": "3090553623",
+        "kind": "inline",
+        "pr": 651,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/651#discussion_r3090553623",
+        "theme": "Improve existing abstractions before adding mirrors or boilerplate",
+        "body_sha256": "15d70b5a5164ffed0c66d91f101163f343485f96b42872dd8925267ad99e8b24"
+      },
+      {
+        "id": "4105480035",
+        "kind": "review",
+        "pr": 599,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/599#pullrequestreview-4105480035",
+        "theme": "Explain first principles with useful examples",
+        "body_sha256": "304d41505f377ed5880cbc65da4d243fc407f4bc079495ee9906ecc0bfb2825f"
+      },
+      {
+        "id": "2712802423",
+        "kind": "inline",
+        "pr": 371,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/371#discussion_r2712802423",
+        "theme": "Explain first principles with useful examples",
+        "body_sha256": "1406386bc0d7d5e82504a501b52fc875bb5629fb0723e6f4d78b2572e68fdbe6"
+      },
+      {
+        "id": "2674298360",
+        "kind": "inline",
+        "pr": 320,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/320#discussion_r2674298360",
+        "theme": "Explain first principles with useful examples",
+        "body_sha256": "d06b054bb1b0e0e6b91a8238258914b213fb69819bf881e20ea27c64dc253980"
+      },
+      {
+        "id": "3080555990",
+        "kind": "inline",
+        "pr": 599,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/599#discussion_r3080555990",
+        "theme": "Explain first principles with useful examples",
+        "body_sha256": "918d17eedce64c3aac3f21dc056460f7fbe4eddc98839eab5ce02e1714e01bb0"
+      },
+      {
+        "id": "2710950531",
+        "kind": "inline",
+        "pr": 370,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/370#discussion_r2710950531",
+        "theme": "Use precise names, claims, and measurement context",
+        "body_sha256": "2ab48f99dc785f3ffa00272d7604d6714e1b5610533c05d99d03270e97de72f7"
+      },
+      {
+        "id": "2844195863",
+        "kind": "inline",
+        "pr": 483,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/483#discussion_r2844195863",
+        "theme": "Use precise names, claims, and measurement context",
+        "body_sha256": "4d6eadf5ceebc226abd16ddbd0c708acb6428d72b9f05d38e3876e3610dd518d"
+      },
+      {
+        "id": "2674242161",
+        "kind": "inline",
+        "pr": 320,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/320#discussion_r2674242161",
+        "theme": "Use precise names, claims, and measurement context",
+        "body_sha256": "c3c3b35c8baf6faec7ca87d5e263a8b080a217c2bcae9aec7ff1885daae34119"
+      },
+      {
+        "id": "4245794754",
+        "kind": "inline",
+        "pr": 899,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/899#discussion_r4245794754",
+        "theme": "Use precise names, claims, and measurement context",
+        "body_sha256": "7eba6995128fe6d5e8108a3f9302128f3f131e52c84f3861fef0dc73f939b54a"
+      },
+      {
+        "id": "2734572973",
+        "kind": "inline",
+        "pr": 390,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/390#discussion_r2734572973",
+        "theme": "Keep preferences revisable and defenses motivated",
+        "body_sha256": "aed5bcc8df3772412fa9013bf0aa35368932eb3ac322c85aef00ceba477d0d74"
+      },
+      {
+        "id": "2944537042",
+        "kind": "inline",
+        "pr": 557,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/557#discussion_r2944537042",
+        "theme": "Keep preferences revisable and defenses motivated",
+        "body_sha256": "4e607a78d5308e9df9c1ac5a41d7d7871509f0d70a036245163cd44ad4263377"
+      },
+      {
+        "id": "3116862622",
+        "kind": "inline",
+        "pr": 557,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/557#discussion_r3116862622",
+        "theme": "Keep preferences revisable and defenses motivated",
+        "body_sha256": "279280211ab0f39ea56a43b89e47aa61ef7ec48d9bf7b9bd619d7841370d3cc2"
+      },
+      {
+        "id": "3997435364",
+        "kind": "discussion",
+        "pr": 521,
+        "url": "https://github.com/tachyon-zcash/ragu/pull/521#issuecomment-3997435364",
+        "theme": "Keep preferences revisable and defenses motivated",
+        "body_sha256": "c21eebfdbe08cbbfbf3b815d5b9d30edacc16d6a335e4a6b929b43742fa72ee3"
+      }
+    ]
+  }
+}
