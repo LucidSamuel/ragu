@@ -22,30 +22,11 @@ actionable without proving a runtime bug.
 
 ## Finding Requirements
 
-Each finding must include:
-
-- **Location**: The smallest useful file/line range, preferably in the diff for
-  a change review. Cite affected callers as supporting context.
-- **Issue**: For a behavioral defect, give a reachable triggering condition,
-  expected and actual behavior, the affected caller or contract, and the
-  consequence. For a policy violation, identify the rule and the code or text
-  that violates it. For a suggestion, explain the concrete clarity or maintenance
-  problem. In a diff review, explain how the change introduces or worsens the
-  issue.
-- **Evidence**: Support a behavioral defect with a reproducer or a complete code
-  argument. Support a policy violation by citing the rule and the conflicting
-  code or text. State what was verified and which assumptions remain; a runnable
-  reproducer is not required for a policy violation or a defect established by
-  the code.
-- **Suggestion**: A concrete correction and, where useful, a regression check
-  that distinguishes the broken and corrected behavior.
-- **Severity**: `must-fix` or `suggestion`, justified by the consequence or the
-  project convention being violated.
-
-Confidence describes the strength of the evidence; severity describes the
-consequence or policy violation. Report unconfirmed behavioral concerns as open
-questions, separate from confirmed defects and demonstrated policy violations.
-Missing validation is not by itself a production defect.
+Each finding must identify its location, issue, supporting evidence, severity,
+and a concrete correction. For behavioral defects, explain a reachable failure
+and its consequence; a complete code argument is sufficient. For policy
+violations, cite the rule and conflicting code or text. Report unconfirmed
+concerns and unrun checks separately.
 
 ## Severity Levels
 
