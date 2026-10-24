@@ -8,12 +8,14 @@ a static read of the code would miss.
 ## Procedure
 
 1. Identify the files and functions being reviewed.
-2. Run `git log --oneline -20 -- {file}` for each file to see recent evolution.
-3. Run `git blame -L {start},{end} -- {file}` on the specific lines under review
-   to understand when and why they were written.
-4. If the reviewed code modifies or extends an existing function, check what the
-   function looked like before to understand whether the change preserves
-   original intent.
+2. Run `git log --oneline -20 {revision} -- {file}` at the supplied revision and
+   inspect relevant commit diffs.
+3. Run `git blame -L {start},{end} {revision} -- {file}` on reviewed lines. For
+   local changes, also inspect the captured diff and contents.
+4. Compare changed functions and affected callers with the comparison base.
+   Follow renames or older history to clarify unexplained invariants.
+5. Assess historical intent against the current contract. Old code, messages, or
+   approvals do not establish correctness or require preserving old behavior.
 
 ## What to Look For
 
@@ -28,9 +30,16 @@ a static read of the code would miss.
 - **Copy-paste drift**: If the reviewed code is structurally similar to another
   block in the same file, check whether both blocks have been kept in sync with
   recent changes.
+- **Weakened regression tests**: If a test is removed or rewritten, check whether
+  its replacement still detects the original failure and exercises the affected
+  path.
+
+Cite the revision and lost invariant; distinguish regressions from inherited
+limitations or deliberate contract changes. Report unavailable or shallow
+history as a limit rather than inventing rationale.
 
 ## What NOT to Look For
 
 - General code quality unrelated to history context.
-- Issues on lines that haven't been modified and aren't affected by the change.
+- In a diff review, unrelated issues on lines unaffected by the change.
 - Style or formatting — other reviewers and automated checks handle that.

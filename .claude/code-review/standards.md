@@ -6,8 +6,24 @@ focus-specific policy file.
 ## Scope
 
 - Review Rust source files (`.rs`) in the workspace.
-- Focus on changed code. Flag surrounding code ONLY if the change introduced
-  an inconsistency with it.
+- For diff reviews, report defects introduced, worsened, or made reachable by
+  the change. Follow effects into unchanged code, but exclude unrelated existing
+  issues. For whole-file or concept reviews, assess the requested scope directly.
+- Use the supplied snapshot. Read full affected functions and relevant callers,
+  tests, and configuration before reporting findings.
+
+## Project Conventions
+
+Documented project conventions are authoritative and must not be weakened by
+generic guidance. A demonstrated violation is actionable without a runtime bug.
+
+## Finding Requirements
+
+Each finding must identify its location, issue, supporting evidence, severity,
+and a concrete correction. For behavioral defects, explain a reachable failure
+and its consequence; a complete code argument is sufficient. For policy
+violations, cite the rule and conflicting code or text. Report unconfirmed
+concerns and unrun checks separately.
 
 ## Severity Levels
 
@@ -15,6 +31,9 @@ focus-specific policy file.
   conventions, or documentation that is actively misleading.
 - **suggestion**: Improvement that would make the code clearer, more idiomatic,
   or easier to maintain, but isn't wrong as-is.
+
+Suggestions without a policy basis must identify a concrete readability, misuse,
+or maintenance problem and explain the benefit of the change.
 
 ## Synced Content
 
