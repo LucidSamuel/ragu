@@ -43,10 +43,7 @@ snapshot and unfinished work. Do not combine evidence from different snapshots.
 
 ## Step 2: Prepare Review Coverage
 
-The wrapping engine controls model selection, agent count, and scheduling.
-This skill defines the review coverage, context, and evidence requirements.
-Every applicable policy area must be evaluated, including its required shared
-policies. Grouping areas must preserve that coverage regardless of agent count.
+Review every applicable policy area, including its required shared policies.
 
 1. Use Glob to find all `.claude/code-review/*.md` files.
 2. Read `.claude/code-review/standards.md` (master standards shared by all
@@ -110,8 +107,8 @@ policies. Grouping areas must preserve that coverage regardless of agent count.
 
 ## Step 3: Run Required Checks and Targeted Tests
 
-Use `justfile` and the relevant `.github/workflows/` files to identify the
-repository's commands, toolchains, and feature configurations. Rust code and
+Use the relevant `.github/workflows/` files to identify the repository's
+commands, toolchains, and feature configurations. Rust code and
 build-configuration reviews require these baseline checks:
 
 1. Formatting with the repository's pinned nightly rustfmt and configuration.
