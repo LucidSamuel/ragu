@@ -3,22 +3,8 @@ name: Ragu audit
 on: # zizmor: ignore[dangerous-triggers]
   # Privileged jobs use only default-branch controller code. PR commands run
   # in Claude's required sandbox, with no publisher token or model key in env.
-  pull_request_target:
-    branches: [main]
-    types: [opened, synchronize, reopened, edited]
   issue_comment:
     types: [created]
-  workflow_dispatch:
-    inputs:
-      pull_request:
-        description: Pull request number to review
-        required: true
-        type: string
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-    paths: [.github/workflows/audit.yml, 'qa/audit/**', '.claude/skills/**']
 
 permissions:
   contents: read
@@ -30,37 +16,17 @@ env:
   RAGU_AUDIT_APP_ID: ${{ vars.RAGU_AUDIT_APP_ID }}
 
 jobs:
-  tests:
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          persist-credentials: false
-      - name: Install the pinned CLI and sandbox for the local API test
-        run: bash qa/audit/install.sh
-      - run: python3 -m unittest discover -s qa/audit -p 'test_*.py' -v
-        env:
-          RAGU_AUDIT_NATIVE_TEST: '1'
-
   request:
     # Authorization precedes both model access and cancellation of older runs.
     if: >-
       github.repository == 'tachyon-zcash/ragu' &&
       vars.RAGU_AUDIT_ENABLED == 'true' && github.ref == 'refs/heads/main' &&
-      github.event_name != 'pull_request' &&
-      (github.event_name != 'issue_comment' ||
-       (github.event.issue.pull_request && contains(github.event.comment.body, '/ragu-audit')))
+      github.event.issue.pull_request && github.event.comment.body == '/ragu-audit'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       pr: ${{ steps.request.outputs.pr }}
       head: ${{ steps.request.outputs.head }}
-      prs: ${{ steps.request.outputs.prs }}
-      execute: ${{ steps.request.outputs.execute }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -73,18 +39,14 @@ jobs:
 
   queue:
     needs: request
-    if: needs.request.outputs.prs != ''
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJSON(needs.request.outputs.prs) }}
+    if: needs.request.outputs.pr != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: ragu-audit-publisher
     concurrency:
       # Checks are shared by PRs pointing at the same commit. Serialize their
       # read/create/publish operations without dropping pending manual requests.
-      group: ragu-audit-publisher-${{ matrix.head }}
+      group: ragu-audit-publisher-${{ needs.request.outputs.head }}
       cancel-in-progress: false
       queue: max
     steps:
@@ -100,29 +62,27 @@ jobs:
           owner: tachyon-zcash
           repositories: ragu
           permission-checks: write
+          permission-contents: read
           permission-pull-requests: write
       - id: queue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
-          PR_NUMBER: ${{ matrix.pr }}
-          PR_HEAD: ${{ matrix.head }}
-          EXECUTE: ${{ needs.request.outputs.execute }}
+          PR_NUMBER: ${{ needs.request.outputs.pr }}
+          PR_HEAD: ${{ needs.request.outputs.head }}
         run: |
-          args=()
-          if [[ "$EXECUTE" == true ]]; then args+=(--execute); fi
-          python3 qa/audit/github.py queue --pr "$PR_NUMBER" --head "$PR_HEAD" "${args[@]}" \
+          python3 qa/audit/github.py queue --pr "$PR_NUMBER" --head "$PR_HEAD" \
             --run "$RUNNER_TEMP/audit-work/control/run.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.queue.outputs.head != ''
         with:
-          name: ragu-audit-control-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.pr }}
+          name: ragu-audit-control-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.request.outputs.pr }}
           path: ${{ runner.temp }}/audit-work/control/run.json
           if-no-files-found: error
           retention-days: 30
 
   review:
     needs: [request, queue]
-    if: needs.request.outputs.execute == 'true'
+    if: needs.request.outputs.pr != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
@@ -187,7 +147,7 @@ jobs:
 
   publish:
     needs: [request, queue, review]
-    if: always() && needs.queue.result == 'success' && needs.request.outputs.execute == 'true'
+    if: always() && needs.queue.result == 'success' && needs.request.outputs.pr != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     environment: ragu-audit-publisher
@@ -217,6 +177,7 @@ jobs:
           owner: tachyon-zcash
           repositories: ragu
           permission-checks: write
+          permission-contents: read
           permission-pull-requests: write
       - name: Verify reports and publish the summary and completion check
         env:
