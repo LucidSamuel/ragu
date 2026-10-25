@@ -10,11 +10,10 @@
 //! reached from the `Backend` impl in the crate root by delegation, so code
 //! that can influence an acceptance decision can be reviewed and tested here.
 
-use alloc::vec::Vec;
-
 use udon::curve::Affine;
 
-/// Computes independent MSMs, truncating each input to its shorter operand.
+/// Computes independent MSMs, panicking before any of them if an input's
+/// operands differ in length.
 pub(crate) fn msm_batch<
     'a,
     C: Affine,
@@ -27,13 +26,9 @@ pub(crate) fn msm_batch<
 where
     Bases::IntoIter: Clone + Sync,
 {
-    let inputs = inputs.map(|(coeffs, bases)| {
-        let coeffs: Vec<_> = coeffs.into_iter().copied().collect();
-        let bases: Vec<_> = bases.into_iter().copied().collect();
-        let len = coeffs.len().min(bases.len());
-        (coeffs.into_iter().take(len), bases.into_iter().take(len))
-    });
-    ragu_core::msm_batch(inputs)
+    ragu_core::msm_batch(
+        inputs.map(|(coeffs, bases)| (coeffs.into_iter().copied(), bases.into_iter().copied())),
+    )
 }
 
 /// Schedules independent work without changing the items' original slots.

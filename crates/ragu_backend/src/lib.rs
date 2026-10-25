@@ -213,10 +213,15 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// Computes the multiscalar multiplication
     /// $\langle \mathbf{a}, \mathbf{G} \rangle$.
     ///
+    /// # Panics
+    ///
+    /// Panics if `coeffs` and `bases` differ in length. Pairing them up to
+    /// the shorter one would silently drop terms from the sum.
+    ///
     /// # Correctness
     ///
-    /// Inputs are truncated to the shorter iterator. Overrides must match
-    /// [`Affine::msm`] on those paired elements exactly.
+    /// Overrides must match [`Affine::msm`] exactly, including the panic on
+    /// operands of unequal length.
     fn msm<
         'a,
         C: Affine,
@@ -229,10 +234,7 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     where
         Bases::IntoIter: Clone + Sync,
     {
-        let coeffs: Vec<C::Scalar> = coeffs.into_iter().copied().collect();
-        let bases: Vec<C> = bases.into_iter().copied().collect();
-        let len = coeffs.len().min(bases.len());
-        ragu_core::msm(coeffs.into_iter().take(len), bases.into_iter().take(len))
+        ragu_core::msm(coeffs.into_iter().copied(), bases.into_iter().copied())
     }
 
     /// Computes independent MSMs, returning results in input order.
@@ -240,10 +242,14 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// The default calls [`Self::msm`] for each input, retaining MSM overrides.
     /// Backends may override this method to schedule the MSMs together.
     ///
+    /// # Panics
+    ///
+    /// Panics if any input's operands differ in length, as [`Self::msm`]
+    /// does.
+    ///
     /// # Correctness
     ///
-    /// Each input is truncated to its shorter iterator, as in [`Self::msm`].
-    /// Outputs must match separate calls to that method exactly.
+    /// Outputs must match separate calls to [`Self::msm`] exactly.
     fn msm_batch<
         'a,
         C: Affine,

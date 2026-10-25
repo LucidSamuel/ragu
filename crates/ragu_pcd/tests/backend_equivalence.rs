@@ -798,7 +798,7 @@ impl Backend for CustomBackend {
 }
 
 #[test]
-fn batch_preserves_truncation_order_and_default_msm_override() {
+fn batch_preserves_order_and_default_msm_override() {
     fn check<C: Affine>() {
         let scalars = [
             C::Scalar::ONE,
@@ -807,22 +807,28 @@ fn batch_preserves_truncation_order_and_default_msm_override() {
             C::Scalar::ZERO,
         ];
         let generator = C::generator();
-        let bases = [generator, -generator];
+        let bases = [generator, -generator, generator, -generator];
         let inputs = [
             (&scalars[..], &bases[..]),
-            (&scalars[..1], &bases[..]),
-            (&scalars[..0], &bases[..]),
-            (&scalars[..], &bases[..0]),
-            (&scalars[3..], &bases[..]),
+            (&scalars[..1], &bases[..1]),
+            (&scalars[..0], &bases[..0]),
+            (&scalars[1..3], &bases[2..]),
+            (&scalars[3..], &bases[3..]),
         ];
-        let expected = inputs.map(|(scalars, bases)| ReferenceBackend::msm(scalars, bases));
+        // In order: 2G, G, the empty sum, -G and the zero scalar's sum. Only
+        // the two identities coincide, so a reordered batch cannot match.
+        let expected = inputs.map(|(scalars, bases)| C::msm(scalars, bases));
+        assert!(expected[2].is_identity() && expected[4].is_identity());
+        assert_eq!(
+            inputs.map(|(scalars, bases)| ReferenceBackend::msm(scalars, bases)),
+            expected
+        );
         assert_eq!(ReferenceBackend::msm_batch(inputs), expected);
         assert_eq!(AcceleratedBackend::msm_batch(inputs), expected);
         assert_eq!(AcceleratedProver::msm_batch(inputs), expected);
         CALLS.store(0, Ordering::Relaxed);
         assert_eq!(CustomBackend::msm_batch(inputs), expected);
         assert_eq!(CALLS.load(Ordering::Relaxed), inputs.len());
-        assert!(expected[2..].iter().all(|point| point.is_identity()));
 
         let empty: [(&[C::Scalar], &[C]); 0] = [];
         assert_eq!(ReferenceBackend::msm_batch(empty), []);
@@ -832,6 +838,45 @@ fn batch_preserves_truncation_order_and_default_msm_override() {
 
     check::<ragu_core::pasta::EpAffine>();
     check::<ragu_core::pasta::EqAffine>();
+}
+
+/// A missing scalar or base must not drop the unpaired term: every backend
+/// panics, single or batched, with either operand longer.
+#[test]
+fn msms_reject_unequal_operands() {
+    fn assert_rejects(msm: impl FnOnce()) {
+        let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(msm))
+            .expect_err("unequal operands must panic");
+        let message = panic
+            .downcast_ref::<alloc::string::String>()
+            .map(|message| message.as_str())
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(
+            message.contains("msm operands must have equal length"),
+            "unexpected panic: {message}"
+        );
+    }
+
+    fn check<B: Backend, C: Affine>() {
+        let scalars = [C::Scalar::ONE, C::Scalar::from(2)];
+        let bases = [C::generator(), -C::generator()];
+        for (coeffs, points) in [(&scalars[..], &bases[..1]), (&scalars[..1], &bases[..])] {
+            assert_rejects(|| {
+                B::msm(coeffs, points);
+            });
+            assert_rejects(|| {
+                B::msm_batch([(&scalars[..], &bases[..]), (coeffs, points)]);
+            });
+        }
+    }
+
+    check::<ReferenceBackend, ragu_core::pasta::EpAffine>();
+    check::<ReferenceBackend, ragu_core::pasta::EqAffine>();
+    check::<AcceleratedBackend, ragu_core::pasta::EpAffine>();
+    check::<AcceleratedBackend, ragu_core::pasta::EqAffine>();
+    check::<AcceleratedProver, ragu_core::pasta::EpAffine>();
+    check::<AcceleratedProver, ragu_core::pasta::EqAffine>();
 }
 
 #[test]
