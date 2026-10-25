@@ -103,7 +103,7 @@ def settings(root, source, work, out, private, plugin, scratch):
     # reports or another CLI's tool output. Each owns a separate source tree.
     deny_read += [str(out / f"{skill}.{suffix}") for skill in SKILLS[1:] if skill != source.name
                   for suffix in REPORT_SUFFIXES]
-    protected = [root, root / ".git", out, private, plugin, work / "control", state]
+    protected = [root, root / ".git", out, private, plugin, work / "control", state, scratch / source.name / "shared-temp"]
     protected += peer_scratch + shared_scratch()
     protected += [work / skill for skill in SKILLS if work / skill != source]
     protected += [work / skill / ".git" for skill in SKILLS]
@@ -221,6 +221,22 @@ def incomplete_reason(result):
     return "; ".join(reasons) or "the controller could not validate completion"
 
 
+def isolate_shared_temp(command, scratch):
+    if sys.platform != "linux":
+        return command
+    executable = shutil.which("bwrap")
+    if not executable:
+        raise ValueError("bubblewrap is required to isolate Linux review temp directories")
+    # The inner runtime can re-open its default temp roots despite denyRead.
+    # Give it a private view before Claude or its proxies start. This
+    # mount namespace leaves the required inner Bash sandbox and network policy
+    # intact, and never changes the host's existing shared temp contents.
+    wrapped = [executable, "--die-with-parent", "--dev-bind", "/", "/"]
+    for path in shared_scratch():
+        wrapped += ["--bind", str(scratch / "shared-temp"), str(path)]
+    return wrapped + ["--", *command]
+
+
 def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, scratch, reports):
     source = work / skill
     command = [
@@ -237,7 +253,7 @@ def review_skill(skill, executable, root, run, work, out, private, plugin, merge
     ]
     print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']})", flush=True)
     started = time.monotonic()
-    process = subprocess.run(command, cwd=root, env=environment(run, work, skill, scratch), capture_output=True, text=True, timeout=3300)
+    process = subprocess.run(isolate_shared_temp(command, scratch / skill), cwd=root, env=environment(run, work, skill, scratch), capture_output=True, text=True, timeout=3300)
     (out / f"{skill}.json").write_text(process.stdout)
     (out / f"{skill}.stderr").write_text(process.stderr)
     if process.returncode:
@@ -297,6 +313,7 @@ def review(root, run, work, out, private):
         for skill in SKILLS:
             (scratch / skill).mkdir(mode=0o700)
             (scratch / skill / f"claude-{os.getuid()}").mkdir(mode=0o700)
+            (scratch / skill / "shared-temp").mkdir(mode=0o700)
         arguments = (executable, root, run, work, out, private, plugin, merge_base, scratch)
         record(review_skill(SKILLS[0], *arguments, ()))
         reports = (out / "code-review.md",)

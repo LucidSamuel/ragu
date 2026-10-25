@@ -39,11 +39,15 @@ the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
 
-Each pass also has a short, private scratch directory, with peer scratch and
-shared Claude temp directories blocked for reads and writes. The short path
-prevents Claude from falling back to a shared Bash temp directory. The
-controller creates report files before launching any reviewer and writes them
-in place, so Linux read-deny mounts also hide reports written later.
+Each pass also has a short, private scratch directory, with peer scratch
+protected from reads and host writes. The short path prevents Claude from
+falling back to a shared Bash temp directory. On Linux, a per-reviewer mount
+namespace replaces the default shared temp directories with private directories
+before Claude starts, preventing the inner runtime from re-opening host scratch
+files. These private replacements remain writable to Claude for runtime IPC;
+the Bash sandbox and network policy still apply. The controller creates report
+files before launching any reviewer and writes them in place, so Linux
+read-deny mounts also hide reports written later.
 
 New commits need another `/ragu-audit` comment. A required check blocks an
 unreviewed head without running a workflow. Completed checks do not update when

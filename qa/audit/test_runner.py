@@ -188,6 +188,21 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(int(values[0]["CARGO_BUILD_JOBS"]), cpus or 1)
             self.assertEqual([int(value["CARGO_BUILD_JOBS"]) for value in values[1:]], [max(1, (cpus or 1) // 3)] * 3)
 
+    def test_linux_mounts_private_temp_before_starting_claude(self):
+        command = ["claude", "--print", "--", "trusted review prompt"]
+        with patch.object(sys, "platform", "linux"), patch.object(runner.shutil, "which", return_value="/usr/bin/bwrap"):
+            wrapped = runner.isolate_shared_temp(command, self.work)
+        self.assertEqual(wrapped[:6], ["/usr/bin/bwrap", "--die-with-parent", "--dev-bind", "/", "/", "--bind"])
+        for path in runner.shared_scratch():
+            index = wrapped.index(str(path))
+            self.assertEqual(wrapped[index - 2:index], ["--bind", str(self.work / "shared-temp")])
+        self.assertEqual(wrapped[-len(command) - 1:], ["--", *command])
+
+    def test_linux_without_bubblewrap_fails_closed(self):
+        with patch.object(sys, "platform", "linux"), patch.object(runner.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(ValueError, "bubblewrap is required"):
+                runner.isolate_shared_temp(["claude"], self.work)
+
 
 if __name__ == "__main__":
     unittest.main()
