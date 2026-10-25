@@ -4,10 +4,12 @@
 skills against the same PR revision. These are complementary review
 perspectives; checks follow the changes and relevant project policies.
 
-Post the command as a PR comment with write access. The bot updates one summary
-comment with each pass's findings and links to the full reports.
-`ragu-audit/completed` stays blocked until all four passes finish for the
-reviewed head/base. Identical snapshots across PRs share the check; each PR
-keeps its own comment. Completion records finished passes, not approval.
+Post the exact command as a new PR comment with write access. Commits do not
+trigger the bot. It updates one summary comment with each pass's findings and
+links to the full reports.
+
+Require `ragu-audit/completed` to gate merging on all four passes finishing.
+After pushing new commits, post the command again. Completion records finished
+passes, not approval.
 
 The runner and skills live in this repository. [Setup](SETUP.md).
