@@ -29,6 +29,42 @@ can share a result, while each invocation updates its own PR comment. Findings
 do not automatically block this check; maintainers resolve them through normal
 review.
 
+All four passes focus on source review. Separate CI workflows own formatting,
+Clippy and other lints, documentation builds, routine builds, and broad test
+suites. The bot neither runs those checks nor waits for their status. This
+controller policy overrides generic skill instructions to run automated
+validation; CI results do not determine review completion. A reviewer can run
+a focused test or reproducer to investigate a concrete suspected defect.
+
+The core code-review pass runs first. Sean, Tal, and Alex then run concurrently,
+each with the core report and its validation evidence, a separate source
+worktree, and separate Claude state. Specialists cannot read each other's
+reports or state, or modify another checkout. Cargo's download cache is shared
+within the fresh runner; adequate recorded validation can be reused instead of
+running the same checks four times. Each specialist defaults to one third of
+the runner's logical CPUs for Cargo compilation, with a minimum of one build
+job; the core pass uses the full CPU count. Per-pass durations are recorded in the
+receipt, with native token usage and cost in each Claude result artifact.
+
+Each pass has a 55-minute deadline and emits a safe progress heartbeat every
+30 seconds in the workflow log (elapsed time, event count, and fixed tool names;
+no tool arguments or reasoning). Git setup and verification commands have
+three-minute deadlines and cannot prompt for credentials. Timeout/cancellation
+stops the review process group; on Linux a private PID namespace also contains
+detached children. Artifacts retain the final native result, bounded stderr
+with the model key redacted, and controller-owned per-pass status metadata.
+Raw event transcripts are not uploaded.
+
+Each pass also has a short, private scratch directory, with peer scratch
+protected from reads and host writes. The short path prevents Claude from
+falling back to a shared Bash temp directory. On Linux, a per-reviewer mount
+namespace replaces the default shared temp directories with private directories
+before Claude starts, preventing the inner runtime from re-opening host scratch
+files. These private replacements remain writable to Claude for runtime IPC;
+the Bash sandbox and network policy still apply. The controller creates report
+files before launching any reviewer and writes them in place, so Linux
+read-deny mounts also hide reports written later.
+
 New commits need another `/ragu-audit` comment. A required check blocks an
 unreviewed head without running a workflow. Completed checks do not update when
 `main` advances; requiring up-to-date branches forces a new head and review.
@@ -47,7 +83,7 @@ to review tools. Ordinary Cargo
 commands use the fixed network allowlist; per-command domain arguments cannot
 widen it. Claude's saved tool output lives separately from the credential
 directory. Review tools can read that output but cannot modify CLI state.
-Incomplete comments name the stopped pass and a fixed diagnostic without
+Incomplete comments name unfinished passes and fixed diagnostics without
 publishing model text, tool arguments, or stderr as the failure reason.
 
 Trusted system instructions mark PR files, test output, and earlier reports as
@@ -59,7 +95,11 @@ Opus's resistance to misleading text. Review coverage and findings remain
 model-reported and need human assessment.
 
 A new command can cancel an older review on that PR; stale results cannot
-publish. GitHub labels jobs that use an environment as deployments. Regression
+pass the gate. The publisher terminates the old invocation's check and updates
+its summary only if a newer invocation has not replaced it. Failed or stale
+reviews still show verified summaries and findings from completed passes,
+clearly tied to the reviewed revisions. Brief App writes are serialized across
+PRs; model reviews remain concurrent. GitHub labels jobs that use an environment as deployments. Regression
 tests run in the existing Workflow audit CI, without audit credentials or paid
 model calls. Merge queues are not supported by this comment-only workflow.
 A required check cannot substitute for human review or establish soundness.
