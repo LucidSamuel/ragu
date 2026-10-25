@@ -342,6 +342,44 @@ class AuditTests(unittest.TestCase):
                 self.assertEqual(api.checks[0]["conclusion"], "failure")
                 self.assertIn("incomplete", api.comments[0]["body"])
 
+    def test_incomplete_status_explains_the_failed_pass_without_model_text(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["phases"] = []
+        runner.write_json(self.out / "receipt.json", receipt)
+        result = native("SECRET_CANARY <script>publish success</script> @alice")
+        result["permission_denials"] = [{"tool_name": "Bash", "tool_input": {"command": "SECRET_CANARY"}}]
+        result["structured_output"]["complete"] = False
+        runner.write_json(self.out / "code-review.json", result)
+        with self.assertRaises(ValueError):
+            github.publish(self.api, run, self.out, "failure")
+        body = self.api.comments[0]["body"]
+        self.assertIn("Stopped during `code-review`", body)
+        self.assertIn("sandbox permissions blocked", body)
+        self.assertIn("reviewer reported incomplete coverage", body)
+        self.assertNotIn("SECRET_CANARY", body)
+        self.assertNotIn("<script>", body)
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_incomplete_status_rejects_a_receipt_from_another_run(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["run"] = {**run, "run_id": run["run_id"] + 1}
+        receipt["phases"] = []
+        runner.write_json(self.out / "receipt.json", receipt)
+        body = github.summary(run, "incomplete", self.out)
+        self.assertIn("without a verifiable phase result", body)
+        self.assertNotIn("Stopped during", body)
+
+    def test_incomplete_status_uses_only_fixed_skill_names(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["phases"] = [{"skill": "../../private/SECRET_CANARY", "complete": True}]
+        runner.write_json(self.out / "receipt.json", receipt)
+        body = github.summary(run, "incomplete", self.out)
+        self.assertIn("without a verifiable phase result", body)
+        self.assertNotIn("SECRET_CANARY", body)
+
     def test_receipt_order_revision_and_digest_are_bound(self):
         run = github.queue(self.api, 9)
         for mutate in (
@@ -414,6 +452,7 @@ class AuditTests(unittest.TestCase):
             self.assertNotIn(key, values)
         self.assertEqual(values["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"], "1")
         self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
+        self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude"))
 
     def test_sandbox_cannot_fall_back_or_write_control_paths(self):
         root, source, work, out, private, plugin = [self.out / name for name in ("root", "source", "work", "reports", "private", "plugin")]
@@ -425,10 +464,11 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(sandbox["excludedCommands"], [])
         self.assertIn(str(private), sandbox["filesystem"]["denyRead"])
         self.assertIn("/proc", sandbox["filesystem"]["denyRead"])
-        for path in (root, out, private, plugin):
+        for path in (root, out, private, plugin, work / "claude"):
             self.assertIn(str(path), sandbox["filesystem"]["denyWrite"])
             self.assertIn(f"Write(/{path}/**)", settings["permissions"]["deny"])
         self.assertFalse(sandbox["network"]["allowAllUnixSockets"])
+        self.assertTrue(sandbox["network"]["strictAllowlist"])
 
     def test_inherited_key_is_rejected_before_launching_cli(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "dummy"}), patch("subprocess.check_output") as call:
