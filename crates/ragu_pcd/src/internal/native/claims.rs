@@ -384,13 +384,13 @@ pub trait KySource {
     /// Base iterator over unified $k(y)$ values.
     ///
     /// Will be repeated [`NUM_UNIFIED_CIRCUITS`] times.
-    /// The `+ Clone` bound is required for `repeat_n` in [`ky_values`].
+    /// The `+ Clone` bound is required for `repeat_n` in [`ky_prefix`].
     fn unified_ky(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
     /// One value of $1$ per proof, for the endoscaling step checks.
     ///
     /// Repeated [`NUM_ENDOSCALING_STEPS`] times; the `+ Clone` bound is
-    /// required for `repeat_n` in [`ky_values`].
+    /// required for `repeat_n` in [`ky_prefix`].
     fn ones(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
     /// The zero value for stage claims.
@@ -399,22 +399,30 @@ pub trait KySource {
 
 /// Build an iterator over $k(y)$ values in claim order.
 ///
+/// Chains the $k(y)$ sources in the order required by [`build`]: the
+/// [`ky_prefix`] of the raw and circuit claims, followed by infinite zeros
+/// for stage claims.
+pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    ky_prefix(source).chain(core::iter::repeat(source.zero()))
+}
+
+/// Build a finite iterator over the raw and circuit claims' $k(y)$ values,
+/// in claim order: [`ky_values`] before the stage claims' zeros.
+///
 /// Chains the $k(y)$ sources in the order required by [`build`],
 /// with `unified_ky` repeated [`NUM_UNIFIED_CIRCUITS`] times and `ones`
-/// [`NUM_ENDOSCALING_STEPS`] times, followed by infinite zeros for stage
-/// claims.
+/// [`NUM_ENDOSCALING_STEPS`] times.
 ///
 /// The `unified_ky` and `unified_bridge_ky` values are computed by
 /// [`ProofInputs::unified_ky_values`](super::stages::preamble::ProofInputs::unified_ky_values)
 /// via Horner evaluation of the circuit instance polynomial.
-pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+pub fn ky_prefix<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     source
         .raw_c()
         .chain(source.application_ky())
         .chain(source.unified_bridge_ky())
         .chain(repeat_n(source.unified_ky(), NUM_UNIFIED_CIRCUITS).flatten())
         .chain(repeat_n(source.ones(), NUM_ENDOSCALING_STEPS).flatten())
-        .chain(core::iter::repeat(source.zero()))
 }
 
 pub struct TwoProofKySource<'dr, D: Driver<'dr>> {

@@ -236,14 +236,14 @@ pub trait KySource {
 
     /// One value of $1$ per proof, for the endoscaling step checks.
     ///
-    /// Repeated once per endoscaling step by [`ky_values`]. The `+ Clone`
+    /// Repeated once per endoscaling step by [`ky_prefix`]. The `+ Clone`
     /// bound is required for `repeat_n`.
     fn ones(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
     /// The nested unified instance's $k(y)$, one per proof, for the
     /// instance circuit checks.
     ///
-    /// Repeated once per instance circuit by [`ky_values`]. The `+ Clone`
+    /// Repeated once per instance circuit by [`ky_prefix`]. The `+ Clone`
     /// bound is required for `repeat_n`.
     fn unified_ky(&self) -> impl Iterator<Item = Self::Ky> + Clone;
 
@@ -251,7 +251,15 @@ pub trait KySource {
     fn zero(&self) -> Self::Ky;
 }
 
-/// Build an iterator over $k(y)$ values in nested claim order.
+/// Build an iterator over $k(y)$ values in nested claim order: the
+/// [`ky_prefix`] of the raw and circuit claims, followed by infinite zeros
+/// (for stage checks).
+pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+    ky_prefix(source).chain(core::iter::repeat(source.zero()))
+}
+
+/// Build a finite iterator over the raw and circuit claims' $k(y)$ values,
+/// in nested claim order: [`ky_values`] before the stage checks' zeros.
 ///
 /// Returns:
 /// - The raw accumulator values (one per proof)
@@ -259,15 +267,13 @@ pub trait KySource {
 ///   checks, interleaved across proofs exactly as [`build`] emits them)
 /// - `NUM_INSTANCE_CIRCUITS` copies of the per-proof unified $k(y)$ values
 ///   (for the instance circuit checks, interleaved the same way)
-/// - Infinite zeros (for stage checks)
-pub fn ky_values<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
+pub fn ky_prefix<S: KySource>(source: &S) -> impl Iterator<Item = S::Ky> {
     let num_steps = super::NUM_ENDOSCALING_STEPS;
 
     source
         .raw_c()
         .chain(core::iter::repeat_n(source.ones(), num_steps).flatten())
         .chain(core::iter::repeat_n(source.unified_ky(), NUM_INSTANCE_CIRCUITS).flatten())
-        .chain(core::iter::repeat(source.zero()))
 }
 
 /// [`KySource`] for the two child proofs of a fuse step, inside a driver.

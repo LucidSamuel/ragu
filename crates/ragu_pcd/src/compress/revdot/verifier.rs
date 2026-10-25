@@ -36,10 +36,11 @@ pub(crate) struct Evaluated<F> {
 }
 
 /// The verifier's side on one curve: `shapes` are the claims' shapes and
-/// `targets` their $k(y)$, one per claim in claim order; `commitment` gives each
-/// component's commitment and `public` each kind of claim's public parts
-/// of $a$ and $b$ at a point. Returns the opening claims the batch must
-/// prove, or `None` if the reduction does not hold.
+/// `targets` the $k(y)$ of the raw and circuit claims among them, exactly one
+/// per such claim in claim order (the other claims' $k(y)$ is zero);
+/// `commitment` gives each component's commitment and `public` each kind of
+/// claim's public parts of $a$ and $b$ at a point. Returns the opening claims
+/// the batch must prove, or `None` if the reduction does not hold.
 fn verify<C: Affine, R: Rank, B: Backend, Id: Copy + Sync>(
     shapes: &[Shape<Id, C::Scalar>],
     targets: impl Iterator<Item = C::Scalar>,
@@ -76,16 +77,7 @@ fn verify<C: Affine, R: Rank, B: Backend, Id: Copy + Sync>(
     // public parts, and each layer's (E, W) from its opening, the weights
     // and the sent epsilon.
     let opened = |which: Derived| reduction.openings[which as usize];
-    // One target per claim, materialized: a target stream that ran short
-    // would otherwise end the loop early and drop the trailing claims'
-    // public parts and targets without a word.
-    let targets: Vec<_> = targets.take(shapes.len()).collect();
-    if targets.len() != shapes.len() {
-        return Err(Error::VectorLengthMismatch {
-            expected: shapes.len(),
-            actual: targets.len(),
-        });
-    }
+    let targets = claim_targets(shapes, targets)?;
     let (mut a_public, mut b_public, mut target) =
         (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ZERO);
     // Registry evaluations are independent once r is fixed. Combine their
@@ -142,6 +134,44 @@ fn verify<C: Affine, R: Rank, B: Backend, Id: Copy + Sync>(
     )))
 }
 
+/// Each claim's $k(y)$, in claim order: the next of `targets` for a raw or
+/// circuit claim, zero for the others.
+///
+/// `targets` must hold exactly one value per raw and circuit claim: a short
+/// stream leaves a claim without its target, and a long one means `shapes`
+/// lacks a claim the targets were built for. Reading stops one value past
+/// the expected count, so an unbounded stream is rejected rather than read
+/// to the end.
+fn claim_targets<F: Field, Id>(
+    shapes: &[Shape<Id, F>],
+    targets: impl Iterator<Item = F>,
+) -> Result<Vec<F>> {
+    let expected = shapes
+        .iter()
+        .filter(|shape| shape.kind.takes_target())
+        .count();
+    let supplied: Vec<_> = targets.take(expected + 1).collect();
+    if supplied.len() != expected {
+        return Err(Error::VectorLengthMismatch {
+            expected,
+            actual: supplied.len(),
+        });
+    }
+    let mut supplied = supplied.into_iter();
+    Ok(shapes
+        .iter()
+        .map(|shape| {
+            if shape.kind.takes_target() {
+                supplied
+                    .next()
+                    .expect("one target per raw and circuit claim")
+            } else {
+                F::ZERO
+            }
+        })
+        .collect())
+}
+
 /// Evaluates the independent public parts into their original claim slots.
 fn public_parts<F: Field, B: Backend, Id: Sync>(
     shapes: &[Shape<Id, F>],
@@ -192,7 +222,7 @@ pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend>(
     let restriction = |circuit: CircuitIndex, r| B::registry_wxy(registry, circuit.omega_j(), r, y);
     verify::<_, R, B, _>(
         &shapes,
-        native::claims::ky_values(targets),
+        native::claims::ky_prefix(targets),
         commitment,
         |kind, r| public::<_, R, _>(kind, r, z, &|circuit| restriction(circuit, r), masked),
         reduction,
@@ -216,7 +246,7 @@ pub(crate) fn verify_nested<C: Cycle, R: Rank, B: Backend>(
     let restriction = |circuit: CircuitIndex, r| B::registry_wxy(registry, circuit.omega_j(), r, y);
     verify::<_, R, B, _>(
         &shapes,
-        nested::claims::ky_values(targets),
+        nested::claims::ky_prefix(targets),
         commitment,
         |kind, r| public::<_, R, _>(kind, r, z, &|circuit| restriction(circuit, r), masked),
         reduction,
