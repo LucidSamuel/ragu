@@ -81,6 +81,10 @@ jobs:
         include:
           - target: fuzz_pcd_lifecycle
             timeout: 300
+          # Replays a corpus of synthesized circuits; the 2026-10-19 run was
+          # cancelled at the 90-minute default with the report unwritten.
+          - target: fuzz_internal_circuits
+            timeout: 240
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

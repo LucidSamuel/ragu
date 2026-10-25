@@ -126,11 +126,14 @@ jobs:
         # Per-target overrides; everything else takes the defaults the run
         # step spells out.
         include:
-          # Costs seconds per input, so some units cross the 120-second
-          # default and libFuzzer files them as timeouts rather than as
-          # slow inputs (#887).
+          # Builds and verifies a whole tree per input. The deepest plan
+          # (six seeds, five fuses, rerandomize, a corruption) measures
+          # 806 s under ASan on an M5 and 308 s without it; the units the
+          # cron filed as timeouts at 120 s and again at 600 s replay to
+          # completion. Give it a ceiling that fits that shape with margin
+          # rather than treating honest work as a hang (#887).
           - target: fuzz_pcd_lifecycle
-            input_timeout: 600
+            input_timeout: 1800
           # Synthesizes real circuits. After the Udon migration the build,
           # a five-hour campaign and the bounded cmin no longer fit under
           # the six-hour ceiling, and the cancellation lands before the
@@ -451,6 +454,16 @@ jobs:
         include:
           - target: fuzz_pcd_lifecycle
             timeout: 240
+            # Careful builds a debug std on top of ASan, so the deepest
+            # lifecycle plan needs the same ceiling as the campaign.
+            input_timeout: 1800
+        # The exhaustion flavor's 30-second per-input limit cannot complete
+        # any lifecycle plan beyond a single leaf (a bare three-step tree takes
+        # minutes under ASan), so every Saturday it reported a timeout that
+        # was not a finding. The careful flavor still covers the target.
+        exclude:
+          - flavor: exhaustion
+            target: fuzz_pcd_lifecycle
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -497,6 +510,7 @@ jobs:
         working-directory: qa/fuzz
         env:
           DURATION: ${{ github.event.inputs.hardening_duration || '900' }}
+          CAREFUL_INPUT_TIMEOUT: ${{ matrix.input_timeout || '300' }}
           RUSTUP_TOOLCHAIN: ${{ steps.nightly.outputs.toolchain }}
           FUZZ_TARGET: ${{ matrix.target }}
           FLAVOR: ${{ matrix.flavor }}
@@ -507,8 +521,10 @@ jobs:
               # ASan stays on; `--careful` layers the const-UB and init
               # checks over it. A debug std is slow, so the per-input
               # timeout is generous — a hang here would be a real one.
+              # Targets whose honest inputs run longer still say so in the
+              # matrix `include` above.
               BUILD_ARGS="--careful"
-              LIBFUZZER_ARGS="-max_len=1024 -rss_limit_mb=4096 -malloc_limit_mb=2048 -timeout=300"
+              LIBFUZZER_ARGS="-max_len=1024 -rss_limit_mb=4096 -malloc_limit_mb=2048 -timeout=${CAREFUL_INPUT_TIMEOUT}"
               ;;
             exhaustion)
               # No sanitizer, so RSS is the target's own. 1 GB / 512 MB /
