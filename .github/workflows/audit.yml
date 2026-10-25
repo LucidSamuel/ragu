@@ -58,6 +58,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       pr: ${{ steps.request.outputs.pr }}
+      head: ${{ steps.request.outputs.head }}
       prs: ${{ steps.request.outputs.prs }}
       execute: ${{ steps.request.outputs.execute }}
     steps:
@@ -76,13 +77,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pr: ${{ fromJSON(needs.request.outputs.prs) }}
+        include: ${{ fromJSON(needs.request.outputs.prs) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: ragu-audit-publisher
     concurrency:
-      group: ragu-audit-publisher-${{ matrix.pr }}
+      # Checks are shared by PRs pointing at the same commit. Serialize their
+      # read/create/publish operations without dropping pending manual requests.
+      group: ragu-audit-publisher-${{ matrix.head }}
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -101,11 +105,12 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_NUMBER: ${{ matrix.pr }}
+          PR_HEAD: ${{ matrix.head }}
           EXECUTE: ${{ needs.request.outputs.execute }}
         run: |
           args=()
           if [[ "$EXECUTE" == true ]]; then args+=(--execute); fi
-          python3 qa/audit/github.py queue --pr "$PR_NUMBER" "${args[@]}" \
+          python3 qa/audit/github.py queue --pr "$PR_NUMBER" --head "$PR_HEAD" "${args[@]}" \
             --run "$RUNNER_TEMP/audit-work/control/run.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.queue.outputs.head != ''
@@ -114,20 +119,6 @@ jobs:
           path: ${{ runner.temp }}/audit-work/control/run.json
           if-no-files-found: error
           retention-days: 30
-
-  cancel-stale-review:
-    needs: [request, queue]
-    if: needs.request.outputs.prs != '' && needs.request.outputs.execute != 'true'
-    strategy:
-      matrix:
-        pr: ${{ fromJSON(needs.request.outputs.prs) }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    concurrency:
-      group: ragu-audit-review-${{ matrix.pr }}
-      cancel-in-progress: true
-    steps:
-      - run: echo 'A new revision requires a fresh /ragu-audit review.'
 
   review:
     needs: [request, queue]
@@ -201,8 +192,9 @@ jobs:
     timeout-minutes: 5
     environment: ragu-audit-publisher
     concurrency:
-      group: ragu-audit-publisher-${{ needs.request.outputs.pr }}
+      group: ragu-audit-publisher-${{ needs.request.outputs.head }}
       cancel-in-progress: false
+      queue: max
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:

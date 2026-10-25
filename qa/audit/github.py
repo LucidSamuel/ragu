@@ -97,13 +97,15 @@ def request(api, event, event_name):
         for login in {os.environ["GITHUB_ACTOR"], os.environ["GITHUB_TRIGGERING_ACTOR"]}:
             if not can_request(api, login):
                 return None
-    pr(api, value)
-    return number(value), execute
+    target = pr(api, value)
+    return number(value), execute, target["head"]["sha"]
 
 
 def scope(run):
-    values = {key: run[key] for key in ("repository", "pr", "head", "base", "configuration", "model", "effort")}
-    return "ragu-audit:v2:" + hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() + ":"
+    # Checks belong to commits. Identical code in another PR must not
+    # invalidate an existing review; PR identity only selects its own comment.
+    values = {key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")}
+    return "ragu-audit:v3:" + hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() + ":"
 
 
 def checks(api, head, app_id):
@@ -136,6 +138,8 @@ def summary(run, state, out=None):
         lines += ["Running `code-review` → `sean-review` → `tal-review` → `alex-review`. This comment will be updated."]
     elif state == "required":
         lines += ["This revision needs a fresh review. A maintainer can post `/ragu-audit` to start it."]
+    elif state == "shared":
+        lines += ["This head/base shares an existing completion check. Follow the linked workflow for its status and findings, or post `/ragu-audit` to request another review."]
     else:
         lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
     return "\n".join(lines)
@@ -153,8 +157,10 @@ def upsert(api, run, check, state, *, create, out=None):
         raise ValueError("summary publication was not confirmed")
 
 
-def queue(api, value, execute):
+def queue(api, value, execute, expected_head=None):
     target = pr(api, value)
+    if expected_head is not None and target["head"]["sha"] != sha(expected_head):
+        raise ValueError("PR head moved since the request; start a fresh run")
     model, effort = os.environ["RAGU_AUDIT_MODEL"], os.environ["RAGU_AUDIT_EFFORT"]
     if not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", model) or effort not in ("low", "medium", "high", "xhigh", "max"):
         raise ValueError("set an explicit Claude model ID and effort")
@@ -167,8 +173,13 @@ def queue(api, value, execute):
     prefix = scope(run)
     existing = checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
     if not execute and existing and existing[0].get("external_id", "").startswith(prefix):
+        if not existing[0]["external_id"].startswith(prefix + f"{run['pr']}:"):
+            url = existing[0].get("details_url", "")
+            if not re.fullmatch(re.escape(f"https://github.com/{REPOSITORY}/actions/runs/") + r"[1-9][0-9]*", url):
+                raise ValueError("shared review has an invalid workflow URL")
+            upsert(api, {**run, "url": url}, existing[0], "shared", create=False)
         return None
-    run["external_id"] = prefix + f"{run['run_id']}:{run['attempt']}"
+    run["external_id"] = prefix + f"{run['pr']}:{run['run_id']}:{run['attempt']}"
     check = api.call(f"/repos/{REPOSITORY}/check-runs", {
         "name": CHECK, "head_sha": run["head"], "external_id": run["external_id"], "details_url": run["url"],
         "status": "in_progress" if execute else "queued",
@@ -191,9 +202,13 @@ def guard(api, run):
     if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
         raise ValueError("PR head or base moved during review")
     values = checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
-    if not values or values[0]["id"] != run["check_id"] or values[0].get("external_id") != run["external_id"]:
+    prefix = scope(run)
+    if not values or not values[0].get("external_id", "").startswith(prefix):
+        raise ValueError("a newer review uses a different configuration")
+    own = next((check for check in values if check.get("external_id", "").startswith(prefix + f"{run['pr']}:")), None)
+    if own is None or own["id"] != run["check_id"] or own.get("external_id") != run["external_id"]:
         raise ValueError("a newer review superseded this invocation")
-    return values[0]
+    return own
 
 
 def publish(api, run, out, review_result):
@@ -220,8 +235,9 @@ def publish(api, run, out, review_result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("request", "queue", "invalidate", "publish"))
+    parser.add_argument("command", choices=("request", "queue", "publish"))
     parser.add_argument("--pr")
+    parser.add_argument("--head", type=sha)
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--run", type=Path)
     parser.add_argument("--out", type=Path)
@@ -232,18 +248,18 @@ def main():
     api = GitHub()
     if args.command == "request":
         if os.environ["GITHUB_EVENT_NAME"] == "push":
-            values = [target["number"] for target in api.pages(f"/repos/{REPOSITORY}/pulls?state=open&base=main")]
+            values = [{"pr": number(target["number"]), "head": sha(target["head"]["sha"])}
+                      for target in api.pages(f"/repos/{REPOSITORY}/pulls?state=open&base=main")]
             if values:
                 output(prs=json.dumps(values), execute="false")
             return
         result = request(api, runner.read_json(os.environ["GITHUB_EVENT_PATH"]), os.environ["GITHUB_EVENT_NAME"])
         if result:
-            output(pr=result[0], prs=json.dumps([result[0]]), execute=str(result[1]).lower())
-    elif args.command == "invalidate":
-        for target in api.pages(f"/repos/{REPOSITORY}/pulls?state=open&base=main"):
-            queue(api, target["number"], False)
+            output(pr=result[0], head=result[2], prs=json.dumps([{"pr": result[0], "head": result[2]}]), execute=str(result[1]).lower())
     elif args.command == "queue":
-        run = queue(api, args.pr, args.execute)
+        if args.head is None:
+            raise ValueError("queue requires the head captured by the request job")
+        run = queue(api, args.pr, args.execute, args.head)
         if run:
             args.run.parent.mkdir(parents=True, exist_ok=True)
             runner.write_json(args.run, run)

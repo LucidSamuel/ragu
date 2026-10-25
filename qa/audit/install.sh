@@ -2,7 +2,7 @@
 set -euo pipefail
 
 sudo apt-get update
-sudo apt-get install -y bubblewrap socat apparmor
+sudo apt-get install -y bubblewrap socat apparmor ripgrep
 
 # Ubuntu 24.04 restricts user namespaces. Grant them only to bubblewrap, as in
 # https://code.claude.com/docs/en/sandboxing#setup-linux-and-wsl2.
