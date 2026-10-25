@@ -380,6 +380,36 @@ class AuditTests(unittest.TestCase):
         self.assertIn("without a verifiable phase result", body)
         self.assertNotIn("SECRET_CANARY", body)
 
+    def test_partial_parallel_results_report_each_missing_specialist(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["phases"] = [phase for phase in receipt["phases"] if phase["skill"] in ("code-review", "alex-review")]
+        runner.write_json(self.out / "receipt.json", receipt)
+        result = native("SECRET_CANARY")
+        result["structured_output"]["complete"] = False
+        runner.write_json(self.out / "tal-review.json", result)
+        (self.out / "sean-review.json").unlink()
+        with self.assertRaises(ValueError):
+            github.publish(self.api, run, self.out, "failure")
+        body = self.api.comments[0]["body"]
+        self.assertIn("Stopped during `sean-review` before Claude Code returned a valid result", body)
+        self.assertIn("Stopped during `tal-review`: the reviewer reported incomplete coverage", body)
+        self.assertNotIn("Stopped during `alex-review`", body)
+        self.assertNotIn("SECRET_CANARY", body)
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_parallel_receipt_requires_core_and_unique_canonical_names(self):
+        run = github.queue(self.api, 9)
+        for names in (("alex-review",), ("code-review", "alex-review", "sean-review"), ("code-review", "tal-review", "tal-review")):
+            receipt = self.reports(run)
+            phases = {phase["skill"]: phase for phase in receipt["phases"]}
+            receipt["phases"] = [phases[name] for name in names]
+            runner.write_json(self.out / "receipt.json", receipt)
+            body = github.summary(run, "incomplete", self.out)
+            self.assertIn("without a verifiable phase result", body)
+            with self.assertRaises(ValueError):
+                runner.verify(run, self.out)
+
     def test_receipt_order_revision_and_digest_are_bound(self):
         run = github.queue(self.api, 9)
         for mutate in (
@@ -447,12 +477,12 @@ class AuditTests(unittest.TestCase):
 
     def test_cli_environment_has_no_inherited_credentials(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "dummy-key", "GH_TOKEN": "dummy-token", "AWS_SECRET_ACCESS_KEY": "dummy-aws"}):
-            values = runner.environment({"model": "claude-opus-5-5", "effort": "xhigh"}, self.out)
+            values = runner.environment({"model": "claude-opus-5-5", "effort": "xhigh"}, self.out, "code-review")
         for key in ("ANTHROPIC_API_KEY", "GH_TOKEN", "AWS_SECRET_ACCESS_KEY"):
             self.assertNotIn(key, values)
         self.assertEqual(values["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"], "1")
         self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
-        self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude"))
+        self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude/code-review"))
 
     def test_cargo_preparation_preserves_existing_trusted_configuration(self):
         home = self.out / "fresh-cargo"

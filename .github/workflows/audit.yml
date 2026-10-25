@@ -127,7 +127,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python3 qa/audit/runner.py store-key --private "$RUNNER_TEMP/audit-private"
-      - name: Run the four review skills
+      - name: Run the core review, then three specialists in parallel
         run: |
           python3 qa/audit/runner.py run --root "$GITHUB_WORKSPACE" \
             --private "$RUNNER_TEMP/audit-private" \

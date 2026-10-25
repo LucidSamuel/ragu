@@ -29,6 +29,14 @@ can share a result, while each invocation updates its own PR comment. Findings
 do not automatically block this check; maintainers resolve them through normal
 review.
 
+The core code-review pass runs first. Sean, Tal, and Alex then run concurrently,
+each with the core report and its validation evidence, a separate source
+worktree, and separate Claude state. Specialists cannot read each other's
+reports or state, or modify another checkout. Cargo's download cache is shared
+within the fresh runner; adequate recorded validation can be reused instead of
+running the same checks four times. Per-pass durations are recorded in the
+receipt, with native token usage and cost in each Claude result artifact.
+
 New commits need another `/ragu-audit` comment. A required check blocks an
 unreviewed head without running a workflow. Completed checks do not update when
 `main` advances; requiring up-to-date branches forces a new head and review.
@@ -47,7 +55,7 @@ to review tools. Ordinary Cargo
 commands use the fixed network allowlist; per-command domain arguments cannot
 widen it. Claude's saved tool output lives separately from the credential
 directory. Review tools can read that output but cannot modify CLI state.
-Incomplete comments name the stopped pass and a fixed diagnostic without
+Incomplete comments name unfinished passes and fixed diagnostics without
 publishing model text, tool arguments, or stderr as the failure reason.
 
 Trusted system instructions mark PR files, test output, and earlier reports as

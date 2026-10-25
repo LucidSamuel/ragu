@@ -1,6 +1,7 @@
 """Run Ragu's existing review skills; leave GitHub publication to the controller."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
@@ -9,6 +10,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 SKILLS = ("code-review", "sean-review", "tal-review", "alex-review")
 CLAUDE_VERSION = "2.1.310"
@@ -85,8 +87,15 @@ def settings(root, source, work, out, private, plugin):
     # or inspect parent-process memory through /proc. No key enters the CLI env.
     deny_read = [str(private), "/proc", "/run", "/var/run", str(Path.home() / ".ssh"), str(Path.home() / ".aws")]
     state = work / "claude"
-    deny_read += [str(state / ".credentials.json"), str(work / "claude.json")]
-    protected = [root, root / ".git", out, private, plugin, work / "control", state, work / "claude.json"]
+    deny_read += [str(state / skill / ".credentials.json") for skill in SKILLS]
+    deny_read += [str(state / f"{skill}.json") for skill in SKILLS]
+    deny_read += [str(state / skill) for skill in SKILLS if skill != source.name]
+    # Specialists share only the completed core report, never partial sibling
+    # reports or another CLI's tool output. Each owns a separate source tree.
+    deny_read += [str(out / f"{skill}.{suffix}") for skill in SKILLS[1:] if skill != source.name
+                  for suffix in ("md", "json", "stderr")]
+    protected = [root, root / ".git", out, private, plugin, work / "control", state]
+    protected += [work / skill for skill in SKILLS if work / skill != source]
     protected += [work / skill / ".git" for skill in SKILLS]
     protected += [work / skill / ".claude" for skill in SKILLS]
     cargo = cargo_home(work)
@@ -118,11 +127,11 @@ def settings(root, source, work, out, private, plugin):
     }
 
 
-def environment(run, work):
+def environment(run, work, skill):
     # Allowlist rather than removing known secret names from the Actions env.
     result = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "TMPDIR", "CARGO_HOME", "RUSTUP_HOME") if key in os.environ}
     result.update({
-        "CLAUDE_CONFIG_DIR": str(work / "claude"),
+        "CLAUDE_CONFIG_DIR": str(work / "claude" / skill),
         "CARGO_HOME": str(cargo_home(work)),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
@@ -157,6 +166,8 @@ invariants apply where relevant; record irrelevant areas as not applicable.
 Previous pass reports: {previous}. Challenge their findings and add this skill's
 perspective without repeating unsupported claims. Reuse recorded validation
 when adequate, and run additional checks when they resolve a specific concern.
+The three specialists run concurrently after code-review. Only the core report
+is shared evidence; do not read another specialist's report or CLI state.
 
 Return a report only: do not fix the PR, ask interactive triage questions, or
 publish to GitHub. The controller will publish your report. Separate must-fix
@@ -194,6 +205,40 @@ def incomplete_reason(result):
     return "; ".join(reasons) or "the controller could not validate completion"
 
 
+def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, reports):
+    source = work / skill
+    command = [
+        executable, "--print", "--bare", "--restricted", "--no-session-persistence",
+        "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+        "--permission-mode", "acceptEdits", "--permission-prompts", "none",
+        "--tools", TOOLS,
+        "--append-system-prompt", TRUST,
+        "--plugin-dir", str(plugin), "--add-dir", str(source), str(out),
+        "--settings", json.dumps(settings(root, source, work, out, private, plugin)),
+        "--model", run["model"], "--effort", run["effort"],
+        "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
+        "--", prompt(skill, source, merge_base, run, reports),
+    ]
+    print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']})", flush=True)
+    started = time.monotonic()
+    process = subprocess.run(command, cwd=root, env=environment(run, work, skill), capture_output=True, text=True, timeout=3300)
+    (out / f"{skill}.json").write_text(process.stdout)
+    (out / f"{skill}.stderr").write_text(process.stderr)
+    if process.returncode:
+        raise ValueError(f"{skill}: Claude Code exited {process.returncode}; see artifacts")
+    result = json.loads(process.stdout)
+    report = result.get("structured_output", {}).get("report", "Review did not return a report.")
+    report_path = out / f"{skill}.md"
+    report_path.write_text(report + "\n")
+    if not completed(result):
+        raise ValueError(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
+    if git(source, "rev-parse", "HEAD") != run["head"] or git(source, "diff", "HEAD", "--"):
+        raise ValueError(f"{skill}: tracked source changed during review")
+    duration = round(time.monotonic() - started, 3)
+    print(f"Completed {skill} in {duration:.1f}s", flush=True)
+    return {"skill": skill, "complete": True, "sha256": digest(report_path), "duration_seconds": duration}
+
+
 def review(root, run, work, out, private):
     if "ANTHROPIC_API_KEY" in os.environ:
         raise ValueError("store the key in a separate step; the review process must not inherit it")
@@ -204,6 +249,8 @@ def review(root, run, work, out, private):
     out.mkdir(parents=True, exist_ok=False)
     work.mkdir(parents=True, exist_ok=True)
     (work / "claude").mkdir(mode=0o700, exist_ok=True)
+    for skill in SKILLS:
+        (work / "claude" / skill).mkdir(mode=0o700, exist_ok=True)
     prepare_cargo(work)
     merge_base = prepare(root, run, work)
     plugin = work / "trusted-plugin"
@@ -213,38 +260,33 @@ def review(root, run, work, out, private):
         shutil.copytree(root / ".claude/skills" / skill, plugin / "skills" / skill)
     receipt = {"run": run, "merge_base": merge_base, "claude_version": CLAUDE_VERSION, "phases": []}
     write_json(out / "receipt.json", receipt)
-    reports = []
-    for skill in SKILLS:
-        source = work / skill
-        command = [
-            executable, "--print", "--bare", "--restricted", "--no-session-persistence",
-            "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-            "--permission-mode", "acceptEdits", "--permission-prompts", "none",
-            "--tools", TOOLS,
-            "--append-system-prompt", TRUST,
-            "--plugin-dir", str(plugin), "--add-dir", str(source), str(out),
-            "--settings", json.dumps(settings(root, source, work, out, private, plugin)),
-            "--model", run["model"], "--effort", run["effort"],
-            "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
-            "--", prompt(skill, source, merge_base, run, reports),
-        ]
-        print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']})", flush=True)
-        process = subprocess.run(command, cwd=root, env=environment(run, work), capture_output=True, text=True, timeout=3300)
-        (out / f"{skill}.json").write_text(process.stdout)
-        (out / f"{skill}.stderr").write_text(process.stderr)
-        if process.returncode:
-            raise ValueError(f"{skill}: Claude Code exited {process.returncode}; see artifacts")
-        result = json.loads(process.stdout)
-        report = result.get("structured_output", {}).get("report", "Review did not return a report.")
-        report_path = out / f"{skill}.md"
-        report_path.write_text(report + "\n")
-        if not completed(result):
-            raise ValueError(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
-        if git(source, "rev-parse", "HEAD") != run["head"] or git(source, "diff", "HEAD", "--"):
-            raise ValueError(f"{skill}: tracked source changed during review")
-        receipt["phases"].append({"skill": skill, "complete": True, "sha256": digest(report_path)})
+    phases = {}
+
+    def record(phase):
+        # Only this thread writes the receipt. Its order describes the report
+        # layout, not the specialists' nondeterministic completion order.
+        phases[phase["skill"]] = phase
+        receipt["phases"] = [phases[skill] for skill in SKILLS if skill in phases]
         write_json(out / "receipt.json", receipt)
-        reports.append(report_path)
+
+    arguments = (executable, root, run, work, out, private, plugin, merge_base)
+    record(review_skill(SKILLS[0], *arguments, ()))
+    reports = (out / "code-review.md",)
+    failed = []
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(review_skill, skill, *arguments, reports): skill for skill in SKILLS[1:]}
+        for future in as_completed(futures):
+            skill = futures[future]
+            try:
+                record(future.result())
+            except Exception:
+                # Finish the other reviews and preserve their evidence. A
+                # missing pass still fails the gate; never log model text.
+                failed.append(skill)
+                print(f"Incomplete {skill}; see artifacts", flush=True)
+    if failed:
+        names = ", ".join(skill for skill in SKILLS if skill in failed)
+        raise ValueError(f"review incomplete: {names}; see artifacts")
 
 
 def verify(run, out):
@@ -253,7 +295,7 @@ def verify(run, out):
         raise ValueError("receipt belongs to a different invocation")
     phases = receipt.get("phases", [])
     if [phase.get("skill") for phase in phases] != list(SKILLS):
-        raise ValueError("all four skills must complete in order")
+        raise ValueError("all four skill reports must be present in canonical order")
     for phase in phases:
         if phase.get("complete") is not True or phase.get("sha256") != digest(out / f"{phase['skill']}.md"):
             raise ValueError("incomplete or modified report")

@@ -127,16 +127,21 @@ def incomplete_details(run, out):
             raise ValueError("unbound receipt")
         phases = receipt["phases"]
         names = [phase["skill"] for phase in phases]
-        if names != list(runner.SKILLS[:len(names)]) or not all(phase.get("complete") is True for phase in phases):
-            raise ValueError("invalid phase order")
+        expected = [skill for skill in runner.SKILLS if skill in names]
+        if names != expected or (names and names[0] != runner.SKILLS[0]) or not all(phase.get("complete") is True for phase in phases):
+            raise ValueError("invalid completed phases")
         if len(names) == len(runner.SKILLS):
             return "The review job failed after recording all four passes. Inspect the workflow."
-        skill = runner.SKILLS[len(names)]
-        try:
-            result = runner.read_json(out / f"{skill}.json")
-        except (OSError, ValueError):
-            return f"Stopped during `{skill}` before Claude Code returned a valid result."
-        return f"Stopped during `{skill}`: {runner.incomplete_reason(result)}."
+        missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
+        lines = []
+        for skill in missing:
+            try:
+                result = runner.read_json(out / f"{skill}.json")
+            except (OSError, ValueError):
+                lines.append(f"Stopped during `{skill}` before Claude Code returned a valid result.")
+                continue
+            lines.append(f"Stopped during `{skill}`: {runner.incomplete_reason(result)}.")
+        return "\n\n".join(lines)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return "The review job failed without a verifiable phase result. Inspect the workflow."
 
@@ -149,7 +154,7 @@ def summary(run, state, out=None):
             lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), "", "</details>", ""]
         lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
     elif state == "running":
-        lines += ["Running `code-review` → `sean-review` → `tal-review` → `alex-review`. This comment will be updated."]
+        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel. This comment will be updated."]
     else:
         if out is not None:
             lines += [incomplete_details(run, out), ""]

@@ -1,7 +1,8 @@
 # Ragu audit
 
 `/ragu-audit` runs Ragu's code-review skill, then the Sean, Tal, and Alex review
-skills against the same PR revision. These are complementary review
+skills in parallel against the same PR revision, sharing the core report and
+its validation evidence. These are complementary review
 perspectives; checks follow the changes and relevant project policies.
 
 Post the exact command as a new PR comment with write access. Commits do not
