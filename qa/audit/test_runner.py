@@ -73,6 +73,14 @@ class RunnerTests(unittest.TestCase):
             env = kwargs["env"]
             skill = Path(env["CLAUDE_CONFIG_DIR"]).name
             states[skill] = env["CLAUDE_CONFIG_DIR"]
+            # Linux cannot hide a read-denied file that does not exist when a
+            # Bash sandbox starts, including reports a peer will write later.
+            self.assertTrue(all((self.out / f"{name}.{suffix}").is_file()
+                                for name in runner.SKILLS for suffix in ("md", "json", "stderr")))
+            self.assertEqual(env["TMPDIR"], env["CLAUDE_CODE_TMPDIR"])
+            self.assertEqual(Path(env["TMPDIR"]).name, skill)
+            self.assertLess(len(str(Path(env["TMPDIR"]) / f"claude-{os.getuid()}")), 60)
+            self.assertTrue(Path(env["TMPDIR"]).is_dir())
             self.assertEqual(command[command.index("--model") + 1], self.run["model"])
             self.assertEqual(command[command.index("--effort") + 1], "xhigh")
             self.assertNotIn("GH_TOKEN", env)
@@ -153,7 +161,8 @@ class RunnerTests(unittest.TestCase):
     def test_peer_state_reports_and_worktrees_are_protected(self):
         for skill in runner.SKILLS:
             source = self.work / skill
-            settings = runner.settings(self.root, source, self.work, self.out, self.private, self.work / "trusted-plugin")
+            scratch = self.work / "scratch"
+            settings = runner.settings(self.root, source, self.work, self.out, self.private, self.work / "trusted-plugin", scratch)
             filesystem = settings["sandbox"]["filesystem"]
             self.assertIn(str(source), filesystem["allowWrite"])
             self.assertNotIn(str(source), filesystem["denyWrite"])
@@ -163,9 +172,21 @@ class RunnerTests(unittest.TestCase):
                 if peer != skill:
                     self.assertIn(str(self.work / peer), filesystem["denyWrite"])
                     self.assertIn(str(self.work / "claude" / peer), filesystem["denyRead"])
+                    self.assertIn(str(scratch / peer), filesystem["denyRead"])
+                    self.assertIn(str(scratch / peer), filesystem["denyWrite"])
                     if peer != "code-review":
                         for suffix in ("md", "json", "stderr"):
                             self.assertIn(str(self.out / f"{peer}.{suffix}"), filesystem["denyRead"])
+            for path in runner.shared_scratch():
+                self.assertIn(str(path), filesystem["denyRead"])
+                self.assertIn(str(path), filesystem["denyWrite"])
+
+    def test_cargo_build_parallelism_accounts_for_concurrent_reviewers(self):
+        for cpus in (None, 1, 2, 4, 8):
+            with patch.object(os, "cpu_count", return_value=cpus):
+                values = [runner.environment(self.run, self.work, skill, self.work / "scratch") for skill in runner.SKILLS]
+            self.assertEqual(int(values[0]["CARGO_BUILD_JOBS"]), cpus or 1)
+            self.assertEqual([int(value["CARGO_BUILD_JOBS"]) for value in values[1:]], [max(1, (cpus or 1) // 3)] * 3)
 
 
 if __name__ == "__main__":

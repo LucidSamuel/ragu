@@ -477,7 +477,7 @@ class AuditTests(unittest.TestCase):
 
     def test_cli_environment_has_no_inherited_credentials(self):
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "dummy-key", "GH_TOKEN": "dummy-token", "AWS_SECRET_ACCESS_KEY": "dummy-aws"}):
-            values = runner.environment({"model": "claude-opus-5-5", "effort": "xhigh"}, self.out, "code-review")
+            values = runner.environment({"model": "claude-opus-5-5", "effort": "xhigh"}, self.out, "code-review", self.out / "scratch")
         for key in ("ANTHROPIC_API_KEY", "GH_TOKEN", "AWS_SECRET_ACCESS_KEY"):
             self.assertNotIn(key, values)
         self.assertEqual(values["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"], "1")
@@ -497,7 +497,7 @@ class AuditTests(unittest.TestCase):
 
     def test_sandbox_cannot_fall_back_or_write_control_paths(self):
         root, source, work, out, private, plugin = [self.out / name for name in ("root", "source", "work", "reports", "private", "plugin")]
-        settings = runner.settings(root, source, work, out, private, plugin)
+        settings = runner.settings(root, source, work, out, private, plugin, work / "scratch")
         self.assertTrue(settings["disableSkillShellExecution"])
         sandbox = settings["sandbox"]
         self.assertTrue(sandbox["enabled"] and sandbox["failIfUnavailable"])

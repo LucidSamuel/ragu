@@ -34,8 +34,16 @@ each with the core report and its validation evidence, a separate source
 worktree, and separate Claude state. Specialists cannot read each other's
 reports or state, or modify another checkout. Cargo's download cache is shared
 within the fresh runner; adequate recorded validation can be reused instead of
-running the same checks four times. Per-pass durations are recorded in the
+running the same checks four times. Each specialist defaults to one third of
+the runner's logical CPUs for Cargo compilation, with a minimum of one build
+job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
+
+Each pass also has a short, private scratch directory, with peer scratch and
+shared Claude temp directories blocked for reads and writes. The short path
+prevents Claude from falling back to a shared Bash temp directory. The
+controller creates report files before launching any reviewer and writes them
+in place, so Linux read-deny mounts also hide reports written later.
 
 New commits need another `/ragu-audit` comment. A required check blocks an
 unreviewed head without running a workflow. Completed checks do not update when
