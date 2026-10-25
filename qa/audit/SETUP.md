@@ -29,6 +29,13 @@ can share a result, while each invocation updates its own PR comment. Findings
 do not automatically block this check; maintainers resolve them through normal
 review.
 
+All four passes focus on source review. Separate CI workflows own formatting,
+Clippy and other lints, documentation builds, routine builds, and broad test
+suites. The bot neither runs those checks nor waits for their status. This
+controller policy overrides generic skill instructions to run automated
+validation; CI results do not determine review completion. A reviewer can run
+a focused test or reproducer to investigate a concrete suspected defect.
+
 The core code-review pass runs first. Sean, Tal, and Alex then run concurrently,
 each with the core report and its validation evidence, a separate source
 worktree, and separate Claude state. Specialists cannot read each other's

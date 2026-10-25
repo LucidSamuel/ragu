@@ -4,6 +4,8 @@
 skills in parallel against the same PR revision, sharing the core report and
 its validation evidence. These are complementary review
 perspectives; checks follow the changes and relevant project policies.
+CI owns formatting, linting, documentation builds, and routine test suites.
+The bot runs focused tests only to investigate suspected bugs.
 
 Post the exact command as a new PR comment with write access. Commits do not
 trigger the bot. It updates one summary comment with each pass's findings and
