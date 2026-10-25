@@ -454,6 +454,17 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
         self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude"))
 
+    def test_cargo_preparation_preserves_existing_trusted_configuration(self):
+        home = self.out / "fresh-cargo"
+        home.mkdir()
+        (home / "config.toml").write_text('[net]\noffline = true\n')
+        with patch.dict(os.environ, {"CARGO_HOME": str(home)}):
+            runner.prepare_cargo(self.out)
+            runner.prepare_cargo(self.out)
+        self.assertTrue((home / "bin").is_dir())
+        self.assertEqual((home / "config.toml").read_text(), '[net]\noffline = true\n')
+        self.assertEqual((home / "config").read_text(), "")
+
     def test_sandbox_cannot_fall_back_or_write_control_paths(self):
         root, source, work, out, private, plugin = [self.out / name for name in ("root", "source", "work", "reports", "private", "plugin")]
         settings = runner.settings(root, source, work, out, private, plugin)

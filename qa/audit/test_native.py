@@ -273,7 +273,7 @@ class NativeTests(unittest.TestCase):
     def test_skill_shell_preprocessing_is_disabled(self):
         self.probe("skill_shell")
 
-    def test_missing_cargo_config_and_bin_remain_protected(self):
+    def test_initially_missing_cargo_config_and_bin_remain_protected(self):
         self.probe("missing_cache")
 
     def test_saved_tool_output_is_readable_without_exposing_credentials(self):
@@ -380,6 +380,9 @@ class NativeTests(unittest.TestCase):
                     self.assertEqual((cargo / "registry/probe-ran").read_text(), "yes")
                 self.assertEqual((root / "controller").read_text(), "trusted")
                 self.assertEqual((work / "control/run.json").read_text(), "trusted control")
+                expected = "" if mode in ("cargo", "missing_cache") else "trusted cargo config"
+                self.assertEqual((cargo / "config.toml").read_text(), expected)
+                self.assertEqual((cargo / "config").read_text(), "")
                 for skill in runner.SKILLS:
                     self.assertFalse((work / skill / "auto-executed").exists())
                     self.assertFalse((work / skill / "domain-override-ran").exists())

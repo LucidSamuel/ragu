@@ -66,6 +66,20 @@ def cargo_home(work):
     return Path(os.environ.get("CARGO_HOME") or work / "cargo").resolve()
 
 
+def prepare_cargo(work):
+    home = cargo_home(work)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "bin").mkdir(exist_ok=True)
+    # Linux write protection uses unreadable placeholders for missing files.
+    # Cargo probes both names, so provide readable empty configs beforehand.
+    for name in ("config", "config.toml"):
+        try:
+            with (home / name).open("x"):
+                pass
+        except FileExistsError:
+            pass
+
+
 def settings(root, source, work, out, private, plugin):
     # apiKeyHelper runs outside the Bash sandbox. PR tests cannot read its file
     # or inspect parent-process memory through /proc. No key enters the CLI env.
@@ -190,7 +204,7 @@ def review(root, run, work, out, private):
     out.mkdir(parents=True, exist_ok=False)
     work.mkdir(parents=True, exist_ok=True)
     (work / "claude").mkdir(mode=0o700, exist_ok=True)
-    cargo_home(work).mkdir(parents=True, exist_ok=True)
+    prepare_cargo(work)
     merge_base = prepare(root, run, work)
     plugin = work / "trusted-plugin"
     (plugin / ".claude-plugin").mkdir(parents=True)
