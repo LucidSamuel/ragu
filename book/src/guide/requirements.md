@@ -16,9 +16,10 @@ Ragu does need a global allocator, since the library uses `Vec`,
 is happy on targets with an allocator but no full `std` runtime —
 WebAssembly and embedded platforms, for example.
 
-By default, the `multicore` feature is enabled; it pulls in `std`
-via [maybe-rayon] for multi-threaded parallelism. Build with
-`--no-default-features` to drop it.
+`ragu_core`, `ragu_primitives`, `ragu_circuits`, and `ragu_pcd` enable only
+`alloc` by default; keep it enabled when disabling default features. The
+`multicore` feature of `ragu_pcd` is opt-in; it pulls in `std` via
+[maybe-rayon] for multi-threaded parallelism.
 
 [`alloc`]: https://doc.rust-lang.org/alloc/
 [maybe-rayon]: https://crates.io/crates/maybe-rayon

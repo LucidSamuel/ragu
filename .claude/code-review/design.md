@@ -36,6 +36,17 @@ readability, maintainability, and consistency with project conventions.
   this easy.
 - Default trait implementations should be overridable for performance without
   changing semantics.
+- Identify where values are validated and which operations preserve their
+  invariants; check that conversions and mutation cannot bypass that boundary.
+
+## Compatibility and Configuration
+
+- Trace changes to accepted inputs, defaults, results, errors, and public types
+  through callers. Check the new contract and consistent caller migration.
+- Check feature and dependency changes in affected supported configurations,
+  including `no_std`, default features disabled, and serial builds.
+- Recommend abstractions or refactors to address a concrete duplication, misuse,
+  or maintenance problem. Keep the proposed change proportional to that problem.
 
 ## What Not to Do
 

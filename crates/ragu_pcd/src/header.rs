@@ -24,7 +24,7 @@ use udon::field::Field;
 ///
 /// [`Bootstrap`]: crate::step::internal::bootstrap::Bootstrap
 /// [`Step`]: crate::step::Step
-const NUM_INTERNAL_SUFFIXES: u8 = 3;
+pub(crate) const NUM_INTERNAL_SUFFIXES: u8 = 3;
 
 /// Internal representation of a [`Suffix`] distinguishing internal vs.
 /// application suffixes.
@@ -94,7 +94,8 @@ impl Suffix {
 /// guide for usage patterns and examples.
 pub trait Header<F: Field>: Send + Sync + Any {
     /// Each header should use a unique suffix to distinguish itself from other
-    /// headers.
+    /// headers. Application headers must use [`Suffix::new`]; only `()` may
+    /// use a reserved internal suffix.
     const SUFFIX: Suffix;
 
     /// The witness input needed to encode a header.
