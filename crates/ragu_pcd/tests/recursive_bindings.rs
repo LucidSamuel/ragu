@@ -155,6 +155,25 @@ mod challenge_binding {
         Ok(())
     }
 
+    /// The decider's check of a root: its challenge stage is the stage of its
+    /// own lifts and headers.
+    fn stage_matches(proof: &Proof<C, R>) -> Result<bool> {
+        crate::verify::nested_challenges_match::<C, R, HEADER_SIZE>(
+            proof,
+            &proof.challenges().lifts::<C>()?,
+        )
+    }
+
+    /// Changes one lift and repairs every cache `install_lifts` lists, so
+    /// the parent's beta binding still holds.
+    ///
+    /// The changed child breaks the decider's challenge-stage equality, which
+    /// is asserted on its own here because it is not the only relation to
+    /// reject the child: the repaired partials change the eval stage, which
+    /// the child's binders and transcript check, and nested circuits read
+    /// every lift. Descendants reject the child through their revdot claims.
+    /// The pad edit in `pcs_tests::challenge_stage` is the substitution that
+    /// only this equality rejects at the root.
     fn check_lifts(
         app: &support::App,
         inputs: &support::Inputs,
@@ -168,6 +187,7 @@ mod challenge_binding {
         assert!(app.verify(&sibling, inputs.verifier_rng())?);
         let (mut control, data) = honest.clone().into_parts();
         install_lifts(app, &mut control, &witness(honest.proof())?)?;
+        assert!(stage_matches(&control)?);
         check_descendants(
             app,
             inputs,
@@ -193,6 +213,10 @@ mod challenge_binding {
             honest.proof().nested_challenges_commitment()
         );
         assert!(crate::verify::nested_points_match(&proof)?);
+        assert!(
+            !stage_matches(&proof)?,
+            "lift {slot}: the changed stage must break the root's equality"
+        );
         check_descendants(
             app,
             inputs,

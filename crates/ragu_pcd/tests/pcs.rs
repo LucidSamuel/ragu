@@ -871,6 +871,8 @@ mod challenge_stage {
     //! nested claim true, which the property asserts, and its native side is
     //! untouched, so only the binding can reject it: `bind_beta` once the
     //! commitment is recomputed, the batch opening while it is left stale.
+    //! At the root, which has no parent, the recomputed edit is left to the
+    //! decider's challenge-stage equality alone.
 
     use proptest::prelude::*;
     use ragu_circuits::staging::{StageReader, stage_wire_indices, wires_of};
@@ -884,7 +886,7 @@ mod challenge_stage {
 
     use super::{
         folding,
-        support::{self, Cache, R, Value},
+        support::{self, C, Cache, HEADER_SIZE, R, Value},
     };
     use crate::internal::nested::stages::challenges;
 
@@ -915,6 +917,13 @@ mod challenge_stage {
             assert!(
                 folding::claims_hold(app, &forged, sibling.proof(), y, z)?,
                 "{case}: the edit must leave the child's nested claims true"
+            );
+            assert!(
+                !crate::verify::nested_challenges_match::<C, R, HEADER_SIZE>(
+                    &forged,
+                    &forged.challenges().lifts::<C>()?,
+                )?,
+                "{case}: the edit must break the root's challenge-stage equality"
             );
             let forged = forged.carry::<Value>(*child.data());
             assert!(!app.verify(&forged, inputs.verifier_rng())?, "{case}: root");
