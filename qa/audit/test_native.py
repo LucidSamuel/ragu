@@ -465,7 +465,7 @@ class NativeTests(unittest.TestCase):
             server.policies = sorted(path.name for path in (PROJECT / ".claude/code-review").glob("*.md"))
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
-            original_environment, original_subprocess = runner.environment, subprocess.run
+            original_environment = runner.environment
 
             def environment(run, directory, skill, scratch):
                 server.scratch = scratch
@@ -479,7 +479,7 @@ class NativeTests(unittest.TestCase):
             try:
                 with patch.dict(os.environ, {"CARGO_HOME": str(cargo), "GH_TOKEN": "dummy-parent-token", "GITHUB_TOKEN": "dummy-parent-actions", "AWS_SECRET_ACCESS_KEY": "dummy-parent-aws"}), \
                      patch.object(runner, "prepare", return_value=run["base"]), patch.object(runner, "environment", side_effect=environment), \
-                     patch.object(subprocess, "run", side_effect=lambda *args, **kwargs: original_subprocess(*args, **{**kwargs, "timeout": 120})), \
+                     patch.object(runner, "REVIEW_TIMEOUT", 120), \
                      patch.object(runner, "git", side_effect=lambda root, command, *args: run["head"] if command == "rev-parse" else ""):
                     if denied:
                         with self.assertRaisesRegex(ValueError, "review incomplete"):

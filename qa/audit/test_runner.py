@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -41,19 +42,24 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(command, "diff")
             return "tracked source was modified" if source.name == changed_skill else ""
 
+        def execute_review(command, **kwargs):
+            result = execute(command, **kwargs)
+            runner.write_json(self.out / f"{kwargs['skill']}.json", result)
+            return result
+
         with patch.dict(os.environ, {"PATH": os.environ["PATH"], "HOME": str(self.root), "CARGO_HOME": str(self.work / "cargo"),
                                      "GH_TOKEN": "dummy-parent-token"}, clear=True), \
              patch.object(runner.shutil, "which", return_value=sys.executable), \
              patch.object(runner.subprocess, "check_output", return_value=runner.CLAUDE_VERSION + " (Claude Code)\n"), \
              patch.object(runner, "prepare", side_effect=self.prepare), patch.object(runner, "git", side_effect=git), \
-             patch.object(runner.subprocess, "run", side_effect=execute):
+             patch.object(runner, "execute_review", side_effect=execute_review):
             runner.review(self.root, self.run, self.work, self.out, self.private)
 
     def result(self, command, complete=True, returncode=0):
-        return subprocess.CompletedProcess(command, returncode, json.dumps({
+        return {
             "type": "result", "subtype": "success", "is_error": False, "permission_denials": [],
             "structured_output": {"complete": complete, "report": "Recorded review and validation evidence."},
-        }), "")
+        }
 
     def test_specialists_overlap_after_core_and_receipt_order_is_deterministic(self):
         specialists = threading.Barrier(3)
@@ -76,7 +82,7 @@ class RunnerTests(unittest.TestCase):
             # Linux cannot hide a read-denied file that does not exist when a
             # Bash sandbox starts, including reports a peer will write later.
             self.assertTrue(all((self.out / f"{name}.{suffix}").is_file()
-                                for name in runner.SKILLS for suffix in ("md", "json", "stderr")))
+                                for name in runner.SKILLS for suffix in runner.REPORT_SUFFIXES))
             self.assertEqual(env["TMPDIR"], env["CLAUDE_CODE_TMPDIR"])
             self.assertEqual(Path(env["TMPDIR"]).name, skill)
             self.assertLess(len(str(Path(env["TMPDIR"]) / f"claude-{os.getuid()}")), 60)
@@ -175,7 +181,7 @@ class RunnerTests(unittest.TestCase):
                     self.assertIn(str(scratch / peer), filesystem["denyRead"])
                     self.assertIn(str(scratch / peer), filesystem["denyWrite"])
                     if peer != "code-review":
-                        for suffix in ("md", "json", "stderr"):
+                        for suffix in runner.REPORT_SUFFIXES:
                             self.assertIn(str(self.out / f"{peer}.{suffix}"), filesystem["denyRead"])
             for path in runner.shared_scratch():
                 self.assertIn(str(path), filesystem["denyRead"])
@@ -192,7 +198,7 @@ class RunnerTests(unittest.TestCase):
         command = ["claude", "--print", "--", "trusted review prompt"]
         with patch.object(sys, "platform", "linux"), patch.object(runner.shutil, "which", return_value="/usr/bin/bwrap"):
             wrapped = runner.isolate_shared_temp(command, self.work)
-        self.assertEqual(wrapped[:6], ["/usr/bin/bwrap", "--die-with-parent", "--dev-bind", "/", "/", "--bind"])
+        self.assertEqual(wrapped[:8], ["/usr/bin/bwrap", "--die-with-parent", "--unshare-pid", "--dev-bind", "/", "/", "--proc", "/proc"])
         for path in runner.shared_scratch():
             index = wrapped.index(str(path))
             self.assertEqual(wrapped[index - 2:index], ["--bind", str(self.work / "shared-temp")])
@@ -202,6 +208,104 @@ class RunnerTests(unittest.TestCase):
         with patch.object(sys, "platform", "linux"), patch.object(runner.shutil, "which", return_value=None):
             with self.assertRaisesRegex(ValueError, "bubblewrap is required"):
                 runner.isolate_shared_temp(["claude"], self.work)
+
+
+class ProcessTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name).resolve()
+        self.out, self.private = self.root / "out", self.root / "private"
+        self.out.mkdir()
+        self.private.mkdir()
+        (self.private / "key").write_text("dummy-local-key")
+        self.run = {"head": "a" * 40}
+
+    def execute(self, script, *, cancelled=None, timeout=5, wrap=False):
+        command = [sys.executable, "-c", script]
+        if wrap:
+            scratch = self.root / "scratch"
+            (scratch / "shared-temp").mkdir(parents=True)
+            for path in runner.shared_scratch():
+                path.mkdir(parents=True, exist_ok=True)
+            command = runner.isolate_shared_temp(command, scratch)
+        with patch.object(runner, "REVIEW_TIMEOUT", timeout), patch.object(runner, "HEARTBEAT_SECONDS", 0.05):
+            return runner.execute_review(command, cwd=self.root, env={"PATH": os.environ["PATH"]},
+                                         run=self.run, skill="code-review", out=self.out, private=self.private,
+                                         cancelled=cancelled or threading.Event())
+
+    def test_timeout_keeps_safe_progress_and_stderr_and_stops_children(self):
+        marker = self.root / "child-survived"
+        child = f"import time; from pathlib import Path; time.sleep(0.8); Path({str(marker)!r}).touch()"
+        event = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Bash", "input": {"command": "UNTRUSTED_COMMAND_CANARY"}}]}}
+        script = (f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}]); "
+                  f"print({json.dumps(event)!r}, flush=True); "
+                  "print('diagnostic dummy-local-key', file=sys.stderr, flush=True); time.sleep(10)")
+        log = io.StringIO()
+        with redirect_stdout(log), self.assertRaisesRegex(ValueError, "review timeout"):
+            self.execute(script, timeout=0.25)
+        time.sleep(0.9)
+        self.assertFalse(marker.exists(), "a child survived the review deadline")
+        status = runner.read_json(self.out / "code-review.status.json")
+        self.assertEqual(status["state"], "timeout")
+        self.assertEqual(status["tool_calls"], 1)
+        self.assertEqual(status["last_tool"], "Bash")
+        self.assertIn("diagnostic [REDACTED]", (self.out / "code-review.stderr").read_text())
+        self.assertIn("tool calls", log.getvalue())
+        artifacts = "".join(path.read_text() for path in self.out.iterdir()) + log.getvalue()
+        self.assertNotIn("dummy-local-key", artifacts)
+        self.assertNotIn("UNTRUSTED_COMMAND_CANARY", artifacts)
+
+    def test_cancellation_stops_a_running_review(self):
+        cancelled = threading.Event()
+        timer = threading.Timer(0.1, cancelled.set)
+        timer.start()
+        try:
+            with self.assertRaisesRegex(ValueError, "review cancelled"):
+                self.execute("import time; time.sleep(10)", cancelled=cancelled)
+        finally:
+            timer.join(timeout=1)
+        self.assertEqual(runner.read_json(self.out / "code-review.status.json")["state"], "cancelled")
+
+    def test_stream_retains_only_final_result_and_fixed_tool_names(self):
+        result = {"type": "result", "subtype": "success", "is_error": False,
+                  "structured_output": {"complete": True, "report": "finding dummy-local-key"}}
+        events = [{"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "SECRET_CANARY", "input": {"secret": "SECRET_CANARY"}}]}}, result]
+        script = "import sys; " + "; ".join(f"print({json.dumps(event)!r})" for event in events)
+        returned = self.execute(script)
+        self.assertTrue(runner.completed(returned))
+        self.assertEqual(runner.read_json(self.out / "code-review.json"), returned)
+        self.assertEqual(runner.read_json(self.out / "code-review.status.json")["last_tool"], "other")
+        self.assertNotIn("SECRET_CANARY", "".join(path.read_text() for path in self.out.iterdir()))
+        self.assertIn("[REDACTED]", returned["structured_output"]["report"])
+
+    def test_invalid_missing_duplicate_and_oversized_results_fail_closed(self):
+        for script in ("print('[]')", "print('{}')", "print('not JSON')",
+                       "print('{\"type\":\"result\"}\\n{\"type\":\"result\"}')",
+                       "print('x' * 300)", "import sys; sys.exit(3)"):
+            with self.subTest(script=script), patch.object(runner, "MAX_STREAM_LINE", 128):
+                with self.assertRaises(ValueError):
+                    self.execute(script)
+                self.assertIn(runner.read_json(self.out / "code-review.status.json")["state"], ("exit", "protocol"))
+
+    @unittest.skipUnless(sys.platform == "linux", "Linux PID namespace containment")
+    def test_linux_deadline_also_stops_detached_grandchildren(self):
+        marker = self.root / "detached-child-survived"
+        child = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch()"
+        script = (f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}], start_new_session=True); "
+                  "print('{}', flush=True); time.sleep(10)")
+        with self.assertRaisesRegex(ValueError, "review timeout"):
+            self.execute(script, timeout=0.3, wrap=True)
+        time.sleep(1.1)
+        self.assertFalse(marker.exists(), "a detached child escaped Linux review cleanup")
+
+    def test_git_commands_have_a_deadline_and_cannot_prompt(self):
+        with patch.object(subprocess, "check_output", return_value="revision\n") as execute:
+            self.assertEqual(runner.git(self.root, "rev-parse", "HEAD"), "revision")
+        options = execute.call_args.kwargs
+        self.assertEqual(options["timeout"], runner.GIT_TIMEOUT)
+        self.assertEqual(options["env"]["GIT_TERMINAL_PROMPT"], "0")
+        self.assertEqual(options["env"]["GIT_ASKPASS"], "/bin/false")
 
 
 if __name__ == "__main__":

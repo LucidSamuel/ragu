@@ -46,6 +46,15 @@ the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
 
+Each pass has a 55-minute deadline and emits a safe progress heartbeat every
+30 seconds in the workflow log (elapsed time, event count, and fixed tool names;
+no tool arguments or reasoning). Git setup and verification commands have
+three-minute deadlines and cannot prompt for credentials. Timeout/cancellation
+stops the review process group; on Linux a private PID namespace also contains
+detached children. Artifacts retain the final native result, bounded stderr
+with the model key redacted, and controller-owned per-pass status metadata.
+Raw event transcripts are not uploaded.
+
 Each pass also has a short, private scratch directory, with peer scratch
 protected from reads and host writes. The short path prevents Claude from
 falling back to a shared Bash temp directory. On Linux, a per-reviewer mount
@@ -86,7 +95,11 @@ Opus's resistance to misleading text. Review coverage and findings remain
 model-reported and need human assessment.
 
 A new command can cancel an older review on that PR; stale results cannot
-publish. GitHub labels jobs that use an environment as deployments. Regression
+pass the gate. The publisher terminates the old invocation's check and updates
+its summary only if a newer invocation has not replaced it. Failed or stale
+reviews still show verified summaries and findings from completed passes,
+clearly tied to the reviewed revisions. Brief App writes are serialized across
+PRs; model reviews remain concurrent. GitHub labels jobs that use an environment as deployments. Regression
 tests run in the existing Workflow audit CI, without audit credentials or paid
 model calls. Merge queues are not supported by this comment-only workflow.
 A required check cannot substitute for human review or establish soundness.

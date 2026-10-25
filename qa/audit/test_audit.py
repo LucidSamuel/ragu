@@ -240,7 +240,7 @@ class AuditTests(unittest.TestCase):
         self.reports(run)
         with self.assertRaisesRegex(ValueError, "different configuration"):
             github.publish(self.api, run, self.out, "success")
-        self.assertNotIn("conclusion", self.api.checks[0])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_audit_workflow_is_comment_only_and_serializes_publishers(self):
         workflow = (Path(__file__).parents[2] / ".github/workflows/audit.yml").read_text()
@@ -254,7 +254,7 @@ class AuditTests(unittest.TestCase):
                 self.assertEqual(name, "review")
                 self.assertIn("if: needs.request.outputs.pr != ''", body)
         for name in ("queue", "publish"):
-            self.assertIn("group: ragu-audit-publisher-${{ needs.request.outputs.head }}", jobs[name])
+            self.assertIn("group: ragu-audit-publisher\n", jobs[name])
             self.assertIn("queue: max", jobs[name])
             self.assertIn("cancel-in-progress: false", jobs[name])
 
@@ -290,7 +290,7 @@ class AuditTests(unittest.TestCase):
         self.api.main_sha = "c" * 40
         with self.assertRaisesRegex(ValueError, "head or base moved"):
             github.publish(self.api, run, self.out, "success")
-        self.assertNotIn("conclusion", self.api.checks[0])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_moved_head_or_base_cannot_publish_success(self):
         run = github.queue(self.api, 9)
@@ -303,9 +303,80 @@ class AuditTests(unittest.TestCase):
                 self.api.main_sha = "d" * 40
             with self.assertRaises(ValueError):
                 github.publish(self.api, run, self.out, "success")
-            self.assertNotIn("conclusion", self.api.checks[0])
+            self.assertEqual(self.api.checks[0]["conclusion"], "failure")
             self.api.target = target
             self.api.main_sha = BASE
+
+    def test_stale_review_terminates_its_check_and_keeps_snapshot_findings(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        self.api.target["head"]["sha"] = "d" * 40
+        with self.assertRaises(github.StaleReview):
+            github.publish(self.api, run, self.out, "success")
+        body = self.api.comments[0]["body"]
+        self.assertIn("audit: stale", body)
+        self.assertIn("4/4 verified passes", body)
+        self.assertIn("No findings.", body)
+        self.assertEqual(self.api.checks[0]["status"], "completed")
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_closed_pr_does_not_leave_a_running_summary(self):
+        run = github.queue(self.api, 9)
+        self.api.target["state"] = "closed"
+        with self.assertRaises(github.StaleReview):
+            github.publish(self.api, run, self.out, "cancelled")
+        self.assertIn("audit: stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_old_attempt_cannot_overwrite_newer_summary_or_check(self):
+        for move_head in (False, True):
+            with self.subTest(move_head=move_head):
+                api = API()
+                old = github.queue(api, 9)
+                self.reports(old)
+                with patch.dict(os.environ, {"GITHUB_RUN_ATTEMPT": "2"}):
+                    if move_head:
+                        api.target["head"]["sha"] = "d" * 40
+                    new = github.queue(api, 9)
+                body = api.comments[0]["body"]
+                check = copy.deepcopy(api.checks[-1])
+                with self.assertRaises(github.StaleReview):
+                    github.publish(api, old, self.out, "success")
+                self.assertEqual(api.comments[0]["body"], body)
+                self.assertEqual(api.checks[-1], check)
+                self.assertEqual(api.checks[0]["conclusion"], "failure")
+                self.assertEqual(api.checks[-1]["id"], new["check_id"])
+
+    def test_movement_during_publication_corrects_own_summary(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        upsert = github.upsert
+
+        def move(*args, **kwargs):
+            upsert(*args, **kwargs)
+            self.api.target["head"]["sha"] = "d" * 40
+
+        with patch.object(github, "upsert", side_effect=move), self.assertRaises(github.StaleReview):
+            github.publish(self.api, run, self.out, "success")
+        self.assertIn("audit: stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_summary_publication_failure_terminates_check_without_success(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        with patch.object(github, "upsert", side_effect=OSError("publisher unavailable")), self.assertRaises(OSError):
+            github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["status"], "completed")
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_forged_check_identity_cannot_mutate_either_invocation(self):
+        old = github.queue(self.api, 9)
+        new = github.queue(self.api, 9)
+        forged = {**old, "check_id": new["check_id"], "external_id": "forged"}
+        before = len(self.api.mutations)
+        with self.assertRaises(ValueError):
+            github.publish(self.api, forged, self.out, "failure")
+        self.assertEqual(len(self.api.mutations), before)
 
     def test_old_workflow_configuration_cannot_queue(self):
         os.environ["GITHUB_WORKFLOW_SHA"] = "c" * 40
@@ -396,7 +467,35 @@ class AuditTests(unittest.TestCase):
         self.assertIn("Stopped during `tal-review`: the reviewer reported incomplete coverage", body)
         self.assertNotIn("Stopped during `alex-review`", body)
         self.assertNotIn("SECRET_CANARY", body)
+        self.assertIn("2/4 verified passes", body)
+        self.assertIn("<summary>code-review</summary>", body)
+        self.assertIn("<summary>alex-review</summary>", body)
+        self.assertNotIn("<summary>tal-review</summary>", body)
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_failed_run_cannot_publish_modified_partial_reports(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["phases"] = receipt["phases"][:1]
+        runner.write_json(self.out / "receipt.json", receipt)
+        (self.out / "code-review.md").write_text("UNVERIFIED_FINDING_CANARY")
+        with self.assertRaises(ValueError):
+            github.publish(self.api, run, self.out, "failure")
+        body = self.api.comments[0]["body"]
+        self.assertIn("0/4 verified passes", body)
+        self.assertNotIn("UNVERIFIED_FINDING_CANARY", body)
+
+    def test_timeout_diagnostics_are_bound_and_use_only_fixed_messages(self):
+        run = github.queue(self.api, 9)
+        receipt = self.reports(run)
+        receipt["phases"] = []
+        runner.write_json(self.out / "receipt.json", receipt)
+        runner.write_json(self.out / "code-review.status.json", {"run": run, "skill": "code-review", "state": "timeout", "details": "SECRET_CANARY"})
+        body = github.summary(run, "incomplete", self.out)
+        self.assertIn("review reached its time limit", body)
+        self.assertNotIn("SECRET_CANARY", body)
+        runner.write_json(self.out / "code-review.status.json", {"run": {**run, "attempt": 8}, "skill": "code-review", "state": "timeout"})
+        self.assertNotIn("review reached its time limit", github.summary(run, "incomplete", self.out))
 
     def test_parallel_receipt_requires_core_and_unique_canonical_names(self):
         run = github.queue(self.api, 9)
@@ -433,6 +532,8 @@ class AuditTests(unittest.TestCase):
                        {"structured_output": {"complete": False, "report": "Missing evidence"}},
                        {"structured_output": {"complete": True, "report": ""}}):
             self.assertFalse(runner.completed({**native(), **update}))
+        for result in ([], None, {}, {**native(), "structured_output": []}, {**native(), "structured_output": None}):
+            self.assertFalse(runner.completed(result))
 
     def test_summary_has_no_mentions_or_active_html_and_is_bounded(self):
         text = github.excerpt("</details><img src=x> @alice ![tracking](https://example.test)" + "💥" * 30000)
