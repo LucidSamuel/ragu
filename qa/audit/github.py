@@ -120,6 +120,27 @@ def excerpt(text, size=9000):
     return text
 
 
+def incomplete_details(run, out):
+    try:
+        receipt = runner.read_json(out / "receipt.json")
+        if receipt.get("run") != run or receipt.get("claude_version") != runner.CLAUDE_VERSION:
+            raise ValueError("unbound receipt")
+        phases = receipt["phases"]
+        names = [phase["skill"] for phase in phases]
+        if names != list(runner.SKILLS[:len(names)]) or not all(phase.get("complete") is True for phase in phases):
+            raise ValueError("invalid phase order")
+        if len(names) == len(runner.SKILLS):
+            return "The review job failed after recording all four passes. Inspect the workflow."
+        skill = runner.SKILLS[len(names)]
+        try:
+            result = runner.read_json(out / f"{skill}.json")
+        except (OSError, ValueError):
+            return f"Stopped during `{skill}` before Claude Code returned a valid result."
+        return f"Stopped during `{skill}`: {runner.incomplete_reason(result)}."
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return "The review job failed without a verifiable phase result. Inspect the workflow."
+
+
 def summary(run, state, out=None):
     lines = [MARKER, "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
              f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
@@ -130,6 +151,8 @@ def summary(run, state, out=None):
     elif state == "running":
         lines += ["Running `code-review` → `sean-review` → `tal-review` → `alex-review`. This comment will be updated."]
     else:
+        if out is not None:
+            lines += [incomplete_details(run, out), ""]
         lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
     return "\n".join(lines)
 

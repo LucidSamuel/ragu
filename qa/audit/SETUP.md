@@ -41,6 +41,14 @@ controller/report paths, and an API key helper outside that sandbox. The model
 job has no App key; publisher jobs never execute PR code. Required Rust
 toolchains are installed before the model key is made available. Tests can
 write scratch files and Cargo dependencies, but no caches are saved afterward.
+The controller prepares the Cargo home, executable directory, and readable
+configuration files before starting Claude; the protected paths stay unwritable
+to review tools. Ordinary Cargo
+commands use the fixed network allowlist; per-command domain arguments cannot
+widen it. Claude's saved tool output lives separately from the credential
+directory. Review tools can read that output but cannot modify CLI state.
+Incomplete comments name the stopped pass and a fixed diagnostic without
+publishing model text, tool arguments, or stderr as the failure reason.
 
 Trusted system instructions mark PR files, test output, and earlier reports as
 untrusted evidence. Project hooks/MCP configuration do not load, skill shell
