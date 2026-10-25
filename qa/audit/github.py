@@ -17,6 +17,10 @@ CHECK = "ragu-audit/completed"
 MARKER = "<!-- ragu-audit-summary:v2 -->"
 
 
+class StaleReview(ValueError):
+    """A valid invocation whose snapshot or place in the queue has changed."""
+
+
 class GitHub:
     def call(self, path, data=None, method=None):
         request = Request(
@@ -122,44 +126,70 @@ def excerpt(text, size=9000):
 
 def incomplete_details(run, out):
     try:
-        receipt = runner.read_json(out / "receipt.json")
-        if receipt.get("run") != run or receipt.get("claude_version") != runner.CLAUDE_VERSION:
-            raise ValueError("unbound receipt")
+        receipt = runner.verify(run, out, partial=True)
         phases = receipt["phases"]
         names = [phase["skill"] for phase in phases]
-        if names != list(runner.SKILLS[:len(names)]) or not all(phase.get("complete") is True for phase in phases):
-            raise ValueError("invalid phase order")
         if len(names) == len(runner.SKILLS):
             return "The review job failed after recording all four passes. Inspect the workflow."
-        skill = runner.SKILLS[len(names)]
-        try:
-            result = runner.read_json(out / f"{skill}.json")
-        except (OSError, ValueError):
-            return f"Stopped during `{skill}` before Claude Code returned a valid result."
-        return f"Stopped during `{skill}`: {runner.incomplete_reason(result)}."
+        missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
+        lines = []
+        for skill in missing:
+            try:
+                status = runner.read_json(out / f"{skill}.status.json")
+                reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",
+                           "exit": "Claude Code exited unsuccessfully", "protocol": "Claude Code returned an invalid event stream",
+                           "cleanup": "review process cleanup did not finish"}
+                if status.get("run") == run and status.get("skill") == skill and status.get("state") in reasons:
+                    lines.append(f"Stopped during `{skill}`: {reasons[status['state']]}.")
+                    continue
+            except (OSError, ValueError, AttributeError, TypeError):
+                pass
+            try:
+                result = runner.read_json(out / f"{skill}.json")
+            except (OSError, ValueError):
+                lines.append(f"Stopped during `{skill}` before Claude Code returned a valid result.")
+                continue
+            lines.append(f"Stopped during `{skill}`: {runner.incomplete_reason(result)}.")
+        return "\n\n".join(lines)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return "The review job failed without a verifiable phase result. Inspect the workflow."
 
 
+def invocation_marker(run):
+    return f"<!-- ragu-audit-run:{number(run['run_id'])}:{number(run['attempt'])}:{number(run['check_id'])} -->"
+
+
 def summary(run, state, out=None):
-    lines = [MARKER, "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
+    lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
              f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
-    if state == "completed":
-        for skill in runner.SKILLS:
-            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), "", "</details>", ""]
-        lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
-    elif state == "running":
-        lines += ["Running `code-review` → `sean-review` → `tal-review` → `alex-review`. This comment will be updated."]
+    if state == "running":
+        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel. This comment will be updated."]
     else:
+        names = []
         if out is not None:
-            lines += [incomplete_details(run, out), ""]
-        lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
+            try:
+                names = [phase["skill"] for phase in runner.verify(run, out, partial=True)["phases"]]
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        lines += [f"**{len(names)}/4 verified passes completed.** Findings and review summaries from completed passes follow.", ""]
+        for skill in names:
+            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), "", "</details>", ""]
+        if state == "completed":
+            lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
+        elif state == "stale":
+            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the revisions above. Post `/ragu-audit` on the current PR revision to review again."]
+        else:
+            if out is not None:
+                lines += [incomplete_details(run, out), ""]
+            lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
     return "\n".join(lines)
 
 
-def upsert(api, run, check, state, *, out=None):
+def upsert(api, run, check, state, *, out=None, only_current=False):
     comments = api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
     existing = next((comment for comment in comments if owns_comment(comment, check["app"])), None)
+    if only_current and (existing is None or invocation_marker(run) not in existing["body"].splitlines()):
+        return  # An older invocation must never replace a newer summary.
     body = summary(run, state, out)
     path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
     result = api.call(path, {"body": body}, "PATCH" if existing else "POST")
@@ -191,46 +221,81 @@ def queue(api, value, expected_head=None):
         raise ValueError("check was not published by the configured App")
     run["check_id"] = check["id"]
     run["app_id"] = check["app"]["id"]
-    upsert(api, run, check, "running")
+    try:
+        upsert(api, run, check, "running")
+    except (OSError, ValueError):
+        finish_check(api, run, False, "Summary publication failed")
+        raise
     return run
 
 
-def guard(api, run):
+def own_check(api, run):
     if run["repository"] != REPOSITORY or run["configuration"] != sha(os.environ["GITHUB_WORKFLOW_SHA"]):
         raise ValueError("run identity does not match the trusted controller")
     if str(run["run_id"]) != os.environ["GITHUB_RUN_ID"] or str(run["attempt"]) != os.environ["GITHUB_RUN_ATTEMPT"]:
         raise ValueError("run identity does not match this workflow attempt")
-    target = pr(api, run["pr"])
-    if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
-        raise ValueError("PR head or base moved during review")
+    expected = scope(run) + f"{number(run['pr'])}:{number(run['run_id'])}:{number(run['attempt'])}"
+    if run["external_id"] != expected or str(run["app_id"]) != os.environ["RAGU_AUDIT_APP_ID"]:
+        raise ValueError("invalid check identity")
     values = checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
+    own = next((check for check in values if check["id"] == run["check_id"]), None)
+    if own is None or own.get("external_id") != expected:
+        raise ValueError("invocation does not own this App check")
+    return own, values
+
+
+def guard(api, run):
+    own, values = own_check(api, run)
+    try:
+        target = pr(api, run["pr"])
+    except ValueError as error:
+        raise StaleReview("PR is no longer eligible for this review") from error
+    if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
+        raise StaleReview("PR head or base moved during review")
     prefix = scope(run)
     if not values or not values[0].get("external_id", "").startswith(prefix):
-        raise ValueError("a newer review uses a different configuration")
-    own = next((check for check in values if check.get("external_id", "").startswith(prefix + f"{run['pr']}:")), None)
-    if own is None or own["id"] != run["check_id"] or own.get("external_id") != run["external_id"]:
-        raise ValueError("a newer review superseded this invocation")
+        raise StaleReview("a newer review uses a different configuration")
+    latest = next((check for check in values if check.get("external_id", "").startswith(prefix + f"{run['pr']}:")), None)
+    if latest is None or latest["id"] != run["check_id"]:
+        raise StaleReview("a newer review superseded this invocation")
     return own
 
 
-def publish(api, run, out, review_result):
-    check = guard(api, run)
-    success = False
-    try:
-        if review_result != "success":
-            raise ValueError("review job did not succeed")
-        runner.verify(run, out)
-        success = True
-    except (OSError, ValueError, KeyError, TypeError) as error:
-        print(f"Review incomplete: {error}", flush=True)
-    upsert(api, run, check, "completed" if success else "incomplete", out=out)
-    guard(api, run)  # Recheck after reading artifacts and publishing the comment.
+def finish_check(api, run, success, title):
     api.call(f"/repos/{REPOSITORY}/check-runs/{run['check_id']}", {
         "status": "completed", "conclusion": "success" if success else "failure",
         "completed_at": datetime.now(timezone.utc).isoformat(),
-        "output": {"title": "Four skill reviews completed" if success else "Review incomplete",
+        "output": {"title": title,
                    "summary": f"Reviewed head {run['head']} against base {run['base']}. Full findings and validation limits: {run['url']}"},
     }, "PATCH")
+
+
+def publish(api, run, out, review_result):
+    # Validate ownership independently of freshness so stale invocations can
+    # terminate their own check without gaining access to a newer invocation.
+    check, _ = own_check(api, run)
+    success = False
+    try:
+        guard(api, run)
+        try:
+            if review_result != "success":
+                raise ValueError("review job did not succeed")
+            runner.verify(run, out)
+            success = True
+        except (OSError, ValueError, KeyError, TypeError):
+            print("Review incomplete; see verified phase reports and diagnostics", flush=True)
+        upsert(api, run, check, "completed" if success else "incomplete", out=out)
+        guard(api, run)  # Recheck after reading artifacts and publishing.
+    except StaleReview:
+        try:
+            upsert(api, run, check, "stale", out=out, only_current=True)
+        finally:
+            finish_check(api, run, False, "Review stale; invoke again on the current revision")
+        raise
+    except (OSError, ValueError, KeyError, TypeError):
+        finish_check(api, run, False, "Summary publication failed")
+        raise
+    finish_check(api, run, success, "Four skill reviews completed" if success else "Review incomplete")
     if not success:
         raise ValueError("audit did not complete")
 
