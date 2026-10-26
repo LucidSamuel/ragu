@@ -1177,11 +1177,7 @@ mod timing {
                 proof.y(),
                 proof.z(),
                 proof.mu(),
-                #[cfg(not(feature = "experimental-quotient-fold"))]
-                proof.nu(),
                 proof.mu_prime(),
-                #[cfg(not(feature = "experimental-quotient-fold"))]
-                proof.nu_prime(),
                 proof.x(),
                 proof.alpha(),
                 proof.u(),
