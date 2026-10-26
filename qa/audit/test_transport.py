@@ -111,7 +111,7 @@ class TransportTests(unittest.TestCase):
                     self.assertEqual(len(backend.comments), 1)
                     self.assertEqual(backend.checks[0]["conclusion"], "success")
                     self.assertIn("audit: completed", backend.comments[0]["body"])
-                    self.assertIn("4/4 verified passes", backend.comments[0]["body"])
+                    self.assertIn("4/4 reviews completed", backend.comments[0]["body"])
                 finally:
                     fixture.doCleanups()
 

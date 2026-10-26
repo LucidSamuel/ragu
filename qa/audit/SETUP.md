@@ -27,11 +27,13 @@ After this workflow lands on `main`:
    before merging" to enforce review against the current base. Keep the existing
    CI and approval rules.
 
-One App-owned comment shows a combined **Must-fix** and **Suggestions** shortlist,
-with locations, evidence, next steps, and reviewer attribution. All defects and
-disputed findings remain visible, with at most three additional suggestions.
-The four original reviewer reports remain in collapsed sections below the
-shortlist, with full artifact links when the comment budget requires truncation.
+One App-owned comment shows a **For humans** summary with **Must-fix** and
+**Suggestions** lists, short explanations, source links, and reviewer attribution.
+All defects and disputed findings remain visible, with at most three additional
+suggestions. Reviewed revisions, model settings, and extra notes are collapsed
+under Run details.
+Under **For agents**, the four original reviewer reports remain collapsed below
+the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
 Artifacts are retained for 30 days; individual report links require GitHub login
 and fall back to the workflow when an auxiliary upload fails. Missing or

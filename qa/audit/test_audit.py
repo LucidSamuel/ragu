@@ -334,7 +334,7 @@ class AuditTests(unittest.TestCase):
             github.publish(self.api, run, self.out, "success")
         body = self.api.comments[0]["body"]
         self.assertIn("audit: stale", body)
-        self.assertIn("4/4 verified passes", body)
+        self.assertIn("4/4 reviews completed", body)
         self.assertIn("None reported.", body)
         self.assertEqual(self.api.checks[0]["status"], "completed")
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
@@ -391,7 +391,7 @@ class AuditTests(unittest.TestCase):
             github.publish(self.api, run, self.out, "success")
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
         self.assertIn("audit: publication failed", self.api.comments[0]["body"])
-        self.assertIn("4/4 verified passes", self.api.comments[0]["body"])
+        self.assertIn("4/4 reviews completed", self.api.comments[0]["body"])
         self.assertIn("None reported.", self.api.comments[0]["body"])
 
     def test_failed_final_check_update_does_not_leave_a_completed_summary(self):
@@ -485,7 +485,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
         self.assertEqual(len(self.api.comments), 1)
         for skill in runner.SKILLS:
-            self.assertIn(f"[{skill}](", self.api.comments[0]["body"])
+            self.assertIn(f"<summary>{findings.REVIEWER_NAMES[skill]}</summary>", self.api.comments[0]["body"])
 
     def test_missing_reports_or_failed_job_publish_failure(self):
         for result in ("success", "failure", "cancelled"):
@@ -551,10 +551,10 @@ class AuditTests(unittest.TestCase):
         self.assertIn("Stopped during `tal-review`: the reviewer reported incomplete coverage", body)
         self.assertNotIn("Stopped during `alex-review`", body)
         self.assertNotIn("SECRET_CANARY", body)
-        self.assertIn("2/4 verified passes", body)
-        self.assertIn("[code-review](", body)
-        self.assertIn("[alex-review](", body)
-        self.assertNotIn("[tal-review](", body)
+        self.assertIn("2/4 reviews completed", body)
+        self.assertIn("<summary>General</summary>", body)
+        self.assertIn("<summary>Alex</summary>", body)
+        self.assertNotIn("<summary>Tal</summary>", body)
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_failed_run_cannot_publish_modified_partial_reports(self):
@@ -566,7 +566,7 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             github.publish(self.api, run, self.out, "failure")
         body = self.api.comments[0]["body"]
-        self.assertIn("0/4 verified passes", body)
+        self.assertIn("0/4 reviews completed", body)
         self.assertNotIn("UNVERIFIED_FINDING_CANARY", body)
 
     def test_timeout_diagnostics_are_bound_and_use_only_fixed_messages(self):
@@ -646,9 +646,9 @@ class AuditTests(unittest.TestCase):
             github.publish(self.api, run, self.out, "success")
         text = self.api.comments[0]["body"]
         self.assertEqual(text.count("**One shared defect**"), 1)
-        self.assertIn("code-review, sean-review, tal-review, alex-review", text)
-        self.assertIn(f"[sean-review]({artifact})", text)
-        self.assertIn(f"[alex-review]({run['url']})", text)
+        self.assertIn("General, Sean, Tal, Alex", text)
+        self.assertIn(f"[Full report]({artifact})", text)
+        self.assertIn(f"[Full report]({run['url']})", text)
         self.assertNotIn("example.invalid", text)
         self.assertNotIn("Additional source checking did not complete", text)
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
@@ -664,10 +664,10 @@ class AuditTests(unittest.TestCase):
         text = self.api.comments[0]["body"]
         self.assertIn("Combined reviewer findings", text)
         self.assertEqual(text.count("**Incorrect result**"), 1)
-        self.assertIn("code-review, sean-review, tal-review, alex-review", text)
+        self.assertIn("General, Sean, Tal, Alex", text)
         self.assertNotIn("Edited finding", text)
         self.assertNotIn("FORGED_SUCCESS_CANARY", text)
-        self.assertIn("4/4 verified passes", text)
+        self.assertIn("4/4 reviews completed", text)
 
     def test_original_reports_remain_collapsed_below_the_shortlist(self):
         run = github.queue(self.api, 9, HEAD)
@@ -676,10 +676,10 @@ class AuditTests(unittest.TestCase):
         self.reports(run, {name: result for name in runner.SKILLS})
         text = github.summary(run, "completed", self.out)
         for name in runner.SKILLS:
-            self.assertIn(f"<details><summary>{name}</summary>", text)
-            self.assertIn(f"[Complete {name} report]", text)
-        self.assertLess(text.index("### Must-fix"), text.index("<details>"))
-        self.assertEqual(text.count("</details>"), 4)
+            self.assertIn(f"<details><summary>{findings.REVIEWER_NAMES[name]}</summary>", text)
+            self.assertIn("[Full report]", text)
+        self.assertLess(text.index("#### Must-fix"), text.index("<details>"))
+        self.assertEqual(text.count("</details>"), 5)
         self.assertIn("> Coverage note", text)
         self.assertIn("&lt;/details&gt;&lt;script&gt;", text)
         self.assertNotIn("@team", text)
@@ -698,7 +698,7 @@ class AuditTests(unittest.TestCase):
         self.assertLess(len(text.encode()), 65536)
         self.assertEqual(text.count("- **"), 256)
         self.assertIn("Compact view", text)
-        self.assertEqual(text.count("<details>"), 4)
+        self.assertEqual(text.count("<details>"), 5)
         self.assertIn("Continued in the full report", text)
 
     def test_contained_denials_do_not_invalidate_a_finished_review(self):

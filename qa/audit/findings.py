@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from urllib.parse import quote
 
 REVIEWERS = ("code-review", "sean-review", "tal-review", "alex-review")
+REVIEWER_NAMES = dict(zip(REVIEWERS, ("General", "Sean", "Tal", "Alex")))
 RECONCILER = "reconcile"
 MAX_FINDINGS = 64
 PRIORITIES = ("P0", "P1", "P2", "P3")
@@ -225,7 +226,7 @@ def combined(candidates):
     return groups
 
 
-def shortlist(candidates, groups=None, *, compact=False):
+def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
     """Keep all defects and disputes visible, plus at most three other suggestions."""
     originals = {item["id"]: item for item in candidates["findings"]}
     reconciled = groups is not None
@@ -239,29 +240,26 @@ def shortlist(candidates, groups=None, *, compact=False):
     suggestions = sorted(disputed, key=key) + sorted(others, key=key)[:3]
     lines = []
     for label, items in (("Must-fix", sorted(fixes, key=key)), ("Suggestions", suggestions)):
-        lines += [f"### {label}", ""]
+        lines += [f"{'#' * heading_level} {label} ({len(items)})", ""]
         if not items:
             lines += ["None reported." if not reconciled else "None after reconciliation.", ""]
         for item in items:
             reporters = [name for name in REVIEWERS if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"])]
             title = safe(item["title"], 120 if compact else None)
-            lines += [f"- **{title}** — {', '.join(reporters)}"]
+            lines += [f"- **{title}**"]
             if not compact:
                 loc = item["locations"][0]
-                path = safe(loc["path"]).replace("`", "&#96;")
+                path = safe(PurePosixPath(loc["path"]).name).replace("[", "&#91;").replace("]", "&#93;")
                 url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(loc['path'], safe='/')}#L{loc['line']}"
-                lines += [f"  `{path}:{loc['line']}` · [source]({url})",
-                          "  " + safe(" ".join(item["evidence"].split()), 400),
-                          "  **Next:** " + safe(" ".join(item["correction"].split()), 300)]
+                lines[-1] += " — " + safe(" ".join(item["evidence"].split()), 240) + "  "
+                lines += [f"  <sub>[{path}:{loc['line']}]({url}) · " + ", ".join(REVIEWER_NAMES[name] for name in reporters) + "</sub>  "]
                 if item["disagreement"]:
                     lines += ["  **Disagreement:** " + safe(" ".join(item["disagreement"].split()), 600)]
+            else:
+                lines[-1] += " — " + ", ".join(REVIEWER_NAMES[name] for name in reporters)
             lines.append("")
     if len(others) > 3:
         lines += ["Additional suggestions are in the full reports.", ""]
     if compact:
         lines += ["Compact view: locations, evidence, corrections and disagreement details are in the full reports.", ""]
-    dismissed = sum(item["disposition"] == "dismissed" for item in groups)
-    if dismissed:
-        noun = "finding group" if dismissed == 1 else "finding groups"
-        lines += [f"{dismissed} {noun} dismissed; reasons are in the reconciliation report in the full bundle.", ""]
     return lines

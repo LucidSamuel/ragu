@@ -45,7 +45,7 @@ class FindingsTests(unittest.TestCase):
         groups = self.reconcile(group("code-review:1", "sean-review:1"))
         text = "\n".join(findings.shortlist(self.bundle, groups))
         self.assertEqual(text.count("**Incorrect output**"), 1)
-        self.assertIn("code-review, sean-review", text)
+        self.assertIn("General, Sean", text)
         self.assertIn("### Must-fix", text)
         self.assertIn("### Suggestions", text)
 
@@ -55,7 +55,7 @@ class FindingsTests(unittest.TestCase):
         self.assertEqual(groups[0]["finding_ids"], ["code-review:1", "sean-review:1"])
         text = "\n".join(findings.shortlist(self.bundle))
         self.assertEqual(text.count("**Incorrect output**"), 1)
-        self.assertIn("code-review, sean-review", text)
+        self.assertIn("General, Sean", text)
 
     def test_combination_does_not_guess_semantic_duplicates(self):
         self.bundle["findings"][1]["correction"] = "Use a different branch selection algorithm."
@@ -66,7 +66,7 @@ class FindingsTests(unittest.TestCase):
         text = "\n".join(findings.shortlist(self.bundle))
         self.assertNotIn("Incorrect output", text.split("### Suggestions")[0])
         self.assertIn("Reviewers differ", text)
-        self.assertIn("code-review, sean-review", text)
+        self.assertIn("General, Sean", text)
 
     def test_omitted_duplicate_and_unknown_ids_are_rejected(self):
         for groups in ((group("code-review:1"),), (group("code-review:1", "code-review:1", "sean-review:1"),),
@@ -90,7 +90,7 @@ class FindingsTests(unittest.TestCase):
         groups = self.reconcile(group("code-review:1", "sean-review:1", disposition="dismissed",
                                       disagreement="Tal's cited existing test defeats the test-gap claim."))
         text = "\n".join(findings.shortlist(self.bundle, groups))
-        self.assertIn("1 finding group dismissed", text)
+        self.assertIn("None after reconciliation.", text)
         self.assertNotIn("**Incorrect output**", text)
 
     def test_fallback_keeps_challenged_claim_visible_as_a_suggestion(self):

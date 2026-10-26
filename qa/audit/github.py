@@ -187,10 +187,11 @@ def review_excerpt(text, size):
 
 
 def summary(run, state, out=None):
-    lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
-             f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
+    lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
+    details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
+               f"Model: `{run['model']}` · Effort: `{run['effort']}`", ""]
     if state == "running":
-        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated."]
+        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated.", ""]
     else:
         names, bundle, groups = [], None, None
         if out is not None:
@@ -199,56 +200,60 @@ def summary(run, state, out=None):
                 names = [review["reviewer"] for review in bundle["reviews"]]
             except (OSError, ValueError, KeyError, TypeError):
                 pass
-        lines += [f"**{len(names)}/4 verified passes completed.**", ""]
+        revision = f"https://github.com/{REPOSITORY}/commit/{run['head']}"
+        lines += [f"**{len(names)}/4 reviews completed** · [{run['head'][:8]}]({revision})", ""]
+        if state == "stale":
+            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the snapshot in Run details. Post `/ragu-audit` on the current PR revision to review again.", ""]
+        elif state == "cancelled":
+            lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again.", ""]
+        elif state == "publication failed":
+            lines += ["The controller could not verify live status or confirm publication. Completion was not granted. Verified reports below remain available; inspect the workflow before retrying.", ""]
+        elif state != "completed":
+            if out is not None:
+                lines += [incomplete_details(run, out), ""]
+            lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry.", ""]
         if names == list(runner.SKILLS):
             try:
                 bundle, groups = runner.verify_reconciliation(run, out)
             except (OSError, ValueError, KeyError, TypeError):
                 pass
+        lines += ["### For humans", ""]
         if bundle is not None:
             if groups is None and bundle["findings"]:
                 notice = ("Combined reviewer findings. Additional source checking did not complete; disputed claims remain visible."
                           if len(names) == 4 else "Combined findings from the completed reviews.")
-                lines += [notice, ""]
-            short = findings.shortlist(bundle, groups)
+                details += [notice, ""]
+            short = findings.shortlist(bundle, groups, heading_level=4)
             if len("\n".join(short).encode()) > 54000:
-                short = findings.shortlist(bundle, groups, compact=True)
+                short = findings.shortlist(bundle, groups, compact=True, heading_level=4)
             lines += short
             if any(runner.read_json(out / f"{skill}.json").get("permission_denials") for skill in names):
-                lines += ["Some tool requests were blocked; see the full reports' limitations.", ""]
+                details += ["Some tool requests were blocked; see the individual reports' limitations.", ""]
+            dismissed = sum(item["disposition"] == "dismissed" for item in (groups or []))
+            if dismissed:
+                noun = "finding group" if dismissed == 1 else "finding groups"
+                details += [f"{dismissed} {noun} dismissed; reasons are in the reconciliation report in the full bundle.", ""]
         else:
             lines += ["No verified findings are available.", ""]
         if names:
-            links, reports = [], []
+            lines += ["### For agents", ""]
+            # Preserve every confirmed defect in the top shortlist, allocating
+            # the remaining comment budget to the collapsed original reports.
+            size = min(12000, max(0, 60000 - len("\n".join(lines).encode()) - 4000) // len(names))
             for skill in names:
                 variable = "RAGU_AUDIT_REPORT_" + skill.upper().replace("-", "_")
                 url = os.environ.get(variable, "")
                 expected = rf"https://github\.com/{REPOSITORY}/actions/runs/{run['run_id']}/artifacts/[1-9][0-9]*"
                 if not re.fullmatch(expected, url):
                     url = run["url"]
-                links.append(f"[{skill}]({url})")
-                reports.append((skill, url))
-            # Preserve every confirmed defect in the top shortlist, allocating
-            # the remaining comment budget to the collapsed original reports.
-            size = min(12000, max(0, 60000 - len("\n".join(lines).encode()) - 4000) // len(names))
-            for skill, url in reports:
                 text = review_excerpt((out / f"{skill}.md").read_text(), size)
-                lines += [f"<details><summary>{skill}</summary>", "", text, "",
-                          f"[Complete {skill} report]({url})", "", "</details>", ""]
-            lines += ["**Full reviews:** " + " · ".join(links), "",
-                      "Original reviewer reports and reconciliation decisions are retained in the workflow artifacts.", ""]
-        if state == "completed":
-            lines += ["Maintainers assess findings and approve changes."]
-        elif state == "stale":
-            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the revisions above. Post `/ragu-audit` on the current PR revision to review again."]
-        elif state == "cancelled":
-            lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again."]
-        elif state == "publication failed":
-            lines += ["The controller could not verify live status or confirm publication. Completion was not granted. Verified reports above remain available; inspect the workflow before retrying."]
-        else:
-            if out is not None:
-                lines += [incomplete_details(run, out), ""]
-            lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
+                label = findings.REVIEWER_NAMES[skill]
+                lines += [f"<details><summary>{label}</summary>", "", text, "",
+                          f"[Full report]({url})", "", "</details>", ""]
+        details += ["Original reports and reconciliation decisions are retained in the workflow artifacts.", "",
+                    "Maintainers assess findings and approve changes.", ""]
+    lines += ["---", "", "<details><summary>Run details</summary>", "", *details,
+              f"[Workflow and complete reports]({run['url']})", "", "</details>"]
     return "\n".join(lines)
 
 
