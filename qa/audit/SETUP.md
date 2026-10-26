@@ -11,8 +11,10 @@ After this workflow lands on `main`:
    Keep these credentials out of repository and organization-wide secrets.
 3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
    `RAGU_AUDIT_MODEL=claude-opus-5-5`, and `RAGU_AUDIT_EFFORT=xhigh`.
-   The same model and effort apply to all four passes, their subagents, and
-   reconciliation.
+   These apply to the four reviews and their subagents. Reconciliation defaults
+   to `claude-sonnet-5-5` at `xhigh`; optional variables
+   `RAGU_AUDIT_RECONCILE_MODEL` and `RAGU_AUDIT_RECONCILE_EFFORT` override those
+   settings. Each invocation pins both configurations.
    Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true` and post exactly `/ragu-audit` as a new PR
    conversation comment. The command requires live write, maintain, or admin
@@ -66,6 +68,28 @@ the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
 
+Repeated authorized commands for an already active identical review retain its
+existing run and status, including commands arriving together before either
+starts. Later invocations and failed-run retries can recover
+completed passes from the exact same head, base, trusted controller/policies,
+CLI version, and review/reconciliation model settings. Specialists stay paired
+with their original core report and finding IDs. A changed snapshot or effort
+forces fresh reviews. Post a new command or use GitHub's **Re-run all jobs** to
+retry with fresh authorization and reuse an earlier attempt's verified artifacts.
+Re-running only failed jobs cannot reuse an earlier attempt's authorization.
+Cancelled, deleted, or stranded workflows do not suppress a new request.
+
+Reuse reads only this repository's App-owned checks and artifacts from the
+trusted main `audit.yml` workflow. It verifies the source workflow, attempt,
+receipt, native completion, report hashes, schema, and core dependency before
+rebinding reports to the new invocation. Original receipts remain in artifacts
+as provenance. It never executes downloaded artifacts. Missing, expired, or
+invalid evidence falls back to fresh review; lookup has a one-minute limit.
+A damaged specialist or optional reconciliation does not
+discard valid siblings. Complete matching reviews and reconciliation require
+no new model calls. Read-only Actions/Checks permissions support lookup; App
+permissions and model credential isolation are unchanged.
+
 Reviewers return their complete Markdown report in the skill's normal prose
 format, alongside structured findings with source locations, cause, evidence,
 impact, and proposed correction. The controller preserves the prose rather than
@@ -105,6 +129,23 @@ stops the review process group; on Linux a private PID namespace also contains
 detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
+
+Each invocation has one shared internal $25 estimated API safety limit. Reviewers
+and reconciliation can use the entire remaining pool, without individual quotas.
+The controller aggregates streamed input, cache, and output usage across parallel
+sessions, deduplicates cumulative updates, and reconciles native final estimates.
+Its pricing table covers the configured Opus/Sonnet models; an unknown model or
+unsupported usage stops the guard rather than silently permitting unpriced work.
+Each CLI session also receives the current remaining budget as a fallback limit.
+Reused results incur no new model calls and do not consume this invocation's pool.
+Reaching the combined limit stops outstanding review processes and fails the run.
+The bot still publishes available completed findings and their original reports,
+with a short explanation of incomplete work. Reconciliation uses the same pool.
+
+This guard uses CLI estimates, so in-flight requests may overshoot and the
+provider's bill can differ. The limit applies per invocation, not cumulatively
+across a PR's commits or retries. Cost totals are not added to PR comments or
+workflow summaries; a stopped pass gets only a generic safety-limit diagnostic.
 
 The queue passes public request identity through a job output and keeps the
 control artifact as a fallback. Both model and publisher jobs validate the

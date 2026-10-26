@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from decimal import Decimal
 from http.client import HTTPException
 import hashlib
 import json
@@ -28,6 +29,9 @@ RECONCILER = findings.RECONCILER
 ROLES = (*SKILLS, RECONCILER)
 REPORT_SUFFIXES = ("md", "json", "stderr", "status.json")
 CLAUDE_VERSION = "2.1.310"
+RECONCILE_MODEL = "claude-sonnet-5-5"
+RECONCILE_EFFORT = "xhigh"
+MAX_RUN_COST_USD = Decimal("25.00")
 TOOLS = "Bash,Read,Edit"
 INHERITED_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "CARGO_HOME", "RUSTUP_HOME")
 REVIEW_TIMEOUT = 3300
@@ -78,6 +82,172 @@ def write_json(path, value):
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def native_cost(result):
+    value = result.get("total_cost_usd")
+    if type(value) not in (int, float):
+        raise ValueError("native result has no valid API cost estimate")
+    amount = Decimal(str(value))
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("native result has no valid API cost estimate")
+    return amount
+
+
+class SafetyLimit(ValueError):
+    """The shared invocation safety budget is exhausted or cannot be verified."""
+
+
+class RunBudget:
+    """One thread-safe pool for all fresh sessions; no per-reviewer allocations.
+
+    Stream usage is cumulative per API message, so repeated partial/assistant
+    events update one record rather than charging the same tokens twice. The
+    native final estimate reconciles expenses not visible in message events.
+    Only numeric usage is kept in memory; no cost table or transcript is emitted.
+    """
+
+    # First-party standard USD/MTok, verified against Anthropic's pricing page:
+    # https://platform.claude.com/docs/en/about-claude/pricing (2026-10-26).
+    PRICES = {"claude-opus-5-5": tuple(map(Decimal, ("4", "20", "5", "8", ".20"))),
+              "claude-sonnet-5-5": tuple(map(Decimal, ("2", "10", "2.5", "4", ".10")))}
+
+    def __init__(self, run, limit=None):
+        for role in (SKILLS[0], RECONCILER):
+            if model_settings(run, role)[0] not in self.PRICES:
+                raise ValueError("the safety guard needs pricing for the configured model")
+        self.limit = MAX_RUN_COST_USD if limit is None else Decimal(str(limit))
+        if not self.limit.is_finite() or self.limit <= 0:
+            raise ValueError("invalid run safety limit")
+        self.lock, self.stopped = threading.Lock(), threading.Event()
+        self.messages, self.active = {}, {}
+        self.stream, self.final = {}, {}
+
+    def _spent(self):
+        return sum(max(self.stream.get(role, Decimal(0)), self.final.get(role, Decimal(0))) for role in ROLES)
+
+    def remaining(self):
+        with self.lock:
+            if self.stopped.is_set():
+                raise SafetyLimit("review reached its safety limit")
+            return self.limit - self._spent()
+
+    def check(self):
+        self.remaining()
+
+    def finish(self, role, result):
+        if role not in ROLES:
+            self.stopped.set()
+            raise SafetyLimit("review safety guard could not validate usage")
+        if result.get("subtype") == "error_max_budget_usd":
+            self.stopped.set()
+        try:
+            amount = native_cost(result)
+        except ValueError:
+            self.stopped.set()
+            raise SafetyLimit("review safety guard could not validate usage") from None
+        with self.lock:
+            self.final[role] = max(self.final.get(role, Decimal(0)), amount)
+            if self._spent() >= self.limit:
+                self.stopped.set()
+        self.check()
+
+    def observe(self, role, value):
+        try:
+            if role not in ROLES:
+                raise ValueError("unknown review phase")
+            with self.lock:
+                kind = value.get("type")
+                if kind == "assistant":
+                    message = value.get("message", {})
+                    if isinstance(message, dict) and message.get("model") != "<synthetic>":
+                        self._message(role, message)
+                elif kind == "stream_event":
+                    event = value.get("event", {})
+                    if event.get("type") == "message_start":
+                        self._message(role, event["message"])
+                    elif event.get("type") == "message_delta" and event.get("usage"):
+                        identity = value.get("api_message_id")
+                        key = (role, identity) if (role, identity) in self.messages else self.active[role]
+                        model = self.messages[key]["model"]
+                        self._message(role, {"id": key[1], "model": model, "usage": event["usage"]})
+                if self._spent() >= self.limit:
+                    self.stopped.set()
+        except (ValueError, KeyError, TypeError, AttributeError):
+            self.stopped.set()
+            raise SafetyLimit("review safety guard could not validate usage") from None
+        self.check()
+
+    def _message(self, role, message):
+        model, identity, usage = message["model"], message["id"], message["usage"]
+        if model not in self.PRICES or not isinstance(identity, str) or not identity or not isinstance(usage, dict):
+            raise ValueError("unsupported usage event")
+        key = role, identity
+        record = self.messages.setdefault(key, {"model": model, "tokens": {}, "factor": Decimal(1), "cost": Decimal(0)})
+        if record["model"] != model:
+            raise ValueError("message model changed")
+        if len(self.messages) > 16384:
+            raise ValueError("too many usage records")
+        self.active[role] = key
+        fields = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+        incoming = {name: usage[name] for name in fields if name in usage}
+        creation = usage.get("cache_creation") or {}
+        if not isinstance(creation, dict):
+            raise ValueError("invalid cache usage")
+        if "ephemeral_1h_input_tokens" in creation:
+            incoming["hour_tokens"] = creation["ephemeral_1h_input_tokens"]
+        for name, value in incoming.items():
+            if type(value) is not int or not 0 <= value < 10**12:
+                raise ValueError("invalid usage count")
+            record["tokens"][name] = max(record["tokens"].get(name, 0), value)
+        if usage.get("service_tier", "standard") != "standard":
+            raise ValueError("unsupported service pricing")
+        speed, geo = usage.get("speed", "standard"), usage.get("inference_geo", "global")
+        if speed not in ("standard", "fast") or geo not in ("global", "us"):
+            raise ValueError("unsupported usage pricing")
+        if speed == "fast" and model != "claude-opus-5-5":
+            raise ValueError("unsupported fast pricing")
+        factor = Decimal(2 if speed == "fast" else 1) * (Decimal("1.1") if geo == "us" else 1)
+        record["factor"] = max(record["factor"], factor)
+        tokens = record["tokens"]
+        normal, output, short, hour, cached = self.PRICES[model]
+        hour_tokens = tokens.get("hour_tokens", 0)
+        creation_tokens = max(tokens.get("cache_creation_input_tokens", 0), hour_tokens)
+        cost = (tokens.get("input_tokens", 0) * normal + tokens.get("output_tokens", 0) * output
+                + (creation_tokens - hour_tokens) * short + hour_tokens * hour
+                + tokens.get("cache_read_input_tokens", 0) * cached) * record["factor"] / 1000000
+        cost = max(record["cost"], cost)
+        self.stream[role] = self.stream.get(role, Decimal(0)) + cost - record["cost"]
+        record["cost"] = cost
+
+
+def model_settings(run, skill):
+    if skill == RECONCILER:
+        return run.get("reconcile_model", RECONCILE_MODEL), run.get("reconcile_effort", RECONCILE_EFFORT)
+    return run["model"], run["effort"]
+
+
+def reuse_key(run):
+    return {**{key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")},
+            "reconciliation": model_settings(run, RECONCILER), "claude_version": CLAUDE_VERSION}
+
+
+def reuse_origin(run):
+    return {key: run[key] for key in ("run_id", "attempt", "check_id", "url")}
+
+
+def verify_reuse(run, out, phase):
+    source = read_json(out / "reuse-receipt.json")
+    if reuse_key(source["run"]) != reuse_key(run) or phase["reused_from"] != reuse_origin(source["run"]):
+        raise ValueError("reused review belongs to a different snapshot or configuration")
+    records = {item["skill"]: item for item in source["phases"]}
+    original = records[phase["skill"]]
+    if (source.get("claude_version") != CLAUDE_VERSION or original.get("complete") is not True
+            or any(original[key] != phase[key] for key in ("sha256", "result_sha256"))):
+        raise ValueError("reused review does not match its original receipt")
+    core = next(item for item in read_json(out / "receipt.json")["phases"] if item["skill"] == SKILLS[0])
+    if any(core[key] != records[SKILLS[0]][key] for key in ("sha256", "result_sha256")):
+        raise ValueError("reused specialist requires its original core report")
 
 
 def git(root, *args, timeout=GIT_TIMEOUT):
@@ -137,7 +307,9 @@ def settings(root, source, work, out, private, plugin, scratch):
     deny_read += [str(state / skill) for skill in ROLES if skill != source.name]
     peer_scratch = [scratch / skill for skill in ROLES if skill != source.name]
     deny_read += [str(path) for path in (*peer_scratch, *shared_scratch())]
-    deny_read += [str(out / name) for name in ("receipt.json", "reconciliation-receipt.json", "combined.md")]
+    deny_read += [str(out / name) for name in ("receipt.json", "reconciliation-receipt.json", "combined.md",
+                                              "reuse-receipt.json", "reuse-reconciliation-receipt.json")]
+    deny_read.append(str(work / "control"))
     # Specialists share the completed core prose and normalized finding IDs,
     # never partial sibling reports or another CLI's tool output.
     deny_read += [str(out / f"{skill}.{suffix}") for skill in ROLES if skill != source.name
@@ -191,6 +363,7 @@ def environment(run, work, skill, scratch):
     # Allowlist rather than removing known secret names from the Actions env.
     result = {key: os.environ[key] for key in INHERITED_ENV if key in os.environ}
     workers = len(SKILLS) - 1 if skill in SKILLS[1:] else 1
+    model, effort = model_settings(run, skill)
     result.update({
         "CLAUDE_CONFIG_DIR": str(work / "claude" / skill),
         "CLAUDE_CODE_TMPDIR": str(scratch / skill),
@@ -199,9 +372,9 @@ def environment(run, work, skill, scratch):
         "CARGO_BUILD_JOBS": str(max(1, (os.cpu_count() or 1) // workers)),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
-        "CLAUDE_CODE_SUBAGENT_MODEL": run["model"],
+        "CLAUDE_CODE_SUBAGENT_MODEL": model,
         "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
-        "CLAUDE_CODE_EFFORT_LEVEL": run["effort"],
+        "CLAUDE_CODE_EFFORT_LEVEL": effort,
         "BASH_MAX_TIMEOUT_MS": "1200000",
         "GIT_OPTIONAL_LOCKS": "0",
     })
@@ -287,6 +460,8 @@ def incomplete_reason(result):
     """Return fixed diagnostics without exposing model text or tool arguments."""
     if not isinstance(result, dict):
         return "Claude Code did not return a valid result"
+    if result.get("subtype") == "error_max_budget_usd":
+        return "the review reached its safety limit"
     reasons = []
     if result.get("permission_denials"):
         reasons.append("sandbox permissions blocked a tool action")
@@ -437,7 +612,7 @@ def watch_comment(run, cancelled):
         thread.join(timeout=11)
 
 
-def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, timeout=None):
+def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, timeout=None, budget=None):
     """Keep the final native result and bounded diagnostics, not a tool transcript."""
     started = time.monotonic()
     limit = REVIEW_TIMEOUT if timeout is None else timeout
@@ -476,6 +651,15 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
                 raise ValueError("duplicate Claude result")
             # Never persist partial messages, reasoning, or tool arguments.
             result = json.loads(json.dumps(value).replace(secret, "[REDACTED]")) if secret else value
+            if value.get("subtype") == "error_max_budget_usd":
+                if budget is not None:
+                    budget.stopped.set()
+                status["state"] = "budget"
+                raise SafetyLimit("review reached its safety limit")
+            if budget is not None:
+                budget.finish(skill, value)
+        elif budget is not None:
+            budget.observe(skill, value)
         if value.get("type") == "assistant":
             message = value.get("message", {})
             blocks = message.get("content", []) if isinstance(message, dict) else []
@@ -492,6 +676,8 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
         if cancelled.is_set():
             status["state"] = "cancelled"
             raise ValueError("review cancelled")
+        if budget is not None:
+            budget.check()
         process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, start_new_session=True)
         with selectors.DefaultSelector() as selector:
@@ -500,6 +686,8 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
             next_heartbeat = started + HEARTBEAT_SECONDS
             while selector.get_map() or process.poll() is None:
                 now = time.monotonic()
+                if budget is not None:
+                    budget.check()
                 if cancelled.is_set() or now - started >= limit:
                     status["state"] = "cancelled" if cancelled.is_set() else "timeout"
                     raise ValueError(f"review {status['state']}")
@@ -542,6 +730,9 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
             raise ValueError("Claude Code returned no final result")
         status["state"] = "returned"
         return result
+    except SafetyLimit:
+        status["state"] = "budget"
+        raise
     except (OSError, ValueError):
         if status["state"] == "running":
             status["state"] = "protocol"
@@ -569,8 +760,9 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
             save(heartbeat=True)
 
 
-def command(skill, executable, root, run, work, out, private, plugin, scratch, instruction, schema, tools):
+def command(skill, executable, root, run, work, out, private, plugin, scratch, instruction, schema, tools, budget=None):
     source = work / skill
+    model, effort = model_settings(run, skill)
     result = [
         executable, "--print", "--bare", "--restricted", "--no-session-persistence",
         "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
@@ -579,7 +771,8 @@ def command(skill, executable, root, run, work, out, private, plugin, scratch, i
         "--append-system-prompt", TRUST,
         "--plugin-dir", str(plugin), "--add-dir", str(source), str(out), str(scratch / skill), str(cargo_home(work)), str(plugin),
         "--settings", json.dumps(settings(root, source, work, out, private, plugin, scratch)),
-        "--model", run["model"], "--effort", run["effort"],
+        "--model", model, "--effort", effort,
+        "--max-budget-usd", str(budget.remaining() if budget is not None else MAX_RUN_COST_USD),
         "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--json-schema", json.dumps(schema),
     ]
     if skill == RECONCILER:
@@ -587,17 +780,34 @@ def command(skill, executable, root, run, work, out, private, plugin, scratch, i
     return result + ["--", instruction]
 
 
-def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, scratch, reports, cancelled):
+def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, scratch, reports, cancelled, budget=None):
     source = work / skill
-    invocation = command(skill, executable, root, run, work, out, private, plugin, scratch,
-                         prompt(skill, source, merge_base, run, reports), SCHEMA, TOOLS)
+    try:
+        invocation = command(skill, executable, root, run, work, out, private, plugin, scratch,
+                             prompt(skill, source, merge_base, run, reports), SCHEMA, TOOLS, budget)
+    except SafetyLimit:
+        write_json(out / f"{skill}.status.json", {"run": run, "skill": skill, "state": "budget"})
+        raise
     print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']})", flush=True)
     started = time.monotonic()
-    result = execute_review(isolate_shared_temp(invocation, scratch / skill), cwd=root,
-                            env=environment(run, work, skill, scratch), run=run, skill=skill,
-                            out=out, private=private, cancelled=cancelled)
+    try:
+        result = execute_review(isolate_shared_temp(invocation, scratch / skill), cwd=root,
+                                env=environment(run, work, skill, scratch), run=run, skill=skill,
+                                out=out, private=private, cancelled=cancelled, budget=budget)
+        if budget is not None:
+            budget.finish(skill, result)  # Idempotent; also covers injected test executors.
+    except SafetyLimit as error:
+        # A final native report received just as the shared pool was exhausted
+        # is still useful evidence. Preserve it; the invocation still fails.
+        try:
+            result = read_json(out / f"{skill}.json")
+        except (OSError, ValueError):
+            raise error from None
+        if not completed(result):
+            raise
     if not completed(result):
         raise ValueError(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
+    native_cost(result)
     report_path = out / f"{skill}.md"
     core_ids = ()
     if skill != SKILLS[0]:
@@ -622,7 +832,7 @@ def candidates(run, out, *, partial=False):
     return findings.bundle(run, outputs)
 
 
-def reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled):
+def reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled, budget=None):
     """Refine the guaranteed combined summary; failure preserves the four reviews."""
     try:
         bundle = candidates(run, out)
@@ -656,13 +866,24 @@ Return complete=false if you cannot account for all findings. The report field
 is a brief account of checks and limitations. Return the requested schema.
 """
             invocation = command(RECONCILER, executable, root, run, work, out, private, plugin, scratch,
-                                 instruction, findings.RECONCILE_SCHEMA, "Read")
+                                 instruction, findings.RECONCILE_SCHEMA, "Read", budget)
             started = time.monotonic()
-            result = execute_review(isolate_shared_temp(invocation, scratch / RECONCILER), cwd=root,
-                                    env=environment(run, work, RECONCILER, scratch), run=run, skill=RECONCILER,
-                                    out=out, private=private, cancelled=cancelled, timeout=RECONCILE_TIMEOUT)
+            try:
+                result = execute_review(isolate_shared_temp(invocation, scratch / RECONCILER), cwd=root,
+                                        env=environment(run, work, RECONCILER, scratch), run=run, skill=RECONCILER,
+                                        out=out, private=private, cancelled=cancelled, timeout=RECONCILE_TIMEOUT, budget=budget)
+                if budget is not None:
+                    budget.finish(RECONCILER, result)
+            except SafetyLimit as error:
+                try:
+                    result = read_json(out / "reconcile.json")
+                except (OSError, ValueError):
+                    raise error from None
+                if not completed(result):
+                    raise
             if not completed(result):
                 raise ValueError("reconciliation did not complete")
+            native_cost(result)
             output = result["structured_output"]
             report = findings.render_reconciliation(output, bundle)
             for args in (("rev-parse", "HEAD"), ("diff", "HEAD", "--")):
@@ -676,6 +897,10 @@ is a brief account of checks and limitations. Return the requested schema.
             record = {**record, "state": "completed", "sha256": digest(out / "reconcile.md"),
                       "result_sha256": digest(out / "reconcile.json"),
                       "duration_seconds": round(time.monotonic() - started, 3)}
+    except SafetyLimit:
+        record = {"state": "failed"}
+        write_json(out / f"{RECONCILER}.status.json", {"run": run, "skill": RECONCILER, "state": "budget"})
+        print("Review safety limit reached; retaining completed findings", flush=True)
     except Exception:
         record = {"state": "failed"}
         print("Reconciliation unavailable; retaining combined summary", flush=True)
@@ -687,9 +912,10 @@ is a brief account of checks and limitations. Return the requested schema.
         print("Could not record reconciliation; retaining combined summary", flush=True)
 
 
-def review(root, run, work, out, private):
+def review(root, run, work, out, private, reuse=None):
     if "ANTHROPIC_API_KEY" in os.environ:
         raise ValueError("store the key in a separate step; the review process must not inherit it")
+    budget = RunBudget(run)
     executable = str(Path(shutil.which("claude")).resolve())
     version = subprocess.check_output([executable, "--version"], text=True, timeout=30,
                                       env={key: os.environ[key] for key in INHERITED_ENV if key in os.environ})
@@ -698,6 +924,8 @@ def review(root, run, work, out, private):
     out.mkdir(parents=True, exist_ok=False)
     work.mkdir(parents=True, exist_ok=True)
     (work / "claude").mkdir(mode=0o700, exist_ok=True)
+    for name in ("reuse-receipt.json", "reuse-reconciliation-receipt.json"):
+        (out / name).touch(mode=0o600, exist_ok=False)
     for skill in ROLES:
         (work / "claude" / skill).mkdir(mode=0o700, exist_ok=True)
         # Linux ignores read-denied paths that do not exist at wrap time.
@@ -718,6 +946,13 @@ def review(root, run, work, out, private):
     receipt = {"run": run, "merge_base": merge_base, "claude_version": CLAUDE_VERSION, "phases": []}
     write_json(out / "receipt.json", receipt)
     phases = {}
+    reconciled = False
+    if reuse is not None:
+        from reuse import restore
+        restored, reconciled = restore(run, out, reuse)
+        phases = {phase["skill"]: phase for phase in restored}
+        receipt["phases"] = restored
+        write_json(out / "receipt.json", receipt)
 
     def record(phase):
         # Only this thread writes the receipt. Its order describes the report
@@ -736,10 +971,15 @@ def review(root, run, work, out, private):
             (scratch / skill / f"claude-{os.getuid()}").mkdir(mode=0o700)
             (scratch / skill / "shared-temp").mkdir(mode=0o700)
         arguments = (executable, root, run, work, out, private, plugin, merge_base, scratch)
-        record(review_skill(SKILLS[0], *arguments, (), cancelled))
+        if SKILLS[0] not in phases:
+            record(review_skill(SKILLS[0], *arguments, (), cancelled, budget))
+        else:
+            core = read_json(out / "code-review.json")["structured_output"]
+            write_json(out / "core-findings.json", {"findings": findings.review(core, SKILLS[0])[0]})
         reports = (out / "code-review.md", out / "core-findings.json")
         with ThreadPoolExecutor(max_workers=len(SKILLS) - 1) as pool:
-            futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled): skill for skill in SKILLS[1:]}
+            futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled, budget): skill
+                       for skill in SKILLS[1:] if skill not in phases}
             for future in as_completed(futures):
                 skill = futures[future]
                 try:
@@ -749,8 +989,10 @@ def review(root, run, work, out, private):
                     # missing pass still fails the gate; never log model text.
                     failed.append(skill)
                     print(f"Incomplete {skill}; see artifacts", flush=True)
-        if not failed:
-            reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled)
+        if not failed and not reconciled:
+            reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled, budget)
+    if budget.stopped.is_set():
+        raise SafetyLimit("review reached its safety limit")
     if failed:
         names = ", ".join(skill for skill in SKILLS if skill in failed)
         raise ValueError(f"review incomplete: {names}; see artifacts")
@@ -773,12 +1015,16 @@ def verify(run, out, *, partial=False):
     for phase in phases:
         skill = phase["skill"]
         try:
+            if "reused_from" in phase:
+                verify_reuse(run, out, phase)
             if (phase.get("complete") is not True or phase.get("sha256") != digest(out / f"{skill}.md")
                     or phase.get("result_sha256") != digest(out / f"{skill}.json")):
                 raise ValueError("incomplete or modified report")
             result = read_json(out / f"{skill}.json")
             if not completed(result):
                 raise ValueError("native skill run did not complete")
+            if "reused_from" not in phase:
+                native_cost(result)
             records, _ = findings.review(result["structured_output"], skill, core_ids)
             if (out / f"{skill}.md").read_text() != findings.render_review(skill, result["structured_output"], core_ids):
                 raise ValueError("report does not match native findings")
@@ -793,6 +1039,9 @@ def verify(run, out, *, partial=False):
         if skill == SKILLS[0]:
             core_ids = [item["id"] for item in records]
         verified.append(phase)
+    if not partial and sum(native_cost(read_json(out / f"{phase['skill']}.json"))
+                           for phase in verified if "reused_from" not in phase) >= MAX_RUN_COST_USD:
+        raise ValueError("review reached its safety limit")
     return {**receipt, "phases": verified, "unavailable": unavailable} if partial else receipt
 
 
@@ -811,9 +1060,22 @@ def verify_reconciliation(run, out):
     result = read_json(out / "reconcile.json")
     if not completed(result):
         raise ValueError("native reconciliation did not complete")
+    if "reused_from" not in record:
+        native_cost(result)
     groups = findings.reconcile(result["structured_output"], bundle)
     if (out / "reconcile.md").read_text() != findings.render_reconciliation(result["structured_output"], bundle):
         raise ValueError("reconciliation text does not match native findings")
+    if "reused_from" in record:
+        original = read_json(out / "reuse-reconciliation-receipt.json")
+        source = read_json(out / "reuse-receipt.json")
+        source_bundle = findings.bundle(source["run"], {
+            name: read_json(out / f"{name}.json")["structured_output"] for name in SKILLS})
+        if (reuse_key(source["run"]) != reuse_key(run) or record["reused_from"] != reuse_origin(source["run"])
+                or original.get("run") != source["run"] or original.get("state") != "completed"
+                or original.get("input_sha256") != findings.fingerprint(source_bundle)
+                or any(original.get(key) != record.get(key) for key in ("sha256", "result_sha256"))
+                or any(phase.get("reused_from") != record["reused_from"] for phase in verify(run, out)["phases"])):
+            raise ValueError("reused reconciliation does not match its original evidence")
     return bundle, groups
 
 
@@ -825,6 +1087,7 @@ def main():
     parser.add_argument("--run", type=Path)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--reuse", type=Path)
     args = parser.parse_args()
     if args.command == "store-key":
         key = os.environ["ANTHROPIC_API_KEY"].strip()
@@ -837,7 +1100,8 @@ def main():
     elif args.command == "read-key":
         print((args.private / "key").read_text())
     else:
-        review(args.root.resolve(), read_json(args.run), args.work.resolve(), args.out.resolve(), args.private.resolve())
+        review(args.root.resolve(), read_json(args.run), args.work.resolve(), args.out.resolve(),
+               args.private.resolve(), args.reuse)
 
 
 if __name__ == "__main__":
