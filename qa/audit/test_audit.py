@@ -625,6 +625,57 @@ class AuditTests(unittest.TestCase):
         self.assertIn("0/4 reviews completed", body)
         self.assertNotIn("UNVERIFIED_FINDING_CANARY", body)
 
+    def test_unavailable_specialist_does_not_hide_other_verified_reports(self):
+        for damage in ("missing", "modified", "invalid"):
+            with self.subTest(damage=damage):
+                api = API()
+                run = github.queue(api, 9)
+                outputs = {}
+                for skill in runner.SKILLS:
+                    result = native(f"Original {skill} review.")
+                    result["structured_output"]["findings"] = [candidate(title=f"{skill} finding", cause=skill)]
+                    outputs[skill] = result
+                receipt = self.reports(run, outputs)
+                if damage == "missing":
+                    (self.out / "tal-review.json").unlink()
+                elif damage == "modified":
+                    (self.out / "tal-review.md").write_text("UNVERIFIED_FINDING_CANARY")
+                else:
+                    result = native("UNVERIFIED_FINDING_CANARY")
+                    result["structured_output"]["complete"] = False
+                    runner.write_json(self.out / "tal-review.json", result)
+                    receipt["phases"][2]["result_sha256"] = runner.digest(self.out / "tal-review.json")
+                    runner.write_json(self.out / "receipt.json", receipt)
+                with self.assertRaises((OSError, ValueError)):
+                    runner.verify(run, self.out)
+                with self.assertRaisesRegex(ValueError, "audit did not complete"):
+                    github.publish(api, run, self.out, "success")
+                body = api.comments[0]["body"]
+                self.assertIn("3/4 reviews completed", body)
+                self.assertIn("Could not verify the recovered `tal-review` report", body)
+                self.assertNotIn("UNVERIFIED_FINDING_CANARY", body)
+                self.assertNotIn("tal-review finding", body)
+                self.assertNotIn("<summary>Tal</summary>", body)
+                for skill in ("code-review", "sean-review", "alex-review"):
+                    self.assertIn(f"**{skill} finding**", body)
+                    self.assertIn(f"<summary>{findings.REVIEWER_NAMES[skill]}</summary>", body)
+                self.assertEqual(api.checks[0]["conclusion"], "failure")
+
+    def test_unavailable_core_does_not_authorize_dependent_assessments(self):
+        run = github.queue(self.api, 9)
+        core = native()
+        core["structured_output"]["findings"] = [candidate()]
+        specialist = native("DEPENDENT_REVIEW_CANARY")
+        specialist["structured_output"]["assessments"] = [
+            {"finding_id": "code-review:1", "verdict": "support", "evidence": "Checked the same defect."}]
+        self.reports(run, {"code-review": core, "alex-review": specialist})
+        (self.out / "code-review.json").unlink()
+        with self.assertRaises(OSError):
+            runner.candidates(run, self.out, partial=True)
+        body = github.summary(run, "incomplete", self.out)
+        self.assertIn("0/4 reviews completed", body)
+        self.assertNotIn("DEPENDENT_REVIEW_CANARY", body)
+
     def test_timeout_diagnostics_are_bound_and_use_only_fixed_messages(self):
         run = github.queue(self.api, 9)
         receipt = self.reports(run)

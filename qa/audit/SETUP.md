@@ -112,6 +112,9 @@ workflow, revision, App, and invocation identity before using it. A failed
 control-file write or artifact upload cannot by itself strand a queued check.
 Individual reviewer archives also contain the native result and shared receipt,
 so the publisher can recover verified reviews if the combined archive fails.
+An unavailable specialist report is identified and omitted without hiding its
+verified siblings. Core evidence is required to validate their assessment
+references; any missing or invalid review still fails the completion gate.
 Artifact transfers have one-minute step limits, with time reserved for status
 publication. Failure of both report channels still fails the completion gate.
 No credentials travel through these outputs or control files.

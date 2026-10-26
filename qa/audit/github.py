@@ -152,6 +152,9 @@ def incomplete_details(run, out):
         missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
         lines = []
         for skill in missing:
+            if skill in receipt["unavailable"]:
+                lines.append(f"Could not verify the recovered `{skill}` report; its findings are omitted. Inspect the workflow artifacts.")
+                continue
             try:
                 status = runner.read_json(out / f"{skill}.status.json")
                 reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",

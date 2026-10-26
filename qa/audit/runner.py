@@ -757,6 +757,7 @@ def review(root, run, work, out, private):
 
 
 def verify(run, out, *, partial=False):
+    """Verify completion strictly, or recover independently valid specialists."""
     receipt = read_json(out / "receipt.json")
     if not isinstance(receipt, dict) or receipt.get("run") != run or receipt.get("claude_version") != CLAUDE_VERSION:
         raise ValueError("receipt belongs to a different invocation")
@@ -768,20 +769,31 @@ def verify(run, out, *, partial=False):
     if names != expected or (names and names[0] != SKILLS[0]):
         raise ValueError("skill reports must be present in canonical order, starting with core")
     core_ids = ()
+    verified, unavailable = [], []
     for phase in phases:
         skill = phase["skill"]
-        if (phase.get("complete") is not True or phase.get("sha256") != digest(out / f"{skill}.md")
-                or phase.get("result_sha256") != digest(out / f"{skill}.json")):
-            raise ValueError("incomplete or modified report")
-        result = read_json(out / f"{skill}.json")
-        if not completed(result):
-            raise ValueError("native skill run did not complete")
-        records, _ = findings.review(result["structured_output"], skill, core_ids)
-        if (out / f"{skill}.md").read_text() != findings.render_review(skill, result["structured_output"], core_ids):
-            raise ValueError("report does not match native findings")
+        try:
+            if (phase.get("complete") is not True or phase.get("sha256") != digest(out / f"{skill}.md")
+                    or phase.get("result_sha256") != digest(out / f"{skill}.json")):
+                raise ValueError("incomplete or modified report")
+            result = read_json(out / f"{skill}.json")
+            if not completed(result):
+                raise ValueError("native skill run did not complete")
+            records, _ = findings.review(result["structured_output"], skill, core_ids)
+            if (out / f"{skill}.md").read_text() != findings.render_review(skill, result["structured_output"], core_ids):
+                raise ValueError("report does not match native findings")
+        except (OSError, ValueError, KeyError, TypeError):
+            # A missing/corrupt specialist archive must not hide its verified
+            # siblings. Core evidence is still required to bind assessments;
+            # completion and reconciliation always use the strict path.
+            if not partial or skill == SKILLS[0]:
+                raise
+            unavailable.append(skill)
+            continue
         if skill == SKILLS[0]:
             core_ids = [item["id"] for item in records]
-    return receipt
+        verified.append(phase)
+    return {**receipt, "phases": verified, "unavailable": unavailable} if partial else receipt
 
 
 def verify_reconciliation(run, out):
