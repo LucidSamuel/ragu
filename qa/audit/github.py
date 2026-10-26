@@ -176,7 +176,8 @@ def incomplete_details(run, out):
                 status = runner.read_json(out / f"{skill}.status.json")
                 reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",
                            "exit": "Claude Code exited unsuccessfully", "protocol": "Claude Code returned an invalid event stream",
-                           "cleanup": "review process cleanup did not finish"}
+                           "cleanup": "review process cleanup did not finish",
+                           "budget": "the review reached its safety limit"}
                 if status.get("run") == run and status.get("skill") == skill and status.get("state") in reasons:
                     lines.append(f"Stopped during `{skill}`: {reasons[status['state']]}.")
                     continue
@@ -204,63 +205,6 @@ def review_excerpt(text, size):
     if len(text.encode()) > size:
         return text.encode()[:size].decode("utf-8", errors="ignore") + "\n>\n> Continued in the full report linked below."
     return text
-
-
-def usage_details(run, out):
-    """Render numeric native telemetry; never echo arbitrary diagnostic text."""
-    if out is None:
-        return []
-    try:
-        receipt = runner.verify(run, out, partial=True)
-    except (OSError, ValueError, KeyError, TypeError):
-        return []
-    phases = {item["skill"]: item for item in receipt["phases"]}
-    try:
-        runner.verify_reconciliation(run, out)
-        phases[runner.RECONCILER] = runner.read_json(out / "reconciliation-receipt.json")
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
-    rows, total, unknown = [], 0, False
-    for role in runner.ROLES:
-        phase = phases.get(role, {})
-        if role == runner.RECONCILER and phase.get("state") == "empty":
-            continue
-        try:
-            result = runner.read_json(out / f"{role}.json")
-            if not isinstance(result, dict):
-                continue
-            if not phase:
-                status = runner.read_json(out / f"{role}.status.json")
-                if not isinstance(status, dict) or status.get("run") != run or status.get("skill") != role:
-                    continue
-        except (OSError, ValueError, KeyError, TypeError):
-            continue
-        label = findings.REVIEWER_NAMES.get(role, "Reconciliation")
-        origin = phase.get("reused_from")
-        if origin:
-            rows.append(f"| {label} ([reused]({origin['url']})) | $0.00 | 0 / 0 / 0 | 0s |")
-            continue
-        cost = result.get("total_cost_usd")
-        valid_cost = type(cost) in (int, float) and 0 <= cost < 10**9
-        total += cost if valid_cost else 0
-        unknown |= not valid_cost
-        spend = f"${cost:.2f}" if valid_cost else "—"
-        usage = result.get("usage", {})
-        tokens = [usage.get(key) for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")] if isinstance(usage, dict) else []
-        token_text = (f"{tokens[0] + tokens[1]:,} / {tokens[2]:,} / {tokens[3]:,}"
-                      if len(tokens) == 4 and all(type(value) is int and 0 <= value < 10**12 for value in tokens) else "—")
-        seconds = phase.get("duration_seconds")
-        if seconds is None and type(result.get("duration_ms")) in (int, float):
-            seconds = result["duration_ms"] / 1000
-        duration = f"{seconds:.0f}s" if type(seconds) in (int, float) and 0 <= seconds < 10**9 else "—"
-        rows.append(f"| {label} | {spend} | {token_text} | {duration} |")
-    if not rows:
-        return []
-    return ["### Usage", "", "| Pass | Estimated API cost | New input / cached / output tokens | Time |",
-            "| --- | ---: | ---: | ---: |", *rows, "",
-            f"Known estimated spend this invocation: **${total:.2f}**." + (" Some usage is unavailable." if unknown else ""), "",
-            "New input includes cache writes; output includes thinking. Reused passes incur no new model calls. "
-            "Native artifacts retain original usage. Estimates can differ from Anthropic billing.", ""]
 
 
 def summary(run, state, out=None):
@@ -331,7 +275,6 @@ def summary(run, state, out=None):
                           f"[Full report]({url})", "", "</details>", ""]
         details += ["Original reports and reconciliation decisions are retained in the workflow artifacts.", "",
                     "Maintainers assess findings and approve changes.", ""]
-        details += usage_details(run, out)
     lines += ["---", "", "<details><summary>Run details</summary>", "", *details,
               f"[Workflow and complete reports]({run['url']})", "", "</details>"]
     return "\n".join(lines)

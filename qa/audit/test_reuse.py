@@ -178,9 +178,6 @@ class ReuseTests(unittest.TestCase):
         self.assertEqual(len(phases), 4)
         self.assertTrue(reconciled)
         self.assertEqual(len(runner.verify_reconciliation(self.current, self.root)[1]), 1)
-        usage = "\n".join(github.usage_details(self.current, self.root))
-        self.assertEqual(usage.count("([reused]"), 5)
-        self.assertIn("$0.00", usage)
         (self.root / "reuse-receipt.json").write_text("{}")
         with self.assertRaises((KeyError, ValueError)):
             runner.verify(self.current, self.root)
@@ -218,28 +215,24 @@ class ReuseTests(unittest.TestCase):
             fixture.invoke(lambda *args, **kwargs: self.fail("reused review invoked a paid session"), reuse=self.cached)
         self.assertEqual(len(runner.verify_reconciliation(self.current, fixture.out)[1]), 1)
 
-    def test_costs_tokens_and_duration_are_shown_without_untrusted_text(self):
+    def test_pr_comment_never_promotes_native_costs_into_the_summary(self):
         self.seed()
-        result = native()
-        result.update(total_cost_usd=3.81, duration_ms=571399,
-                      usage={"input_tokens": 118, "cache_creation_input_tokens": 221059,
-                             "cache_read_input_tokens": 7831331, "output_tokens": 56902})
-        self.fixture.reports(self.old, {"code-review": result})
-        text = "\n".join(github.usage_details(self.old, self.cached))
-        self.assertIn("$3.81", text)
-        self.assertIn("221,177 / 7,831,331 / 56,902", text)
-        self.assertIn("571s", text)
-        result.update(total_cost_usd=float("nan"), usage={"output_tokens": "SECRET_CANARY"})
-        self.fixture.reports(self.old, {"code-review": result})
-        self.assertNotIn("SECRET_CANARY", "\n".join(github.usage_details(self.old, self.cached)))
+        result = native("Original source review.")
+        result["total_cost_usd"] = 3.21
+        self.fixture.reports(self.old, {role: result for role in runner.SKILLS})
+        text = github.summary(self.old, "completed", self.cached)
+        self.assertNotIn("3.21", text)
+        self.assertNotIn("Estimated API cost", text)
+        self.assertNotIn("Known estimated spend", text)
+        self.assertEqual(runner.read_json(self.cached / "code-review.json")["total_cost_usd"], 3.21)
 
-    def test_corrupt_failed_session_usage_cannot_break_publication(self):
+    def test_corrupt_failed_session_cannot_break_publication(self):
         receipt = self.seed(missing=("tal-review",))
         runner.write_json(self.cached / "tal-review.status.json", {"run": self.old, "skill": "tal-review", "state": "protocol"})
         runner.write_json(self.cached / "tal-review.json", [])
         text = github.summary(self.old, "incomplete", self.cached)
         self.assertIn("3/4 reviews completed", text)
-        self.assertIn("### Usage", text)
+        self.assertNotIn("### Usage", text)
         self.assertEqual(len(receipt["phases"]), 3)
 
 

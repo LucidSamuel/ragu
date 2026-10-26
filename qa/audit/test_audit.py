@@ -26,6 +26,7 @@ ENV = {
 
 def native(report="No findings within the reviewed scope."):
     return {"type": "result", "subtype": "success", "is_error": False, "permission_denials": [],
+            "total_cost_usd": 0.01,
             "structured_output": {"complete": True, "report": report, "findings": [], "assessments": []}}
 
 

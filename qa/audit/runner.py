@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from decimal import Decimal
 from http.client import HTTPException
 import hashlib
 import json
@@ -30,6 +31,7 @@ REPORT_SUFFIXES = ("md", "json", "stderr", "status.json")
 CLAUDE_VERSION = "2.1.310"
 RECONCILE_MODEL = "claude-sonnet-5-5"
 RECONCILE_EFFORT = "xhigh"
+MAX_RUN_COST_USD = Decimal("25.00")
 TOOLS = "Bash,Read,Edit"
 INHERITED_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "CARGO_HOME", "RUSTUP_HOME")
 REVIEW_TIMEOUT = 3300
@@ -80,6 +82,34 @@ def write_json(path, value):
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def native_cost(result):
+    value = result.get("total_cost_usd")
+    if type(value) not in (int, float):
+        raise ValueError("native result has no valid API cost estimate")
+    amount = Decimal(str(value))
+    if not amount.is_finite() or amount < 0:
+        raise ValueError("native result has no valid API cost estimate")
+    return amount
+
+
+def phase_budget(run, skill, out):
+    if skill in SKILLS:
+        # Four independent allocations bound parallel spending. Leave at least
+        # 4% available; reconciliation can also use every unused review dollar.
+        return MAX_RUN_COST_USD * Decimal("0.24")
+    if skill != RECONCILER:
+        raise ValueError("unknown review phase")
+    receipt = verify(run, out)
+    spent = sum(native_cost(read_json(out / f"{phase['skill']}.json"))
+                for phase in receipt["phases"] if "reused_from" not in phase)
+    return MAX_RUN_COST_USD - spent
+
+
+def check_spending(result, run, skill, out):
+    if native_cost(result) >= phase_budget(run, skill, out):
+        raise ValueError("review reached its safety limit")
 
 
 def model_settings(run, skill):
@@ -321,6 +351,8 @@ def incomplete_reason(result):
     """Return fixed diagnostics without exposing model text or tool arguments."""
     if not isinstance(result, dict):
         return "Claude Code did not return a valid result"
+    if result.get("subtype") == "error_max_budget_usd":
+        return "the review reached its safety limit"
     reasons = []
     if result.get("permission_denials"):
         reasons.append("sandbox permissions blocked a tool action")
@@ -510,6 +542,9 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
                 raise ValueError("duplicate Claude result")
             # Never persist partial messages, reasoning, or tool arguments.
             result = json.loads(json.dumps(value).replace(secret, "[REDACTED]")) if secret else value
+            if value.get("subtype") == "error_max_budget_usd":
+                status["state"] = "budget"
+                raise ValueError("review reached its safety limit")
         if value.get("type") == "assistant":
             message = value.get("message", {})
             blocks = message.get("content", []) if isinstance(message, dict) else []
@@ -615,20 +650,11 @@ def command(skill, executable, root, run, work, out, private, plugin, scratch, i
         "--plugin-dir", str(plugin), "--add-dir", str(source), str(out), str(scratch / skill), str(cargo_home(work)), str(plugin),
         "--settings", json.dumps(settings(root, source, work, out, private, plugin, scratch)),
         "--model", model, "--effort", effort,
+        "--max-budget-usd", str(phase_budget(run, skill, out)),
         "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--json-schema", json.dumps(schema),
     ]
     if skill == RECONCILER:
         result += ["--max-turns", "20"]
-    if "evaluation_budget_usd" in run:
-        from decimal import Decimal, InvalidOperation
-        try:
-            budget = Decimal(run["evaluation_budget_usd"])
-        except (InvalidOperation, TypeError, ValueError):
-            raise ValueError("invalid evaluation budget") from None
-        if (run.get("purpose") != "effort-evaluation" or skill != SKILLS[0]
-                or not budget.is_finite() or not 0 < budget <= 25):
-            raise ValueError("invalid evaluation budget")
-        result += ["--max-budget-usd", str(budget)]
     return result + ["--", instruction]
 
 
@@ -643,6 +669,7 @@ def review_skill(skill, executable, root, run, work, out, private, plugin, merge
                             out=out, private=private, cancelled=cancelled)
     if not completed(result):
         raise ValueError(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
+    check_spending(result, run, skill, out)
     report_path = out / f"{skill}.md"
     core_ids = ()
     if skill != SKILLS[0]:
@@ -708,6 +735,7 @@ is a brief account of checks and limitations. Return the requested schema.
                                     out=out, private=private, cancelled=cancelled, timeout=RECONCILE_TIMEOUT)
             if not completed(result):
                 raise ValueError("reconciliation did not complete")
+            check_spending(result, run, RECONCILER, out)
             output = result["structured_output"]
             report = findings.render_reconciliation(output, bundle)
             for args in (("rev-parse", "HEAD"), ("diff", "HEAD", "--")):
@@ -732,7 +760,7 @@ is a brief account of checks and limitations. Return the requested schema.
         print("Could not record reconciliation; retaining combined summary", flush=True)
 
 
-def review(root, run, work, out, private, reuse=None, *, core_only=False):
+def review(root, run, work, out, private, reuse=None):
     if "ANTHROPIC_API_KEY" in os.environ:
         raise ValueError("store the key in a separate step; the review process must not inherit it")
     executable = str(Path(shutil.which("claude")).resolve())
@@ -798,7 +826,7 @@ def review(root, run, work, out, private, reuse=None, *, core_only=False):
         reports = (out / "code-review.md", out / "core-findings.json")
         with ThreadPoolExecutor(max_workers=len(SKILLS) - 1) as pool:
             futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled): skill
-                       for skill in SKILLS[1:] if skill not in phases and not core_only}
+                       for skill in SKILLS[1:] if skill not in phases}
             for future in as_completed(futures):
                 skill = futures[future]
                 try:
@@ -808,7 +836,7 @@ def review(root, run, work, out, private, reuse=None, *, core_only=False):
                     # missing pass still fails the gate; never log model text.
                     failed.append(skill)
                     print(f"Incomplete {skill}; see artifacts", flush=True)
-        if not failed and not reconciled and not core_only:
+        if not failed and not reconciled:
             reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled)
     if failed:
         names = ", ".join(skill for skill in SKILLS if skill in failed)
@@ -840,6 +868,8 @@ def verify(run, out, *, partial=False):
             result = read_json(out / f"{skill}.json")
             if not completed(result):
                 raise ValueError("native skill run did not complete")
+            if "reused_from" not in phase:
+                check_spending(result, run, skill, out)
             records, _ = findings.review(result["structured_output"], skill, core_ids)
             if (out / f"{skill}.md").read_text() != findings.render_review(skill, result["structured_output"], core_ids):
                 raise ValueError("report does not match native findings")
@@ -872,6 +902,8 @@ def verify_reconciliation(run, out):
     result = read_json(out / "reconcile.json")
     if not completed(result):
         raise ValueError("native reconciliation did not complete")
+    if "reused_from" not in record:
+        check_spending(result, run, RECONCILER, out)
     groups = findings.reconcile(result["structured_output"], bundle)
     if (out / "reconcile.md").read_text() != findings.render_reconciliation(result["structured_output"], bundle):
         raise ValueError("reconciliation text does not match native findings")

@@ -65,6 +65,7 @@ class RunnerTests(unittest.TestCase):
     def result(self, command, complete=True, returncode=0):
         return {
             "type": "result", "subtype": "success", "is_error": False, "permission_denials": [],
+            "total_cost_usd": 0.01,
             "structured_output": {"complete": complete, "report": "Recorded review and validation evidence.", "findings": [], "assessments": []},
         }
 

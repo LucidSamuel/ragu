@@ -1,6 +1,7 @@
 """Exercise the pinned CLI against a local fake API, without paid model calls."""
 
 from contextlib import ExitStack
+from decimal import Decimal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -222,10 +223,15 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
             server.specialists.wait(timeout=30)
         self.require(self.headers.get("x-api-key") == "dummy-local-key", "apiKeyHelper did not supply the dummy key")
         expected = ((runner.RECONCILE_MODEL, runner.RECONCILE_EFFORT) if skill == runner.RECONCILER
-                    else ("claude-opus-5-5", "high" if server.mode == "evaluation" else "xhigh"))
+                    else ("claude-opus-5-5", "xhigh"))
         self.require((payload.get("model"), payload.get("output_config", {}).get("effort")) == expected,
                      "configured model/effort was not sent to the API")
         self.require("untrusted evidence" in runner.TRUST and runner.TRUST in json.dumps(payload.get("system", {})).replace('\\n', '\n'), "trusted system guard was not sent to the API")
+        if server.mode == "budget":
+            block = {"type": "tool_use", "id": "toolu_budget", "name": "Read",
+                     "input": {"file_path": str(source / "available.rs")}}
+            self.emit(payload, block)
+            return
         if skill == runner.RECONCILER:
             self.require(len(runner.read_json(server.out / "receipt.json")["phases"]) == 4, "reconciliation started before all reviews finished")
             names = {tool.get("name") for tool in payload.get("tools", [])}
@@ -410,6 +416,8 @@ else:
         block = {**block, "id": f"toolu_local_{len(self.server.requests)}"}
         response = message(block, "tool_use")
         response["model"] = payload["model"]
+        if self.server.mode == "budget":
+            response["usage"]["input_tokens"] = 100000
         response["id"] = f"msg_local_{len(self.server.requests)}"
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -429,8 +437,8 @@ else:
 
 @unittest.skipUnless(os.environ.get("RAGU_AUDIT_NATIVE_TEST") == "1", "set RAGU_AUDIT_NATIVE_TEST=1 to exercise the installed CLI")
 class NativeTests(unittest.TestCase):
-    def test_evaluation_uses_only_the_core_at_high_with_a_budget(self):
-        self.probe("evaluation")
+    def test_native_safety_limit_stops_requests_before_starting_specialists(self):
+        self.probe("budget")
 
     def test_real_skills_can_discover_and_read_review_policies(self):
         self.probe("normal")
@@ -607,29 +615,29 @@ class NativeTests(unittest.TestCase):
                 return {**original_environment(run, directory, skill, scratch), "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
 
             run = {"head": "a" * 40, "base": "b" * 40, "configuration": "b" * 40, "model": "claude-opus-5-5", "effort": "xhigh"}
-            if mode == "evaluation":
-                run.update(purpose="effort-evaluation", effort="high", evaluation_budget_usd="1")
             denied = mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
             try:
                 with patch.dict(os.environ, {"CARGO_HOME": str(cargo), "GH_TOKEN": "dummy-parent-token", "GITHUB_TOKEN": "dummy-parent-actions", "AWS_SECRET_ACCESS_KEY": "dummy-parent-aws"}), \
                      patch.object(runner, "prepare", return_value=run["base"]), patch.object(runner, "environment", side_effect=environment), \
                      patch.object(runner, "REVIEW_TIMEOUT", 120), \
+                     patch.object(runner, "MAX_RUN_COST_USD", Decimal("1") if mode == "budget" else runner.MAX_RUN_COST_USD), \
                      patch.object(runner, "git", side_effect=lambda root, command, *args, **kwargs: run["head"] if command == "rev-parse" else ""):
-                    if denied:
-                        with self.assertRaisesRegex(ValueError, "review incomplete"):
+                    if denied or mode == "budget":
+                        with self.assertRaisesRegex(ValueError, "safety limit" if mode == "budget" else "review incomplete"):
                             runner.review(root, run, work, out, private)
                     else:
-                        runner.review(root, run, work, out, private, core_only=mode == "evaluation")
+                        runner.review(root, run, work, out, private)
                 self.assertEqual(server.errors, [])
                 self.assertEqual(server.forbidden_requests, [])
                 self.assertFalse(state_has_credentials(work, server.scratch))
-                if denied:
+                if denied or mode == "budget":
                     self.assertEqual(runner.read_json(out / "receipt.json")["phases"], [])
+                    if mode == "budget":
+                        self.assertEqual(len(server.requests), 1)
+                        self.assertEqual(runner.read_json(out / "code-review.status.json")["state"], "budget")
                 else:
-                    runner.verify(run, out, partial=mode == "evaluation")
-                    self.assertEqual(len(server.requests), {"evaluation": 3, "raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
-                    if mode == "evaluation":
-                        self.assertEqual([item["skill"] for item in runner.verify(run, out, partial=True)["phases"]], ["code-review"])
+                    runner.verify(run, out)
+                    self.assertEqual(len(server.requests), {"raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
                     if mode.startswith("reconcile") or mode == "raw_report":
                         if mode in ("reconcile", "raw_report"):
                             self.assertEqual(len(runner.verify_reconciliation(run, out)[1]), 1)
@@ -645,7 +653,7 @@ class NativeTests(unittest.TestCase):
                         self.assertEqual(runner.read_json(out / "core-findings.json")["findings"][0]["id"], "code-review:1")
                     if mode == "recoverable_read":
                         self.assertTrue(all(runner.read_json(out / f"{skill}.json")["permission_denials"] for skill in runner.SKILLS))
-                    for skill in runner.SKILLS[:1] if mode == "evaluation" else runner.SKILLS:
+                    for skill in runner.SKILLS:
                         self.assertEqual((work / skill / "probe-ran").read_text(), "yes")
                     self.assertEqual((cargo / "registry/probe-ran").read_text(), "yes")
                 self.assertEqual((root / "controller").read_text(), "trusted")

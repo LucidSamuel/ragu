@@ -15,8 +15,8 @@ the summary; if it cannot finish, the combined summary is still published.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.
-The four reviewers use Opus, reconciliation uses Sonnet, and Run details show
-estimated spending, tokens, duration, and reused passes.
+The four reviewers use Opus; reconciliation uses Sonnet.
+An internal spending limit stops runaway reviews.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.
 After pushing new commits, post the command again. Completion records finished

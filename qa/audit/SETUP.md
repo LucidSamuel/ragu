@@ -34,10 +34,6 @@ One App-owned comment shows a **For humans** summary with **Must-fix** and
 Every retained finding appears in the summary after duplicate merging and
 source adjudication; there is no suggestion-count cutoff. Reviewed revisions, model settings, and extra notes are collapsed
 under Run details.
-Run details also show estimated API cost, new/cached/output tokens, and duration
-for each pass. Output tokens include thinking. Reused passes show zero new cost
-and a link to their original invocation; their native artifacts retain the
-original usage. Native cost estimates can differ from Anthropic billing.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
@@ -130,6 +126,21 @@ detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
 
+Each invocation has an internal $25 estimated API safety limit. Each reviewer
+receives a $6 allocation so the parallel reviews cannot each spend the whole
+limit. After four completed reviews, reconciliation can use the entire remaining
+budget, including unused review allocations. Reused results incur no new model
+calls and do not consume the current invocation's budget. The CLI enforces its
+allocation and the controller validates the native estimate before accepting
+fresh completion evidence. A budget-limit result stops that phase immediately;
+incomplete reviews retain the verified reports and fail the completion check.
+Optional reconciliation still follows the existing combined-summary fallback.
+
+This guard uses CLI estimates, so in-flight requests may overshoot and the
+provider's bill can differ. The limit applies per invocation, not cumulatively
+across a PR's commits or retries. Cost totals are not added to PR comments or
+workflow summaries; a stopped pass gets only a generic safety-limit diagnostic.
+
 The queue passes public request identity through a job output and keeps the
 control artifact as a fallback. Both model and publisher jobs validate the
 workflow, revision, App, and invocation identity before using it. A failed
@@ -211,29 +222,3 @@ A required check cannot substitute for human review or establish soundness.
 Retire the separate `tachyon-zcash/ragu-audit` repository after this integration
 lands and an authenticated comment-triggered review succeeds. This workflow
 has no dependency on that repository.
-
-## Comparing effort
-
-The manual **Ragu audit effort comparison** workflow runs the core code-review
-pass independently at `high` and `xhigh` on identical pinned source and trusted
-policies. It uses the main-only model environment, retains both original
-reports, and does not change production variables or publish PR reviews. Its
-default is a $10 estimated budget for the pair, with a maximum of $25; the
-second session receives only what remains after the first. Missing usage or an
-unfinished first pass stops the comparison. In-flight requests can overshoot
-the client estimate, so this is not an exact billing ceiling.
-
-After this workflow lands on main, start the pinned #906 example with:
-
-```sh
-gh workflow run audit-effort.yml --repo tachyon-zcash/ragu --ref main
-```
-
-The default snapshot is head `fa6aa850f40aa3b39cafdaf99e1afec7d01e1d11` over base
-`f597a08e6a11b1c7f166a8d2878d46132a3fbb6f`. An independently checkable defect is
-the book's claim in `book/src/implementation/arch.md` that acceleration inherits
-reference kernels without overrides: that snapshot implements batched MSM and
-scheduling overrides. This oracle is for assessing reports; it is not supplied
-to either reviewer. Compare false claims as well as detected defects, and repeat
-on harder known-defect cases before lowering production effort. One core-review
-pair does not establish quality for the three specialists.
