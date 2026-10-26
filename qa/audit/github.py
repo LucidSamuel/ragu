@@ -2,7 +2,6 @@
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import html
 import json
 import os
@@ -41,12 +40,15 @@ def command_present(api, run):
 
 
 class GitHub:
+    def __init__(self, token_name="GH_TOKEN"):
+        self.token_name = token_name
+
     def call(self, path, data=None, method=None):
         request = Request(
             "https://api.github.com" + path,
             data=None if data is None else json.dumps(data).encode(),
             method=method,
-            headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+            headers={"Authorization": "Bearer " + os.environ[self.token_name], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
         return json.loads(runner.github_response(request, timeout=45))
 
@@ -113,14 +115,32 @@ def request(api, event, event_name):
             return None
     value = event["issue"]["number"]
     target = pr(api, value)
+    from reuse import active
+    pending = {"repository": REPOSITORY, "pr": number(value), "head": target["head"]["sha"],
+               "base": target["base"]["sha"], "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]),
+               "run_id": number(os.environ["GITHUB_RUN_ID"]), "attempt": number(os.environ["GITHUB_RUN_ATTEMPT"]),
+               **model_configuration()}
+    if active(api, pending):
+        print("This exact review is already running; retaining its existing check and summary", flush=True)
+        return None
     return number(value), target["head"]["sha"]
+
+
+def model_configuration():
+    result = {"model": os.environ["RAGU_AUDIT_MODEL"], "effort": os.environ["RAGU_AUDIT_EFFORT"],
+              "reconcile_model": os.environ.get("RAGU_AUDIT_RECONCILE_MODEL") or runner.RECONCILE_MODEL,
+              "reconcile_effort": os.environ.get("RAGU_AUDIT_RECONCILE_EFFORT") or runner.RECONCILE_EFFORT}
+    for prefix in ("", "reconcile_"):
+        if (not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", result[prefix + "model"])
+                or result[prefix + "effort"] not in ("low", "medium", "high", "xhigh", "max")):
+            raise ValueError("set an explicit Claude model ID and valid effort")
+    return result
 
 
 def scope(run):
     # Checks belong to commits. Identical code in another PR must not
     # invalidate an existing review; PR identity only selects its own comment.
-    values = {key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")}
-    return "ragu-audit:v3:" + hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() + ":"
+    return "ragu-audit:v4:" + findings.fingerprint(runner.reuse_key(run)) + ":"
 
 
 def checks(api, head, app_id):
@@ -148,6 +168,13 @@ def incomplete_details(run, out):
         phases = receipt["phases"]
         names = [phase["skill"] for phase in phases]
         if len(names) == len(runner.SKILLS):
+            for skill in runner.ROLES:
+                try:
+                    status = runner.read_json(out / f"{skill}.status.json")
+                    if status.get("run") == run and status.get("skill") == skill and status.get("state") == "budget":
+                        return "Four reviews completed; the invocation reached its safety limit. Available findings follow."
+                except (OSError, ValueError, AttributeError, TypeError):
+                    pass
             return "The review job failed after recording all four passes. Inspect the workflow."
         missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
         lines = []
@@ -159,7 +186,8 @@ def incomplete_details(run, out):
                 status = runner.read_json(out / f"{skill}.status.json")
                 reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",
                            "exit": "Claude Code exited unsuccessfully", "protocol": "Claude Code returned an invalid event stream",
-                           "cleanup": "review process cleanup did not finish"}
+                           "cleanup": "review process cleanup did not finish",
+                           "budget": "the review reached its safety limit"}
                 if status.get("run") == run and status.get("skill") == skill and status.get("state") in reasons:
                     lines.append(f"Stopped during `{skill}`: {reasons[status['state']]}.")
                     continue
@@ -192,7 +220,9 @@ def review_excerpt(text, size):
 def summary(run, state, out=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
     details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
-               f"Model: `{run['model']}` · Effort: `{run['effort']}`", ""]
+               f"Model: `{run['model']}` · Effort: `{run['effort']}`", "",
+               f"Reconciliation: `{runner.model_settings(run, runner.RECONCILER)[0]}` · "
+               f"Effort: `{runner.model_settings(run, runner.RECONCILER)[1]}`", ""]
     if state == "running":
         lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated.", ""]
     else:
@@ -280,21 +310,25 @@ def upsert(api, run, check, state, *, out=None, only_current=False):
         raise ValueError("summary publication was not confirmed")
 
 
-def queue(api, value, expected_head=None, comment_id=None):
+def queue(api, value, expected_head=None, comment_id=None, *, read_api=None):
     target = pr(api, value)
     if expected_head is not None and target["head"]["sha"] != sha(expected_head):
         raise ValueError("PR head moved since the request; start a fresh run")
-    model, effort = os.environ["RAGU_AUDIT_MODEL"], os.environ["RAGU_AUDIT_EFFORT"]
-    if not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", model) or effort not in ("low", "medium", "high", "xhigh", "max"):
-        raise ValueError("set an explicit Claude model ID and effort")
     run = {"repository": REPOSITORY, "pr": number(value), "head": target["head"]["sha"], "base": target["base"]["sha"],
-           "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]), "model": model, "effort": effort,
+           "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]), **model_configuration(),
            "run_id": number(os.environ["GITHUB_RUN_ID"]), "attempt": number(os.environ["GITHUB_RUN_ATTEMPT"])}
     if comment_id is not None:
         run["comment_id"] = number(comment_id)
         command_present(api, run)
     if run["configuration"] != run["base"]:
         raise ValueError("main moved since this workflow was started; start a fresh run")
+    if read_api is not None:
+        # Request jobs can race before either creates a check. Repeat the live
+        # lookup inside the serialized publisher job, before any App writes.
+        from reuse import active
+        if active(read_api, run):
+            print("This exact review is already running; retaining its existing check and summary", flush=True)
+            return None
     run["url"] = f"https://github.com/{REPOSITORY}/actions/runs/{run['run_id']}"
     prefix = scope(run)
     run["external_id"] = prefix + f"{run['pr']}:{run['run_id']}:{run['attempt']}"
@@ -303,6 +337,8 @@ def queue(api, value, expected_head=None, comment_id=None):
         "status": "in_progress",
         "output": {"title": "Review running", "summary": "Four skill reviews must finish for this exact head and base. Invoke with /ragu-audit."},
     }
+    if comment_id is not None:
+        data["output"]["text"] = json.dumps({"comment_id": number(comment_id)})
     try:
         check = api.call(f"/repos/{REPOSITORY}/check-runs", data, "POST")
     except (OSError, ValueError):
@@ -359,9 +395,9 @@ def guard(api, run):
     if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
         raise StaleReview("PR head or base moved during review")
     prefix = scope(run)
-    if not values or not values[0].get("external_id", "").startswith(prefix):
+    if not values or not (values[0].get("external_id") or "").startswith(prefix):
         raise StaleReview("a newer review uses a different configuration")
-    latest = next((check for check in values if check.get("external_id", "").startswith(prefix + f"{run['pr']}:")), None)
+    latest = next((check for check in values if (check.get("external_id") or "").startswith(prefix + f"{run['pr']}:")), None)
     if latest is None or latest["id"] != run["check_id"]:
         raise StaleReview("a newer review superseded this invocation")
     return own
@@ -452,7 +488,9 @@ def main():
     elif args.command == "queue":
         if args.head is None or args.comment_id is None:
             raise ValueError("queue requires the head and comment captured by the request job")
-        run = queue(api, args.pr, args.head, args.comment_id)
+        run = queue(api, args.pr, args.head, args.comment_id, read_api=GitHub("GH_READ_TOKEN"))
+        if run is None:
+            return
         output(head=run["head"], control=json.dumps(run, separators=(",", ":")))
         try:
             args.run.parent.mkdir(parents=True, exist_ok=True)

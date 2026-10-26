@@ -12,7 +12,11 @@ trigger the bot. Their structured findings always produce one combined summary:
 **Must-fix** and **Suggestions**, with duplicate merging, reviewer attribution,
 and collapsed original reports below it. A short source-checking pass refines
 the summary; if it cannot finish, the combined summary is still published.
-Delete the command comment to stop its review.
+Delete the original command comment to stop its review.
+
+Identical reviews reuse verified results; retries resume unfinished passes.
+The four reviewers use Opus; reconciliation uses Sonnet.
+An internal spending limit stops runaway reviews.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.
 After pushing new commits, post the command again. Completion records finished
