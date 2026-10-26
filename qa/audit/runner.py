@@ -51,6 +51,13 @@ Focus on introduced bugs, affected callers, API contracts, and relevant
 invariants. Run a focused test or reproducer only to investigate a concrete
 suspected defect. Continue reviewing changes to build and CI configuration for
 behavior and security.
+
+When benchmark measurements were not assessed, say:
+Benchmark results weren't assessed.
+Reading benchmark code alone does not assess its results. Do not infer that
+results do not exist or were not supplied because they are absent from the
+reviewed source or history. Label source-derived performance estimates as
+unmeasured.
 """
 SCHEMA = {
     "type": "object",
