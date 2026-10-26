@@ -11,8 +11,10 @@ After this workflow lands on `main`:
    Keep these credentials out of repository and organization-wide secrets.
 3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
    `RAGU_AUDIT_MODEL=claude-opus-5-5`, and `RAGU_AUDIT_EFFORT=xhigh`.
-   The same model and effort apply to all four passes, their subagents, and
-   reconciliation.
+   These apply to the four reviews and their subagents. Reconciliation defaults
+   to `claude-sonnet-5-5` at `xhigh`; optional variables
+   `RAGU_AUDIT_RECONCILE_MODEL` and `RAGU_AUDIT_RECONCILE_EFFORT` override those
+   settings. Each invocation pins both configurations.
    Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true` and post exactly `/ragu-audit` as a new PR
    conversation comment. The command requires live write, maintain, or admin
@@ -32,6 +34,10 @@ One App-owned comment shows a **For humans** summary with **Must-fix** and
 Every retained finding appears in the summary after duplicate merging and
 source adjudication; there is no suggestion-count cutoff. Reviewed revisions, model settings, and extra notes are collapsed
 under Run details.
+Run details also show estimated API cost, new/cached/output tokens, and duration
+for each pass. Output tokens include thinking. Reused passes show zero new cost
+and a link to their original invocation; their native artifacts retain the
+original usage. Native cost estimates can differ from Anthropic billing.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
@@ -65,6 +71,24 @@ running the same checks four times. Each specialist defaults to one third of
 the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
+
+Repeated authorized commands for an already active identical review retain its
+existing run and status. Later invocations and failed-run retries can recover
+completed passes from the exact same head, base, trusted controller/policies,
+CLI version, and review/reconciliation model settings. Specialists stay paired
+with their original core report and finding IDs. A changed snapshot or effort
+forces fresh reviews. GitHub workflow reruns can reuse an earlier attempt's
+verified artifacts; cancelled or stranded checks do not suppress a new request.
+
+Reuse reads only this repository's App-owned checks and artifacts from the
+trusted main `audit.yml` workflow. It verifies the source workflow, attempt,
+receipt, native completion, report hashes, schema, and core dependency before
+rebinding reports to the new invocation. Original receipts remain in artifacts
+as provenance. It never executes downloaded artifacts. Missing, expired, or
+invalid evidence falls back to fresh review; a damaged specialist does not
+discard valid siblings. Complete matching reviews and reconciliation require
+no new model calls. Read-only Actions/Checks permissions support lookup; App
+permissions and model credential isolation are unchanged.
 
 Reviewers return their complete Markdown report in the skill's normal prose
 format, alongside structured findings with source locations, cause, evidence,
@@ -187,3 +211,29 @@ A required check cannot substitute for human review or establish soundness.
 Retire the separate `tachyon-zcash/ragu-audit` repository after this integration
 lands and an authenticated comment-triggered review succeeds. This workflow
 has no dependency on that repository.
+
+## Comparing effort
+
+The manual **Ragu audit effort comparison** workflow runs the core code-review
+pass independently at `high` and `xhigh` on identical pinned source and trusted
+policies. It uses the main-only model environment, retains both original
+reports, and does not change production variables or publish PR reviews. Its
+default is a $10 estimated budget for the pair, with a maximum of $25; the
+second session receives only what remains after the first. Missing usage or an
+unfinished first pass stops the comparison. In-flight requests can overshoot
+the client estimate, so this is not an exact billing ceiling.
+
+After this workflow lands on main, start the pinned #906 example with:
+
+```sh
+gh workflow run audit-effort.yml --repo tachyon-zcash/ragu --ref main
+```
+
+The default snapshot is head `fa6aa850f40aa3b39cafdaf99e1afec7d01e1d11` over base
+`f597a08e6a11b1c7f166a8d2878d46132a3fbb6f`. An independently checkable defect is
+the book's claim in `book/src/implementation/arch.md` that acceleration inherits
+reference kernels without overrides: that snapshot implements batched MSM and
+scheduling overrides. This oracle is for assessing reports; it is not supplied
+to either reviewer. Compare false claims as well as detected defects, and repeat
+on harder known-defect cases before lowering production effort. One core-review
+pair does not establish quality for the three specialists.

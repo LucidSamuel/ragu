@@ -37,7 +37,7 @@ class RunnerTests(unittest.TestCase):
             (self.work / skill).mkdir()
         return self.run["base"]
 
-    def invoke(self, execute, changed_skill=None):
+    def invoke(self, execute, changed_skill=None, reuse=None):
         def git(source, command, *args, **kwargs):
             if command == "rev-parse":
                 return self.run["head"]
@@ -60,7 +60,7 @@ class RunnerTests(unittest.TestCase):
              patch.object(runner.subprocess, "check_output", side_effect=version), \
              patch.object(runner, "prepare", side_effect=self.prepare), patch.object(runner, "git", side_effect=git), \
              patch.object(runner, "execute_review", side_effect=execute_review):
-            runner.review(self.root, self.run, self.work, self.out, self.private)
+            runner.review(self.root, self.run, self.work, self.out, self.private, reuse)
 
     def result(self, command, complete=True, returncode=0):
         return {

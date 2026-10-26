@@ -28,6 +28,8 @@ RECONCILER = findings.RECONCILER
 ROLES = (*SKILLS, RECONCILER)
 REPORT_SUFFIXES = ("md", "json", "stderr", "status.json")
 CLAUDE_VERSION = "2.1.310"
+RECONCILE_MODEL = "claude-sonnet-5-5"
+RECONCILE_EFFORT = "xhigh"
 TOOLS = "Bash,Read,Edit"
 INHERITED_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "CARGO_HOME", "RUSTUP_HOME")
 REVIEW_TIMEOUT = 3300
@@ -78,6 +80,35 @@ def write_json(path, value):
 
 def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def model_settings(run, skill):
+    if skill == RECONCILER:
+        return run.get("reconcile_model", RECONCILE_MODEL), run.get("reconcile_effort", RECONCILE_EFFORT)
+    return run["model"], run["effort"]
+
+
+def reuse_key(run):
+    return {**{key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")},
+            "reconciliation": model_settings(run, RECONCILER), "claude_version": CLAUDE_VERSION}
+
+
+def reuse_origin(run):
+    return {key: run[key] for key in ("run_id", "attempt", "check_id", "url")}
+
+
+def verify_reuse(run, out, phase):
+    source = read_json(out / "reuse-receipt.json")
+    if reuse_key(source["run"]) != reuse_key(run) or phase["reused_from"] != reuse_origin(source["run"]):
+        raise ValueError("reused review belongs to a different snapshot or configuration")
+    records = {item["skill"]: item for item in source["phases"]}
+    original = records[phase["skill"]]
+    if (source.get("claude_version") != CLAUDE_VERSION or original.get("complete") is not True
+            or any(original[key] != phase[key] for key in ("sha256", "result_sha256"))):
+        raise ValueError("reused review does not match its original receipt")
+    core = next(item for item in read_json(out / "receipt.json")["phases"] if item["skill"] == SKILLS[0])
+    if any(core[key] != records[SKILLS[0]][key] for key in ("sha256", "result_sha256")):
+        raise ValueError("reused specialist requires its original core report")
 
 
 def git(root, *args, timeout=GIT_TIMEOUT):
@@ -137,7 +168,9 @@ def settings(root, source, work, out, private, plugin, scratch):
     deny_read += [str(state / skill) for skill in ROLES if skill != source.name]
     peer_scratch = [scratch / skill for skill in ROLES if skill != source.name]
     deny_read += [str(path) for path in (*peer_scratch, *shared_scratch())]
-    deny_read += [str(out / name) for name in ("receipt.json", "reconciliation-receipt.json", "combined.md")]
+    deny_read += [str(out / name) for name in ("receipt.json", "reconciliation-receipt.json", "combined.md",
+                                              "reuse-receipt.json", "reuse-reconciliation-receipt.json")]
+    deny_read.append(str(work / "control"))
     # Specialists share the completed core prose and normalized finding IDs,
     # never partial sibling reports or another CLI's tool output.
     deny_read += [str(out / f"{skill}.{suffix}") for skill in ROLES if skill != source.name
@@ -191,6 +224,7 @@ def environment(run, work, skill, scratch):
     # Allowlist rather than removing known secret names from the Actions env.
     result = {key: os.environ[key] for key in INHERITED_ENV if key in os.environ}
     workers = len(SKILLS) - 1 if skill in SKILLS[1:] else 1
+    model, effort = model_settings(run, skill)
     result.update({
         "CLAUDE_CONFIG_DIR": str(work / "claude" / skill),
         "CLAUDE_CODE_TMPDIR": str(scratch / skill),
@@ -199,9 +233,9 @@ def environment(run, work, skill, scratch):
         "CARGO_BUILD_JOBS": str(max(1, (os.cpu_count() or 1) // workers)),
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
-        "CLAUDE_CODE_SUBAGENT_MODEL": run["model"],
+        "CLAUDE_CODE_SUBAGENT_MODEL": model,
         "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
-        "CLAUDE_CODE_EFFORT_LEVEL": run["effort"],
+        "CLAUDE_CODE_EFFORT_LEVEL": effort,
         "BASH_MAX_TIMEOUT_MS": "1200000",
         "GIT_OPTIONAL_LOCKS": "0",
     })
@@ -571,6 +605,7 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
 
 def command(skill, executable, root, run, work, out, private, plugin, scratch, instruction, schema, tools):
     source = work / skill
+    model, effort = model_settings(run, skill)
     result = [
         executable, "--print", "--bare", "--restricted", "--no-session-persistence",
         "--setting-sources", "", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
@@ -579,11 +614,21 @@ def command(skill, executable, root, run, work, out, private, plugin, scratch, i
         "--append-system-prompt", TRUST,
         "--plugin-dir", str(plugin), "--add-dir", str(source), str(out), str(scratch / skill), str(cargo_home(work)), str(plugin),
         "--settings", json.dumps(settings(root, source, work, out, private, plugin, scratch)),
-        "--model", run["model"], "--effort", run["effort"],
+        "--model", model, "--effort", effort,
         "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--json-schema", json.dumps(schema),
     ]
     if skill == RECONCILER:
         result += ["--max-turns", "20"]
+    if "evaluation_budget_usd" in run:
+        from decimal import Decimal, InvalidOperation
+        try:
+            budget = Decimal(run["evaluation_budget_usd"])
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValueError("invalid evaluation budget") from None
+        if (run.get("purpose") != "effort-evaluation" or skill != SKILLS[0]
+                or not budget.is_finite() or not 0 < budget <= 25):
+            raise ValueError("invalid evaluation budget")
+        result += ["--max-budget-usd", str(budget)]
     return result + ["--", instruction]
 
 
@@ -687,7 +732,7 @@ is a brief account of checks and limitations. Return the requested schema.
         print("Could not record reconciliation; retaining combined summary", flush=True)
 
 
-def review(root, run, work, out, private):
+def review(root, run, work, out, private, reuse=None, *, core_only=False):
     if "ANTHROPIC_API_KEY" in os.environ:
         raise ValueError("store the key in a separate step; the review process must not inherit it")
     executable = str(Path(shutil.which("claude")).resolve())
@@ -698,6 +743,8 @@ def review(root, run, work, out, private):
     out.mkdir(parents=True, exist_ok=False)
     work.mkdir(parents=True, exist_ok=True)
     (work / "claude").mkdir(mode=0o700, exist_ok=True)
+    for name in ("reuse-receipt.json", "reuse-reconciliation-receipt.json"):
+        (out / name).touch(mode=0o600, exist_ok=False)
     for skill in ROLES:
         (work / "claude" / skill).mkdir(mode=0o700, exist_ok=True)
         # Linux ignores read-denied paths that do not exist at wrap time.
@@ -718,6 +765,13 @@ def review(root, run, work, out, private):
     receipt = {"run": run, "merge_base": merge_base, "claude_version": CLAUDE_VERSION, "phases": []}
     write_json(out / "receipt.json", receipt)
     phases = {}
+    reconciled = False
+    if reuse is not None:
+        from reuse import restore
+        restored, reconciled = restore(run, out, reuse)
+        phases = {phase["skill"]: phase for phase in restored}
+        receipt["phases"] = restored
+        write_json(out / "receipt.json", receipt)
 
     def record(phase):
         # Only this thread writes the receipt. Its order describes the report
@@ -736,10 +790,15 @@ def review(root, run, work, out, private):
             (scratch / skill / f"claude-{os.getuid()}").mkdir(mode=0o700)
             (scratch / skill / "shared-temp").mkdir(mode=0o700)
         arguments = (executable, root, run, work, out, private, plugin, merge_base, scratch)
-        record(review_skill(SKILLS[0], *arguments, (), cancelled))
+        if SKILLS[0] not in phases:
+            record(review_skill(SKILLS[0], *arguments, (), cancelled))
+        else:
+            core = read_json(out / "code-review.json")["structured_output"]
+            write_json(out / "core-findings.json", {"findings": findings.review(core, SKILLS[0])[0]})
         reports = (out / "code-review.md", out / "core-findings.json")
         with ThreadPoolExecutor(max_workers=len(SKILLS) - 1) as pool:
-            futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled): skill for skill in SKILLS[1:]}
+            futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled): skill
+                       for skill in SKILLS[1:] if skill not in phases and not core_only}
             for future in as_completed(futures):
                 skill = futures[future]
                 try:
@@ -749,7 +808,7 @@ def review(root, run, work, out, private):
                     # missing pass still fails the gate; never log model text.
                     failed.append(skill)
                     print(f"Incomplete {skill}; see artifacts", flush=True)
-        if not failed:
+        if not failed and not reconciled and not core_only:
             reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled)
     if failed:
         names = ", ".join(skill for skill in SKILLS if skill in failed)
@@ -773,6 +832,8 @@ def verify(run, out, *, partial=False):
     for phase in phases:
         skill = phase["skill"]
         try:
+            if "reused_from" in phase:
+                verify_reuse(run, out, phase)
             if (phase.get("complete") is not True or phase.get("sha256") != digest(out / f"{skill}.md")
                     or phase.get("result_sha256") != digest(out / f"{skill}.json")):
                 raise ValueError("incomplete or modified report")
@@ -814,6 +875,17 @@ def verify_reconciliation(run, out):
     groups = findings.reconcile(result["structured_output"], bundle)
     if (out / "reconcile.md").read_text() != findings.render_reconciliation(result["structured_output"], bundle):
         raise ValueError("reconciliation text does not match native findings")
+    if "reused_from" in record:
+        original = read_json(out / "reuse-reconciliation-receipt.json")
+        source = read_json(out / "reuse-receipt.json")
+        source_bundle = findings.bundle(source["run"], {
+            name: read_json(out / f"{name}.json")["structured_output"] for name in SKILLS})
+        if (reuse_key(source["run"]) != reuse_key(run) or record["reused_from"] != reuse_origin(source["run"])
+                or original.get("run") != source["run"] or original.get("state") != "completed"
+                or original.get("input_sha256") != findings.fingerprint(source_bundle)
+                or any(original.get(key) != record.get(key) for key in ("sha256", "result_sha256"))
+                or any(phase.get("reused_from") != record["reused_from"] for phase in verify(run, out)["phases"])):
+            raise ValueError("reused reconciliation does not match its original evidence")
     return bundle, groups
 
 
@@ -825,6 +897,7 @@ def main():
     parser.add_argument("--run", type=Path)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--reuse", type=Path)
     args = parser.parse_args()
     if args.command == "store-key":
         key = os.environ["ANTHROPIC_API_KEY"].strip()
@@ -837,7 +910,8 @@ def main():
     elif args.command == "read-key":
         print((args.private / "key").read_text())
     else:
-        review(args.root.resolve(), read_json(args.run), args.work.resolve(), args.out.resolve(), args.private.resolve())
+        review(args.root.resolve(), read_json(args.run), args.work.resolve(), args.out.resolve(),
+               args.private.resolve(), args.reuse)
 
 
 if __name__ == "__main__":

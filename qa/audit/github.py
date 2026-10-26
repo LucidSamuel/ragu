@@ -2,7 +2,6 @@
 
 import argparse
 from datetime import datetime, timezone
-import hashlib
 import html
 import json
 import os
@@ -113,14 +112,32 @@ def request(api, event, event_name):
             return None
     value = event["issue"]["number"]
     target = pr(api, value)
+    from reuse import active
+    pending = {"repository": REPOSITORY, "pr": number(value), "head": target["head"]["sha"],
+               "base": target["base"]["sha"], "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]),
+               "run_id": number(os.environ["GITHUB_RUN_ID"]), "attempt": number(os.environ["GITHUB_RUN_ATTEMPT"]),
+               **model_configuration()}
+    if active(api, pending):
+        print("This exact review is already running; retaining its existing check and summary", flush=True)
+        return None
     return number(value), target["head"]["sha"]
+
+
+def model_configuration():
+    result = {"model": os.environ["RAGU_AUDIT_MODEL"], "effort": os.environ["RAGU_AUDIT_EFFORT"],
+              "reconcile_model": os.environ.get("RAGU_AUDIT_RECONCILE_MODEL") or runner.RECONCILE_MODEL,
+              "reconcile_effort": os.environ.get("RAGU_AUDIT_RECONCILE_EFFORT") or runner.RECONCILE_EFFORT}
+    for prefix in ("", "reconcile_"):
+        if (not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", result[prefix + "model"])
+                or result[prefix + "effort"] not in ("low", "medium", "high", "xhigh", "max")):
+            raise ValueError("set an explicit Claude model ID and valid effort")
+    return result
 
 
 def scope(run):
     # Checks belong to commits. Identical code in another PR must not
     # invalidate an existing review; PR identity only selects its own comment.
-    values = {key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")}
-    return "ragu-audit:v3:" + hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest() + ":"
+    return "ragu-audit:v4:" + findings.fingerprint(runner.reuse_key(run)) + ":"
 
 
 def checks(api, head, app_id):
@@ -189,10 +206,69 @@ def review_excerpt(text, size):
     return text
 
 
+def usage_details(run, out):
+    """Render numeric native telemetry; never echo arbitrary diagnostic text."""
+    if out is None:
+        return []
+    try:
+        receipt = runner.verify(run, out, partial=True)
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    phases = {item["skill"]: item for item in receipt["phases"]}
+    try:
+        runner.verify_reconciliation(run, out)
+        phases[runner.RECONCILER] = runner.read_json(out / "reconciliation-receipt.json")
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    rows, total, unknown = [], 0, False
+    for role in runner.ROLES:
+        phase = phases.get(role, {})
+        if role == runner.RECONCILER and phase.get("state") == "empty":
+            continue
+        try:
+            result = runner.read_json(out / f"{role}.json")
+            if not isinstance(result, dict):
+                continue
+            if not phase:
+                status = runner.read_json(out / f"{role}.status.json")
+                if not isinstance(status, dict) or status.get("run") != run or status.get("skill") != role:
+                    continue
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        label = findings.REVIEWER_NAMES.get(role, "Reconciliation")
+        origin = phase.get("reused_from")
+        if origin:
+            rows.append(f"| {label} ([reused]({origin['url']})) | $0.00 | 0 / 0 / 0 | 0s |")
+            continue
+        cost = result.get("total_cost_usd")
+        valid_cost = type(cost) in (int, float) and 0 <= cost < 10**9
+        total += cost if valid_cost else 0
+        unknown |= not valid_cost
+        spend = f"${cost:.2f}" if valid_cost else "—"
+        usage = result.get("usage", {})
+        tokens = [usage.get(key) for key in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")] if isinstance(usage, dict) else []
+        token_text = (f"{tokens[0] + tokens[1]:,} / {tokens[2]:,} / {tokens[3]:,}"
+                      if len(tokens) == 4 and all(type(value) is int and 0 <= value < 10**12 for value in tokens) else "—")
+        seconds = phase.get("duration_seconds")
+        if seconds is None and type(result.get("duration_ms")) in (int, float):
+            seconds = result["duration_ms"] / 1000
+        duration = f"{seconds:.0f}s" if type(seconds) in (int, float) and 0 <= seconds < 10**9 else "—"
+        rows.append(f"| {label} | {spend} | {token_text} | {duration} |")
+    if not rows:
+        return []
+    return ["### Usage", "", "| Pass | Estimated API cost | New input / cached / output tokens | Time |",
+            "| --- | ---: | ---: | ---: |", *rows, "",
+            f"Known estimated spend this invocation: **${total:.2f}**." + (" Some usage is unavailable." if unknown else ""), "",
+            "New input includes cache writes; output includes thinking. Reused passes incur no new model calls. "
+            "Native artifacts retain original usage. Estimates can differ from Anthropic billing.", ""]
+
+
 def summary(run, state, out=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
     details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
-               f"Model: `{run['model']}` · Effort: `{run['effort']}`", ""]
+               f"Model: `{run['model']}` · Effort: `{run['effort']}`", "",
+               f"Reconciliation: `{runner.model_settings(run, runner.RECONCILER)[0]}` · "
+               f"Effort: `{runner.model_settings(run, runner.RECONCILER)[1]}`", ""]
     if state == "running":
         lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated.", ""]
     else:
@@ -255,6 +331,7 @@ def summary(run, state, out=None):
                           f"[Full report]({url})", "", "</details>", ""]
         details += ["Original reports and reconciliation decisions are retained in the workflow artifacts.", "",
                     "Maintainers assess findings and approve changes.", ""]
+        details += usage_details(run, out)
     lines += ["---", "", "<details><summary>Run details</summary>", "", *details,
               f"[Workflow and complete reports]({run['url']})", "", "</details>"]
     return "\n".join(lines)
@@ -284,11 +361,8 @@ def queue(api, value, expected_head=None, comment_id=None):
     target = pr(api, value)
     if expected_head is not None and target["head"]["sha"] != sha(expected_head):
         raise ValueError("PR head moved since the request; start a fresh run")
-    model, effort = os.environ["RAGU_AUDIT_MODEL"], os.environ["RAGU_AUDIT_EFFORT"]
-    if not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", model) or effort not in ("low", "medium", "high", "xhigh", "max"):
-        raise ValueError("set an explicit Claude model ID and effort")
     run = {"repository": REPOSITORY, "pr": number(value), "head": target["head"]["sha"], "base": target["base"]["sha"],
-           "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]), "model": model, "effort": effort,
+           "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]), **model_configuration(),
            "run_id": number(os.environ["GITHUB_RUN_ID"]), "attempt": number(os.environ["GITHUB_RUN_ATTEMPT"])}
     if comment_id is not None:
         run["comment_id"] = number(comment_id)
@@ -303,6 +377,8 @@ def queue(api, value, expected_head=None, comment_id=None):
         "status": "in_progress",
         "output": {"title": "Review running", "summary": "Four skill reviews must finish for this exact head and base. Invoke with /ragu-audit."},
     }
+    if comment_id is not None:
+        data["output"]["text"] = json.dumps({"comment_id": number(comment_id)})
     try:
         check = api.call(f"/repos/{REPOSITORY}/check-runs", data, "POST")
     except (OSError, ValueError):

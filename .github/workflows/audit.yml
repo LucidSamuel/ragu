@@ -13,10 +13,17 @@ permissions:
 env:
   RAGU_AUDIT_MODEL: ${{ vars.RAGU_AUDIT_MODEL }}
   RAGU_AUDIT_EFFORT: ${{ vars.RAGU_AUDIT_EFFORT }}
+  RAGU_AUDIT_RECONCILE_MODEL: ${{ vars.RAGU_AUDIT_RECONCILE_MODEL }}
+  RAGU_AUDIT_RECONCILE_EFFORT: ${{ vars.RAGU_AUDIT_RECONCILE_EFFORT }}
   RAGU_AUDIT_APP_ID: ${{ vars.RAGU_AUDIT_APP_ID }}
 
 jobs:
   request:
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
     # Authorization precedes both model access and cancellation of older runs.
     if: >-
       github.repository == 'tachyon-zcash/ragu' &&
@@ -93,6 +100,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      checks: read
+      actions: read
     environment: ragu-audit-model
     outputs:
       code-report: ${{ steps.code-report.outputs.artifact-url }}
@@ -125,6 +134,24 @@ jobs:
           path: ${{ runner.temp }}/audit-work/control
       - name: Verify the restored request identity
         run: python3 qa/audit/github.py restore --run "$RUNNER_TEMP/audit-work/control/run.json"
+      - name: Find prior reviews of this exact snapshot and configuration
+        id: reuse
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 qa/audit/reuse.py --run "$RUNNER_TEMP/audit-work/control/run.json" \
+            --plan "$RUNNER_TEMP/audit-work/control/reuse-plan.json"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.reuse.outputs.artifact_ids != ''
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.reuse.outputs.source_run }}
+          artifact-ids: ${{ steps.reuse.outputs.artifact_ids }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/audit-work/control/reuse-reports
       - name: Install the pinned Claude Code and Linux sandbox dependencies
         run: bash qa/audit/install.sh
       - id: toolchain
@@ -158,7 +185,8 @@ jobs:
             --private "$RUNNER_TEMP/audit-private" \
             --work "$RUNNER_TEMP/audit-work" \
             --run "$RUNNER_TEMP/audit-work/control/run.json" \
-            --out "$RUNNER_TEMP/audit-reports"
+            --out "$RUNNER_TEMP/audit-reports" \
+            --reuse "$RUNNER_TEMP/audit-work/control/reuse-reports"
       - name: Remove model credentials
         if: always()
         run: rm -rf "$RUNNER_TEMP/audit-private"
@@ -182,6 +210,7 @@ jobs:
             ${{ runner.temp }}/audit-reports/code-review.md
             ${{ runner.temp }}/audit-reports/code-review.json
             ${{ runner.temp }}/audit-reports/receipt.json
+            ${{ runner.temp }}/audit-reports/reuse-receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -195,6 +224,7 @@ jobs:
             ${{ runner.temp }}/audit-reports/sean-review.md
             ${{ runner.temp }}/audit-reports/sean-review.json
             ${{ runner.temp }}/audit-reports/receipt.json
+            ${{ runner.temp }}/audit-reports/reuse-receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -208,6 +238,7 @@ jobs:
             ${{ runner.temp }}/audit-reports/tal-review.md
             ${{ runner.temp }}/audit-reports/tal-review.json
             ${{ runner.temp }}/audit-reports/receipt.json
+            ${{ runner.temp }}/audit-reports/reuse-receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -221,6 +252,7 @@ jobs:
             ${{ runner.temp }}/audit-reports/alex-review.md
             ${{ runner.temp }}/audit-reports/alex-review.json
             ${{ runner.temp }}/audit-reports/receipt.json
+            ${{ runner.temp }}/audit-reports/reuse-receipt.json
           if-no-files-found: ignore
           retention-days: 30
 
