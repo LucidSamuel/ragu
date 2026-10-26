@@ -32,8 +32,8 @@ One App-owned comment shows a **For humans** summary with **Must-fix** and
 All defects and disputed findings remain visible, with at most three additional
 suggestions. Reviewed revisions, model settings, and extra notes are collapsed
 under Run details.
-Under **For agents**, the four original reviewer reports remain collapsed below
-the summary, with full artifact links when the comment budget requires truncation.
+Under **For agents**, the four original Markdown reviewer reports remain
+collapsed below the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
 Artifacts are retained for 30 days; individual report links require GitHub login
 and fall back to the workflow when an auxiliary upload fails. Missing or
@@ -57,8 +57,8 @@ validation; CI results do not determine review completion. A reviewer can run
 a focused test or reproducer to investigate a concrete suspected defect.
 
 The core code-review pass runs first. Sean, Tal, and Alex then run concurrently,
-each with the core report and its validation evidence, a separate source
-worktree, and separate Claude state. Specialists cannot read each other's
+each with the core Markdown report, its normalized finding IDs and validation
+evidence, a separate source worktree, and separate Claude state. Specialists cannot read each other's
 reports or state, or modify another checkout. Cargo's download cache is shared
 within the fresh runner; adequate recorded validation can be reused instead of
 running the same checks four times. Each specialist defaults to one third of
@@ -66,9 +66,14 @@ the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
 
-Reviewers return structured findings with source locations, cause, evidence,
-impact, and proposed correction. The controller immediately combines these into
-one summary, merging exact matching causes/corrections at the same locations and
+Reviewers return their complete Markdown report in the skill's normal prose
+format, alongside structured findings with source locations, cause, evidence,
+impact, and proposed correction. The controller preserves the prose rather than
+reconstructing it from those fields. Specialists get the completed core report
+and a normalized `core-findings.json` index for assessment references. The
+reconciler receives structured findings without duplicating the full prose.
+The controller immediately combines these into one summary, merging exact
+matching causes/corrections at the same locations and
 preserving attribution. Different wording remains separate until source
 adjudication. Disputed findings remain visible as suggestions, with the
 counterevidence. This summary needs no additional model call and is saved as

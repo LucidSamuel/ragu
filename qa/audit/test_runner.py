@@ -102,7 +102,8 @@ class RunnerTests(unittest.TestCase):
             if skill == "code-review":
                 self.assertEqual(previous, "none")
             else:
-                self.assertEqual(previous, str(self.out / "code-review.md"))
+                self.assertEqual(previous, ", ".join(str(self.out / name) for name in ("code-review.md", "core-findings.json")))
+                self.assertEqual(runner.read_json(self.out / "core-findings.json"), {"findings": []})
                 self.assertIn("Recorded review and validation evidence", (self.out / "code-review.md").read_text())
                 specialists.wait(timeout=5)
                 if skill != "alex-review":

@@ -134,13 +134,15 @@ def settings(root, source, work, out, private, plugin, scratch):
     peer_scratch = [scratch / skill for skill in ROLES if skill != source.name]
     deny_read += [str(path) for path in (*peer_scratch, *shared_scratch())]
     deny_read += [str(out / name) for name in ("receipt.json", "reconciliation-receipt.json", "combined.md")]
-    # Specialists share only the completed core report, never partial sibling
-    # reports or another CLI's tool output. Each owns a separate source tree.
+    # Specialists share the completed core prose and normalized finding IDs,
+    # never partial sibling reports or another CLI's tool output.
     deny_read += [str(out / f"{skill}.{suffix}") for skill in ROLES if skill != source.name
                   for suffix in REPORT_SUFFIXES
                   if not (source.name != RECONCILER and skill == SKILLS[0] and suffix == "md")]
     if source.name != RECONCILER:
         deny_read.append(str(out / "findings.json"))
+    if source.name not in SKILLS[1:]:
+        deny_read.append(str(out / "core-findings.json"))
     protected = [root, root / ".git", out, private, plugin, work / "control", state, scratch / source.name / "shared-temp"]
     protected += peer_scratch + shared_scratch()
     protected += [work / skill for skill in ROLES if work / skill != source]
@@ -228,8 +230,8 @@ invariants apply where relevant; record irrelevant areas as not applicable.
 Previous pass reports: {previous}. Challenge their findings and add this skill's
 perspective without repeating unsupported claims. Reuse recorded validation
 when adequate, and run additional checks when they resolve a specific concern.
-The three specialists run concurrently after code-review. Only the core report
-is shared evidence; do not read another specialist's report or CLI state.
+The three specialists run concurrently after code-review. Only the core report and its structured finding index
+are shared evidence; do not read another specialist's report or CLI state.
 
 Return a report only: do not fix the PR, ask interactive triage questions, or
 publish to GitHub. The controller will publish your report. Separate must-fix
@@ -248,9 +250,17 @@ Put every actionable finding or material question in the structured findings
 array, with a repository-relative location, underlying cause, concrete evidence,
 impact, proposed correction, category and priority. Distinguish defects from
 suggestions and questions; performance estimates without measurements remain
-questions or suggestions. There is no minimum number of findings. The report
-field is a brief account of coverage, checks and limitations; do not repeat
-the findings there. The controller assigns stable finding IDs. Use assessments
+questions or suggestions. There is no minimum number of findings.
+
+The report field is your complete original Markdown review, following the
+skill's normal format: verdict, scope, checks, must-fix findings, suggestions,
+and limitations where applicable. Include the findings and their reasoning in
+natural prose. Do not replace this report with a coverage-only note or a
+Cause/Evidence/Impact/Correction form. The controller preserves its layout;
+structured finding metadata is retained separately for the combined summary.
+Keep the report and structured findings consistent and cover the same issues.
+The controller assigns stable finding IDs. Specialists use the shared
+core-findings.json index to identify the earlier findings. Use assessments
 to support or challenge an existing code-review finding by its exact ID, giving
 new evidence instead of repeating it as a new finding. Core assessments are
 empty. Each specialist reviews independently using the same pinned source.
@@ -585,6 +595,9 @@ def review_skill(skill, executable, root, run, work, out, private, plugin, merge
         core = read_json(out / "code-review.json")["structured_output"]
         core_ids = [item["id"] for item in findings.review(core, SKILLS[0])[0]]
     report_path.write_text(findings.render_review(skill, result["structured_output"], core_ids))
+    if skill == SKILLS[0]:
+        records, _ = findings.review(result["structured_output"], skill)
+        write_json(out / "core-findings.json", {"findings": records})
     if git(source, "rev-parse", "HEAD") != run["head"] or git(source, "diff", "HEAD", "--"):
         raise ValueError(f"{skill}: tracked source changed during review")
     duration = round(time.monotonic() - started, 3)
@@ -683,6 +696,7 @@ def review(root, run, work, out, private):
         for suffix in REPORT_SUFFIXES:
             (out / f"{skill}.{suffix}").touch(mode=0o600, exist_ok=False)
     (out / "findings.json").touch(mode=0o600, exist_ok=False)
+    (out / "core-findings.json").touch(mode=0o600, exist_ok=False)
     (out / "combined.md").touch(mode=0o600, exist_ok=False)
     (out / "reconciliation-receipt.json").touch(mode=0o600, exist_ok=False)
     prepare_cargo(work)
@@ -714,7 +728,7 @@ def review(root, run, work, out, private):
             (scratch / skill / "shared-temp").mkdir(mode=0o700)
         arguments = (executable, root, run, work, out, private, plugin, merge_base, scratch)
         record(review_skill(SKILLS[0], *arguments, (), cancelled))
-        reports = (out / "code-review.md",)
+        reports = (out / "code-review.md", out / "core-findings.json")
         with ThreadPoolExecutor(max_workers=len(SKILLS) - 1) as pool:
             futures = {pool.submit(review_skill, skill, *arguments, reports, cancelled): skill for skill in SKILLS[1:]}
             for future in as_completed(futures):

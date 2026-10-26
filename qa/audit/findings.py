@@ -35,7 +35,7 @@ FINDING = obj({**DETAILS, "kind": {"type": "string", "enum": ["defect", "suggest
 ASSESSMENT = obj({"finding_id": text_schema(80), "verdict": {"type": "string", "enum": ["support", "challenge"]},
                   "evidence": text_schema(2400)})
 REVIEW_SCHEMA = obj({
-    "complete": {"type": "boolean"}, "report": text_schema(8000),
+    "complete": {"type": "boolean"}, "report": text_schema(64000),
     "findings": {"type": "array", "items": FINDING, "maxItems": MAX_FINDINGS},
     "assessments": {"type": "array", "items": ASSESSMENT, "maxItems": MAX_FINDINGS},
 })
@@ -121,7 +121,7 @@ def bundle(run, outputs):
             core_ids = [item["id"] for item in new]
         records.extend(new)
         assessments.extend(changes)
-        reviews.append({"reviewer": reviewer, "report": output["report"]})
+        reviews.append({"reviewer": reviewer})
     return {"run": run, "reviews": reviews, "findings": records, "assessments": assessments}
 
 
@@ -162,20 +162,9 @@ def detail_lines(item):
 
 
 def render_review(reviewer, output, core_ids=()):
-    records, assessments = review(output, reviewer, core_ids)
-    lines = [f"# {reviewer}", "", safe(output["report"]), ""]
-    for label, kinds in (("Must-fix", ("defect",)), ("Suggestions", ("suggestion", "question"))):
-        lines += [f"## {label}", ""]
-        items = [item for item in records if item["kind"] in kinds]
-        if not items:
-            lines += ["No findings reported.", ""]
-        for item in items:
-            lines += [f"### {item['id']} · {item['priority']}: {safe(item['title'])}", "", *detail_lines(item), ""]
-    if assessments:
-        lines += ["## Assessments of earlier findings", ""]
-        for item in assessments:
-            lines += [f"- {item['finding_id']} · {item['verdict']}: {safe(item['evidence'])}"]
-    return "\n".join(lines).rstrip() + "\n"
+    """Preserve the reviewer's Markdown; structured evidence stays in JSON."""
+    review(output, reviewer, core_ids)
+    return safe(output["report"]).rstrip() + "\n"
 
 
 def render_reconciliation(output, candidates):

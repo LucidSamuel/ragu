@@ -143,6 +143,32 @@ class FindingsTests(unittest.TestCase):
         self.assertNotIn("![", text)
         self.assertIn("&lt;script&gt;", text)
 
+    def test_raw_markdown_review_is_preserved_with_metadata_separate(self):
+        markdown = """## General review
+
+**Verdict:** One must-fix.
+
+### Must-fix
+1. **Incorrect output.** The zero input selects the wrong branch.
+   - `src/lib.rs:12`: handle zero before selecting the branch.
+
+### Suggestions
+None.
+
+### Checks and limitations
+Source and affected callers reviewed. Benchmark results weren't assessed.
+"""
+        output = review(finding())
+        output["report"] = markdown
+        text = findings.render_review("code-review", output)
+        self.assertEqual(text, markdown)
+        self.assertNotIn("**Cause:**", text)
+        records, _ = findings.review(output, "code-review")
+        self.assertEqual(records[0]["cause"], "Wrong branch selected.")
+        bundle = findings.bundle(self.run, {"code-review": output})
+        self.assertEqual(bundle["reviews"], [{"reviewer": "code-review"}])
+        self.assertEqual(bundle["findings"], records)
+
     def test_decision_artifact_preserves_dismissal_reasons(self):
         output = {"complete": True, "report": "Source checked.", "groups": [group("code-review:1", "sean-review:1", disposition="dismissed", rationale="Existing test proves coverage.")]}
         text = findings.render_reconciliation(output, self.bundle)

@@ -176,6 +176,11 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
     def report(self, skill):
         text = ATTACK if self.server.mode == "injection" else f"Local API smoke test: {skill}."
         unfinished = self.server.mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
+        if self.server.mode == "raw_report":
+            text = f"## {skill} review\n\n**Verdict:** A concrete finding.\n\n### Must-fix\nThe zero input selects the wrong branch at `src/lib.rs:12`. Handle zero first.\n\n### Checks\nPinned source inspected.\n"
+            records = [finding(evidence=ATTACK)] if skill == "code-review" else []
+            assessments = [] if skill == "code-review" else [{"finding_id": "code-review:1", "verdict": "support", "evidence": "The pinned source confirms the branch."}]
+            return {"type": "tool_use", "id": "toolu_result", "name": "StructuredOutput", "input": {"complete": True, "report": text, "findings": records, "assessments": assessments}}
         return {"type": "tool_use", "id": "toolu_result", "name": "StructuredOutput", "input": {"complete": not unfinished, "report": text, "findings": [finding(evidence=ATTACK)] if self.server.mode.startswith("reconcile") else [], "assessments": []}}
 
     def do_POST(self):
@@ -225,14 +230,14 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
                     path = source / "key-link"
                 block = {"type": "tool_use", "id": "toolu_source", "name": "Read", "input": {"file_path": str(path)}}
             else:
-                allowed = server.mode == "reconcile"
+                allowed = server.mode in ("reconcile", "raw_report")
                 text = tool_result(payload)
                 if allowed:
                     self.require("PERMITTED_EVIDENCE_CANARY" in text, "reconciler cannot read the pinned source")
                 else:
                     self.require("dummy-local-key" not in text and "denied" in text.lower(), "reconciler exposed credentials")
                 output = {"complete": allowed, "report": "Checked the pinned source.",
-                          "groups": [group(*[f"{name}:1" for name in runner.SKILLS])]}
+                          "groups": [group(*(["code-review:1"] if server.mode == "raw_report" else [f"{name}:1" for name in runner.SKILLS]))]}
                 block = {"type": "tool_use", "id": "toolu_result", "name": "StructuredOutput", "input": output}
             self.emit(payload, block)
             return
@@ -247,6 +252,13 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
                 self.require("In minimal runtimes without them, use Bash" in text and "rg --files --hidden" in text, "skill does not permit the tested search fallback")
             if server.mode == "skill_shell":
                 self.require("shell command execution disabled by policy" in text, "skill shell preprocessing was not disabled")
+        if server.mode == "raw_report" and skill in runner.SKILLS[1:]:
+            if turn == 0:
+                self.emit(payload, {"type": "tool_use", "id": "toolu_core_index", "name": "Read", "input": {"file_path": str(server.out / "core-findings.json")}})
+                return
+            if turn == 1:
+                self.require("code-review:1" in tool_result(payload) and ATTACK in tool_result(payload), "normalized core finding IDs were not readable")
+            turn -= 1
         if server.mode == "output_files" and turn == 0:
             script = "print('SAVED_OUTPUT_CANARY\\n' + 'ordinary review output\\n' * 10000)"
             block = {"type": "tool_use", "id": "toolu_large", "name": "Bash", "input": {"command": shlex.join([sys.executable, "-c", script]), "description": "Produce a saved review output file"}}
@@ -417,6 +429,9 @@ class NativeTests(unittest.TestCase):
     def test_injected_reconciliation_cannot_read_credentials(self):
         self.probe("reconcile_key")
         self.probe("reconcile_link")
+
+    def test_raw_reports_and_core_finding_ids_remain_separate(self):
+        self.probe("raw_report")
 
     def test_native_file_tool_cannot_read_key_and_unfinished_work_fails(self):
         self.probe("read_key")
@@ -595,14 +610,20 @@ class NativeTests(unittest.TestCase):
                     self.assertEqual(runner.read_json(out / "receipt.json")["phases"], [])
                 else:
                     runner.verify(run, out)
-                    self.assertEqual(len(server.requests), {"reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
-                    if mode.startswith("reconcile"):
-                        if mode == "reconcile":
+                    self.assertEqual(len(server.requests), {"raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    if mode.startswith("reconcile") or mode == "raw_report":
+                        if mode in ("reconcile", "raw_report"):
                             self.assertEqual(len(runner.verify_reconciliation(run, out)[1]), 1)
                         else:
                             self.assertEqual(len(runner.candidates(run, out)["findings"]), 4)
                             with self.assertRaises(ValueError):
                                 runner.verify_reconciliation(run, out)
+                    if mode == "raw_report":
+                        for skill in runner.SKILLS:
+                            raw = runner.read_json(out / f"{skill}.json")["structured_output"]["report"]
+                            self.assertEqual((out / f"{skill}.md").read_text(), runner.findings.safe(raw))
+                            self.assertNotIn("**Cause:**", raw)
+                        self.assertEqual(runner.read_json(out / "core-findings.json")["findings"][0]["id"], "code-review:1")
                     if mode == "recoverable_read":
                         self.assertTrue(all(runner.read_json(out / f"{skill}.json")["permission_denials"] for skill in runner.SKILLS))
                     for skill in runner.SKILLS:

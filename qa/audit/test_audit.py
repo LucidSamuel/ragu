@@ -687,6 +687,7 @@ class AuditTests(unittest.TestCase):
     def test_large_summary_keeps_all_confirmed_defects_within_github_limit(self):
         run = github.queue(self.api, 9, HEAD)
         result = native()
+        result["structured_output"]["report"] = "Original prose report detail.\n" * 1500
         result["structured_output"]["findings"] = [candidate(title=f"Defect {n}: " + "界" * 120) for n in range(64)]
         outputs = {}
         for skill in runner.SKILLS:
