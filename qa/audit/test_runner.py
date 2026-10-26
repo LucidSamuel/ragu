@@ -12,6 +12,7 @@ import threading
 import time
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 import runner
 
@@ -47,10 +48,15 @@ class RunnerTests(unittest.TestCase):
             runner.write_json(self.out / f"{kwargs['skill']}.json", result)
             return result
 
+        def version(command, **kwargs):
+            self.assertNotIn("GH_TOKEN", kwargs["env"])
+            self.assertNotIn("ANTHROPIC_API_KEY", kwargs["env"])
+            return runner.CLAUDE_VERSION + " (Claude Code)\n"
+
         with patch.dict(os.environ, {"PATH": os.environ["PATH"], "HOME": str(self.root), "CARGO_HOME": str(self.work / "cargo"),
                                      "GH_TOKEN": "dummy-parent-token"}, clear=True), \
              patch.object(runner.shutil, "which", return_value=sys.executable), \
-             patch.object(runner.subprocess, "check_output", return_value=runner.CLAUDE_VERSION + " (Claude Code)\n"), \
+             patch.object(runner.subprocess, "check_output", side_effect=version), \
              patch.object(runner, "prepare", side_effect=self.prepare), patch.object(runner, "git", side_effect=git), \
              patch.object(runner, "execute_review", side_effect=execute_review):
             runner.review(self.root, self.run, self.work, self.out, self.private)
@@ -164,6 +170,28 @@ class RunnerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.verify(self.run, self.out)
 
+    def test_deleting_command_stops_all_three_specialists(self):
+        self.run["comment_id"] = 12
+        started = threading.Event()
+        barrier = threading.Barrier(3, action=started.set)
+        stopped = []
+
+        def execute(command, **kwargs):
+            skill = kwargs["skill"]
+            if skill == "code-review":
+                return self.result(command)
+            barrier.wait(timeout=3)
+            self.assertTrue(kwargs["cancelled"].wait(timeout=3))
+            stopped.append(skill)
+            raise ValueError("review cancelled")
+
+        with patch.object(runner, "COMMENT_POLL_SECONDS", 0.01), \
+             patch.object(runner, "comment_exists", side_effect=lambda run: not started.is_set()), \
+             self.assertRaisesRegex(ValueError, "review incomplete"):
+            self.invoke(execute)
+        self.assertEqual(set(stopped), set(runner.SKILLS[1:]))
+        self.assertEqual([phase["skill"] for phase in runner.verify(self.run, self.out, partial=True)["phases"]], ["code-review"])
+
     def test_peer_state_reports_and_worktrees_are_protected(self):
         for skill in runner.SKILLS:
             source = self.work / skill
@@ -266,6 +294,57 @@ class ProcessTests(unittest.TestCase):
         finally:
             timer.join(timeout=1)
         self.assertEqual(runner.read_json(self.out / "code-review.status.json")["state"], "cancelled")
+
+    def test_comment_deletion_stops_process_before_model_deadline(self):
+        self.run["comment_id"] = 12
+        cancelled = threading.Event()
+        with patch.object(runner, "comment_exists", side_effect=[True, False]), \
+             patch.object(runner, "COMMENT_POLL_SECONDS", 0.05), \
+             runner.watch_comment(self.run, cancelled), self.assertRaisesRegex(ValueError, "review cancelled"):
+            self.execute("import time; time.sleep(10)", cancelled=cancelled)
+        self.assertEqual(runner.read_json(self.out / "code-review.status.json")["state"], "cancelled")
+
+    def test_deleted_command_never_launches_a_model_process(self):
+        self.run["comment_id"] = 12
+        cancelled = threading.Event()
+        with patch.object(runner, "comment_exists", return_value=False), \
+             runner.watch_comment(self.run, cancelled), \
+             patch.object(runner.subprocess, "Popen") as launch, self.assertRaisesRegex(ValueError, "review cancelled"):
+            self.execute("raise RuntimeError('must not run')", cancelled=cancelled)
+        launch.assert_not_called()
+
+    def test_temporary_api_error_does_not_cancel_a_review(self):
+        self.run["comment_id"] = 12
+        cancelled = threading.Event()
+        error = HTTPError("https://api.github.com", 503, "Unavailable", {}, None)
+        observations = iter((True, error, False))
+        checked_after_error = threading.Event()
+
+        def exists(run):
+            value = next(observations)
+            if isinstance(value, Exception):
+                raise value
+            self.assertFalse(cancelled.is_set(), "a transient API error cancelled the review")
+            if value is False:
+                checked_after_error.set()
+            return value
+
+        with patch.object(runner, "comment_exists", side_effect=exists), \
+             patch.object(runner, "COMMENT_POLL_SECONDS", 0.03), runner.watch_comment(self.run, cancelled):
+            self.assertTrue(checked_after_error.wait(timeout=2))
+            self.assertTrue(cancelled.wait(timeout=2))
+
+    def test_only_comment_not_found_is_treated_as_deletion(self):
+        self.run["comment_id"] = 12
+        for code in (404, 403, 500):
+            error = HTTPError("https://api.github.com", code, "error", {}, None)
+            with patch.dict(os.environ, {"GH_TOKEN": "dummy-read-only-token"}), \
+                 patch.object(runner, "urlopen", side_effect=error):
+                if code == 404:
+                    self.assertFalse(runner.comment_exists(self.run))
+                else:
+                    with self.assertRaises(HTTPError):
+                        runner.comment_exists(self.run)
 
     def test_stream_retains_only_final_result_and_fixed_tool_names(self):
         result = {"type": "result", "subtype": "success", "is_error": False,

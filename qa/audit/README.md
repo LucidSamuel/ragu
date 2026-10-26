@@ -10,6 +10,7 @@ The bot runs focused tests only to investigate suspected bugs.
 Post the exact command as a new PR comment with write access. Commits do not
 trigger the bot. It updates one summary comment with each pass's findings and
 links to the full reports.
+Delete the command comment to stop its review.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.
 After pushing new commits, post the command again. Completion records finished
