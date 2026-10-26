@@ -760,23 +760,25 @@ class AuditTests(unittest.TestCase):
         self.assertIn("&lt;/details&gt;&lt;script&gt;", text)
         self.assertNotIn("@team", text)
 
-    def test_large_summary_keeps_all_confirmed_defects_within_github_limit(self):
-        run = github.queue(self.api, 9, HEAD)
-        result = native()
-        result["structured_output"]["report"] = "Original prose report detail.\n" * 1500
-        result["structured_output"]["findings"] = [candidate(title=f"Defect {n}: " + "界" * 120) for n in range(64)]
-        outputs = {}
-        for skill in runner.SKILLS:
-            outputs[skill] = copy.deepcopy(result)
-            for n, item in enumerate(outputs[skill]["structured_output"]["findings"]):
-                item["cause"] = f"Unique cause: {skill}:{n}"
-        self.reports(run, outputs)
-        text = github.summary(run, "completed", self.out)
-        self.assertLess(len(text.encode()), 65536)
-        self.assertEqual(text.count("- **"), 256)
-        self.assertIn("Compact view", text)
-        self.assertEqual(text.count("<details>"), 5)
-        self.assertIn("Continued in the full report", text)
+    def test_large_summary_keeps_every_unique_finding_within_github_limit(self):
+        for kind in ("defect", "suggestion"):
+            with self.subTest(kind=kind):
+                run = github.queue(self.api, 9, HEAD)
+                result = native()
+                result["structured_output"]["report"] = "Original prose report detail.\n" * 1500
+                result["structured_output"]["findings"] = [candidate(kind=kind, title=f"Finding {n}: " + "界" * 120) for n in range(64)]
+                outputs = {}
+                for skill in runner.SKILLS:
+                    outputs[skill] = copy.deepcopy(result)
+                    for n, item in enumerate(outputs[skill]["structured_output"]["findings"]):
+                        item["cause"] = f"Unique cause: {skill}:{n}"
+                self.reports(run, outputs)
+                text = github.summary(run, "completed", self.out)
+                self.assertLess(len(text.encode()), 65536)
+                self.assertEqual(text.count("- **"), 256)
+                self.assertIn("Compact view", text)
+                self.assertEqual(text.count("<details>"), 5)
+                self.assertIn("Continued in the full report", text)
 
     def test_contained_denials_do_not_invalidate_a_finished_review(self):
         run = github.queue(self.api, 9)

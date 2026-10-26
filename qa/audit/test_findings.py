@@ -118,22 +118,26 @@ class FindingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             findings.review(review(*[finding()] * 65), "code-review")
 
-    def test_compact_view_retains_all_256_defects_and_stays_bounded(self):
+    def test_compact_view_retains_all_256_findings_and_stays_bounded(self):
         # Keep titles within the schema's character cap but stress UTF-8 bytes.
-        bundle = findings.bundle(self.run, {name: review(*[
-            finding(title=f"Defect {index}: " + "界" * 120, cause=f"Unique cause: {name}:{index}")
-            for index in range(64)]) for name in findings.REVIEWERS})
-        text = "\n".join(findings.shortlist(bundle, compact=True))
-        self.assertEqual(text.count("- **"), 256)
-        self.assertLess(len(text.encode()), 54000)
+        for kind in ("defect", "suggestion"):
+            with self.subTest(kind=kind):
+                bundle = findings.bundle(self.run, {name: review(*[
+                    finding(kind=kind, title=f"Finding {index}: " + "界" * 120, cause=f"Unique cause: {name}:{index}")
+                    for index in range(64)]) for name in findings.REVIEWERS})
+                text = "\n".join(findings.shortlist(bundle, compact=True))
+                self.assertEqual(text.count("- **"), 256)
+                self.assertLess(len(text.encode()), 54000)
 
-    def test_suggestion_cap_never_hides_disagreements(self):
+    def test_all_suggestions_and_disagreements_remain_visible(self):
         bundle = findings.bundle(self.run, {"code-review": review(*[finding(kind="suggestion", title=f"Suggestion {n}", cause=f"Cause {n}") for n in range(6)])})
         bundle["assessments"] = [{"finding_id": "code-review:6", "reviewer": "tal-review", "verdict": "challenge", "evidence": "Disputed."}]
         text = "\n".join(findings.shortlist(bundle))
-        self.assertEqual(text.count("- **"), 4)
-        self.assertIn("Suggestion 5", text)
-        self.assertIn("Additional suggestions", text)
+        self.assertEqual(text.count("- **"), 6)
+        for n in range(6):
+            self.assertIn(f"Suggestion {n}", text)
+        self.assertIn("Disputed.", text)
+        self.assertNotIn("Additional suggestions", text)
 
     def test_publication_escapes_html_mentions_and_remote_images(self):
         bundle = findings.bundle(self.run, {"code-review": review(finding(title="<script>alert(1)</script> @team ![track](https://example.invalid/x)"))})

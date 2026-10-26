@@ -29,8 +29,8 @@ After this workflow lands on `main`:
 
 One App-owned comment shows a **For humans** summary with **Must-fix** and
 **Suggestions** lists, short explanations, source links, and reviewer attribution.
-All defects and disputed findings remain visible, with at most three additional
-suggestions. Reviewed revisions, model settings, and extra notes are collapsed
+Every retained finding appears in the summary after duplicate merging and
+source adjudication; there is no suggestion-count cutoff. Reviewed revisions, model settings, and extra notes are collapsed
 under Run details.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.

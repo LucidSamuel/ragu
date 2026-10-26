@@ -216,17 +216,15 @@ def combined(candidates):
 
 
 def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
-    """Keep all defects and disputes visible, plus at most three other suggestions."""
+    """Show every retained finding, with merged attribution and bounded detail."""
     originals = {item["id"]: item for item in candidates["findings"]}
     reconciled = groups is not None
     if not reconciled:
         groups = combined(candidates)
     active = [item for item in groups if item["disposition"] != "dismissed"]
     fixes = [item for item in active if item["disposition"] == "must-fix"]
-    disputed = [item for item in active if item["disposition"] == "suggestion" and item["disagreement"]]
-    others = [item for item in active if item["disposition"] == "suggestion" and not item["disagreement"]]
     key = lambda item: (PRIORITIES.index(item["priority"]), item["title"])
-    suggestions = sorted(disputed, key=key) + sorted(others, key=key)[:3]
+    suggestions = sorted((item for item in active if item["disposition"] == "suggestion"), key=key)
     lines = []
     for label, items in (("Must-fix", sorted(fixes, key=key)), ("Suggestions", suggestions)):
         lines += [f"{'#' * heading_level} {label} ({len(items)})", ""]
@@ -247,8 +245,6 @@ def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
             else:
                 lines[-1] += " — " + ", ".join(REVIEWER_NAMES[name] for name in reporters)
             lines.append("")
-    if len(others) > 3:
-        lines += ["Additional suggestions are in the full reports.", ""]
     if compact:
         lines += ["Compact view: locations, evidence, corrections and disagreement details are in the full reports.", ""]
     return lines
