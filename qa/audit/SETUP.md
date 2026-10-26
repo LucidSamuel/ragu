@@ -16,6 +16,11 @@ After this workflow lands on `main`:
 4. Set `RAGU_AUDIT_ENABLED=true` and post exactly `/ragu-audit` as a new PR
    conversation comment. The command requires live write, maintain, or admin
    permission. PR updates and pushes do not trigger the audit workflow.
+   Deleting the original command comment stops that invocation. The trusted
+   controller checks for deletion every 15 seconds and stops all active review
+   process groups; Linux PID isolation also contains detached child processes.
+   Credential cleanup and status publication then finish, with the App check
+   marked cancelled. Deleting the bot's summary does not stop the review.
 5. After a successful test run, require `ragu-audit/completed` on `main`, selecting
    this App as the expected publisher. Enable "Require branches to be up to date
    before merging" to enforce review against the current base. Keep the existing
@@ -28,6 +33,12 @@ the completion check. Checks attach to commits; identical snapshots across PRs
 can share a result, while each invocation updates its own PR comment. Findings
 do not automatically block this check; maintainers resolve them through normal
 review.
+
+Denied tool requests stay blocked but do not by themselves invalidate a
+completed review. The reviewer must use permitted alternatives and report
+limitations, or return `complete=false` if missing evidence prevents finishing.
+Native session errors, unfinished coverage, invalid receipts, and changed
+source still fail the gate.
 
 All four passes focus on source review. Separate CI workflows own formatting,
 Clippy and other lints, documentation builds, routine builds, and broad test
@@ -55,6 +66,13 @@ detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
 
+Controller reads and repeated updates retry transient GitHub server or
+connection failures up to three times with bounded backoff. Check/comment
+creation is not retried automatically; a lost response is recovered only when
+the exact App-owned check or comment can be confirmed. Persistent publication failures keep the gate unsuccessful and
+attempt to replace the running comment with verified reports and an explicit
+publication-failed status.
+
 Each pass also has a short, private scratch directory, with peer scratch
 protected from reads and host writes. The short path prevents Claude from
 falling back to a shared Bash temp directory. On Linux, a per-reviewer mount
@@ -81,10 +99,16 @@ The controller prepares the Cargo home, executable directory, and readable
 configuration files before starting Claude; the protected paths stay unwritable
 to review tools. Ordinary Cargo
 commands use the fixed network allowlist; per-command domain arguments cannot
-widen it. Claude's saved tool output lives separately from the credential
+widen it. The native Read tool can inspect this prepared Cargo home, including
+registry and Git dependency source; native edits to the cache remain denied.
+Claude's saved tool output lives separately from the credential
 directory. Review tools can read that output but cannot modify CLI state.
 Incomplete comments name unfinished passes and fixed diagnostics without
 publishing model text, tool arguments, or stderr as the failure reason.
+Only the trusted controller receives the repository's read-only GitHub token
+to check the invoking comment; it is excluded from the review CLI's environment
+along with all other GitHub and cloud credentials. The model job has no Actions
+write permission and does not need an additional secret for cancellation.
 
 Trusted system instructions mark PR files, test output, and earlier reports as
 untrusted evidence. Project hooks/MCP configuration do not load, skill shell

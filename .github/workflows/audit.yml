@@ -69,8 +69,9 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_NUMBER: ${{ needs.request.outputs.pr }}
           PR_HEAD: ${{ needs.request.outputs.head }}
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
-          python3 qa/audit/github.py queue --pr "$PR_NUMBER" --head "$PR_HEAD" \
+          python3 qa/audit/github.py queue --pr "$PR_NUMBER" --head "$PR_HEAD" --comment-id "$COMMENT_ID" \
             --run "$RUNNER_TEMP/audit-work/control/run.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.queue.outputs.head != ''
@@ -87,6 +88,7 @@ jobs:
     timeout-minutes: 180
     permissions:
       contents: read
+      pull-requests: read
     environment: ragu-audit-model
     concurrency:
       group: ragu-audit-review-${{ needs.request.outputs.pr }}
@@ -128,6 +130,10 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python3 qa/audit/runner.py store-key --private "$RUNNER_TEMP/audit-private"
       - name: Run the core review, then three specialists in parallel
+        env:
+          # The trusted parent polls the invoking comment. The CLI's explicit
+          # environment allowlist excludes this read-only token.
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 qa/audit/runner.py run --root "$GITHUB_WORKSPACE" \
             --private "$RUNNER_TEMP/audit-private" \

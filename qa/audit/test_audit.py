@@ -6,6 +6,7 @@ import re
 import tempfile
 import unittest
 from unittest.mock import patch
+from urllib.error import HTTPError
 
 import github
 import runner
@@ -53,6 +54,8 @@ class API:
             if "/collaborators/" in path:
                 return {"permission": self.permissions.get(path.split("/")[-2], "none")}
             if path.endswith("/issues/comments/12"):
+                if self.comment is None:
+                    raise HTTPError(path, 404, "Not Found", {}, None)
                 return copy.deepcopy(self.comment)
             raise AssertionError(path)
         self.mutations.append((path, copy.deepcopy(data), method))
@@ -125,10 +128,11 @@ class AuditTests(unittest.TestCase):
                 github.main()
             values = dict(line.split("=", 1) for line in output_path.read_text().splitlines())
             self.assertEqual(values, {"pr": "9", "head": HEAD})
-            with patch("sys.argv", ["github.py", "queue", "--pr", values["pr"], "--head", values["head"], "--run", str(run_path)]):
+            with patch("sys.argv", ["github.py", "queue", "--pr", values["pr"], "--head", values["head"], "--comment-id", "12", "--run", str(run_path)]):
                 github.main()
         run = runner.read_json(run_path)
         self.assertEqual((run["pr"], run["head"], run["base"]), (9, HEAD, BASE))
+        self.assertEqual(run["comment_id"], 12)
         self.assertEqual(len(self.api.checks), 1)
         self.assertIn("audit: running", self.api.comments[0]["body"])
 
@@ -278,6 +282,7 @@ class AuditTests(unittest.TestCase):
         github.publish(self.api, run, self.out, "success")
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
+
     def test_main_moving_before_queue_is_detected_with_stale_pr_metadata(self):
         self.api.main_sha = "c" * 40
         with self.assertRaisesRegex(ValueError, "main moved"):
@@ -326,6 +331,71 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(github.StaleReview):
             github.publish(self.api, run, self.out, "cancelled")
         self.assertIn("audit: stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_deleted_command_cannot_start_a_new_review(self):
+        self.api.comment = None
+        with self.assertRaises(github.CancelledReview):
+            github.queue(self.api, 9, HEAD, 12)
+        self.assertEqual(self.api.mutations, [])
+
+    def test_deleted_command_cancels_instead_of_publishing_success(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        self.reports(run)
+        self.api.comment = None
+        with self.assertRaises(github.CancelledReview):
+            github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "cancelled")
+        self.assertIn("audit: cancelled", self.api.comments[0]["body"])
+        self.assertIn("No findings.", self.api.comments[0]["body"])
+
+    def test_deleting_old_command_cannot_replace_a_newer_review(self):
+        old = github.queue(self.api, 9, HEAD, 12)
+        self.reports(old)
+        new = github.queue(self.api, 9)
+        body = self.api.comments[0]["body"]
+        check = copy.deepcopy(self.api.checks[-1])
+        self.api.comment = None
+        with self.assertRaises(github.CancelledReview):
+            github.publish(self.api, old, self.out, "failure")
+        self.assertEqual(self.api.comments[0]["body"], body)
+        self.assertEqual(self.api.checks[-1], check)
+        self.assertEqual(self.api.checks[-1]["id"], new["check_id"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "cancelled")
+
+    def test_comment_api_failure_is_not_reported_as_deletion(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        self.reports(run)
+        call = self.api.call
+
+        def unavailable(path, *args):
+            if path.endswith("/issues/comments/12"):
+                raise HTTPError(path, 503, "Unavailable", {}, None)
+            return call(path, *args)
+
+        with patch.object(self.api, "call", side_effect=unavailable), self.assertRaises(HTTPError):
+            github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertIn("audit: publication failed", self.api.comments[0]["body"])
+        self.assertIn("4/4 verified passes", self.api.comments[0]["body"])
+        self.assertIn("No findings.", self.api.comments[0]["body"])
+
+    def test_failed_final_check_update_does_not_leave_a_completed_summary(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        call = self.api.call
+        failed = False
+
+        def unavailable_once(path, data=None, method=None):
+            nonlocal failed
+            if "/check-runs/" in path and method == "PATCH" and data.get("conclusion") == "success" and not failed:
+                failed = True
+                raise HTTPError(path, 503, "Unavailable", {}, None)
+            return call(path, data, method)
+
+        with patch.object(self.api, "call", side_effect=unavailable_once), self.assertRaises(HTTPError):
+            github.publish(self.api, run, self.out, "success")
+        self.assertIn("audit: publication failed", self.api.comments[0]["body"])
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_old_attempt_cannot_overwrite_newer_summary_or_check(self):
@@ -527,13 +597,22 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             runner.verify(run, self.out)
 
-    def test_native_errors_denials_or_incomplete_results_fail_closed(self):
-        for update in ({"subtype": "error_max_turns"}, {"is_error": True}, {"permission_denials": [{"tool_name": "Bash"}]},
+    def test_native_errors_or_incomplete_results_fail_closed(self):
+        for update in ({"subtype": "error_max_turns"}, {"is_error": True},
                        {"structured_output": {"complete": False, "report": "Missing evidence"}},
                        {"structured_output": {"complete": True, "report": ""}}):
             self.assertFalse(runner.completed({**native(), **update}))
         for result in ([], None, {}, {**native(), "structured_output": []}, {**native(), "structured_output": None}):
             self.assertFalse(runner.completed(result))
+
+    def test_contained_denials_do_not_invalidate_a_finished_review(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        for skill in runner.SKILLS:
+            runner.write_json(self.out / f"{skill}.json", {**native(), "permission_denials": [{"tool_name": "Read"}]})
+        github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+        self.assertIn("Some tool requests were blocked", self.api.comments[0]["body"])
 
     def test_summary_has_no_mentions_or_active_html_and_is_bounded(self):
         text = github.excerpt("</details><img src=x> @alice ![tracking](https://example.test)" + "💥" * 30000)
