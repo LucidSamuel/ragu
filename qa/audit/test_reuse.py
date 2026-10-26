@@ -112,6 +112,67 @@ class ReuseTests(unittest.TestCase):
             github.request(self.api, self.fixture.event(), "issue_comment")
         self.assertIsNone(reuse.active(self.api, self.current))
 
+    def test_serialized_queue_rechecks_commands_authorized_before_either_started(self):
+        self.api.checks.clear()
+        # Both request jobs finish before the first serialized queue job starts.
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.old["run_id"])}):
+            self.assertEqual(github.request(self.api, self.fixture.event(), "issue_comment"), (9, self.old["head"]))
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.current["run_id"])}):
+            self.assertEqual(github.request(self.api, self.fixture.event(), "issue_comment"), (9, self.current["head"]))
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.old["run_id"])}):
+            first = github.queue(self.api, 9, comment_id=12)
+        self.api.source(first, status="in_progress", conclusion=None)
+        mutations = len(self.api.mutations)
+        output = self.root / "outputs"
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.current["run_id"]), "GITHUB_OUTPUT": str(output)}), \
+             patch.object(github, "GitHub", return_value=self.api), \
+             patch("sys.argv", ["github.py", "queue", "--pr", "9", "--head", first["head"],
+                                "--comment-id", "12", "--run", str(self.root / "run.json")]):
+            github.main()
+        self.assertEqual(len(self.api.mutations), mutations)
+        self.assertEqual(len(self.api.checks), 1)
+        self.assertFalse(output.exists(), "coalesced command must not start review or publication jobs")
+        self.assertFalse((self.root / "run.json").exists())
+
+    def test_deleted_workflows_and_unscoped_checks_do_not_block_a_fresh_request(self):
+        self.api.checks = self.api.checks[:1]
+        self.api.checks[0].update(status="in_progress")
+        call = self.api.call
+
+        def deleted(path, *args, **kwargs):
+            if path.endswith(f"/actions/runs/{self.old['run_id']}"):
+                raise HTTPError(path, 404, "Not Found", {}, None)
+            return call(path, *args, **kwargs)
+
+        with patch.object(self.api, "call", side_effect=deleted):
+            self.assertIsNone(reuse.active(self.api, self.current))
+            self.assertEqual(reuse.plan(self.api, self.current)["artifact_ids"], [])
+            self.assertEqual(github.request(self.api, self.fixture.event(), "issue_comment"), (9, self.current["head"]))
+        self.api.checks[0]["external_id"] = None
+        self.assertIsNone(reuse.active(self.api, self.current))
+        self.assertEqual(reuse.plan(self.api, self.current)["artifact_ids"], [])
+
+    def test_deleted_artifact_listing_does_not_prevent_fallback_to_an_older_run(self):
+        older = copy.deepcopy(self.old)
+        older["run_id"] -= 1
+        older["check_id"] -= 1
+        self.api.source(older)
+        self.api.artifacts[older["run_id"]][0]["id"] = 122
+        check = copy.deepcopy(self.api.checks[0])
+        check.update(id=older["check_id"], external_id=github.scope(older) + f"9:{older['run_id']}:1")
+        self.api.checks.append(check)
+        pages = self.api.pages
+
+        def deleted(path, key=None):
+            if path.endswith(f"/actions/runs/{self.old['run_id']}/artifacts"):
+                raise HTTPError(path, 410, "Gone", {}, None)
+            return pages(path, key)
+
+        with patch.object(self.api, "pages", side_effect=deleted):
+            selection = reuse.plan(self.api, self.current)
+        self.assertEqual(selection["artifact_ids"], [122])
+        self.assertEqual(selection["source"]["run_id"], older["run_id"])
+
     def test_same_workflow_retry_can_recover_an_earlier_attempt(self):
         self.seed(missing=("tal-review",))
         retry = {**self.current, "run_id": self.old["run_id"], "attempt": 2}
@@ -171,6 +232,55 @@ class ReuseTests(unittest.TestCase):
         self.assertEqual(len(phases), 3)
         self.assertFalse(reconciled)
         self.assertNotIn("tal-review", [phase["skill"] for phase in phases])
+
+    def test_unsafe_specialist_files_do_not_discard_verified_siblings(self):
+        for kind in ("symlink", "oversized", "directory"):
+            with self.subTest(kind=kind):
+                self.seed()
+                path = self.cached / "tal-review.json"
+                path.unlink()
+                if kind == "symlink":
+                    path.symlink_to(self.cached / "sean-review.json")
+                elif kind == "oversized":
+                    with path.open("wb") as stream:
+                        stream.truncate(9 * 1024 * 1024 + 1)
+                else:
+                    path.mkdir()
+                try:
+                    phases, reconciled = reuse.restore(self.current, self.root, self.cached)
+                    self.assertEqual([item["skill"] for item in phases], ["code-review", "sean-review", "alex-review"])
+                    self.assertFalse(reconciled)
+                    self.assertEqual(len(runner.verify(self.current, self.root, partial=True)["phases"]), 3)
+                finally:
+                    path.rmdir() if kind == "directory" else path.unlink()
+
+    def test_unsafe_optional_reconciliation_does_not_discard_completed_reviews(self):
+        self.seed(findings_present=True, reconciled=True)
+        (self.cached / "reconcile.json").unlink()
+        (self.cached / "reconcile.json").symlink_to(self.cached / "code-review.json")
+        phases, reconciled = reuse.restore(self.current, self.root, self.cached)
+        self.assertEqual(len(phases), 4)
+        self.assertFalse(reconciled)
+        self.assertEqual(len(runner.verify(self.current, self.root)["phases"]), 4)
+
+    def test_output_write_failure_does_not_start_fresh_work_over_partial_restoration(self):
+        self.seed()
+        write = runner.write_json
+
+        def fail_receipt(path, value):
+            if path == self.root / "receipt.json":
+                raise OSError("disk unavailable")
+            return write(path, value)
+
+        with patch.object(runner, "write_json", side_effect=fail_receipt), self.assertRaises(OSError):
+            reuse.restore(self.current, self.root, self.cached)
+
+    def test_unavailable_cache_or_symlinked_directory_never_authorizes_reuse(self):
+        self.assertEqual(reuse.restore(self.current, self.root, self.base / "absent/reports"), ([], False))
+        self.seed()
+        link = self.base / "reports-link"
+        link.symlink_to(self.cached, target_is_directory=True)
+        self.assertEqual(reuse.restore(self.current, self.root, link), ([], False))
 
     def test_complete_reports_and_reconciliation_can_be_reused_without_model_calls(self):
         self.seed(findings_present=True, reconciled=True)

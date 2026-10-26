@@ -69,19 +69,23 @@ job; the core pass uses the full CPU count. Per-pass durations are recorded in t
 receipt, with native token usage and cost in each Claude result artifact.
 
 Repeated authorized commands for an already active identical review retain its
-existing run and status. Later invocations and failed-run retries can recover
+existing run and status, including commands arriving together before either
+starts. Later invocations and failed-run retries can recover
 completed passes from the exact same head, base, trusted controller/policies,
 CLI version, and review/reconciliation model settings. Specialists stay paired
 with their original core report and finding IDs. A changed snapshot or effort
-forces fresh reviews. GitHub workflow reruns can reuse an earlier attempt's
-verified artifacts; cancelled or stranded checks do not suppress a new request.
+forces fresh reviews. Post a new command or use GitHub's **Re-run all jobs** to
+retry with fresh authorization and reuse an earlier attempt's verified artifacts.
+Re-running only failed jobs cannot reuse an earlier attempt's authorization.
+Cancelled, deleted, or stranded workflows do not suppress a new request.
 
 Reuse reads only this repository's App-owned checks and artifacts from the
 trusted main `audit.yml` workflow. It verifies the source workflow, attempt,
 receipt, native completion, report hashes, schema, and core dependency before
 rebinding reports to the new invocation. Original receipts remain in artifacts
 as provenance. It never executes downloaded artifacts. Missing, expired, or
-invalid evidence falls back to fresh review; a damaged specialist does not
+invalid evidence falls back to fresh review; lookup has a one-minute limit.
+A damaged specialist or optional reconciliation does not
 discard valid siblings. Complete matching reviews and reconciliation require
 no new model calls. Read-only Actions/Checks permissions support lookup; App
 permissions and model credential isolation are unchanged.

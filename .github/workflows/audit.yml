@@ -45,8 +45,14 @@ jobs:
         run: python3 qa/audit/github.py request
 
   queue:
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
     outputs:
       control: ${{ steps.queue.outputs.control }}
+      head: ${{ steps.queue.outputs.head }}
     needs: request
     if: needs.request.outputs.pr != ''
     runs-on: ubuntu-24.04
@@ -76,6 +82,7 @@ jobs:
       - id: queue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_READ_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.request.outputs.pr }}
           PR_HEAD: ${{ needs.request.outputs.head }}
           COMMENT_ID: ${{ github.event.comment.id }}
@@ -94,7 +101,7 @@ jobs:
 
   review:
     needs: [request, queue]
-    if: needs.request.outputs.pr != ''
+    if: needs.request.outputs.pr != '' && needs.queue.outputs.head != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
@@ -137,6 +144,7 @@ jobs:
       - name: Find prior reviews of this exact snapshot and configuration
         id: reuse
         continue-on-error: true
+        timeout-minutes: 1
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -261,6 +269,7 @@ jobs:
     # A queued check still needs a terminal status if later queue cleanup fails.
     if: >-
       always() && needs.request.outputs.pr != '' &&
+      needs.queue.outputs.head != '' &&
       (needs.queue.result == 'success' || needs.queue.outputs.control != '')
     runs-on: ubuntu-24.04
     timeout-minutes: 10

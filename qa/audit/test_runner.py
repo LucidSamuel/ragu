@@ -51,11 +51,12 @@ class RunnerTests(unittest.TestCase):
 
         def version(command, **kwargs):
             self.assertNotIn("GH_TOKEN", kwargs["env"])
+            self.assertNotIn("GH_READ_TOKEN", kwargs["env"])
             self.assertNotIn("ANTHROPIC_API_KEY", kwargs["env"])
             return runner.CLAUDE_VERSION + " (Claude Code)\n"
 
         with patch.dict(os.environ, {"PATH": os.environ["PATH"], "HOME": str(self.root), "CARGO_HOME": str(self.work / "cargo"),
-                                     "GH_TOKEN": "dummy-parent-token"}, clear=True), \
+                                     "GH_TOKEN": "dummy-parent-token", "GH_READ_TOKEN": "dummy-parent-read-token"}, clear=True), \
              patch.object(runner.shutil, "which", return_value=sys.executable), \
              patch.object(runner.subprocess, "check_output", side_effect=version), \
              patch.object(runner, "prepare", side_effect=self.prepare), patch.object(runner, "git", side_effect=git), \
@@ -98,6 +99,7 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(command[command.index("--model") + 1], self.run["model"])
             self.assertEqual(command[command.index("--effort") + 1], "xhigh")
             self.assertNotIn("GH_TOKEN", env)
+            self.assertNotIn("GH_READ_TOKEN", env)
             self.assertNotIn("ANTHROPIC_API_KEY", env)
             previous = command[-1].split("Previous pass reports: ")[1].split(". Challenge")[0]
             if skill == "code-review":

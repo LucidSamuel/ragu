@@ -4,6 +4,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import tempfile
+from urllib.error import HTTPError
 
 import findings
 import github
@@ -12,7 +14,7 @@ import runner
 
 def source_run(api, check, run):
     prefix = github.scope(run)
-    external = check.get("external_id", "")
+    external = check.get("external_id") or ""
     if not external.startswith(prefix):
         return None
     parts = external[len(prefix):].split(":")
@@ -24,7 +26,12 @@ def source_run(api, check, run):
         return None
     if run_id == run.get("run_id") and attempt >= run.get("attempt", 0):
         return None
-    metadata = api.call(f"/repos/{github.REPOSITORY}/actions/runs/{run_id}")
+    try:
+        metadata = api.call(f"/repos/{github.REPOSITORY}/actions/runs/{run_id}")
+    except HTTPError as error:
+        if error.code in (404, 410):
+            return None  # Deleting a workflow run does not remove its check.
+        raise
     if (metadata.get("id") != run_id or type(metadata.get("run_attempt")) is not int or metadata["run_attempt"] < attempt
             or metadata.get("event") != "issue_comment" or metadata.get("head_branch") != "main"
             or metadata.get("head_sha") != run["configuration"]
@@ -63,7 +70,7 @@ def plan(api, run):
     values = github.checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
     # Prefer a completed successful invocation, then the latest partial run.
     values.sort(key=lambda item: (item.get("conclusion") == "success", item["id"]), reverse=True)
-    eligible = [item for item in values if item.get("external_id", "").startswith(github.scope(run))]
+    eligible = [item for item in values if (item.get("external_id") or "").startswith(github.scope(run))]
     for check in eligible[:10]:
         source = source_run(api, check, run)
         if source is None:
@@ -72,7 +79,12 @@ def plan(api, run):
                 and source["attempt"] == source["live_attempt"]):
             continue
         suffix = f"{source['run_id']}-{source['attempt']}"
-        archives = list(api.pages(f"/repos/{github.REPOSITORY}/actions/runs/{source['run_id']}/artifacts", "artifacts"))
+        try:
+            archives = list(api.pages(f"/repos/{github.REPOSITORY}/actions/runs/{source['run_id']}/artifacts", "artifacts"))
+        except HTTPError as error:
+            if error.code in (404, 410):
+                continue  # Retention/deletion may race with the run lookup.
+            raise
         archives = [item for item in archives if not item.get("expired")]
         bulk = [item for item in archives if item["name"] == f"ragu-audit-reports-{suffix}"]
         individual = [item for item in archives if item["name"] in {
@@ -91,6 +103,30 @@ def regular(path, limit=9 * 1024 * 1024):
 
 
 def restore(run, out, cached):
+    # Validate each file independently before exposing it to the verifier.
+    # One invalid specialist or optional reconciliation must not discard its
+    # valid siblings; links, directories, and oversized files count as missing.
+    if cached.is_symlink() or not cached.is_dir():
+        return [], False
+    with tempfile.TemporaryDirectory(prefix="reuse-", dir=cached.parent) as temporary:
+        snapshot = Path(temporary)
+        files = {f"{role}.{suffix}": 9 * 1024 * 1024
+                 for role in runner.ROLES for suffix in ("json", "md")}
+        files["findings.json"] = 9 * 1024 * 1024
+        files.update({name: 65536 for name in ("receipt.json", "reuse-receipt.json",
+                      "reconciliation-receipt.json", "reuse-reconciliation-receipt.json")})
+        for name, limit in files.items():
+            try:
+                value = regular(cached / name, limit)
+            except (OSError, ValueError):
+                continue
+            (snapshot / name).write_bytes(value)
+        # Output-write errors must fail the invocation, not launch fresh
+        # sessions over partially restored native results.
+        return restore_snapshot(run, out, snapshot)
+
+
+def restore_snapshot(run, out, cached):
     """Rebind verified native reports to this invocation; never execute artifacts."""
     try:
         selection = json.loads(regular(cached.parent / "reuse-plan.json", 65536))
@@ -107,15 +143,6 @@ def restore(run, out, cached):
                 or old["external_id"] != github.scope(old) + f"{old['pr']}:{old['run_id']}:{old['attempt']}"
                 or old["url"] != f"https://github.com/{github.REPOSITORY}/actions/runs/{old['run_id']}"):
             raise ValueError("reuse snapshot, settings, or provenance differ")
-        for name in (*runner.SKILLS, runner.RECONCILER):
-            for suffix in ("json", "md"):
-                path = cached / f"{name}.{suffix}"
-                if path.exists() or path.is_symlink():
-                    regular(path)
-        for name in ("reuse-receipt.json", "reconciliation-receipt.json", "reuse-reconciliation-receipt.json"):
-            path = cached / name
-            if path.exists() or path.is_symlink():
-                regular(path, 65536)
         verified = runner.verify(old, cached, partial=True)
         phases = [{**phase, "duration_seconds": 0, "reused_from": runner.reuse_origin(old)}
                   for phase in verified["phases"]]

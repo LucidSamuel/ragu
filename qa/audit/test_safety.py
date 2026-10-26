@@ -194,6 +194,22 @@ class SafetyTests(unittest.TestCase):
         fixture.reports(run, {"code-review": {**native(), "total_cost_usd": 12}})
         runner.verify(run, fixture.out)
 
+    def test_final_reviewer_at_the_limit_still_publishes_findings_and_the_stop_reason(self):
+        fixture = self.fixture()
+        run = github.queue(fixture.api, 9)
+        result = native("Original completed review.")
+        result["structured_output"]["findings"] = [test_audit.candidate()]
+        fixture.reports(run, {role: result for role in runner.SKILLS})
+        runner.write_json(fixture.out / "alex-review.status.json", {
+            "run": run, "skill": "alex-review", "state": "budget"})
+        with self.assertRaisesRegex(ValueError, "audit did not complete"):
+            github.publish(fixture.api, run, fixture.out, "failure")
+        body = fixture.api.comments[0]["body"]
+        self.assertIn("4/4 reviews completed", body)
+        self.assertIn("invocation reached its safety limit", body)
+        self.assertIn("**Incorrect result**", body)
+        self.assertNotIn("$", body)
+
     def test_reconciliation_safety_limit_keeps_verified_reports_and_summary(self):
         fixture = self.fixture()
         run = github.queue(fixture.api, 9)

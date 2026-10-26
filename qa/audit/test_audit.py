@@ -317,6 +317,18 @@ class AuditTests(unittest.TestCase):
             github.publish(self.api, run, self.out, "success")
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
+    def test_newer_unscoped_check_cannot_leave_the_review_stuck_in_progress(self):
+        run = github.queue(self.api, 9, HEAD)
+        unscoped = copy.deepcopy(self.api.checks[0])
+        unscoped.update(id=run["check_id"] + 1, external_id=None)
+        self.api.checks.append(unscoped)
+        self.reports(run)
+        with self.assertRaises(github.StaleReview):
+            github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertEqual(self.api.checks[1]["status"], "in_progress")
+        self.assertIn("audit: stale", self.api.comments[0]["body"])
+
     def test_audit_workflow_is_comment_only_and_serializes_publishers(self):
         workflow = (Path(__file__).parents[2] / ".github/workflows/audit.yml").read_text()
         events = workflow.split("\npermissions:", 1)[0]
@@ -327,7 +339,7 @@ class AuditTests(unittest.TestCase):
         for name, body in jobs.items():
             if "cancel-in-progress: true" in body:
                 self.assertEqual(name, "review")
-                self.assertIn("if: needs.request.outputs.pr != ''", body)
+                self.assertIn("if: needs.request.outputs.pr != '' && needs.queue.outputs.head != ''", body)
         for name in ("queue", "publish"):
             self.assertIn("group: ragu-audit-publisher\n", jobs[name])
             self.assertIn("queue: max", jobs[name])

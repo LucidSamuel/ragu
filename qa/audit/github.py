@@ -40,12 +40,15 @@ def command_present(api, run):
 
 
 class GitHub:
+    def __init__(self, token_name="GH_TOKEN"):
+        self.token_name = token_name
+
     def call(self, path, data=None, method=None):
         request = Request(
             "https://api.github.com" + path,
             data=None if data is None else json.dumps(data).encode(),
             method=method,
-            headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
+            headers={"Authorization": "Bearer " + os.environ[self.token_name], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
         return json.loads(runner.github_response(request, timeout=45))
 
@@ -165,12 +168,13 @@ def incomplete_details(run, out):
         phases = receipt["phases"]
         names = [phase["skill"] for phase in phases]
         if len(names) == len(runner.SKILLS):
-            try:
-                status = runner.read_json(out / "reconcile.status.json")
-                if status.get("run") == run and status.get("skill") == runner.RECONCILER and status.get("state") == "budget":
-                    return "Four reviews completed; the invocation reached its safety limit. Available findings follow."
-            except (OSError, ValueError, AttributeError, TypeError):
-                pass
+            for skill in runner.ROLES:
+                try:
+                    status = runner.read_json(out / f"{skill}.status.json")
+                    if status.get("run") == run and status.get("skill") == skill and status.get("state") == "budget":
+                        return "Four reviews completed; the invocation reached its safety limit. Available findings follow."
+                except (OSError, ValueError, AttributeError, TypeError):
+                    pass
             return "The review job failed after recording all four passes. Inspect the workflow."
         missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
         lines = []
@@ -306,7 +310,7 @@ def upsert(api, run, check, state, *, out=None, only_current=False):
         raise ValueError("summary publication was not confirmed")
 
 
-def queue(api, value, expected_head=None, comment_id=None):
+def queue(api, value, expected_head=None, comment_id=None, *, read_api=None):
     target = pr(api, value)
     if expected_head is not None and target["head"]["sha"] != sha(expected_head):
         raise ValueError("PR head moved since the request; start a fresh run")
@@ -318,6 +322,13 @@ def queue(api, value, expected_head=None, comment_id=None):
         command_present(api, run)
     if run["configuration"] != run["base"]:
         raise ValueError("main moved since this workflow was started; start a fresh run")
+    if read_api is not None:
+        # Request jobs can race before either creates a check. Repeat the live
+        # lookup inside the serialized publisher job, before any App writes.
+        from reuse import active
+        if active(read_api, run):
+            print("This exact review is already running; retaining its existing check and summary", flush=True)
+            return None
     run["url"] = f"https://github.com/{REPOSITORY}/actions/runs/{run['run_id']}"
     prefix = scope(run)
     run["external_id"] = prefix + f"{run['pr']}:{run['run_id']}:{run['attempt']}"
@@ -384,9 +395,9 @@ def guard(api, run):
     if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
         raise StaleReview("PR head or base moved during review")
     prefix = scope(run)
-    if not values or not values[0].get("external_id", "").startswith(prefix):
+    if not values or not (values[0].get("external_id") or "").startswith(prefix):
         raise StaleReview("a newer review uses a different configuration")
-    latest = next((check for check in values if check.get("external_id", "").startswith(prefix + f"{run['pr']}:")), None)
+    latest = next((check for check in values if (check.get("external_id") or "").startswith(prefix + f"{run['pr']}:")), None)
     if latest is None or latest["id"] != run["check_id"]:
         raise StaleReview("a newer review superseded this invocation")
     return own
@@ -477,7 +488,9 @@ def main():
     elif args.command == "queue":
         if args.head is None or args.comment_id is None:
             raise ValueError("queue requires the head and comment captured by the request job")
-        run = queue(api, args.pr, args.head, args.comment_id)
+        run = queue(api, args.pr, args.head, args.comment_id, read_api=GitHub("GH_READ_TOKEN"))
+        if run is None:
+            return
         output(head=run["head"], control=json.dumps(run, separators=(",", ":")))
         try:
             args.run.parent.mkdir(parents=True, exist_ok=True)
