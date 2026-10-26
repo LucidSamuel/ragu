@@ -165,6 +165,12 @@ def incomplete_details(run, out):
         phases = receipt["phases"]
         names = [phase["skill"] for phase in phases]
         if len(names) == len(runner.SKILLS):
+            try:
+                status = runner.read_json(out / "reconcile.status.json")
+                if status.get("run") == run and status.get("skill") == runner.RECONCILER and status.get("state") == "budget":
+                    return "Four reviews completed; the invocation reached its safety limit. Available findings follow."
+            except (OSError, ValueError, AttributeError, TypeError):
+                pass
             return "The review job failed after recording all four passes. Inspect the workflow."
         missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
         lines = []

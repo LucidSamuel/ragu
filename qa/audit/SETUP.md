@@ -126,15 +126,17 @@ detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
 
-Each invocation has an internal $25 estimated API safety limit. Each reviewer
-receives a $6 allocation so the parallel reviews cannot each spend the whole
-limit. After four completed reviews, reconciliation can use the entire remaining
-budget, including unused review allocations. Reused results incur no new model
-calls and do not consume the current invocation's budget. The CLI enforces its
-allocation and the controller validates the native estimate before accepting
-fresh completion evidence. A budget-limit result stops that phase immediately;
-incomplete reviews retain the verified reports and fail the completion check.
-Optional reconciliation still follows the existing combined-summary fallback.
+Each invocation has one shared internal $25 estimated API safety limit. Reviewers
+and reconciliation can use the entire remaining pool, without individual quotas.
+The controller aggregates streamed input, cache, and output usage across parallel
+sessions, deduplicates cumulative updates, and reconciles native final estimates.
+Its pricing table covers the configured Opus/Sonnet models; an unknown model or
+unsupported usage stops the guard rather than silently permitting unpriced work.
+Each CLI session also receives the current remaining budget as a fallback limit.
+Reused results incur no new model calls and do not consume this invocation's pool.
+Reaching the combined limit stops outstanding review processes and fails the run.
+The bot still publishes available completed findings and their original reports,
+with a short explanation of incomplete work. Reconciliation uses the same pool.
 
 This guard uses CLI estimates, so in-flight requests may overshoot and the
 provider's bill can differ. The limit applies per invocation, not cumulatively

@@ -194,6 +194,9 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
     def do_POST(self):
         try:
             self.respond()
+        except (BrokenPipeError, ConnectionResetError):
+            if self.server.mode not in ("budget", "shared_budget"):
+                self.server.errors.append("unexpected test API disconnect")
         except Exception as error:
             self.server.errors.append(repr(error))
             self.send_response(400)
@@ -313,12 +316,12 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
             if turn == 1:
                 self.require("DEPENDENCY_SOURCE_CANARY" in tool_result(payload), "native Read could not inspect downloaded dependency source")
             turn -= 1
-        if server.mode == "reference" and turn == 0:
+        if server.mode in ("reference", "flexible_budget", "shared_budget") and turn == 0:
             suffix = "SKILL.md" if skill == "code-review" else "references/evidence.md"
             path = server.work / "trusted-plugin/skills" / skill / suffix
             self.emit(payload, {"type": "tool_use", "id": "toolu_reference", "name": "Read", "input": {"file_path": str(path), "limit": 6}})
             return
-        if server.mode == "reference":
+        if server.mode in ("reference", "flexible_budget", "shared_budget"):
             if turn == 1:
                 self.require("denied" not in tool_result(payload).lower() and "1" in tool_result(payload), "trusted skill reference read was blocked")
             turn -= 1
@@ -424,7 +427,12 @@ else:
         response = message(block, "tool_use")
         response["model"] = payload["model"]
         if self.server.mode == "budget":
-            response["usage"]["input_tokens"] = 100000
+            response["usage"]["input_tokens"] = 300000
+        core_request = f"The source checkout is {self.server.work / 'code-review'};" in json.dumps(payload["messages"])
+        if self.server.mode == "flexible_budget" and core_request:
+            response["usage"]["input_tokens"] = 400000
+        if self.server.mode == "shared_budget" and not core_request:
+            response["usage"]["input_tokens"] = 600000
         response["id"] = f"msg_local_{len(self.server.requests)}"
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -444,6 +452,12 @@ else:
 
 @unittest.skipUnless(os.environ.get("RAGU_AUDIT_NATIVE_TEST") == "1", "set RAGU_AUDIT_NATIVE_TEST=1 to exercise the installed CLI")
 class NativeTests(unittest.TestCase):
+    def test_one_reviewer_can_use_more_than_an_even_share(self):
+        self.probe("flexible_budget")
+
+    def test_shared_safety_limit_stops_parallel_reviewers(self):
+        self.probe("shared_budget")
+
     def test_native_safety_limit_stops_requests_before_starting_specialists(self):
         self.probe("budget")
 
@@ -629,22 +643,29 @@ class NativeTests(unittest.TestCase):
                      patch.object(runner, "REVIEW_TIMEOUT", 120), \
                      patch.object(runner, "MAX_RUN_COST_USD", Decimal("1") if mode == "budget" else runner.MAX_RUN_COST_USD), \
                      patch.object(runner, "git", side_effect=lambda root, command, *args, **kwargs: run["head"] if command == "rev-parse" else ""):
-                    if denied or mode == "budget":
-                        with self.assertRaisesRegex(ValueError, "safety limit" if mode == "budget" else "review incomplete"):
+                    if denied or mode in ("budget", "shared_budget"):
+                        with self.assertRaisesRegex(ValueError, "safety limit" if mode in ("budget", "shared_budget") else "review incomplete"):
                             runner.review(root, run, work, out, private)
                     else:
                         runner.review(root, run, work, out, private)
                 self.assertEqual(server.errors, [])
                 self.assertEqual(server.forbidden_requests, [])
                 self.assertFalse(state_has_credentials(work, server.scratch))
-                if denied or mode == "budget":
-                    self.assertEqual(runner.read_json(out / "receipt.json")["phases"], [])
+                if denied or mode in ("budget", "shared_budget"):
+                    phases = runner.read_json(out / "receipt.json")["phases"]
+                    if mode == "shared_budget":
+                        self.assertEqual(phases[0]["skill"], "code-review")
+                        self.assertTrue(any(runner.read_json(out / f"{name}.status.json").get("state") == "budget" for name in runner.SKILLS[1:]))
+                    else:
+                        self.assertEqual(phases, [])
                     if mode == "budget":
                         self.assertEqual(len(server.requests), 1)
                         self.assertEqual(runner.read_json(out / "code-review.status.json")["state"], "budget")
                 else:
                     runner.verify(run, out)
-                    self.assertEqual(len(server.requests), {"raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    self.assertEqual(len(server.requests), {"flexible_budget": 16, "raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    if mode == "flexible_budget":
+                        self.assertGreater(runner.read_json(out / "code-review.json")["total_cost_usd"], 6)
                     if mode.startswith("reconcile") or mode == "raw_report":
                         if mode in ("reconcile", "raw_report"):
                             self.assertEqual(len(runner.verify_reconciliation(run, out)[1]), 1)
