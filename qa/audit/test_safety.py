@@ -6,6 +6,7 @@ import time
 import unittest
 
 import github
+import findings
 import reuse
 import runner
 from test_audit import native
@@ -73,7 +74,13 @@ class SafetyTests(unittest.TestCase):
     def test_exhausted_reviewer_fails_gate_without_displaying_costs(self):
         fixture = self.fixture()
         run = github.queue(fixture.api, 9)
-        receipt = fixture.reports(run)
+        outputs = {}
+        for role in runner.SKILLS:
+            result = native(f"Original {role} report.")
+            result["structured_output"]["findings"] = [test_audit.candidate(
+                title=f"Preserved {role} finding", cause=f"Distinct {role} cause")]
+            outputs[role] = result
+        receipt = fixture.reports(run, outputs)
         receipt["phases"] = [phase for phase in receipt["phases"] if phase["skill"] != "tal-review"]
         runner.write_json(fixture.out / "receipt.json", receipt)
         runner.write_json(fixture.out / "tal-review.json", {
@@ -82,6 +89,12 @@ class SafetyTests(unittest.TestCase):
             github.publish(fixture.api, run, fixture.out, "failure")
         body = fixture.api.comments[0]["body"]
         self.assertIn("3/4 reviews completed", body)
+        self.assertIn("#### Must-fix (3)", body)
+        for role in ("code-review", "sean-review", "alex-review"):
+            self.assertIn(f"**Preserved {role} finding**", body)
+            self.assertIn(f"<summary>{findings.REVIEWER_NAMES[role]}</summary>", body)
+            self.assertIn(f"Original {role} report.", body)
+        self.assertNotIn("Preserved tal-review finding", body)
         self.assertIn("the review reached its safety limit", body)
         self.assertNotIn("6.25", body)
         self.assertNotIn("25.00", body)

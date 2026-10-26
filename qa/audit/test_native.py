@@ -403,7 +403,14 @@ else:
                     self.require("LATE_REPORT_BLOCKED" in text and "LATE_REPORT_EXPOSED" not in text,
                                  "a report written after the Bash sandbox started was readable")
                 match = re.search(r"SANDBOX_PROBE:(\{[^\n]*\})", text)
-                self.require(bool(match) and json.loads(match[1]) == DENIED, "sandbox probe failed: " + text[-2000:])
+                results = json.loads(match[1]) if match else {}
+                # Linux can mask a read-denied directory with a writable
+                # private filesystem. A write there is harmless only when the
+                # actual host control file remains unchanged. Test that from
+                # the trusted fake API rather than requiring an inner OSError.
+                if results.get("control") is False:
+                    results["control"] = (server.work / "control/run.json").read_text() == "trusted control"
+                self.require(bool(match) and results == DENIED, "sandbox probe failed: " + text[-2000:])
                 match = re.search(r"POLICY_DISCOVERY:(\[[^\n]*\])", text)
                 self.require(bool(match) and json.loads(match[1]) == server.policies, "policy discovery failed: " + text[-2000:])
                 block = {"type": "tool_use", "id": "toolu_policy", "name": "Read", "input": {"file_path": str(server.root / ".claude/code-review/standards.md")}}
