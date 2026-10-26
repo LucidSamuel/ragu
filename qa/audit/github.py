@@ -177,6 +177,15 @@ def invocation_marker(run):
     return f"<!-- ragu-audit-run:{number(run['run_id'])}:{number(run['attempt'])}:{number(run['check_id'])} -->"
 
 
+def review_excerpt(text, size):
+    # Verified reports already escape HTML, mentions, and images. Quote every
+    # line so even an unfinished Markdown fence stays inside its own report.
+    text = "\n".join("> " + line for line in text.splitlines())
+    if len(text.encode()) > size:
+        return text.encode()[:size].decode("utf-8", errors="ignore") + "\n>\n> Continued in the full report linked below."
+    return text
+
+
 def summary(run, state, out=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
              f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
@@ -210,7 +219,7 @@ def summary(run, state, out=None):
         else:
             lines += ["No verified findings are available.", ""]
         if names:
-            links = []
+            links, reports = [], []
             for skill in names:
                 variable = "RAGU_AUDIT_REPORT_" + skill.upper().replace("-", "_")
                 url = os.environ.get(variable, "")
@@ -218,6 +227,14 @@ def summary(run, state, out=None):
                 if not re.fullmatch(expected, url):
                     url = run["url"]
                 links.append(f"[{skill}]({url})")
+                reports.append((skill, url))
+            # Preserve every confirmed defect in the top shortlist, allocating
+            # the remaining comment budget to the collapsed original reports.
+            size = min(12000, max(0, 60000 - len("\n".join(lines).encode()) - 4000) // len(names))
+            for skill, url in reports:
+                text = review_excerpt((out / f"{skill}.md").read_text(), size)
+                lines += [f"<details><summary>{skill}</summary>", "", text, "",
+                          f"[Complete {skill} report]({url})", "", "</details>", ""]
             lines += ["**Full reviews:** " + " · ".join(links), "",
                       "Original reviewer reports and reconciliation decisions are retained in the workflow artifacts.", ""]
         if state == "completed":

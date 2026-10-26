@@ -30,8 +30,9 @@ After this workflow lands on `main`:
 One App-owned comment shows a combined **Must-fix** and **Suggestions** shortlist,
 with locations, evidence, next steps, and reviewer attribution. All defects and
 disputed findings remain visible, with at most three additional suggestions.
-Each reviewer has a link to its original report; the workflow's complete bundle
-also includes structured findings, native results, and reconciliation decisions.
+The four original reviewer reports remain in collapsed sections below the
+shortlist, with full artifact links when the comment budget requires truncation.
+The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
 Artifacts are retained for 30 days; individual report links require GitHub login
 and fall back to the workflow when an auxiliary upload fails. Missing or
 failed native runs, missing reports, modified source, and moved revisions fail

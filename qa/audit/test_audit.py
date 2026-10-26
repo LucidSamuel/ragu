@@ -669,6 +669,21 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn("FORGED_SUCCESS_CANARY", text)
         self.assertIn("4/4 verified passes", text)
 
+    def test_original_reports_remain_collapsed_below_the_shortlist(self):
+        run = github.queue(self.api, 9, HEAD)
+        result = native("Coverage note with an unfinished fence:\n\n```\n</details><script>unsafe</script> @team")
+        result["structured_output"]["findings"] = [candidate()]
+        self.reports(run, {name: result for name in runner.SKILLS})
+        text = github.summary(run, "completed", self.out)
+        for name in runner.SKILLS:
+            self.assertIn(f"<details><summary>{name}</summary>", text)
+            self.assertIn(f"[Complete {name} report]", text)
+        self.assertLess(text.index("### Must-fix"), text.index("<details>"))
+        self.assertEqual(text.count("</details>"), 4)
+        self.assertIn("> Coverage note", text)
+        self.assertIn("&lt;/details&gt;&lt;script&gt;", text)
+        self.assertNotIn("@team", text)
+
     def test_large_summary_keeps_all_confirmed_defects_within_github_limit(self):
         run = github.queue(self.api, 9, HEAD)
         result = native()
@@ -683,6 +698,8 @@ class AuditTests(unittest.TestCase):
         self.assertLess(len(text.encode()), 65536)
         self.assertEqual(text.count("- **"), 256)
         self.assertIn("Compact view", text)
+        self.assertEqual(text.count("<details>"), 4)
+        self.assertIn("Continued in the full report", text)
 
     def test_contained_denials_do_not_invalidate_a_finished_review(self):
         run = github.queue(self.api, 9)

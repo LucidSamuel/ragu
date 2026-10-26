@@ -10,8 +10,8 @@ The bot runs focused tests only to investigate suspected bugs.
 Post the exact command as a new PR comment with write access. Commits do not
 trigger the bot. Their structured findings always produce one combined summary:
 **Must-fix** and **Suggestions**, with duplicate merging, reviewer attribution,
-and links to the original reports. A short source-checking pass refines the
-summary; if it cannot finish, the combined summary is still published.
+and collapsed original reports below it. A short source-checking pass refines
+the summary; if it cannot finish, the combined summary is still published.
 Delete the command comment to stop its review.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.
