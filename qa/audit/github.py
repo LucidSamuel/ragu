@@ -12,6 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import Request
 
 import runner
+import findings
 
 REPOSITORY = "tachyon-zcash/ragu"
 CHECK = "ragu-audit/completed"
@@ -151,6 +152,9 @@ def incomplete_details(run, out):
         missing = [skill for skill in runner.SKILLS if skill not in names] if names else [runner.SKILLS[0]]
         lines = []
         for skill in missing:
+            if skill in receipt["unavailable"]:
+                lines.append(f"Could not verify the recovered `{skill}` report; its findings are omitted. Inspect the workflow artifacts.")
+                continue
             try:
                 status = runner.read_json(out / f"{skill}.status.json")
                 reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",
@@ -176,36 +180,83 @@ def invocation_marker(run):
     return f"<!-- ragu-audit-run:{number(run['run_id'])}:{number(run['attempt'])}:{number(run['check_id'])} -->"
 
 
+def review_excerpt(text, size):
+    # Verified reports already escape HTML, mentions, and images. Quote every
+    # line so even an unfinished Markdown fence stays inside its own report.
+    text = "\n".join("> " + line for line in text.splitlines())
+    if len(text.encode()) > size:
+        return text.encode()[:size].decode("utf-8", errors="ignore") + "\n>\n> Continued in the full report linked below."
+    return text
+
+
 def summary(run, state, out=None):
-    lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
-             f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
+    lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
+    details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
+               f"Model: `{run['model']}` · Effort: `{run['effort']}`", ""]
     if state == "running":
-        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel. This comment will be updated."]
+        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated.", ""]
     else:
-        names = []
+        names, bundle, groups = [], None, None
         if out is not None:
             try:
-                names = [phase["skill"] for phase in runner.verify(run, out, partial=True)["phases"]]
+                bundle = runner.candidates(run, out, partial=True)
+                names = [review["reviewer"] for review in bundle["reviews"]]
             except (OSError, ValueError, KeyError, TypeError):
                 pass
-        lines += [f"**{len(names)}/4 verified passes completed.** Findings and review summaries from completed passes follow.", ""]
-        for skill in names:
-            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), ""]
-            if runner.read_json(out / f"{skill}.json").get("permission_denials"):
-                lines += ["Some tool requests were blocked. The reviewer reported its work complete; assess its stated limitations.", ""]
-            lines += ["</details>", ""]
-        if state == "completed":
-            lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
-        elif state == "stale":
-            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the revisions above. Post `/ragu-audit` on the current PR revision to review again."]
+        revision = f"https://github.com/{REPOSITORY}/commit/{run['head']}"
+        lines += [f"**{len(names)}/4 reviews completed** · [{run['head'][:8]}]({revision})", ""]
+        if state == "stale":
+            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the snapshot in Run details. Post `/ragu-audit` on the current PR revision to review again.", ""]
         elif state == "cancelled":
-            lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again."]
+            lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again.", ""]
         elif state == "publication failed":
-            lines += ["The controller could not verify live status or confirm publication. Completion was not granted. Verified reports above remain available; inspect the workflow before retrying."]
-        else:
+            lines += ["The controller could not verify live status or confirm publication. Completion was not granted. Verified reports below remain available; inspect the workflow before retrying.", ""]
+        elif state != "completed":
             if out is not None:
                 lines += [incomplete_details(run, out), ""]
-            lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry."]
+            lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry.", ""]
+        if names == list(runner.SKILLS):
+            try:
+                bundle, groups = runner.verify_reconciliation(run, out)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        lines += ["### For humans", ""]
+        if bundle is not None:
+            if groups is None and bundle["findings"]:
+                notice = ("Combined reviewer findings. Additional source checking did not complete; disputed claims remain visible."
+                          if len(names) == 4 else "Combined findings from the completed reviews.")
+                details += [notice, ""]
+            short = findings.shortlist(bundle, groups, heading_level=4)
+            if len("\n".join(short).encode()) > 54000:
+                short = findings.shortlist(bundle, groups, compact=True, heading_level=4)
+            lines += short
+            if any(runner.read_json(out / f"{skill}.json").get("permission_denials") for skill in names):
+                details += ["Some tool requests were blocked; see the individual reports' limitations.", ""]
+            dismissed = sum(item["disposition"] == "dismissed" for item in (groups or []))
+            if dismissed:
+                noun = "finding group" if dismissed == 1 else "finding groups"
+                details += [f"{dismissed} {noun} dismissed; reasons are in the reconciliation report in the full bundle.", ""]
+        else:
+            lines += ["No verified findings are available.", ""]
+        if names:
+            lines += ["### For agents", ""]
+            # Preserve every confirmed defect in the top shortlist, allocating
+            # the remaining comment budget to the collapsed original reports.
+            size = min(12000, max(0, 60000 - len("\n".join(lines).encode()) - 4000) // len(names))
+            for skill in names:
+                variable = "RAGU_AUDIT_REPORT_" + skill.upper().replace("-", "_")
+                url = os.environ.get(variable, "")
+                expected = rf"https://github\.com/{REPOSITORY}/actions/runs/{run['run_id']}/artifacts/[1-9][0-9]*"
+                if not re.fullmatch(expected, url):
+                    url = run["url"]
+                text = review_excerpt((out / f"{skill}.md").read_text(), size)
+                label = findings.REVIEWER_NAMES[skill]
+                lines += [f"<details><summary>{label}</summary>", "", text, "",
+                          f"[Full report]({url})", "", "</details>", ""]
+        details += ["Original reports and reconciliation decisions are retained in the workflow artifacts.", "",
+                    "Maintainers assess findings and approve changes.", ""]
+    lines += ["---", "", "<details><summary>Run details</summary>", "", *details,
+              f"[Workflow and complete reports]({run['url']})", "", "</details>"]
     return "\n".join(lines)
 
 
@@ -272,7 +323,13 @@ def queue(api, value, expected_head=None, comment_id=None):
     return run
 
 
-def own_check(api, run):
+def validate_identity(run):
+    if not isinstance(run, dict):
+        raise ValueError("invalid run identity")
+    sha(run["head"])
+    sha(run["base"])
+    for key in ("pr", "run_id", "attempt", "check_id", "app_id"):
+        number(run[key])
     if run["repository"] != REPOSITORY or run["configuration"] != sha(os.environ["GITHUB_WORKFLOW_SHA"]):
         raise ValueError("run identity does not match the trusted controller")
     if str(run["run_id"]) != os.environ["GITHUB_RUN_ID"] or str(run["attempt"]) != os.environ["GITHUB_RUN_ATTEMPT"]:
@@ -280,6 +337,11 @@ def own_check(api, run):
     expected = scope(run) + f"{number(run['pr'])}:{number(run['run_id'])}:{number(run['attempt'])}"
     if run["external_id"] != expected or str(run["app_id"]) != os.environ["RAGU_AUDIT_APP_ID"]:
         raise ValueError("invalid check identity")
+
+
+def own_check(api, run):
+    validate_identity(run)
+    expected = run["external_id"]
     values = checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
     own = next((check for check in values if check["id"] == run["check_id"]), None)
     if own is None or own.get("external_id") != expected:
@@ -361,7 +423,7 @@ def publish(api, run, out, review_result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("request", "queue", "publish"))
+    parser.add_argument("command", choices=("request", "queue", "restore", "publish"))
     parser.add_argument("--pr")
     parser.add_argument("--head", type=sha)
     parser.add_argument("--comment-id", type=number)
@@ -371,6 +433,17 @@ def main():
     args = parser.parse_args()
     if os.environ["GITHUB_REPOSITORY"] != REPOSITORY or os.environ["GITHUB_REF"] != "refs/heads/main":
         raise ValueError("audit controller only runs on Ragu main")
+    if args.command == "restore":
+        # Public invocation metadata travels as a job output, independently of
+        # artifact storage. The artifact remains a fallback if outputs are lost.
+        control = os.environ.get("RAGU_AUDIT_CONTROL", "")
+        if len(control) > 16384:
+            raise ValueError("run identity is too large")
+        run = json.loads(control) if control else runner.read_json(args.run)
+        validate_identity(run)
+        args.run.parent.mkdir(parents=True, exist_ok=True)
+        runner.write_json(args.run, run)
+        return
     api = GitHub()
     if args.command == "request":
         result = request(api, runner.read_json(os.environ["GITHUB_EVENT_PATH"]), os.environ["GITHUB_EVENT_NAME"])
@@ -380,9 +453,12 @@ def main():
         if args.head is None or args.comment_id is None:
             raise ValueError("queue requires the head and comment captured by the request job")
         run = queue(api, args.pr, args.head, args.comment_id)
-        args.run.parent.mkdir(parents=True, exist_ok=True)
-        runner.write_json(args.run, run)
-        output(head=run["head"])
+        output(head=run["head"], control=json.dumps(run, separators=(",", ":")))
+        try:
+            args.run.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_json(args.run, run)
+        except OSError:
+            print("Control artifact unavailable; request identity is retained in job output", flush=True)
     else:
         publish(api, runner.read_json(args.run), args.out, args.review_result)
 

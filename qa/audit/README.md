@@ -8,8 +8,10 @@ CI owns formatting, linting, documentation builds, and routine test suites.
 The bot runs focused tests only to investigate suspected bugs.
 
 Post the exact command as a new PR comment with write access. Commits do not
-trigger the bot. It updates one summary comment with each pass's findings and
-links to the full reports.
+trigger the bot. Their structured findings always produce one combined summary:
+**Must-fix** and **Suggestions**, with duplicate merging, reviewer attribution,
+and collapsed original reports below it. A short source-checking pass refines
+the summary; if it cannot finish, the combined summary is still published.
 Delete the command comment to stop its review.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.

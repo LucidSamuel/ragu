@@ -15,6 +15,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 
 import runner
+from test_findings import finding, group
 
 
 class RunnerTests(unittest.TestCase):
@@ -32,12 +33,12 @@ class RunnerTests(unittest.TestCase):
             (path / "SKILL.md").write_text("Trusted skill\n")
 
     def prepare(self, *args):
-        for skill in runner.SKILLS:
+        for skill in runner.ROLES:
             (self.work / skill).mkdir()
         return self.run["base"]
 
     def invoke(self, execute, changed_skill=None):
-        def git(source, command, *args):
+        def git(source, command, *args, **kwargs):
             if command == "rev-parse":
                 return self.run["head"]
             self.assertEqual(command, "diff")
@@ -64,7 +65,7 @@ class RunnerTests(unittest.TestCase):
     def result(self, command, complete=True, returncode=0):
         return {
             "type": "result", "subtype": "success", "is_error": False, "permission_denials": [],
-            "structured_output": {"complete": complete, "report": "Recorded review and validation evidence."},
+            "structured_output": {"complete": complete, "report": "Recorded review and validation evidence.", "findings": [], "assessments": []},
         }
 
     def test_specialists_overlap_after_core_and_receipt_order_is_deterministic(self):
@@ -101,7 +102,8 @@ class RunnerTests(unittest.TestCase):
             if skill == "code-review":
                 self.assertEqual(previous, "none")
             else:
-                self.assertEqual(previous, str(self.out / "code-review.md"))
+                self.assertEqual(previous, ", ".join(str(self.out / name) for name in ("code-review.md", "core-findings.json")))
+                self.assertEqual(runner.read_json(self.out / "core-findings.json"), {"findings": []})
                 self.assertIn("Recorded review and validation evidence", (self.out / "code-review.md").read_text())
                 specialists.wait(timeout=5)
                 if skill != "alex-review":
@@ -115,6 +117,97 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual([phase["skill"] for phase in receipt["phases"]], list(runner.SKILLS))
         self.assertEqual(len(set(states.values())), 4)
         self.assertTrue(all(phase["duration_seconds"] >= 0 for phase in receipt["phases"]))
+
+    def reconcile_result(self, command, **kwargs):
+        result = self.result(command)
+        skill = kwargs["skill"]
+        if skill == runner.RECONCILER:
+            self.assertEqual(kwargs["timeout"], 180)
+            self.assertEqual(command[command.index("--max-turns") + 1], "20")
+            self.assertEqual(command[command.index("--tools") + 1], "Read")
+            self.assertEqual(len(runner.verify(self.run, self.out)["phases"]), 4)
+            result["structured_output"] = {"complete": True, "report": "Checked the pinned source.",
+                                            "groups": [group(*[f"{name}:1" for name in runner.SKILLS])]}
+        else:
+            result["structured_output"]["findings"] = [finding()]
+        return result
+
+    def test_reconciliation_waits_for_four_reviews_and_preserves_receipt(self):
+        calls = []
+
+        def execute(command, **kwargs):
+            calls.append(kwargs["skill"])
+            return self.reconcile_result(command, **kwargs)
+
+        self.invoke(execute)
+        self.assertEqual(calls[-1], runner.RECONCILER)
+        bundle, groups = runner.verify_reconciliation(self.run, self.out)
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(bundle["findings"]), 4)
+        self.assertEqual([phase["skill"] for phase in runner.verify(self.run, self.out)["phases"]], list(runner.SKILLS))
+
+    def test_reconciliation_timeout_or_missing_findings_preserves_four_review_gate(self):
+        for failure in ("timeout", "omitted", "cancelled"):
+            with self.subTest(failure=failure), tempfile.TemporaryDirectory() as temporary:
+                self.out = Path(temporary) / "reports"
+                self.work = Path(temporary) / "work"
+                def execute(command, **kwargs):
+                    if kwargs["skill"] == runner.RECONCILER:
+                        if failure == "timeout":
+                            raise subprocess.TimeoutExpired("UNTRUSTED_COMMAND_CANARY", 180)
+                        if failure == "cancelled":
+                            kwargs["cancelled"].set()
+                            raise ValueError("cancelled")
+                        result = self.reconcile_result(command, **kwargs)
+                        result["structured_output"]["groups"] = []
+                        return result
+                    return self.reconcile_result(command, **kwargs)
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    self.invoke(execute)
+                self.assertNotIn("UNTRUSTED_COMMAND_CANARY", output.getvalue())
+                self.assertEqual(len(runner.verify(self.run, self.out)["phases"]), 4)
+                with self.assertRaises(ValueError):
+                    runner.verify_reconciliation(self.run, self.out)
+                self.assertEqual(len(runner.candidates(self.run, self.out)["findings"]), 4)
+                summary = (self.out / "combined.md").read_text()
+                self.assertEqual(summary.count("**Incorrect output**"), 1)
+                self.assertIn("General, Sean, Tal, Alex", summary)
+
+    def test_modified_reconciliation_result_or_bundle_is_rejected(self):
+        self.invoke(self.reconcile_result)
+        original = (self.out / "reconcile.json").read_text()
+        result = runner.read_json(self.out / "reconcile.json")
+        result["structured_output"]["groups"][0]["title"] = "Tampered report"
+        runner.write_json(self.out / "reconcile.json", result)
+        with self.assertRaises(ValueError):
+            runner.verify_reconciliation(self.run, self.out)
+        (self.out / "reconcile.json").write_text(original)
+        bundle = runner.read_json(self.out / "findings.json")
+        bundle["findings"] = []
+        runner.write_json(self.out / "findings.json", bundle)
+        with self.assertRaises(ValueError):
+            runner.verify_reconciliation(self.run, self.out)
+        runner.verify(self.run, self.out)
+
+    def test_empty_reviews_skip_extra_model_call(self):
+        self.invoke(lambda command, **kwargs: self.result(command))
+        bundle, groups = runner.verify_reconciliation(self.run, self.out)
+        self.assertEqual((bundle["findings"], groups), ([], []))
+
+    def test_reconciliation_has_readonly_source_and_no_peer_reports(self):
+        scratch = self.work / "scratch"
+        source = self.work / runner.RECONCILER
+        policy = runner.settings(self.root, source, self.work, self.out, self.private, self.work / "trusted-plugin", scratch)
+        fs = policy["sandbox"]["filesystem"]
+        self.assertIn(str(source), fs["denyWrite"])
+        self.assertNotIn(str(source), fs["allowWrite"])
+        self.assertNotIn(str(self.out / "findings.json"), fs["denyRead"])
+        for name in runner.SKILLS:
+            self.assertIn(str(self.out / f"{name}.md"), fs["denyRead"])
+            self.assertIn(str(self.work / "claude" / name), fs["denyRead"])
+        self.assertIn(str(self.out / "receipt.json"), fs["denyRead"])
+        self.assertIn(str(self.private), fs["denyRead"])
 
     def test_incomplete_core_never_starts_specialists(self):
         calls = []
