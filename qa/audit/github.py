@@ -12,6 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import Request
 
 import runner
+import findings
 
 REPOSITORY = "tachyon-zcash/ragu"
 CHECK = "ragu-audit/completed"
@@ -180,22 +181,47 @@ def summary(run, state, out=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", "", f"Head: `{run['head']}` · Base: `{run['base']}`", "",
              f"Model: `{run['model']}` · Effort: `{run['effort']}`", "", f"[Workflow and complete reports]({run['url']})", ""]
     if state == "running":
-        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel. This comment will be updated."]
+        lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated."]
     else:
-        names = []
+        names, bundle, groups = [], None, None
         if out is not None:
             try:
-                names = [phase["skill"] for phase in runner.verify(run, out, partial=True)["phases"]]
+                bundle = runner.candidates(run, out, partial=True)
+                names = [review["reviewer"] for review in bundle["reviews"]]
             except (OSError, ValueError, KeyError, TypeError):
                 pass
-        lines += [f"**{len(names)}/4 verified passes completed.** Findings and review summaries from completed passes follow.", ""]
-        for skill in names:
-            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), ""]
-            if runner.read_json(out / f"{skill}.json").get("permission_denials"):
-                lines += ["Some tool requests were blocked. The reviewer reported its work complete; assess its stated limitations.", ""]
-            lines += ["</details>", ""]
+        lines += [f"**{len(names)}/4 verified passes completed.**", ""]
+        if names == list(runner.SKILLS):
+            try:
+                bundle, groups = runner.verify_reconciliation(run, out)
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
+        if bundle is not None:
+            if groups is None and bundle["findings"]:
+                notice = ("Combined reviewer findings. Additional source checking did not complete; disputed claims remain visible."
+                          if len(names) == 4 else "Combined findings from the completed reviews.")
+                lines += [notice, ""]
+            short = findings.shortlist(bundle, groups)
+            if len("\n".join(short).encode()) > 54000:
+                short = findings.shortlist(bundle, groups, compact=True)
+            lines += short
+            if any(runner.read_json(out / f"{skill}.json").get("permission_denials") for skill in names):
+                lines += ["Some tool requests were blocked; see the full reports' limitations.", ""]
+        else:
+            lines += ["No verified findings are available.", ""]
+        if names:
+            links = []
+            for skill in names:
+                variable = "RAGU_AUDIT_REPORT_" + skill.upper().replace("-", "_")
+                url = os.environ.get(variable, "")
+                expected = rf"https://github\.com/{REPOSITORY}/actions/runs/{run['run_id']}/artifacts/[1-9][0-9]*"
+                if not re.fullmatch(expected, url):
+                    url = run["url"]
+                links.append(f"[{skill}]({url})")
+            lines += ["**Full reviews:** " + " · ".join(links), "",
+                      "Original reviewer reports and reconciliation decisions are retained in the workflow artifacts.", ""]
         if state == "completed":
-            lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
+            lines += ["Maintainers assess findings and approve changes."]
         elif state == "stale":
             lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the revisions above. Post `/ragu-audit` on the current PR revision to review again."]
         elif state == "cancelled":

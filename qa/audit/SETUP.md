@@ -11,7 +11,8 @@ After this workflow lands on `main`:
    Keep these credentials out of repository and organization-wide secrets.
 3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
    `RAGU_AUDIT_MODEL=claude-opus-5-5`, and `RAGU_AUDIT_EFFORT=xhigh`.
-   The same model and effort apply to all four passes and their subagents.
+   The same model and effort apply to all four passes, their subagents, and
+   reconciliation.
    Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true` and post exactly `/ragu-audit` as a new PR
    conversation comment. The command requires live write, maintain, or admin
@@ -26,8 +27,13 @@ After this workflow lands on `main`:
    before merging" to enforce review against the current base. Keep the existing
    CI and approval rules.
 
-One App-owned comment contains the four reports; complete reports and native
-Claude results are also retained as workflow artifacts for 30 days. Missing or
+One App-owned comment shows a combined **Must-fix** and **Suggestions** shortlist,
+with locations, evidence, next steps, and reviewer attribution. All defects and
+disputed findings remain visible, with at most three additional suggestions.
+Each reviewer has a link to its original report; the workflow's complete bundle
+also includes structured findings, native results, and reconciliation decisions.
+Artifacts are retained for 30 days; individual report links require GitHub login
+and fall back to the workflow when an auxiliary upload fails. Missing or
 failed native runs, missing reports, modified source, and moved revisions fail
 the completion check. Checks attach to commits; identical snapshots across PRs
 can share a result, while each invocation updates its own PR comment. Findings
@@ -56,6 +62,32 @@ running the same checks four times. Each specialist defaults to one third of
 the runner's logical CPUs for Cargo compilation, with a minimum of one build
 job; the core pass uses the full CPU count. Per-pass durations are recorded in the
 receipt, with native token usage and cost in each Claude result artifact.
+
+Reviewers return structured findings with source locations, cause, evidence,
+impact, and proposed correction. The controller immediately combines these into
+one summary, merging exact matching causes/corrections at the same locations and
+preserving attribution. Different wording remains separate until source
+adjudication. Disputed findings remain visible as suggestions, with the
+counterevidence. This summary needs no additional model call and is saved as
+`combined.md` before optional refinement. Specialists can support or challenge core
+finding IDs. Once all four finish, a read-only reconciliation gets the normalized
+findings and a separate checkout of the same pinned source. It merges findings
+only when cause and correction agree, checks disputed claims against source and
+existing tests, and records reasons for all dispositions, including dismissed
+claims. Reviewer consensus alone is not evidence. PR descriptions and discussion
+are not supplied. Unmeasured performance questions remain suggestions; when
+measurements were not assessed the report says so.
+
+Reconciliation has a three-minute deadline and a 20-turn limit, with only the
+native Read tool: no shell, edits, tests, builds, or benchmarks. It must account
+for every original finding ID exactly once. Its separate receipt binds the
+input bundle and final report; it cannot modify the four-review completion
+receipt. Failure, timeout, invalid output, or damaged reconciliation artifacts
+publish the combined summary derived from all verified reviewers, with a
+notice that additional source checking did not finish. There is
+no extra model call when all reviewers return zero findings. Reconciliation does
+not determine the completion gate. Deleting the invoking comment also stops
+reconciliation; publication still marks the invocation cancelled.
 
 Each pass has a 55-minute deadline and emits a safe progress heartbeat every
 30 seconds in the workflow log (elapsed time, event count, and fixed tool names;
@@ -99,8 +131,8 @@ The controller prepares the Cargo home, executable directory, and readable
 configuration files before starting Claude; the protected paths stay unwritable
 to review tools. Ordinary Cargo
 commands use the fixed network allowlist; per-command domain arguments cannot
-widen it. The native Read tool can inspect this prepared Cargo home, including
-registry and Git dependency source; native edits to the cache remain denied.
+widen it. The native Read tool can inspect trusted skill references and this prepared
+Cargo home, including registry and Git dependency source; native edits to the cache remain denied.
 Claude's saved tool output lives separately from the credential
 directory. Review tools can read that output but cannot modify CLI state.
 Incomplete comments name unfinished passes and fixed diagnostics without
