@@ -106,8 +106,19 @@ detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
 
+The queue passes public request identity through a job output and keeps the
+control artifact as a fallback. Both model and publisher jobs validate the
+workflow, revision, App, and invocation identity before using it. A failed
+control-file write or artifact upload cannot by itself strand a queued check.
+Individual reviewer archives also contain the native result and shared receipt,
+so the publisher can recover verified reviews if the combined archive fails.
+Artifact transfers have one-minute step limits, with time reserved for status
+publication. Failure of both report channels still fails the completion gate.
+No credentials travel through these outputs or control files.
+
 Controller reads and repeated updates retry transient GitHub server or
-connection failures up to three times with bounded backoff. Check/comment
+connection failures, including interrupted HTTP responses, up to three times
+with bounded backoff. Check/comment
 creation is not retried automatically; a lost response is recovered only when
 the exact App-owned check or comment can be confirmed. Persistent publication failures keep the gate unsuccessful and
 attempt to replace the running comment with verified reports and an explicit
@@ -136,7 +147,9 @@ job has no App key; publisher jobs never execute PR code. Required Rust
 toolchains are installed before the model key is made available. Tests can
 write scratch files and Cargo dependencies, but no caches are saved afterward.
 The controller prepares the Cargo home, executable directory, and readable
-configuration files before starting Claude; the protected paths stay unwritable
+configuration files before starting Claude. Persistent `.mcp.json` and `.claude`
+guards in the shared Cargo home avoid temporary guard-path races between
+concurrent Linux sandboxes; the protected paths stay unwritable
 to review tools. Ordinary Cargo
 commands use the fixed network allowlist; per-command domain arguments cannot
 widen it. The native Read tool can inspect trusted skill references and this prepared

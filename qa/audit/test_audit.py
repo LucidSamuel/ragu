@@ -150,6 +150,62 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(len(self.api.checks), 1)
         self.assertIn("audit: running", self.api.comments[0]["body"])
 
+    def test_job_output_restores_control_without_artifacts_or_network(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        path = self.out / "restored/control/run.json"
+        with patch.dict(os.environ, {"RAGU_AUDIT_CONTROL": json.dumps(run)}), \
+             patch.object(github, "GitHub", side_effect=AssertionError("restore must be offline")), \
+             patch("sys.argv", ["github.py", "restore", "--run", str(path)]):
+            github.main()
+        self.assertEqual(runner.read_json(path), run)
+        self.reports(run)
+        github.publish(self.api, runner.read_json(path), self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_queue_retains_control_when_the_optional_control_file_cannot_be_written(self):
+        output_path = self.out / "outputs"
+        control_path = self.out / "control/run.json"
+        with patch.dict(os.environ, {"GITHUB_OUTPUT": str(output_path)}), \
+             patch.object(github, "GitHub", return_value=self.api), \
+             patch.object(runner, "write_json", side_effect=OSError("disk unavailable")), \
+             patch("sys.argv", ["github.py", "queue", "--pr", "9", "--head", HEAD,
+                                "--comment-id", "12", "--run", str(control_path)]):
+            github.main()
+        values = dict(line.split("=", 1) for line in output_path.read_text().splitlines())
+        run = json.loads(values["control"])
+        github.validate_identity(run)
+        self.assertEqual(values["head"], HEAD)
+        self.assertEqual(run["check_id"], self.api.checks[0]["id"])
+        self.assertFalse(control_path.exists())
+        self.assertEqual(self.api.checks[0]["status"], "in_progress")
+
+    def test_restore_rejects_mismatched_control_before_writing(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        for key, value in (("run_id", run["run_id"] + 1), ("attempt", 2), ("repository", "other/repo"),
+                           ("configuration", "c" * 40), ("app_id", 999), ("head", "main"), ("check_id", 0)):
+            with self.subTest(key=key):
+                path = self.out / "rejected/control.json"
+                with patch.dict(os.environ, {"RAGU_AUDIT_CONTROL": json.dumps({**run, key: value})}), \
+                     patch.object(github, "GitHub", side_effect=AssertionError("restore must be offline")), \
+                     patch("sys.argv", ["github.py", "restore", "--run", str(path)]), self.assertRaises(ValueError):
+                    github.main()
+                self.assertFalse(path.exists())
+
+    def test_artifact_control_remains_a_valid_fallback(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        path = self.out / "artifact/run.json"
+        path.parent.mkdir()
+        runner.write_json(path, run)
+        with patch.dict(os.environ, {"RAGU_AUDIT_CONTROL": "not valid JSON"}), \
+             patch("sys.argv", ["github.py", "restore", "--run", str(path)]), self.assertRaises(ValueError):
+            github.main()
+        self.assertEqual(runner.read_json(path), run)
+        with patch.dict(os.environ, {"RAGU_AUDIT_CONTROL": ""}), \
+             patch.object(github, "GitHub", side_effect=AssertionError("restore must be offline")), \
+             patch("sys.argv", ["github.py", "restore", "--run", str(path)]):
+            github.main()
+        self.assertEqual(runner.read_json(path), run)
+
     def test_unrelated_comment_does_nothing(self):
         for body in ("please /ragu-audit", "/ragu-audit extra", "/ragu-audit-evil", " /ragu-audit", "/ragu-audit\n"):
             self.assertIsNone(github.request(self.api, self.event(body), "issue_comment"))
@@ -653,6 +709,26 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn("Additional source checking did not complete", text)
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
+    def test_individual_archives_recover_the_complete_review_without_reconciliation(self):
+        run = github.queue(self.api, 9, HEAD, 12)
+        result = native("## Original review\n\n### Must-fix\nIncorrect result at src/lib.rs:1.")
+        result["structured_output"]["findings"] = [candidate()]
+        self.reports(run, {name: result for name in runner.SKILLS})
+        recovered = self.out / "recovered"
+        recovered.mkdir()
+        # Each independent archive carries its original MD, native result,
+        # and the same controller receipt; no combined archive is required.
+        for name in runner.SKILLS:
+            for filename in (name + ".md", name + ".json", "receipt.json"):
+                (recovered / filename).write_bytes((self.out / filename).read_bytes())
+        github.publish(self.api, run, recovered, "success")
+        body = self.api.comments[0]["body"]
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+        self.assertIn("4/4 reviews completed", body)
+        self.assertIn("Combined reviewer findings", body)
+        self.assertEqual(body.count("**Incorrect result**"), 1)
+        self.assertIn("General, Sean, Tal, Alex", body)
+
     def test_corrupt_optional_reconciliation_publishes_verified_fallback(self):
         run = github.queue(self.api, 9, HEAD)
         result = native()
@@ -767,6 +843,23 @@ class AuditTests(unittest.TestCase):
         self.assertTrue((home / "bin").is_dir())
         self.assertEqual((home / "config.toml").read_text(), '[net]\noffline = true\n')
         self.assertEqual((home / "config").read_text(), "")
+
+    def test_shared_cargo_sandbox_guards_are_persistent_and_protected(self):
+        home = (self.out / "cargo-guards").resolve()
+        home.mkdir()
+        original = '{\n "mcpServers": {}\n}\n'
+        (home / ".mcp.json").write_text(original)
+        with patch.dict(os.environ, {"CARGO_HOME": str(home)}):
+            runner.prepare_cargo(self.out)
+            identity = (home / ".mcp.json").stat().st_ino
+            runner.prepare_cargo(self.out)
+            policy = runner.settings(self.out / "root", self.out / "source", self.out / "work",
+                                     self.out / "reports", self.out / "private", self.out / "plugin", self.out / "scratch")
+        self.assertEqual((home / ".mcp.json").read_text(), original)
+        self.assertEqual((home / ".mcp.json").stat().st_ino, identity)
+        self.assertTrue((home / ".claude").is_dir())
+        for name in (".mcp.json", ".claude"):
+            self.assertIn(str(home / name), policy["sandbox"]["filesystem"]["denyWrite"])
 
     def test_sandbox_cannot_fall_back_or_write_control_paths(self):
         root, source, work, out, private, plugin = [self.out / name for name in ("root", "source", "work", "reports", "private", "plugin")]

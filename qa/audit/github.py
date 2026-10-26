@@ -320,7 +320,13 @@ def queue(api, value, expected_head=None, comment_id=None):
     return run
 
 
-def own_check(api, run):
+def validate_identity(run):
+    if not isinstance(run, dict):
+        raise ValueError("invalid run identity")
+    sha(run["head"])
+    sha(run["base"])
+    for key in ("pr", "run_id", "attempt", "check_id", "app_id"):
+        number(run[key])
     if run["repository"] != REPOSITORY or run["configuration"] != sha(os.environ["GITHUB_WORKFLOW_SHA"]):
         raise ValueError("run identity does not match the trusted controller")
     if str(run["run_id"]) != os.environ["GITHUB_RUN_ID"] or str(run["attempt"]) != os.environ["GITHUB_RUN_ATTEMPT"]:
@@ -328,6 +334,11 @@ def own_check(api, run):
     expected = scope(run) + f"{number(run['pr'])}:{number(run['run_id'])}:{number(run['attempt'])}"
     if run["external_id"] != expected or str(run["app_id"]) != os.environ["RAGU_AUDIT_APP_ID"]:
         raise ValueError("invalid check identity")
+
+
+def own_check(api, run):
+    validate_identity(run)
+    expected = run["external_id"]
     values = checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
     own = next((check for check in values if check["id"] == run["check_id"]), None)
     if own is None or own.get("external_id") != expected:
@@ -409,7 +420,7 @@ def publish(api, run, out, review_result):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("request", "queue", "publish"))
+    parser.add_argument("command", choices=("request", "queue", "restore", "publish"))
     parser.add_argument("--pr")
     parser.add_argument("--head", type=sha)
     parser.add_argument("--comment-id", type=number)
@@ -419,6 +430,17 @@ def main():
     args = parser.parse_args()
     if os.environ["GITHUB_REPOSITORY"] != REPOSITORY or os.environ["GITHUB_REF"] != "refs/heads/main":
         raise ValueError("audit controller only runs on Ragu main")
+    if args.command == "restore":
+        # Public invocation metadata travels as a job output, independently of
+        # artifact storage. The artifact remains a fallback if outputs are lost.
+        control = os.environ.get("RAGU_AUDIT_CONTROL", "")
+        if len(control) > 16384:
+            raise ValueError("run identity is too large")
+        run = json.loads(control) if control else runner.read_json(args.run)
+        validate_identity(run)
+        args.run.parent.mkdir(parents=True, exist_ok=True)
+        runner.write_json(args.run, run)
+        return
     api = GitHub()
     if args.command == "request":
         result = request(api, runner.read_json(os.environ["GITHUB_EVENT_PATH"]), os.environ["GITHUB_EVENT_NAME"])
@@ -428,9 +450,12 @@ def main():
         if args.head is None or args.comment_id is None:
             raise ValueError("queue requires the head and comment captured by the request job")
         run = queue(api, args.pr, args.head, args.comment_id)
-        args.run.parent.mkdir(parents=True, exist_ok=True)
-        runner.write_json(args.run, run)
-        output(head=run["head"])
+        output(head=run["head"], control=json.dumps(run, separators=(",", ":")))
+        try:
+            args.run.parent.mkdir(parents=True, exist_ok=True)
+            runner.write_json(args.run, run)
+        except OSError:
+            print("Control artifact unavailable; request identity is retained in job output", flush=True)
     else:
         publish(api, runner.read_json(args.run), args.out, args.review_result)
 

@@ -1,6 +1,7 @@
 """Exercise controller request retries without network access or real tokens."""
 
 import io
+from http.client import IncompleteRead
 import json
 import os
 import threading
@@ -15,6 +16,11 @@ import runner
 import test_audit
 
 
+class TruncatedResponse(io.BytesIO):
+    def read(self, *args):
+        raise IncompleteRead(b"UNTRUSTED_RESPONSE_CANARY", 32)
+
+
 class TransportTests(unittest.TestCase):
     def test_repeatable_requests_recover_from_transient_failures(self):
         for method in ("GET", "PATCH"):
@@ -26,6 +32,35 @@ class TransportTests(unittest.TestCase):
                     self.assertEqual(runner.github_response(request, timeout=10), b'{"ok":true}')
                 self.assertEqual(send.call_count, 2)
                 sleep.assert_called_once_with(1)
+
+    def test_truncated_response_reads_are_retried_and_persistent_failures_are_safe(self):
+        for method in ("GET", "PATCH", "POST"):
+            with self.subTest(method=method), \
+                 patch.object(runner, "urlopen", side_effect=[TruncatedResponse(), io.BytesIO(b'{"ok":true}')]) as send, \
+                 patch.object(runner.time, "sleep"):
+                request = Request("https://api.github.com", method=method)
+                if method == "POST":
+                    with self.assertRaises(OSError) as error:
+                        runner.github_response(request, timeout=10)
+                    self.assertNotIn("UNTRUSTED_RESPONSE_CANARY", str(error.exception))
+                    self.assertEqual(send.call_count, 1)
+                else:
+                    self.assertEqual(runner.github_response(request, timeout=10), b'{"ok":true}')
+                    self.assertEqual(send.call_count, 2)
+        with patch.object(runner, "urlopen", side_effect=lambda *args, **kwargs: TruncatedResponse()) as send, \
+             patch.object(runner.time, "sleep"), self.assertRaises(OSError):
+            runner.github_response(Request("https://api.github.com"), timeout=10)
+        self.assertEqual(send.call_count, runner.GITHUB_ATTEMPTS)
+
+    def test_deletion_monitor_survives_a_failed_truncated_response_lookup(self):
+        cancelled = threading.Event()
+        responses = [io.BytesIO(b'{}'), *[TruncatedResponse() for _ in range(runner.GITHUB_ATTEMPTS)],
+                     HTTPError("https://api.github.com", 404, "Not found", {}, None)]
+        with patch.dict(os.environ, {"GH_TOKEN": "dummy-read-only-token"}), \
+             patch.object(runner, "urlopen", side_effect=responses), \
+             patch.object(runner, "COMMENT_POLL_SECONDS", 0.01), patch.object(runner.time, "sleep"), \
+             runner.watch_comment({"comment_id": 12}, cancelled):
+            self.assertTrue(cancelled.wait(timeout=1), "transient response failure killed deletion monitoring")
 
     def test_creations_and_permanent_errors_are_not_retried(self):
         for method, code in (("POST", 503), ("GET", 404), ("GET", 403), ("GET", 429)):
@@ -64,31 +99,34 @@ class TransportTests(unittest.TestCase):
                 self.assertEqual(runner.github_delay(HTTPError("https://api.github.com", code, "error", headers, None), 15), expected)
 
     def test_real_controller_retries_without_losing_completed_reports(self):
-        for endpoint in ("comment", "check", "check_after_apply", "create_after_apply", "summary_after_apply"):
+        for endpoint in ("comment", "check", "check_after_apply", "create_after_apply", "summary_after_apply",
+                         "comment_truncated", "check_truncated", "create_truncated", "summary_truncated"):
             with self.subTest(endpoint=endpoint):
                 fixture = test_audit.AuditTests()
                 fixture.setUp()
                 try:
                     backend, injected = fixture.api, False
-                    enabled = endpoint in ("create_after_apply", "summary_after_apply")
+                    enabled = endpoint.startswith(("create_", "summary_"))
 
                     def send(request, timeout):
                         nonlocal injected
                         url = urlsplit(request.full_url)
                         path = url.path + ("?" + url.query if url.query else "")
                         method = request.get_method()
-                        if endpoint == "comment":
+                        if endpoint.startswith("comment"):
                             hit = path.endswith("/issues/comments/12") and method == "GET"
-                        elif endpoint == "create_after_apply":
+                        elif endpoint.startswith("create_"):
                             hit = path.endswith("/check-runs") and method == "POST"
-                        elif endpoint == "summary_after_apply":
+                        elif endpoint.startswith("summary_"):
                             hit = url.path.endswith("/comments") and method == "POST"
                         else:
                             hit = "/check-runs/" in path and method == "PATCH"
                         if enabled and hit and not injected:
                             injected = True
-                            if endpoint.endswith("after_apply"):
+                            if endpoint.endswith("after_apply") or (endpoint.endswith("truncated") and method != "GET"):
                                 backend.call(path, json.loads(request.data), method)
+                            if endpoint.endswith("truncated"):
+                                return TruncatedResponse()
                             raise HTTPError(request.full_url, 503, "Unavailable", {}, None)
                         if method == "GET" and "/commits/" in path:
                             value = {"check_runs": list(backend.pages(path, "check_runs"))}

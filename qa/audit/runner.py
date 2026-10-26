@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from http.client import HTTPException
 import hashlib
 import json
 import math
@@ -17,7 +18,7 @@ import sys
 import tempfile
 import threading
 import time
-from urllib.error import HTTPError, URLError
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import findings
@@ -108,12 +109,15 @@ def prepare_cargo(work):
     home = cargo_home(work)
     home.mkdir(parents=True, exist_ok=True)
     (home / "bin").mkdir(exist_ok=True)
+    (home / ".claude").mkdir(exist_ok=True)
     # Linux write protection uses unreadable placeholders for missing files.
     # Cargo probes both names, so provide readable empty configs beforehand.
-    for name in ("config", "config.toml"):
+    # Claude also protects these configuration paths. Keep them persistent in
+    # the shared Cargo home rather than racing temporary per-session guards.
+    for name, content in (("config", ""), ("config.toml", ""), (".mcp.json", '{"mcpServers":{}}\n')):
         try:
-            with (home / name).open("x"):
-                pass
+            with (home / name).open("x") as stream:
+                stream.write(content)
         except FileExistsError:
             pass
 
@@ -149,7 +153,7 @@ def settings(root, source, work, out, private, plugin, scratch):
     protected += [work / skill / ".git" for skill in ROLES]
     protected += [work / skill / ".claude" for skill in ROLES]
     cargo = cargo_home(work)
-    protected += [cargo / name for name in ("bin", "config", "config.toml")]
+    protected += [cargo / name for name in ("bin", "config", "config.toml", ".mcp.json", ".claude")]
     readonly = source.name == RECONCILER
     if readonly:
         protected += [source, cargo]
@@ -367,8 +371,13 @@ def github_response(request, *, timeout):
             if delay > 10:
                 raise
             error.close()
-        except (URLError, TimeoutError, ConnectionError):
+        except (OSError, HTTPException) as error:
             if attempt + 1 == attempts:
+                # IncompleteRead and BadStatusLine are not OSErrors. Keep the
+                # monitor alive and let publisher cleanup handle failed HTTP
+                # reads without exposing partial response data.
+                if isinstance(error, HTTPException):
+                    raise OSError("GitHub response was interrupted") from None
                 raise
             delay = 2**attempt
         print("Transient GitHub request failure; retrying", flush=True)

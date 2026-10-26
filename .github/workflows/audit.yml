@@ -38,6 +38,8 @@ jobs:
         run: python3 qa/audit/github.py request
 
   queue:
+    outputs:
+      control: ${{ steps.queue.outputs.control }}
     needs: request
     if: needs.request.outputs.pr != ''
     runs-on: ubuntu-24.04
@@ -75,6 +77,8 @@ jobs:
             --run "$RUNNER_TEMP/audit-work/control/run.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: steps.queue.outputs.head != ''
+        continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-control-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.request.outputs.pr }}
           path: ${{ runner.temp }}/audit-work/control/run.json
@@ -107,10 +111,20 @@ jobs:
           ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Restore the authorized request from job output
+        id: control
+        continue-on-error: true
+        env:
+          RAGU_AUDIT_CONTROL: ${{ needs.queue.outputs.control }}
+        run: python3 qa/audit/github.py restore --run "$RUNNER_TEMP/audit-work/control/run.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.control.outcome != 'success'
+        timeout-minutes: 1
         with:
           name: ragu-audit-control-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.request.outputs.pr }}
           path: ${{ runner.temp }}/audit-work/control
+      - name: Verify the restored request identity
+        run: python3 qa/audit/github.py restore --run "$RUNNER_TEMP/audit-work/control/run.json"
       - name: Install the pinned Claude Code and Linux sandbox dependencies
         run: bash qa/audit/install.sh
       - id: toolchain
@@ -150,6 +164,8 @@ jobs:
         run: rm -rf "$RUNNER_TEMP/audit-private"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
+        continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-reports-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/audit-reports
@@ -159,44 +175,63 @@ jobs:
         id: code-report
         if: always()
         continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-code-review-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/audit-reports/code-review.md
+          path: |
+            ${{ runner.temp }}/audit-reports/code-review.md
+            ${{ runner.temp }}/audit-reports/code-review.json
+            ${{ runner.temp }}/audit-reports/receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         id: sean-report
         if: always()
         continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-sean-review-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/audit-reports/sean-review.md
+          path: |
+            ${{ runner.temp }}/audit-reports/sean-review.md
+            ${{ runner.temp }}/audit-reports/sean-review.json
+            ${{ runner.temp }}/audit-reports/receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         id: tal-report
         if: always()
         continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-tal-review-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/audit-reports/tal-review.md
+          path: |
+            ${{ runner.temp }}/audit-reports/tal-review.md
+            ${{ runner.temp }}/audit-reports/tal-review.json
+            ${{ runner.temp }}/audit-reports/receipt.json
           if-no-files-found: ignore
           retention-days: 30
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         id: alex-report
         if: always()
         continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-alex-review-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/audit-reports/alex-review.md
+          path: |
+            ${{ runner.temp }}/audit-reports/alex-review.md
+            ${{ runner.temp }}/audit-reports/alex-review.json
+            ${{ runner.temp }}/audit-reports/receipt.json
           if-no-files-found: ignore
           retention-days: 30
 
   publish:
     needs: [request, queue, review]
-    if: always() && needs.queue.result == 'success' && needs.request.outputs.pr != ''
+    # A queued check still needs a terminal status if later queue cleanup fails.
+    if: >-
+      always() && needs.request.outputs.pr != '' &&
+      (needs.queue.result == 'success' || needs.queue.outputs.control != '')
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     environment: ragu-audit-publisher
     concurrency:
       group: ragu-audit-publisher
@@ -207,14 +242,35 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
+      - name: Restore the authorized request from job output
+        id: control
+        continue-on-error: true
+        env:
+          RAGU_AUDIT_CONTROL: ${{ needs.queue.outputs.control }}
+        run: python3 qa/audit/github.py restore --run "$RUNNER_TEMP/audit-control/run.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.control.outcome != 'success'
+        timeout-minutes: 1
         with:
           name: ragu-audit-control-${{ github.run_id }}-${{ github.run_attempt }}-${{ needs.request.outputs.pr }}
           path: ${{ runner.temp }}/audit-control
+      - name: Verify the restored request identity
+        run: python3 qa/audit/github.py restore --run "$RUNNER_TEMP/audit-control/run.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        id: reports
         continue-on-error: true
+        timeout-minutes: 1
         with:
           name: ragu-audit-reports-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/audit-reports
+      - name: Recover reports from individual reviewer archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: steps.reports.outcome != 'success'
+        continue-on-error: true
+        timeout-minutes: 1
+        with:
+          pattern: ragu-audit-*-review-${{ github.run_id }}-${{ github.run_attempt }}
+          merge-multiple: true
           path: ${{ runner.temp }}/audit-reports
       - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         id: app
