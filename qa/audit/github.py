@@ -8,7 +8,8 @@ import json
 import os
 from pathlib import Path
 import re
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.request import Request
 
 import runner
 
@@ -21,6 +22,23 @@ class StaleReview(ValueError):
     """A valid invocation whose snapshot or place in the queue has changed."""
 
 
+class CancelledReview(StaleReview):
+    """The maintainer removed the comment that invoked this review."""
+
+
+def command_present(api, run):
+    if "comment_id" not in run:
+        return
+    try:
+        comment = api.call(f"/repos/{REPOSITORY}/issues/comments/{number(run['comment_id'])}")
+    except HTTPError as error:
+        if error.code == 404:
+            raise CancelledReview("trigger comment deleted") from None
+        raise
+    if comment["issue_url"] != f"https://api.github.com/repos/{REPOSITORY}/issues/{number(run['pr'])}":
+        raise ValueError("trigger comment belongs to a different PR")
+
+
 class GitHub:
     def call(self, path, data=None, method=None):
         request = Request(
@@ -29,8 +47,7 @@ class GitHub:
             method=method,
             headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
-        with urlopen(request, timeout=45) as response:
-            return json.load(response)
+        return json.loads(runner.github_response(request, timeout=45))
 
     def pages(self, path, key=None):
         for page in range(1, 21):
@@ -173,11 +190,18 @@ def summary(run, state, out=None):
                 pass
         lines += [f"**{len(names)}/4 verified passes completed.** Findings and review summaries from completed passes follow.", ""]
         for skill in names:
-            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), "", "</details>", ""]
+            lines += [f"<details><summary>{skill}</summary>", "", excerpt((out / f"{skill}.md").read_text()), ""]
+            if runner.read_json(out / f"{skill}.json").get("permission_denials"):
+                lines += ["Some tool requests were blocked. The reviewer reported its work complete; assess its stated limitations.", ""]
+            lines += ["</details>", ""]
         if state == "completed":
             lines += ["All four review passes completed. Maintainers assess findings and approve changes."]
         elif state == "stale":
             lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the revisions above. Post `/ragu-audit` on the current PR revision to review again."]
+        elif state == "cancelled":
+            lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again."]
+        elif state == "publication failed":
+            lines += ["The controller could not verify live status or confirm publication. Completion was not granted. Verified reports above remain available; inspect the workflow before retrying."]
         else:
             if out is not None:
                 lines += [incomplete_details(run, out), ""]
@@ -192,12 +216,20 @@ def upsert(api, run, check, state, *, out=None, only_current=False):
         return  # An older invocation must never replace a newer summary.
     body = summary(run, state, out)
     path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
-    result = api.call(path, {"body": body}, "PATCH" if existing else "POST")
+    try:
+        result = api.call(path, {"body": body}, "PATCH" if existing else "POST")
+    except (OSError, ValueError):
+        # A creation may have succeeded before its response was lost. Confirm
+        # the exact App-owned body instead of creating a duplicate comment.
+        result = next((comment for comment in api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
+                       if owns_comment(comment, check["app"]) and comment["body"] == body), None)
+        if result is None:
+            raise
     if not owns_comment(result, check["app"]) or result["body"] != body:
         raise ValueError("summary publication was not confirmed")
 
 
-def queue(api, value, expected_head=None):
+def queue(api, value, expected_head=None, comment_id=None):
     target = pr(api, value)
     if expected_head is not None and target["head"]["sha"] != sha(expected_head):
         raise ValueError("PR head moved since the request; start a fresh run")
@@ -207,16 +239,27 @@ def queue(api, value, expected_head=None):
     run = {"repository": REPOSITORY, "pr": number(value), "head": target["head"]["sha"], "base": target["base"]["sha"],
            "configuration": sha(os.environ["GITHUB_WORKFLOW_SHA"]), "model": model, "effort": effort,
            "run_id": number(os.environ["GITHUB_RUN_ID"]), "attempt": number(os.environ["GITHUB_RUN_ATTEMPT"])}
+    if comment_id is not None:
+        run["comment_id"] = number(comment_id)
+        command_present(api, run)
     if run["configuration"] != run["base"]:
         raise ValueError("main moved since this workflow was started; start a fresh run")
     run["url"] = f"https://github.com/{REPOSITORY}/actions/runs/{run['run_id']}"
     prefix = scope(run)
     run["external_id"] = prefix + f"{run['pr']}:{run['run_id']}:{run['attempt']}"
-    check = api.call(f"/repos/{REPOSITORY}/check-runs", {
+    data = {
         "name": CHECK, "head_sha": run["head"], "external_id": run["external_id"], "details_url": run["url"],
         "status": "in_progress",
         "output": {"title": "Review running", "summary": "Four skill reviews must finish for this exact head and base. Invoke with /ragu-audit."},
-    }, "POST")
+    }
+    try:
+        check = api.call(f"/repos/{REPOSITORY}/check-runs", data, "POST")
+    except (OSError, ValueError):
+        matches = [check for check in checks(api, run["head"], os.environ["RAGU_AUDIT_APP_ID"])
+                   if check.get("external_id") == run["external_id"]]
+        if len(matches) != 1:
+            raise
+        check = matches[0]
     if str(check["app"]["id"]) != os.environ["RAGU_AUDIT_APP_ID"] or check["head_sha"] != run["head"]:
         raise ValueError("check was not published by the configured App")
     run["check_id"] = check["id"]
@@ -224,7 +267,7 @@ def queue(api, value, expected_head=None):
     try:
         upsert(api, run, check, "running")
     except (OSError, ValueError):
-        finish_check(api, run, False, "Summary publication failed")
+        publication_failure(api, run, check)
         raise
     return run
 
@@ -246,6 +289,7 @@ def own_check(api, run):
 
 def guard(api, run):
     own, values = own_check(api, run)
+    command_present(api, run)
     try:
         target = pr(api, run["pr"])
     except ValueError as error:
@@ -261,13 +305,22 @@ def guard(api, run):
     return own
 
 
-def finish_check(api, run, success, title):
+def finish_check(api, run, success, title, *, cancelled=False):
     api.call(f"/repos/{REPOSITORY}/check-runs/{run['check_id']}", {
-        "status": "completed", "conclusion": "success" if success else "failure",
+        "status": "completed", "conclusion": "cancelled" if cancelled else "success" if success else "failure",
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "output": {"title": title,
                    "summary": f"Reviewed head {run['head']} against base {run['base']}. Full findings and validation limits: {run['url']}"},
     }, "PATCH")
+
+
+def publication_failure(api, run, check, out=None):
+    try:
+        upsert(api, run, check, "publication failed", out=out, only_current=True)
+    except (OSError, ValueError, KeyError, TypeError):
+        print("Could not publish terminal summary; see workflow", flush=True)
+    finally:
+        finish_check(api, run, False, "Summary publication failed")
 
 
 def publish(api, run, out, review_result):
@@ -286,6 +339,13 @@ def publish(api, run, out, review_result):
             print("Review incomplete; see verified phase reports and diagnostics", flush=True)
         upsert(api, run, check, "completed" if success else "incomplete", out=out)
         guard(api, run)  # Recheck after reading artifacts and publishing.
+        finish_check(api, run, success, "Four skill reviews completed" if success else "Review incomplete")
+    except CancelledReview:
+        try:
+            upsert(api, run, check, "cancelled", out=out, only_current=True)
+        finally:
+            finish_check(api, run, False, "Review cancelled: command comment deleted", cancelled=True)
+        raise
     except StaleReview:
         try:
             upsert(api, run, check, "stale", out=out, only_current=True)
@@ -293,9 +353,8 @@ def publish(api, run, out, review_result):
             finish_check(api, run, False, "Review stale; invoke again on the current revision")
         raise
     except (OSError, ValueError, KeyError, TypeError):
-        finish_check(api, run, False, "Summary publication failed")
+        publication_failure(api, run, check, out)
         raise
-    finish_check(api, run, success, "Four skill reviews completed" if success else "Review incomplete")
     if not success:
         raise ValueError("audit did not complete")
 
@@ -305,6 +364,7 @@ def main():
     parser.add_argument("command", choices=("request", "queue", "publish"))
     parser.add_argument("--pr")
     parser.add_argument("--head", type=sha)
+    parser.add_argument("--comment-id", type=number)
     parser.add_argument("--run", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--review-result")
@@ -317,9 +377,9 @@ def main():
         if result:
             output(pr=result[0], head=result[1])
     elif args.command == "queue":
-        if args.head is None:
-            raise ValueError("queue requires the head captured by the request job")
-        run = queue(api, args.pr, args.head)
+        if args.head is None or args.comment_id is None:
+            raise ValueError("queue requires the head and comment captured by the request job")
+        run = queue(api, args.pr, args.head, args.comment_id)
         args.run.parent.mkdir(parents=True, exist_ok=True)
         runner.write_json(args.run, run)
         output(head=run["head"])

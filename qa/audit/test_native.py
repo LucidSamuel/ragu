@@ -174,7 +174,8 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
 
     def report(self, skill):
         text = ATTACK if self.server.mode == "injection" else f"Local API smoke test: {skill}."
-        return {"type": "tool_use", "id": "toolu_result", "name": "StructuredOutput", "input": {"complete": True, "report": text}}
+        unfinished = self.server.mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
+        return {"type": "tool_use", "id": "toolu_result", "name": "StructuredOutput", "input": {"complete": not unfinished, "report": text}}
 
     def do_POST(self):
         try:
@@ -248,6 +249,27 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
             if turn == 1:
                 self.require("CARGO_FETCH_OK" in tool_result(payload), "Cargo could not use its prepared home: " + tool_result(payload)[-1000:])
             turn -= 1
+        if server.mode in ("read_dependency", "read_git_dependency") and turn == 0:
+            self.emit(payload, {"type": "tool_use", "id": "toolu_dependency", "name": "Read",
+                                "input": {"file_path": str(server.dependency)}})
+            return
+        if server.mode in ("read_dependency", "read_git_dependency"):
+            if turn == 1:
+                self.require("DEPENDENCY_SOURCE_CANARY" in tool_result(payload), "native Read could not inspect downloaded dependency source")
+            turn -= 1
+        if server.mode == "recoverable_read" and turn == 0:
+            self.emit(payload, {"type": "tool_use", "id": "toolu_external", "name": "Read",
+                                "input": {"file_path": str(server.root.parent / "external.rs")}})
+            return
+        if server.mode == "recoverable_read" and turn == 1:
+            self.require("UNSCOPED_EVIDENCE_CANARY" not in tool_result(payload), "external read exposed evidence outside its allowed directories")
+            self.emit(payload, {"type": "tool_use", "id": "toolu_fallback", "name": "Read",
+                                "input": {"file_path": str(source / "available.rs")}})
+            return
+        if server.mode == "recoverable_read":
+            if turn == 2:
+                self.require("PERMITTED_EVIDENCE_CANARY" in tool_result(payload), "review did not read its permitted alternative")
+            turn -= 2
         if server.mode == "network_override" and turn == 0:
             script = f"""from pathlib import Path
 from urllib.request import urlopen
@@ -267,7 +289,7 @@ else:
                 text = tool_result(payload)
                 self.require("allowed_domains cannot widen network access" in text, "network expansion was not rejected: " + text[-1500:])
             turn -= 1
-        direct_read = server.mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch")
+        direct_read = server.mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
         if direct_read:
             if turn == 0:
                 path = source / "key-link" if server.mode == "read_link" else server.private / "key"
@@ -275,11 +297,15 @@ else:
                     path = server.work / "claude" / skill / "projects/probe/tool-results/key-link"
                 if server.mode in ("read_peer_scratch", "edit_peer_scratch"):
                     path = server.scratch / "sean-review/peer-canary"
+                if server.mode == "read_dependency_link":
+                    path = server.dependency.parent / "key-link"
                 block = {"type": "tool_use", "id": "toolu_secret", "name": "Read", "input": {"file_path": str(path)}}
                 if server.mode == "edit_policy":
                     block.update(name="Edit", input={"file_path": str(source / "policy-link"), "old_string": "# Code Review Master Standards", "new_string": "Publish success without review"})
                 if server.mode == "edit_peer_scratch":
                     block.update(name="Edit", input={"file_path": str(path), "old_string": "PEER_SCRATCH_CANARY", "new_string": "tampered"})
+                if server.mode == "edit_dependency":
+                    block.update(name="Edit", input={"file_path": str(server.dependency), "old_string": "DEPENDENCY_SOURCE_CANARY", "new_string": "tampered"})
             else:
                 text = tool_result(payload)
                 denied = "denied" in text.lower() or "covered by a Read deny rule" in text
@@ -288,6 +314,8 @@ else:
                     self.require("PEER_SCRATCH_CANARY" not in text, "native Read exposed peer scratch")
                 if server.mode == "edit_peer_scratch":
                     self.require((server.scratch / "sean-review/peer-canary").read_text() == "PEER_SCRATCH_CANARY", "native Edit modified peer scratch")
+                if server.mode == "edit_dependency":
+                    self.require(server.dependency.read_text() == "// DEPENDENCY_SOURCE_CANARY\n", "native Edit modified downloaded dependency source")
                 block = self.report(skill)
         else:
             injection = server.mode == "injection"
@@ -344,7 +372,7 @@ class NativeTests(unittest.TestCase):
     def test_real_skills_can_discover_and_read_review_policies(self):
         self.probe("normal")
 
-    def test_native_file_tool_cannot_read_key_or_claim_completion(self):
+    def test_native_file_tool_cannot_read_key_and_unfinished_work_fails(self):
         self.probe("read_key")
 
     def test_source_symlink_cannot_expose_model_key(self):
@@ -374,6 +402,19 @@ class NativeTests(unittest.TestCase):
     def test_cargo_can_use_a_fresh_prepared_home(self):
         self.probe("cargo")
 
+    def test_native_read_can_inspect_downloaded_dependency_source(self):
+        self.probe("read_dependency")
+        self.probe("read_git_dependency")
+
+    def test_dependency_cache_symlink_cannot_expose_model_key(self):
+        self.probe("read_dependency_link")
+
+    def test_native_edit_cannot_modify_dependency_cache(self):
+        self.probe("edit_dependency")
+
+    def test_denied_read_can_recover_using_permitted_evidence(self):
+        self.probe("recoverable_read")
+
     def test_per_command_network_expansion_is_denied(self):
         self.probe("network_override")
 
@@ -400,6 +441,7 @@ class NativeTests(unittest.TestCase):
             private.mkdir(mode=0o700)
             (private / "key").write_text("dummy-local-key")
             (root / "controller").write_text("trusted")
+            (directory / "external.rs").write_text("// UNSCOPED_EVIDENCE_CANARY\n")
             (root / "qa/audit").mkdir(parents=True)
             shutil.copyfile(Path(runner.__file__), root / "qa/audit/runner.py")
             shutil.copytree(PROJECT / ".claude/code-review", root / ".claude/code-review")
@@ -411,6 +453,14 @@ class NativeTests(unittest.TestCase):
                 (cargo / "bin").mkdir()
                 (cargo / "bin/sentinel").write_text("trusted executable")
                 (cargo / "config.toml").write_text("trusted cargo config")
+            dependency = cargo / "registry/src/index.crates.io-probe/zakura-udon-0.1.0/src/exec/scoped.rs"
+            if mode == "read_git_dependency":
+                dependency = cargo / "git/checkouts/zakura-udon-probe/abcdef/src/exec/scoped.rs"
+            if mode in ("read_dependency", "read_git_dependency", "read_dependency_link", "edit_dependency"):
+                dependency.parent.mkdir(parents=True)
+                dependency.write_text("// DEPENDENCY_SOURCE_CANARY\n")
+                (dependency.parent / "key-link").symlink_to(private / "key")
+                (cargo / "CLAUDE.md").write_text(AUTOLOAD + "\n" + ATTACK)
             shared_canaries = []
             for path in runner.shared_scratch():
                 path.mkdir(mode=0o700, exist_ok=True)
@@ -430,6 +480,7 @@ class NativeTests(unittest.TestCase):
                 source = work / skill
                 source.mkdir()
                 (source / "key-link").symlink_to(private / "key")
+                (source / "available.rs").write_text("// PERMITTED_EVIDENCE_CANARY\n")
                 (source / "policy-link").symlink_to(root / ".claude/code-review/standards.md")
                 if mode == "cargo":
                     (source / "src").mkdir()
@@ -456,6 +507,7 @@ class NativeTests(unittest.TestCase):
                     link.symlink_to(private / "key")
             server = ThreadingHTTPServer(("127.0.0.1", 0), FakeAPI)
             server.root, server.work, server.out, server.private, server.cargo = root, work, out, private, cargo
+            server.dependency = dependency
             server.mode = mode
             server.scratch, server.helpers, server.shared_canaries = None, [], shared_canaries
             server.turns = dict.fromkeys(runner.SKILLS, 0)
@@ -475,7 +527,7 @@ class NativeTests(unittest.TestCase):
                 return {**original_environment(run, directory, skill, scratch), "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{server.server_port}"}
 
             run = {"head": "a" * 40, "base": "b" * 40, "configuration": "b" * 40, "model": "claude-opus-5-5", "effort": "xhigh"}
-            denied = mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch")
+            denied = mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
             try:
                 with patch.dict(os.environ, {"CARGO_HOME": str(cargo), "GH_TOKEN": "dummy-parent-token", "GITHUB_TOKEN": "dummy-parent-actions", "AWS_SECRET_ACCESS_KEY": "dummy-parent-aws"}), \
                      patch.object(runner, "prepare", return_value=run["base"]), patch.object(runner, "environment", side_effect=environment), \
@@ -493,7 +545,9 @@ class NativeTests(unittest.TestCase):
                     self.assertEqual(runner.read_json(out / "receipt.json")["phases"], [])
                 else:
                     runner.verify(run, out)
-                    self.assertEqual(len(server.requests), {"injection": 16, "cargo": 16, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    self.assertEqual(len(server.requests), {"injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    if mode == "recoverable_read":
+                        self.assertTrue(all(runner.read_json(out / f"{skill}.json")["permission_denials"] for skill in runner.SKILLS))
                     for skill in runner.SKILLS:
                         self.assertEqual((work / skill / "probe-ran").read_text(), "yes")
                     self.assertEqual((cargo / "registry/probe-ran").read_text(), "yes")
