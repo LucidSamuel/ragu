@@ -66,6 +66,13 @@ detached children. Artifacts retain the final native result, bounded stderr
 with the model key redacted, and controller-owned per-pass status metadata.
 Raw event transcripts are not uploaded.
 
+Controller reads and repeated updates retry transient GitHub server or
+connection failures up to three times with bounded backoff. Check/comment
+creation is not retried automatically; a lost response is recovered only when
+the exact App-owned check or comment can be confirmed. Persistent publication failures keep the gate unsuccessful and
+attempt to replace the running comment with verified reports and an explicit
+publication-failed status.
+
 Each pass also has a short, private scratch directory, with peer scratch
 protected from reads and host writes. The short path prevents Claude from
 falling back to a shared Bash temp directory. On Linux, a per-reviewer mount

@@ -376,6 +376,27 @@ class AuditTests(unittest.TestCase):
         with patch.object(self.api, "call", side_effect=unavailable), self.assertRaises(HTTPError):
             github.publish(self.api, run, self.out, "success")
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertIn("audit: publication failed", self.api.comments[0]["body"])
+        self.assertIn("4/4 verified passes", self.api.comments[0]["body"])
+        self.assertIn("No findings.", self.api.comments[0]["body"])
+
+    def test_failed_final_check_update_does_not_leave_a_completed_summary(self):
+        run = github.queue(self.api, 9)
+        self.reports(run)
+        call = self.api.call
+        failed = False
+
+        def unavailable_once(path, data=None, method=None):
+            nonlocal failed
+            if "/check-runs/" in path and method == "PATCH" and data.get("conclusion") == "success" and not failed:
+                failed = True
+                raise HTTPError(path, 503, "Unavailable", {}, None)
+            return call(path, data, method)
+
+        with patch.object(self.api, "call", side_effect=unavailable_once), self.assertRaises(HTTPError):
+            github.publish(self.api, run, self.out, "success")
+        self.assertIn("audit: publication failed", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_old_attempt_cannot_overwrite_newer_summary_or_check(self):
         for move_head in (False, True):
