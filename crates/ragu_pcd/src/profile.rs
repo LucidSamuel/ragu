@@ -56,9 +56,11 @@
 //!   profile but Standard, so one beacon output and manifest digest never
 //!   give two profiles the same tags; they do not stand in for a description
 //!   of the profile's own.
-//! - TODO: enforce the profile-to-setup association in the application API, with
-//!   the expected setup fixed by the verifier. Rust profile types and unchecked
-//!   caller-supplied tags do not establish this association on their own.
+//! - The receiving application pins its expected manifest digest through
+//!   [`ApplicationBuilder::with_registry_tags`](crate::ApplicationBuilder::with_registry_tags).
+//!   Tags retain the manifest and profile they were derived for. The setup
+//!   procedure must authenticate the manifest and match its artifacts to the
+//!   actual code, steps and parameters.
 //! - TODO: carry that binding through proving, recursive verification and
 //!   ordinary and compressed verification. Registry-tag binding may supply the
 //!   separation; explicit profile transcript domains are an additional option.

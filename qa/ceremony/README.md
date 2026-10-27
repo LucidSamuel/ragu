@@ -126,6 +126,11 @@ To check a record, match the artifact digests to the setup, recompute `X`,
 verify the timestamp, check block `N + 100`'s hash independently, and repeat
 the tag derivation.
 
+Pin the approved `X` in the receiver's configuration. Pass it separately to
+`ApplicationBuilder::with_registry_tags(tags, &expected_manifest_digest)?`.
+The API rejects a different manifest and preserves the final derived tag values.
+Artifact and ceremony verification remain the setup procedure's responsibility.
+
 ## Example record
 
 Each `dry-run-<commit>/` directory is a flat record named after its source

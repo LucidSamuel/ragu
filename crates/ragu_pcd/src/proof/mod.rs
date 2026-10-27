@@ -36,6 +36,9 @@ pub(crate) mod recursive_propagation_tests;
 #[cfg(test)]
 #[path = "../../tests/backend_equivalence.rs"]
 mod backend_equivalence;
+#[cfg(test)]
+#[path = "../../tests/proof_shape.rs"]
+mod proof_shape_tests;
 // Mutable component access for the corruption vocabulary (see
 // `crate::fuzzing`). Its source lives with the rest of the fuzzing surface in
 // `src/fuzzing/`, but it is mounted here, as a child of `proof`, so it can
@@ -327,6 +330,36 @@ pub struct Proof<C: Cycle, R: Rank> {
 
     // Bridge commitment (cached, derived from the cached bridge rx)
     bridge_ab_commitment: Cached<C::NestedCurve>,
+}
+
+impl<C: ProfiledCycle, R: Rank> Proof<C, R> {
+    /// Whether the headers, polynomial vectors and commitment-cache vectors
+    /// have exactly the receiving profile's shape. Check before traversing
+    /// components so that missing entries cannot panic and trailing ones
+    /// cannot be ignored.
+    pub(crate) fn well_formed<const HEADER_SIZE: usize>(&self) -> bool {
+        let native_steps = native::NumSteps::<C::Profile>::len();
+        let nested_steps = nested::NumSteps::<C::Profile>::len();
+        let native_extension = C::Profile::native_extension();
+        let nested_extension = C::Profile::nested_extension();
+
+        self.left_header.len() == HEADER_SIZE
+            && self.right_header.len() == HEADER_SIZE
+            && self.native_bind_challenges_rxs.len() == native::NUM_BINDERS
+            && self.native_bind_challenges_commitments.len() == native::NUM_BINDERS
+            && self.native_endoscaling_step_rxs.len() == native_steps
+            && self.native_endoscaling_step_commitments.len() == native_steps
+            && self.native_extension_circuit_rxs.len() == native_extension.circuits.len()
+            && self.native_extension_circuit_commitments.len() == native_extension.circuits.len()
+            && self.native_extension_stage_rxs.len() == native_extension.stages
+            && self.native_extension_stage_commitments.len() == native_extension.stages
+            && self.nested_endoscaling_step_rxs.len() == nested_steps
+            && self.nested_endoscaling_step_commitments.len() == nested_steps
+            && self.nested_extension_circuit_rxs.len() == nested_extension.circuits.len()
+            && self.nested_extension_circuit_commitments.len() == nested_extension.circuits.len()
+            && self.nested_extension_stage_rxs.len() == nested_extension.stages
+            && self.nested_extension_stage_commitments.len() == nested_extension.stages
+    }
 }
 
 impl<C: Cycle, R: Rank> core::ops::Index<RxIndex> for Proof<C, R> {

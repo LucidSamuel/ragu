@@ -625,7 +625,7 @@ fn supplied_tags_reach_both_registries() -> Result<()> {
     let native = tags.native.value();
     let nested = tags.nested.value();
     let app = ApplicationBuilder::<Pasta, R, 4>::new()
-        .with_registry_tags(tags)
+        .with_registry_tags(tags, &[0x24; 20])?
         .finalize(crate::pasta::baked())?;
     assert_eq!(app.native_registry.tag(), native);
     assert_eq!(app.nested_registry.tag(), nested);

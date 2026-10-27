@@ -49,8 +49,8 @@ fn main() {
         manifest_digest.len(),
         be_hex_bytes(&manifest_digest)
     );
-    println!("native tag (Fp): 0x{}", be_hex(tags.native.value()));
-    println!("nested tag (Fq): 0x{}", be_hex(tags.nested.value()));
+    println!("native tag (Fp): 0x{}", be_hex(tags.native()));
+    println!("nested tag (Fq): 0x{}", be_hex(tags.nested()));
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>, String> {

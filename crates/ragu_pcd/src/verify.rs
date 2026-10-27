@@ -91,6 +91,10 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
+        if !pcd.proof().well_formed::<HEADER_SIZE>() {
+            return Ok(false);
+        }
+
         // Sample verification challenges w, y, and z.
         let w = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
         let y = C::CircuitField::random(|bytes| rng.fill_bytes(bytes));
@@ -110,15 +114,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         if !self
             .native_registry
             .circuit_in_domain(pcd.proof().circuit_id())
-        {
-            return Ok(false);
-        }
-
-        // Validate that the `left_header` and `right_header` lengths match
-        // `HEADER_SIZE`. Alternatively, the `Proof` structure could be
-        // parameterized on the `HEADER_SIZE`, but this appeared to be simpler.
-        if pcd.proof().left_header().len() != HEADER_SIZE
-            || pcd.proof().right_header().len() != HEADER_SIZE
         {
             return Ok(false);
         }

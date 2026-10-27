@@ -95,16 +95,46 @@ pub use backend::SelectableBackend;
 /// steps. [`Self::from_beacon`] names the profile in its labels, so one
 /// beacon output and manifest digest give each profile its own tags.
 ///
-/// To supply the final field elements from your setup procedure, wrap each
-/// value with [`Tag::new`] and set [`Self::native`] and [`Self::nested`].
-/// [`Self::from_beacon`] is an optional helper for deriving those values from
-/// beacon inputs. [`ApplicationBuilder::with_registry_tags`] accepts the
-/// resulting tags directly; finalization does not hash them again.
+/// [`Self::from_beacon`] retains the manifest digest alongside the derived
+/// tags. [`ApplicationBuilder::with_registry_tags`] checks it against the
+/// receiver's expected manifest before installing the final tag values.
+/// The fields are private so tags cannot be relabeled with another profile
+/// or manifest through this API. Finalization does not hash them again.
+///
+/// This checks the association with the expected setup record. The setup
+/// procedure must still authenticate that record, check its artifacts against
+/// the deployed code and parameters, and verify the beacon's provenance.
+///
+/// Tags cannot be assembled from another profile's tag values:
+///
+/// ```compile_fail
+/// use ragu_circuits::registry::Tag;
+/// use ragu_core::pasta::Pasta;
+/// use ragu_pcd::{RegistryTags, profile::{Aggregator, Profiled}};
+///
+/// let standard = RegistryTags::<Pasta>::from_beacon(b"beacon", b"manifest");
+/// let relabeled = RegistryTags::<Profiled<Pasta, Aggregator>> {
+///     native: Tag::new(standard.native()),
+///     nested: Tag::new(standard.nested()),
+///     manifest_digest: b"manifest".to_vec(),
+/// };
+/// ```
 pub struct RegistryTags<C: Cycle> {
-    /// Tag for the native registry, over [`Cycle::CircuitField`].
-    pub native: Tag<C::CircuitField>,
-    /// Tag for the nested registry, over [`Cycle::ScalarField`].
-    pub nested: Tag<C::ScalarField>,
+    native: Tag<C::CircuitField>,
+    nested: Tag<C::ScalarField>,
+    manifest_digest: Vec<u8>,
+}
+
+impl<C: Cycle> RegistryTags<C> {
+    /// The native registry's final tag value.
+    pub fn native(&self) -> C::CircuitField {
+        self.native.value()
+    }
+
+    /// The nested registry's final tag value.
+    pub fn nested(&self) -> C::ScalarField {
+        self.nested.value()
+    }
 }
 
 impl<C: ProfiledCycle> RegistryTags<C> {
@@ -118,6 +148,7 @@ impl<C: ProfiledCycle> RegistryTags<C> {
     /// inputs are raw bytes, not hex strings. See [`Tag::from_beacon`].
     pub fn from_beacon(beacon: &[u8], manifest_digest: &[u8]) -> Self {
         Self {
+            manifest_digest: manifest_digest.to_vec(),
             native: Tag::from_beacon(
                 beacon,
                 manifest_digest,
@@ -182,20 +213,36 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
         }
     }
 
-    /// Supplies the tags to use when [`Self::finalize`] builds both registries.
+    /// Checks the tags against the receiver's expected setup manifest and
+    /// supplies their final values to both registries.
     ///
     /// The caller's setup procedure must satisfy the
     /// [sampling requirement](Tag#sampling-requirement) for the complete
     /// application, including the public parameters supplied to [`Self::finalize`].
-    /// This method stores the final values without validating their origin.
-    /// Production callers must not use a test key.
+    /// `expected_manifest_digest` must come from trusted receiver configuration,
+    /// fixed independently of incoming proofs or setup records. It identifies
+    /// the complete versioned setup, including this profile, the application
+    /// steps and the public parameters supplied to [`Self::finalize`].
+    /// Matching the actual code and parameters to the manifest and verifying
+    /// the beacon remain the setup procedure's responsibility.
     ///
-    /// TODO: enforce the selected profile's association with its versioned setup
-    /// and registry tags; see [`profile`]'s isolation follow-up.
-    pub fn with_registry_tags(mut self, tags: RegistryTags<C>) -> Self {
+    /// # Errors
+    ///
+    /// Returns an initialization error if the tags were derived for a different
+    /// manifest. The tag type fixes the profile used in their derivation.
+    pub fn with_registry_tags(
+        mut self,
+        tags: RegistryTags<C>,
+        expected_manifest_digest: &[u8],
+    ) -> Result<Self> {
+        if tags.manifest_digest != expected_manifest_digest {
+            return Err(Error::Initialization(
+                "registry tags do not match the expected setup manifest".into(),
+            ));
+        }
         self.native_registry = self.native_registry.with_tag(tags.native);
         self.nested_registry = self.nested_registry.with_tag(tags.nested);
-        self
+        Ok(self)
     }
 
     /// Selects a Ragu-owned computational backend.

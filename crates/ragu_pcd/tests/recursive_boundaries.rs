@@ -84,7 +84,7 @@ mod registry {
             .register(ConstantSeed::<2>(second))?
             .register_dummy_circuits(extra_steps)?;
         match tags {
-            Some(tags) => builder.with_registry_tags(tags),
+            Some(tags) => builder.with_registry_tags(tags, b"recursive boundary test setup")?,
             None => builder,
         }
         .finalize(crate::pasta::baked())
@@ -111,6 +111,9 @@ mod registry {
             Some(RegistryTags {
                 native: Tag::new(native),
                 nested: Tag::new(nested),
+                // This private construction is a unit-test seam for changing
+                // each final tag independently of the beacon derivation.
+                manifest_digest: b"recursive boundary test setup".to_vec(),
             })
         };
         let first = app_with_tags(
