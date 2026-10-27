@@ -730,7 +730,7 @@ fn print_registry_tags() {
 #[test]
 fn test_internal_circuit_index_all_exhaustive() {
     let mut collected = alloc::vec::Vec::new();
-    let _values = InternalCircuitValues::from_fn::<crate::profile::Standard>(|id| {
+    let _values = InternalCircuitValues::<_, crate::profile::Standard>::from_fn(|id| {
         collected.push(id);
     });
     assert_eq!(collected.as_slice(), InternalCircuitIndex::ALL);
@@ -739,30 +739,42 @@ fn test_internal_circuit_index_all_exhaustive() {
 #[test]
 fn test_rx_index_all_exhaustive() {
     let mut collected = alloc::vec::Vec::new();
-    let _values = RxValues::from_fn::<crate::profile::Standard>(|id| {
+    let _values = RxValues::<_, crate::profile::Standard>::from_fn(|id| {
         collected.push(id);
     });
     assert_eq!(collected.as_slice(), RxIndex::ALL);
 }
 
-/// Values with the same step count can still differ in the extension's
-/// parts. The shape tells them apart, which is what the conservative
-/// equality of two values asserts before pairing their wires.
+/// The actual container fields reject every length other than their profile's.
 #[test]
 fn test_values_shapes_follow_the_profile() {
-    use crate::profile::Standard;
+    use alloc::vec;
 
-    let standard = InternalCircuitValues::from_fn::<Standard>(|_| ());
-    let mut wider = InternalCircuitValues::from_fn::<Standard>(|_| ());
-    wider.extension_circuits.push(());
-    assert_eq!(standard.num_steps(), wider.num_steps());
-    assert_ne!(standard.shape(), wider.shape());
+    use ragu_primitives::vec::{FixedVec, Len};
 
-    let standard = RxValues::from_fn::<Standard>(|_| ());
-    let mut wider = RxValues::from_fn::<Standard>(|_| ());
-    wider.extension_stages.push(());
-    assert_eq!(standard.num_steps(), wider.num_steps());
-    assert_ne!(standard.shape(), wider.shape());
+    use crate::profile::{Standard, testing::Wider};
+
+    fn rejects_other_lengths<L: Len>(values: &FixedVec<(), L>) {
+        for length in [values.len().saturating_sub(1), values.len() + 1] {
+            if length != values.len() {
+                assert!(matches!(FixedVec::<(), L>::new(vec![(); length]),
+                    Err(Error::VectorLengthMismatch { expected, actual })
+                    if expected == values.len() && actual == length));
+            }
+        }
+    }
+    fn check<P: crate::profile::Profile>() {
+        let internal = InternalCircuitValues::<_, P>::from_fn(|_| ());
+        rejects_other_lengths(&internal.endoscaling_step_circuits);
+        rejects_other_lengths(&internal.extension_circuits);
+        rejects_other_lengths(&internal.extension_bondings);
+        let rx = RxValues::<_, P>::from_fn(|_| ());
+        rejects_other_lengths(&rx.endoscaling_steps);
+        rejects_other_lengths(&rx.extension_circuits);
+        rejects_other_lengths(&rx.extension_stages);
+    }
+    check::<Standard>();
+    check::<Wider>();
 }
 
 /// The generic lists resize the constant ones, so in the standard profile

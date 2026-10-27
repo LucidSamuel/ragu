@@ -40,10 +40,9 @@ pub use verifier::{Accumulator, Guard, verify_proof};
 /// The prover and all verifier paths must agree on this tag. Changing it
 /// breaks compatibility with existing proofs.
 ///
-/// TODO: any explicit profile compression domains must follow
-/// [`profile`](crate::profile)'s isolation requirements. Keep Standard's tag
-/// for wallet proofs, including their replay inside an Aggregator circuit;
-/// the outer Aggregator proof may have its own compression domain.
+/// Profiles share this protocol domain. Compression opens the native and
+/// nested registry restrictions against the receiving application's tagged
+/// registries, preserving the fuse's setup binding.
 pub const IPA_TAG: &[u8] = b"ragu-ipa-v1";
 
 /// Log-size unblinded IPA opening proof.

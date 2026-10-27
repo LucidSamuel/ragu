@@ -48,6 +48,14 @@ mod proof;
 pub mod step;
 mod verify;
 
+#[cfg(test)]
+#[path = "../tests/setup_binding.rs"]
+mod setup_binding_tests;
+
+#[cfg(test)]
+#[path = "../tests/profile_layout.rs"]
+mod profile_layout_tests;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 
@@ -73,10 +81,9 @@ use step::{Step, internal::adapter::Adapter};
 /// The prover and all verifier paths must agree on this tag. Changing it breaks
 /// compatibility with existing proofs.
 ///
-/// TODO: if adding explicit profile domains, retain this tag for Standard and
-/// select the outer proof's tag consistently in proving and verification.
-/// Decompression must replay an inner Standard proof with Standard's tag;
-/// see [`profile`]'s isolation follow-up, including the compression domain.
+/// Profiles share this protocol domain. Their setup separation is carried by
+/// the tagged native and nested registry polynomials committed in the fuse
+/// and checked by the verifiers; see [`profile`].
 pub(crate) const RAGU_TAG: &[u8] = b"ragu-pcd-v1";
 
 pub use backend::SelectableBackend;

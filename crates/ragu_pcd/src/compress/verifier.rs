@@ -25,6 +25,11 @@ impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectab
     /// (an invalid circuit id, a malformed proof, a rejected reduction or
     /// opening), or `Err` if an internal computation error occurs.
     ///
+    /// Uses this application's fixed profile, registries and public
+    /// parameters, as [`verify`](Self::verify) does. Proof data cannot select
+    /// another profile or setup; its circuit ID selects only within this
+    /// application's registry.
+    ///
     /// The registry and polynomial evaluations and the recomputed stage
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
     /// the selected backend, as in [`verify`](Self::verify). This also applies

@@ -1686,7 +1686,7 @@ mod independent_polynomials {
         use crate::internal::native::{RxIndex, RxValues};
 
         let mut visited = Vec::new();
-        let values = RxValues::from_fn::<crate::profile::Standard>(|id| {
+        let values = RxValues::<_, crate::profile::Standard>::from_fn(|id| {
             visited.push(id);
             id
         });

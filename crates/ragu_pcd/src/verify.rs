@@ -81,6 +81,10 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// corrupted commitments or evaluations), or `Err` if an internal
     /// computation error occurs.
     ///
+    /// The profile, registries and public parameters are fixed by this
+    /// application. Proof data cannot select another profile or setup; its
+    /// circuit ID selects only within this application's registry.
+    ///
     /// The computational kernels used here are those of the sealed
     /// [`SelectableBackend::Verifier`] of the selected backend: the reference
     /// kernels for `ReferenceBackend` and `AcceleratedProver`, the accelerated

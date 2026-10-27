@@ -38,9 +38,9 @@ use crate::{
 };
 
 /// Witness for a child proof's polynomial evaluations.
-pub struct ChildEvaluationsWitness<F> {
+pub struct ChildEvaluationsWitness<F, P: Profile> {
     /// Rx polynomial evaluations at $xz$.
-    pub rx: RxValues<F>,
+    pub rx: RxValues<F, P>,
 
     /// $A$ polynomial evaluation at $xz$.
     pub a_poly_at_xz: F,
@@ -58,10 +58,10 @@ pub struct ChildEvaluationsWitness<F> {
     pub current_registry_wy_at_child_x: F,
 }
 
-impl<F: Field> ChildEvaluationsWitness<F> {
+impl<F: Field, P: Profile> ChildEvaluationsWitness<F, P> {
     /// Creates a child evaluations witness from a proof evaluated at the given points.
     pub fn from_proof<
-        C: Cycle<CircuitField = F> + ProfiledCycle,
+        C: Cycle<CircuitField = F> + ProfiledCycle<Profile = P>,
         R: Rank,
         B: ragu_backend::Backend,
     >(
@@ -79,7 +79,7 @@ impl<F: Field> ChildEvaluationsWitness<F> {
             |poly| B::sparse_eval(poly, xz),
         );
         ChildEvaluationsWitness {
-            rx: RxValues::from_fn::<C::Profile>(|_| rx.next().expect("one evaluation per rx")),
+            rx: RxValues::<_, P>::from_fn(|_| rx.next().expect("one evaluation per rx")),
             a_poly_at_xz: B::sparse_eval(&proof[RxComponent::AbA], xz),
             b_poly_at_x: B::sparse_eval(&proof[RxComponent::AbB], x),
             child_registry_xy_at_current_w: B::sparse_eval(proof.native_registry_xy_poly(), w),
@@ -93,15 +93,15 @@ impl<F: Field> ChildEvaluationsWitness<F> {
 }
 
 /// Witness data for the query stage.
-pub struct Witness<C: Cycle> {
+pub struct Witness<C: ProfiledCycle> {
     /// Pre-computed registry_xy evaluations at each internal circuit's omega^j.
-    pub fixed_registry: InternalCircuitValues<C::CircuitField>,
+    pub fixed_registry: InternalCircuitValues<C::CircuitField, C::Profile>,
     /// m(w, x, y) - verifies registry_xy/registry_wy consistency at current coordinates.
     pub registry_wxy: C::CircuitField,
     /// Left child proof polynomial evaluations.
-    pub left: ChildEvaluationsWitness<C::CircuitField>,
+    pub left: ChildEvaluationsWitness<C::CircuitField, C::Profile>,
     /// Right child proof polynomial evaluations.
-    pub right: ChildEvaluationsWitness<C::CircuitField>,
+    pub right: ChildEvaluationsWitness<C::CircuitField, C::Profile>,
 }
 
 /// Allocate [`InternalCircuitValues`] of [`Element`]s from pre-computed witness
@@ -109,32 +109,33 @@ pub struct Witness<C: Cycle> {
 pub fn alloc_fixed_registry<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, P: Profile>(
     dr: &mut D,
     allocator: &mut A,
-    witness: DriverValue<D, &InternalCircuitValues<D::F>>,
-) -> Result<InternalCircuitValues<Element<'dr, D>>> {
-    InternalCircuitValues::try_from_fn::<P, _>(|id| {
+    witness: DriverValue<D, &InternalCircuitValues<D::F, P>>,
+) -> Result<InternalCircuitValues<Element<'dr, D>, P>> {
+    InternalCircuitValues::<_, P>::try_from_fn(|id| {
         Element::alloc(dr, allocator, witness.as_ref().map(|w| *w.get(id)))
     })
 }
 
-impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for InternalCircuitValues<Element<'dr, D>> {
-    type Kind = InternalCircuitValues<Element<'static, PhantomData<D::F>>>;
+impl<'dr, D: Driver<'dr>, P: Profile> Gadget<'dr, D> for InternalCircuitValues<Element<'dr, D>, P> {
+    type Kind = InternalCircuitValues<Element<'static, PhantomData<D::F>>, P>;
 }
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `InternalCircuitValues`
-// is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
-    for InternalCircuitValues<Element<'static, PhantomData<F>>>
+// is a product of `Element`s and fixed vectors; `P: Profile` is `Send`.
+// The profile fixes every vector length and the traversal order.
+unsafe impl<F: Field, P: Profile> ragu_core::gadgets::GadgetKind<F>
+    for InternalCircuitValues<Element<'static, PhantomData<F>>, P>
 {
-    type Rebind<'dr, D: Driver<'dr, F = F>> = InternalCircuitValues<Element<'dr, D>>;
+    type Rebind<'dr, D: Driver<'dr, F = F>> = InternalCircuitValues<Element<'dr, D>, P>;
 
     fn map_gadget<
         'src,
         'dst,
         WM: ragu_core::convert::WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
     >(
-        this: &InternalCircuitValues<Element<'src, WM::Src>>,
+        this: &InternalCircuitValues<Element<'src, WM::Src>, P>,
         wm: &mut WM,
-    ) -> Result<InternalCircuitValues<Element<'dst, WM::Dst>>> {
+    ) -> Result<InternalCircuitValues<Element<'dst, WM::Dst>, P>> {
         this.try_map(|_, element| element.map(wm))
     }
 
@@ -144,36 +145,36 @@ unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
         eq: &mut WireEqualizer<'_, 'dr, D1>,
-        a: &InternalCircuitValues<Element<'dr, D2>>,
-        b: &InternalCircuitValues<Element<'dr, D2>>,
+        a: &InternalCircuitValues<Element<'dr, D2>, P>,
+        b: &InternalCircuitValues<Element<'dr, D2>, P>,
     ) -> Result<()> {
-        assert_eq!(a.shape(), b.shape());
-        for ((_, a), (_, b)) in a.iter().zip(b.iter()) {
-            eq.enforce_conservative_equal_gadget(a, b)?;
+        for (id, a) in a.iter() {
+            eq.enforce_conservative_equal_gadget(a, b.get(id))?;
         }
         Ok(())
     }
 }
 
-impl<'dr, D: Driver<'dr>> Gadget<'dr, D> for RxValues<Element<'dr, D>> {
-    type Kind = RxValues<Element<'static, PhantomData<D::F>>>;
+impl<'dr, D: Driver<'dr>, P: Profile> Gadget<'dr, D> for RxValues<Element<'dr, D>, P> {
+    type Kind = RxValues<Element<'static, PhantomData<D::F>>, P>;
 }
 
 // SAFETY: `Element` is `Send` when `D::Wire: Send`, and `RxValues`
-// is a plain product of `Element`s, so the same implication holds.
-unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
-    for RxValues<Element<'static, PhantomData<F>>>
+// is a product of `Element`s and fixed vectors; `P: Profile` is `Send`.
+// The profile fixes every vector length and the traversal order.
+unsafe impl<F: Field, P: Profile> ragu_core::gadgets::GadgetKind<F>
+    for RxValues<Element<'static, PhantomData<F>>, P>
 {
-    type Rebind<'dr, D: Driver<'dr, F = F>> = RxValues<Element<'dr, D>>;
+    type Rebind<'dr, D: Driver<'dr, F = F>> = RxValues<Element<'dr, D>, P>;
 
     fn map_gadget<
         'src,
         'dst,
         WM: ragu_core::convert::WireMap<F, Src: Driver<'src, F = F>, Dst: Driver<'dst, F = F>>,
     >(
-        this: &RxValues<Element<'src, WM::Src>>,
+        this: &RxValues<Element<'src, WM::Src>, P>,
         wm: &mut WM,
-    ) -> Result<RxValues<Element<'dst, WM::Dst>>> {
+    ) -> Result<RxValues<Element<'dst, WM::Dst>, P>> {
         this.try_map(|_, element| element.map(wm))
     }
 
@@ -183,18 +184,19 @@ unsafe impl<F: Field> ragu_core::gadgets::GadgetKind<F>
         D2: Driver<'dr, F = F, Wire = <D1 as Driver<'dr>>::Wire>,
     >(
         eq: &mut WireEqualizer<'_, 'dr, D1>,
-        a: &RxValues<Element<'dr, D2>>,
-        b: &RxValues<Element<'dr, D2>>,
+        a: &RxValues<Element<'dr, D2>, P>,
+        b: &RxValues<Element<'dr, D2>, P>,
     ) -> Result<()> {
-        assert_eq!(a.shape(), b.shape());
-        for ((_, a), (_, b)) in a.iter().zip(b.iter()) {
-            eq.enforce_conservative_equal_gadget(a, b)?;
+        for (id, a) in a.iter() {
+            eq.enforce_conservative_equal_gadget(a, b.get(id))?;
         }
         Ok(())
     }
 }
 
-impl<F: Field> ragu_primitives::io::Write<F> for RxValues<Element<'static, PhantomData<F>>> {
+impl<F: Field, P: Profile> ragu_primitives::io::Write<F>
+    for RxValues<Element<'static, PhantomData<F>>, P>
+{
     fn write_gadget<'dr, D: Driver<'dr, F = F>, B: ragu_primitives::io::Buffer<'dr, D>>(
         this: &Bound<'dr, D, Self>,
         dr: &mut D,
@@ -209,10 +211,10 @@ impl<F: Field> ragu_primitives::io::Write<F> for RxValues<Element<'static, Phant
 
 /// Gadget for a child proof's polynomial evaluations.
 #[derive(Gadget)]
-pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
+pub struct ChildEvaluations<'dr, D: Driver<'dr>, P: Profile> {
     /// Rx polynomial evaluations at $xz$.
     #[ragu(gadget)]
-    pub rx: RxValues<Element<'dr, D>>,
+    pub rx: RxValues<Element<'dr, D>, P>,
 
     /// $A$ polynomial evaluation at $xz$.
     #[ragu(gadget)]
@@ -235,14 +237,14 @@ pub struct ChildEvaluations<'dr, D: Driver<'dr>> {
     pub current_registry_wy_at_child_x: Element<'dr, D>,
 }
 
-impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
+impl<'dr, D: Driver<'dr>, P: Profile> ChildEvaluations<'dr, D, P> {
     /// Allocates child evaluations from pre-computed witness input values.
-    pub fn alloc<A: Allocator<'dr, D>, P: Profile>(
+    pub fn alloc<A: Allocator<'dr, D>>(
         dr: &mut D,
         allocator: &mut A,
-        witness: DriverValue<D, &ChildEvaluationsWitness<D::F>>,
+        witness: DriverValue<D, &ChildEvaluationsWitness<D::F, P>>,
     ) -> Result<Self> {
-        let rx = RxValues::try_from_fn::<P, _>(|id| {
+        let rx = RxValues::<_, P>::try_from_fn(|id| {
             Element::alloc(dr, allocator, witness.as_ref().map(|w| *w.rx.get(id)))
         })?;
         Ok(ChildEvaluations {
@@ -274,19 +276,19 @@ impl<'dr, D: Driver<'dr>> ChildEvaluations<'dr, D> {
 ///
 /// This is stage communication data, not part of the circuit's public instance.
 #[derive(Gadget)]
-pub struct Output<'dr, D: Driver<'dr>> {
+pub struct Output<'dr, D: Driver<'dr>, P: Profile> {
     /// Fixed registry evaluations at each internal circuit's omega^j.
     #[ragu(gadget)]
-    pub fixed_registry: InternalCircuitValues<Element<'dr, D>>,
+    pub fixed_registry: InternalCircuitValues<Element<'dr, D>, P>,
     /// m(w, x, y) - verifies registry_xy/registry_wy consistency at current coordinates.
     #[ragu(gadget)]
     pub registry_wxy: Element<'dr, D>,
     /// Left child proof polynomial evaluations.
     #[ragu(gadget)]
-    pub left: ChildEvaluations<'dr, D>,
+    pub left: ChildEvaluations<'dr, D, P>,
     /// Right child proof polynomial evaluations.
     #[ragu(gadget)]
-    pub right: ChildEvaluations<'dr, D>,
+    pub right: ChildEvaluations<'dr, D, P>,
 }
 
 /// The query stage of the fuse witness.
@@ -300,7 +302,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::Circ
 {
     type Parent = super::preamble::Stage<C, R, HEADER_SIZE>;
     type Witness<'source> = &'source Witness<C>;
-    type OutputKind = Kind![C::CircuitField; Output<'_, _>];
+    type OutputKind = Kind![C::CircuitField; Output<'_, _, C::Profile>];
 
     fn values() -> usize {
         // InternalCircuitIndex::num + registry_wxy (1) + 2 * ChildEvaluations
@@ -323,16 +325,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize> staging::Stage<C::Circ
             witness.as_ref().map(|w| &w.fixed_registry),
         )?;
         let registry_wxy = Element::alloc(dr, allocator, witness.as_ref().map(|w| w.registry_wxy))?;
-        let left = ChildEvaluations::alloc::<_, C::Profile>(
-            dr,
-            allocator,
-            witness.as_ref().map(|w| &w.left),
-        )?;
-        let right = ChildEvaluations::alloc::<_, C::Profile>(
-            dr,
-            allocator,
-            witness.as_ref().map(|w| &w.right),
-        )?;
+        let left = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.left))?;
+        let right = ChildEvaluations::alloc(dr, allocator, witness.as_ref().map(|w| &w.right))?;
         Ok(Output {
             fixed_registry,
             registry_wxy,

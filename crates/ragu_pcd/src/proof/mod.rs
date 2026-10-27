@@ -37,6 +37,9 @@ pub(crate) mod recursive_propagation_tests;
 #[path = "../../tests/backend_equivalence.rs"]
 mod backend_equivalence;
 #[cfg(test)]
+#[path = "../../tests/profile_substitution.rs"]
+mod profile_substitution_tests;
+#[cfg(test)]
 #[path = "../../tests/proof_shape.rs"]
 mod proof_shape_tests;
 // Mutable component access for the corruption vocabulary (see

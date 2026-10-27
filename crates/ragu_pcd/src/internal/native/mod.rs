@@ -25,7 +25,7 @@ use ragu_circuits::{
     staging::StageExt,
 };
 use ragu_core::Result;
-use ragu_primitives::vec::{ConstLen, Len};
+use ragu_primitives::vec::{ConstLen, FixedVec, Len};
 
 use crate::{
     internal::{endoscalar, fold_revdot::Parameters, nested},
@@ -109,6 +109,26 @@ impl<P: Profile> Len for NumExtensionStages<P> {
     fn len() -> usize {
         P::native_extension().stages
     }
+}
+
+/// Length type for the bondings of the profile's native extension.
+pub struct NumExtensionBondings<P: Profile>(PhantomData<P>);
+
+impl<P: Profile> Len for NumExtensionBondings<P> {
+    fn len() -> usize {
+        P::native_extension().bondings()
+    }
+}
+
+// Unlike `FixedVec::try_from_fn`, these value containers also propagate errors
+// other than `ragu_core::Error`. The index range fixes the length before `f` runs.
+fn try_fixed_vec<T, L: Len, E>(
+    f: impl FnMut(usize) -> core::result::Result<T, E>,
+) -> core::result::Result<FixedVec<T, L>, E> {
+    let values = L::range()
+        .map(f)
+        .collect::<core::result::Result<Vec<_>, _>>()?;
+    Ok(FixedVec::new(values).expect("the index range fixes the vector length"))
 }
 
 /// The native rx polynomials that are not endoscaling steps: the
@@ -410,7 +430,7 @@ impl InternalCircuitIndex {
 /// [`from_fn`](Self::from_fn) / [`try_from_fn`](Self::try_from_fn) to
 /// construct from a closure.
 #[derive(Clone)]
-pub struct InternalCircuitValues<T> {
+pub struct InternalCircuitValues<T, P: Profile> {
     pub hashes_1_circuit: T,
     pub hashes_2_circuit: T,
     pub inner_collapse_circuit: T,
@@ -420,9 +440,9 @@ pub struct InternalCircuitValues<T> {
     pub bind_beta_circuit: T,
     pub bind_endoscalar_circuit: T,
     /// One per endoscaling step of the profile the values were built for.
-    pub endoscaling_step_circuits: Vec<T>,
+    pub endoscaling_step_circuits: FixedVec<T, NumSteps<P>>,
     /// One per circuit of the profile's native extension.
-    pub extension_circuits: Vec<T>,
+    pub extension_circuits: FixedVec<T, NumExtensionCircuits<P>>,
     pub preamble_stage: T,
     pub inner_error_stage: T,
     pub outer_error_stage: T,
@@ -439,96 +459,24 @@ pub struct InternalCircuitValues<T> {
     pub eval_final_staged: T,
     pub points_walk_final_staged: T,
     /// One per bonding of the profile's native extension.
-    pub extension_bondings: Vec<T>,
+    pub extension_bondings: FixedVec<T, NumExtensionBondings<P>>,
 }
 
-impl<T> InternalCircuitValues<T> {
-    /// The number of endoscaling steps these values were built for.
-    pub fn num_steps(&self) -> usize {
-        self.endoscaling_step_circuits.len()
-    }
-
-    /// The lengths of the parts the profile sizes: the endoscaling steps,
-    /// the extension circuits and the extension bondings. Two values pair
-    /// up wire for wire only if their shapes agree.
-    pub fn shape(&self) -> (usize, usize, usize) {
-        (
-            self.endoscaling_step_circuits.len(),
-            self.extension_circuits.len(),
-            self.extension_bondings.len(),
-        )
-    }
-
+impl<T, P: Profile> InternalCircuitValues<T, P> {
     /// Every value with its index, in [`all`](InternalCircuitIndex::all)
     /// order.
     pub fn iter(&self) -> impl Iterator<Item = (InternalCircuitIndex, &T)> {
-        InternalCircuitIndex::all_with(
-            self.num_steps(),
-            self.extension_circuits.len(),
-            self.extension_bondings.len(),
-        )
-        .into_iter()
-        .map(move |id| (id, self.get(id)))
+        InternalCircuitIndex::all::<P>()
+            .into_iter()
+            .map(move |id| (id, self.get(id)))
     }
 
     /// Maps every value, in [`all`](InternalCircuitIndex::all) order.
     pub fn try_map<U, E>(
         &self,
         mut f: impl FnMut(InternalCircuitIndex, &T) -> core::result::Result<U, E>,
-    ) -> core::result::Result<InternalCircuitValues<U>, E> {
-        use InternalCircuitIndex::*;
-        Ok(InternalCircuitValues {
-            hashes_1_circuit: f(Hashes1Circuit, &self.hashes_1_circuit)?,
-            hashes_2_circuit: f(Hashes2Circuit, &self.hashes_2_circuit)?,
-            inner_collapse_circuit: f(InnerCollapseCircuit, &self.inner_collapse_circuit)?,
-            outer_collapse_circuit: f(OuterCollapseCircuit, &self.outer_collapse_circuit)?,
-            compute_v_circuit: f(ComputeVCircuit, &self.compute_v_circuit)?,
-            bind_challenges_circuits: {
-                let mut out = [(); NUM_BINDERS].map(|()| None);
-                for (k, slot) in out.iter_mut().enumerate() {
-                    *slot = Some(f(
-                        BindChallengesCircuit(k as u32),
-                        &self.bind_challenges_circuits[k],
-                    )?);
-                }
-                out.map(|slot| slot.expect("filled"))
-            },
-            bind_beta_circuit: f(BindBetaCircuit, &self.bind_beta_circuit)?,
-            bind_endoscalar_circuit: f(BindEndoscalarCircuit, &self.bind_endoscalar_circuit)?,
-            endoscaling_step_circuits: self
-                .endoscaling_step_circuits
-                .iter()
-                .enumerate()
-                .map(|(step, value)| f(EndoscalingStep(step as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-            extension_circuits: self
-                .extension_circuits
-                .iter()
-                .enumerate()
-                .map(|(k, value)| f(ExtensionCircuit(k as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-            preamble_stage: f(PreambleStage, &self.preamble_stage)?,
-            inner_error_stage: f(InnerErrorStage, &self.inner_error_stage)?,
-            outer_error_stage: f(OuterErrorStage, &self.outer_error_stage)?,
-            query_stage: f(QueryStage, &self.query_stage)?,
-            eval_stage: f(EvalStage, &self.eval_stage)?,
-            points_binding_stage: f(PointsBindingStage, &self.points_binding_stage)?,
-            points_children_stage: f(PointsChildrenStage, &self.points_children_stage)?,
-            points_registry_wx_stage: f(PointsRegistryWxStage, &self.points_registry_wx_stage)?,
-            points_ab_stage: f(PointsAbStage, &self.points_ab_stage)?,
-            points_f_stage: f(PointsFStage, &self.points_f_stage)?,
-            points_walk_stage: f(PointsWalkStage, &self.points_walk_stage)?,
-            inner_error_final_staged: f(InnerErrorFinalStaged, &self.inner_error_final_staged)?,
-            outer_error_final_staged: f(OuterErrorFinalStaged, &self.outer_error_final_staged)?,
-            eval_final_staged: f(EvalFinalStaged, &self.eval_final_staged)?,
-            points_walk_final_staged: f(PointsWalkFinalStaged, &self.points_walk_final_staged)?,
-            extension_bondings: self
-                .extension_bondings
-                .iter()
-                .enumerate()
-                .map(|(j, value)| f(ExtensionBonding(j as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-        })
+    ) -> core::result::Result<InternalCircuitValues<U, P>, E> {
+        InternalCircuitValues::try_from_fn(|id| f(id, self.get(id)))
     }
 
     /// Look up the value for the given internal circuit index.
@@ -566,8 +514,8 @@ impl<T> InternalCircuitValues<T> {
 
     /// Construct from a closure called once per variant in
     /// [`all`](InternalCircuitIndex::all) order, for profile `P`.
-    pub fn from_fn<P: Profile>(mut f: impl FnMut(InternalCircuitIndex) -> T) -> Self {
-        match Self::try_from_fn::<P, _>(|id| Ok::<_, core::convert::Infallible>(f(id))) {
+    pub fn from_fn(mut f: impl FnMut(InternalCircuitIndex) -> T) -> Self {
+        match Self::try_from_fn(|id| Ok::<_, core::convert::Infallible>(f(id))) {
             Ok(v) => v,
             Err(e) => match e {},
         }
@@ -577,7 +525,7 @@ impl<T> InternalCircuitValues<T> {
     ///
     /// The closure is called in [`all`](InternalCircuitIndex::all) order, for
     /// profile `P`.
-    pub fn try_from_fn<P: Profile, E>(
+    pub fn try_from_fn<E>(
         mut f: impl FnMut(InternalCircuitIndex) -> core::result::Result<T, E>,
     ) -> core::result::Result<Self, E> {
         use InternalCircuitIndex::*;
@@ -596,12 +544,8 @@ impl<T> InternalCircuitValues<T> {
             },
             bind_beta_circuit: f(BindBetaCircuit)?,
             bind_endoscalar_circuit: f(BindEndoscalarCircuit)?,
-            endoscaling_step_circuits: (0..NumSteps::<P>::len() as u32)
-                .map(|step| f(EndoscalingStep(step)))
-                .collect::<core::result::Result<_, E>>()?,
-            extension_circuits: (0..P::native_extension().circuits.len() as u32)
-                .map(|k| f(ExtensionCircuit(k)))
-                .collect::<core::result::Result<_, E>>()?,
+            endoscaling_step_circuits: try_fixed_vec(|step| f(EndoscalingStep(step as u32)))?,
+            extension_circuits: try_fixed_vec(|k| f(ExtensionCircuit(k as u32)))?,
             preamble_stage: f(PreambleStage)?,
             inner_error_stage: f(InnerErrorStage)?,
             outer_error_stage: f(OuterErrorStage)?,
@@ -617,9 +561,7 @@ impl<T> InternalCircuitValues<T> {
             outer_error_final_staged: f(OuterErrorFinalStaged)?,
             eval_final_staged: f(EvalFinalStaged)?,
             points_walk_final_staged: f(PointsWalkFinalStaged)?,
-            extension_bondings: (0..P::native_extension().bondings() as u32)
-                .map(|j| f(ExtensionBonding(j)))
-                .collect::<core::result::Result<_, E>>()?,
+            extension_bondings: try_fixed_vec(|j| f(ExtensionBonding(j as u32)))?,
         })
     }
 }
@@ -768,7 +710,7 @@ impl RxIndex {
 /// Use [`get`](Self::get) to look up by variant, and
 /// [`try_from_fn`](Self::try_from_fn) to construct from a closure.
 #[derive(Clone)]
-pub struct RxValues<T> {
+pub struct RxValues<T, P: Profile> {
     pub application: T,
     pub hashes_1: T,
     pub hashes_2: T,
@@ -779,7 +721,7 @@ pub struct RxValues<T> {
     pub bind_beta: T,
     pub bind_endoscalar: T,
     /// One per endoscaling step of the profile the values were built for.
-    pub endoscaling_steps: Vec<T>,
+    pub endoscaling_steps: FixedVec<T, NumSteps<P>>,
     pub preamble: T,
     pub inner_error: T,
     pub outer_error: T,
@@ -792,91 +734,25 @@ pub struct RxValues<T> {
     pub points_f: T,
     pub points_walk: T,
     /// One per circuit of the profile's native extension.
-    pub extension_circuits: Vec<T>,
+    pub extension_circuits: FixedVec<T, NumExtensionCircuits<P>>,
     /// One per stage of the profile's native extension.
-    pub extension_stages: Vec<T>,
+    pub extension_stages: FixedVec<T, NumExtensionStages<P>>,
 }
 
-impl<T> RxValues<T> {
-    /// The number of endoscaling steps these values were built for.
-    pub fn num_steps(&self) -> usize {
-        self.endoscaling_steps.len()
-    }
-
-    /// The lengths of the parts the profile sizes: the endoscaling steps,
-    /// the extension circuits and the extension stages. Two values pair up
-    /// wire for wire only if their shapes agree.
-    pub fn shape(&self) -> (usize, usize, usize) {
-        (
-            self.endoscaling_steps.len(),
-            self.extension_circuits.len(),
-            self.extension_stages.len(),
-        )
-    }
-
+impl<T, P: Profile> RxValues<T, P> {
     /// Every value with its index, in [`all`](RxIndex::all) order.
     pub fn iter(&self) -> impl Iterator<Item = (RxIndex, &T)> {
-        RxIndex::all_with(
-            self.num_steps(),
-            self.extension_circuits.len(),
-            self.extension_stages.len(),
-        )
-        .into_iter()
-        .map(move |id| (id, self.get(id)))
+        RxIndex::all::<P>()
+            .into_iter()
+            .map(move |id| (id, self.get(id)))
     }
 
     /// Maps every value, in [`all`](RxIndex::all) order.
     pub fn try_map<U, E>(
         &self,
         mut f: impl FnMut(RxIndex, &T) -> core::result::Result<U, E>,
-    ) -> core::result::Result<RxValues<U>, E> {
-        use RxIndex::*;
-        Ok(RxValues {
-            application: f(Application, &self.application)?,
-            hashes_1: f(Hashes1, &self.hashes_1)?,
-            hashes_2: f(Hashes2, &self.hashes_2)?,
-            inner_collapse: f(InnerCollapse, &self.inner_collapse)?,
-            outer_collapse: f(OuterCollapse, &self.outer_collapse)?,
-            compute_v: f(ComputeV, &self.compute_v)?,
-            bind_challenges: {
-                let mut out = [(); NUM_BINDERS].map(|()| None);
-                for (k, slot) in out.iter_mut().enumerate() {
-                    *slot = Some(f(BindChallenges(k as u32), &self.bind_challenges[k])?);
-                }
-                out.map(|slot| slot.expect("filled"))
-            },
-            bind_beta: f(BindBeta, &self.bind_beta)?,
-            bind_endoscalar: f(BindEndoscalar, &self.bind_endoscalar)?,
-            endoscaling_steps: self
-                .endoscaling_steps
-                .iter()
-                .enumerate()
-                .map(|(step, value)| f(EndoscalingStep(step as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-            preamble: f(Preamble, &self.preamble)?,
-            inner_error: f(InnerError, &self.inner_error)?,
-            outer_error: f(OuterError, &self.outer_error)?,
-            query: f(Query, &self.query)?,
-            eval: f(Eval, &self.eval)?,
-            points_binding: f(PointsBinding, &self.points_binding)?,
-            points_children: f(PointsChildren, &self.points_children)?,
-            points_registry_wx: f(PointsRegistryWx, &self.points_registry_wx)?,
-            points_ab: f(PointsAb, &self.points_ab)?,
-            points_f: f(PointsF, &self.points_f)?,
-            points_walk: f(PointsWalk, &self.points_walk)?,
-            extension_circuits: self
-                .extension_circuits
-                .iter()
-                .enumerate()
-                .map(|(k, value)| f(ExtensionCircuit(k as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-            extension_stages: self
-                .extension_stages
-                .iter()
-                .enumerate()
-                .map(|(k, value)| f(ExtensionStage(k as u32), value))
-                .collect::<core::result::Result<_, E>>()?,
-        })
+    ) -> core::result::Result<RxValues<U, P>, E> {
+        RxValues::try_from_fn(|id| f(id, self.get(id)))
     }
 
     /// Look up the value for the given rx index.
@@ -911,8 +787,8 @@ impl<T> RxValues<T> {
 
     /// Construct from a closure called once per variant in
     /// [`all`](RxIndex::all) order, for profile `P`.
-    pub fn from_fn<P: Profile>(mut f: impl FnMut(RxIndex) -> T) -> Self {
-        match Self::try_from_fn::<P, _>(|id| Ok::<_, core::convert::Infallible>(f(id))) {
+    pub fn from_fn(mut f: impl FnMut(RxIndex) -> T) -> Self {
+        match Self::try_from_fn(|id| Ok::<_, core::convert::Infallible>(f(id))) {
             Ok(v) => v,
             Err(e) => match e {},
         }
@@ -921,7 +797,7 @@ impl<T> RxValues<T> {
     /// Fallible construction from a closure called once per variant.
     ///
     /// The closure is called in [`all`](RxIndex::all) order, for profile `P`.
-    pub fn try_from_fn<P: Profile, E>(
+    pub fn try_from_fn<E>(
         mut f: impl FnMut(RxIndex) -> core::result::Result<T, E>,
     ) -> core::result::Result<Self, E> {
         use RxIndex::*;
@@ -941,9 +817,7 @@ impl<T> RxValues<T> {
             },
             bind_beta: f(BindBeta)?,
             bind_endoscalar: f(BindEndoscalar)?,
-            endoscaling_steps: (0..NumSteps::<P>::len() as u32)
-                .map(|step| f(EndoscalingStep(step)))
-                .collect::<core::result::Result<_, E>>()?,
+            endoscaling_steps: try_fixed_vec(|step| f(EndoscalingStep(step as u32)))?,
             preamble: f(Preamble)?,
             inner_error: f(InnerError)?,
             outer_error: f(OuterError)?,
@@ -955,12 +829,8 @@ impl<T> RxValues<T> {
             points_ab: f(PointsAb)?,
             points_f: f(PointsF)?,
             points_walk: f(PointsWalk)?,
-            extension_circuits: (0..P::native_extension().circuits.len() as u32)
-                .map(|k| f(ExtensionCircuit(k)))
-                .collect::<core::result::Result<_, E>>()?,
-            extension_stages: (0..P::native_extension().stages as u32)
-                .map(|k| f(ExtensionStage(k)))
-                .collect::<core::result::Result<_, E>>()?,
+            extension_circuits: try_fixed_vec(|k| f(ExtensionCircuit(k as u32)))?,
+            extension_stages: try_fixed_vec(|k| f(ExtensionStage(k as u32)))?,
         })
     }
 }

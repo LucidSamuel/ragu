@@ -132,7 +132,7 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, const K: usiz
 }
 
 /// Witness for a binding circuit.
-pub struct Witness<'a, C: Cycle, R: Rank, const HEADER_SIZE: usize> {
+pub struct Witness<'a, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize> {
     /// The unified instance containing the challenges and accumulated
     /// coverage.
     pub unified: unified::Instance<C>,

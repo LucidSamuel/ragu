@@ -62,26 +62,39 @@
 //!   tag record. Publicly commit that description and the beacon-selection
 //!   rule before sampling fresh native/nested tags and publishing a new
 //!   deployment record.
-//! - The receiving application pins its expected manifest digest through
+//! - The verifier application pins its expected manifest digest through
 //!   [`ApplicationBuilder::with_registry_tags`](crate::ApplicationBuilder::with_registry_tags).
 //!   Tags retain the manifest and profile they were derived for. The setup
 //!   procedure must authenticate the manifest and match its artifacts to the
 //!   actual code, steps and parameters.
-//! - TODO: carry that binding through proving, recursive verification and
-//!   ordinary and compressed verification. Registry-tag binding may supply the
-//!   separation; explicit profile transcript domains are an additional option.
-//!   If added, preserve Standard's tags and give the outer Aggregator proof
-//!   distinct fuse and compression/IPA domains. The inner Standard proof must
-//!   still be verified with Standard's setup and transcript domains.
-//! - TODO: retain the profile and fixed wire shape in internal gadget types, so
-//!   allocation, traversal and equality cannot mix layouts or silently
-//!   truncate values from another profile.
-//! - TODO: test proof substitution between profiles in both directions, including
-//!   profiles with identical shapes, changing each registry tag independently.
-//!   Cover ordinary/compressed verification, recursive parents/grandparents
-//!   and the decompression circuits' inner-proof verification. Keep the
-//!   intended Standard-to-Aggregator decompression as a positive control;
-//!   substituting either proof role must fail.
+//! - Both finalized registries carry the setup tags into proving and recursive
+//!   folding. Ordinary verification checks their polynomial restrictions;
+//!   compressed verification opens those restrictions against the verifier
+//!   application's registries. `tests/setup_binding.rs` changes each tag
+//!   independently through both verifiers and recursive descendants.
+//!   TODO: when decompression circuits are introduced, pin their inner-proof
+//!   verification to the approved Standard setup and Standard transcript
+//!   domains. The outer Aggregator proof uses Aggregator's registries.
+//! - Internal value containers and their gadget kinds retain the profile;
+//!   profile-sized parts use fixed vectors. `tests/profile_layout.rs` checks
+//!   allocation, traversal, equality and distinct kinds for identical shapes.
+//! - `tests/profile_substitution.rs` tests complete proof payloads in both
+//!   directions between profiles with equal or different shapes, including a
+//!   profile with weaker application constraints. Each registry tag is tested
+//!   independently through ordinary/compressed verification and recursive
+//!   parents/grandparents. TODO: when decompression circuits are introduced,
+//!   add the intended Standard-to-Aggregator decompression as a positive
+//!   control and reject substitution of either the inner or outer proof role.
+//! - TODO (#824): validate extension declarations against registered circuits'
+//!   loaded stages and stage/final-mask ranges. Until then, profile authors
+//!   must review and test this agreement. Statement and binding semantics
+//!   remain separate circuit-review obligations.
+//! - TODO: when decompression circuits are introduced, complete the remaining
+//!   Daybreak audit coverage: shared-stage circuit permutations; dummy-suffix
+//!   forgeries through a complete statement extension; disposable variants
+//!   with stage or folding checks disabled to validate the tests; and broader
+//!   recursive property runs. Complete this alongside the inner/outer proof-role
+//!   checks, frozen Aggregator setup and production tag ceremony tracked above.
 //!
 //! TODO: review new verifier circuits independently; profile isolation does
 //! not establish the soundness of decompression's outstanding checks.
@@ -125,9 +138,19 @@ use crate::{
 /// fills the slot it is given, a [`CircuitSlot`] or a [`BondingSlot`],
 /// which takes one entry of its kind and nothing else, and the circuit
 /// slot ends the circuit's public output with a zero, as the fuse's
-/// circuits end theirs (see [`CircuitSlot::register`]). Nothing checks the
-/// registered circuits and bondings against the declaration beyond that,
-/// so a profile pins the two together in its tests.
+/// circuits end theirs (see [`CircuitSlot::register`]). Stage loading and
+/// stage/final-mask agreement with the declaration are not checked
+/// automatically; a profile must pin this agreement in its tests.
+///
+/// The extension declarations must return the same layout for a given profile
+/// type. Use distinct profile types for distinct layouts; the prover context
+/// supplies witness data within that fixed layout.
+///
+/// The registered circuits must enforce the intended relation: a statement
+/// circuit must expose the statement it verified, and a binding circuit must
+/// recompute the declared commitments from the values its extension actually
+/// uses. These circuit semantics are part of the verifier's trusted setup.
+/// Prover hooks and the polynomials they return are untrusted witnesses.
 ///
 /// A profile is part of an application's setup description, so its
 /// registries take their own [`RegistryTags`](crate::RegistryTags): the

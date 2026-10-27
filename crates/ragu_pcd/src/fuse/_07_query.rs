@@ -81,7 +81,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         let registry_xy_evals = B::registry_wxy_over_domain(&self.native_registry, x, y);
         let log2_n = self.native_registry.log2_domain();
 
-        let fixed_registry = native::InternalCircuitValues::from_fn::<C::Profile>(|id| {
+        let fixed_registry = native::InternalCircuitValues::<_, C::Profile>::from_fn(|id| {
             let i = usize::from(id.circuit_index::<C::Profile>()) as u32;
             registry_xy_evals[bit_reverse(i as usize, log2_n)]
         });

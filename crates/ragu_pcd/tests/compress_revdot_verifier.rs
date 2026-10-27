@@ -10,9 +10,8 @@ use ragu_core::{
     pasta::{Fp, Fq, Pasta},
 };
 
-use crate::profile::Standard;
-
 use super::*;
+use crate::profile::Standard;
 
 type Host = <Pasta as Cycle>::HostCurve;
 
