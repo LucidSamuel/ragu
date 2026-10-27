@@ -335,19 +335,12 @@ fn reduce<C: Affine, R: Rank, B: Backend, Id: Copy>(
 
     let (p, mut q) = decomp_poly(t, n);
     q.resize(n, C::Scalar::ZERO);
-    // Retain the sparse commitment's operands, but schedule the independent
-    // P/Q MSMs together before writing either point to the transcript.
-    assert!(generators.g().len() >= n);
+
+    // P and Q are independent. Commit to both together before writing either
+    // point to the transcript.
     let polys = [&p, &q].map(|coeffs| sparse::Polynomial::<_, R>::from_coeffs(coeffs.to_vec()));
-    let [p_commitment, q_commitment] = B::msm_batch(polys.each_ref().map(|poly| {
-        (
-            poly.iter_stored_coeffs()
-                .map(|(_, coefficient)| coefficient),
-            poly.iter_stored_coeffs()
-                .map(|(index, _)| &generators.g()[index]),
-        )
-    }))
-    .map(Into::into);
+    let [p_commitment, q_commitment] =
+        B::sparse_commit_batch(polys.each_ref(), generators).map(Into::into);
     transcript.write_point(p_commitment)?;
     transcript.write_point(q_commitment)?;
 
