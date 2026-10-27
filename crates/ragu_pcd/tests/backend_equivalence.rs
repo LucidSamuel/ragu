@@ -1628,4 +1628,22 @@ mod independent_polynomials {
                 });
         }
     }
+
+    /// `ChildEvaluationsWitness::from_proof` fills `RxValues` from an ordered
+    /// `Backend::map` with `rx.next()`, so the constructor must visit slots in
+    /// `RxIndex::ALL` order.
+    #[test]
+    fn rx_values_fill_slots_in_all_order() {
+        use crate::internal::native::{RxIndex, RxValues};
+
+        let mut visited = Vec::new();
+        let values = RxValues::from_fn(|id| {
+            visited.push(id);
+            id
+        });
+        assert_eq!(visited, RxIndex::ALL);
+        for id in RxIndex::ALL {
+            assert_eq!(*values.get(id), id);
+        }
+    }
 }
