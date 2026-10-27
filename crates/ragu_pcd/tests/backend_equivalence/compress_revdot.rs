@@ -105,7 +105,7 @@ fn batched_fold_commitments_match_individual_sums() {
             );
         }
     }
-    for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+    for workers in [1, 4] {
         maybe_rayon::ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()
@@ -202,7 +202,7 @@ fn check_error_coefficients<F: Field>() {
 
 #[test]
 fn error_terms_match_dense_oracle_across_worker_counts() {
-    for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+    for workers in [1, 4] {
         maybe_rayon::ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()

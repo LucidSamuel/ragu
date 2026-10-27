@@ -91,7 +91,7 @@ fn check_public_parts<F: Field, B: Backend>() {
 
 #[test]
 fn public_parts_preserve_claims_on_both_fields_and_worker_counts() {
-    for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+    for workers in [1, 4] {
         maybe_rayon::ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()

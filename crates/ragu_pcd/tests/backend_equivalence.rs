@@ -1614,7 +1614,7 @@ mod independent_polynomials {
     #[test]
     fn independent_polynomials_preserve_results_and_order() {
         let params = crate::pasta::baked();
-        for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+        for workers in [1, 4] {
             maybe_rayon::ThreadPoolBuilder::new()
                 .num_threads(workers)
                 .build()

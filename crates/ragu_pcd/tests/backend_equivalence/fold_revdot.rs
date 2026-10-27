@@ -98,7 +98,7 @@ fn parallel_errors_match_dense_oracle_with_padding() {
             );
         }
     }
-    for workers in [1, std::thread::available_parallelism().unwrap().get()] {
+    for workers in [1, 4] {
         maybe_rayon::ThreadPoolBuilder::new()
             .num_threads(workers)
             .build()
