@@ -33,5 +33,5 @@ where
 
 /// Schedules independent work without changing the items' original slots.
 pub(crate) fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
-    ragu_core::for_each_mut(values, |index, value, _| work(index, value));
+    ragu_core::for_each_mut(values, work);
 }

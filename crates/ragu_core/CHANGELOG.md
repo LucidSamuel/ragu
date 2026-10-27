@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added `msm_batch` for independent MSMs sharing a worker budget and `for_each_mut`
-  for scoped work with original item indices and nested task allowances.
+  for scoped work with original item indices.
 
 ## [0.0.0] - 2025-07-29
 

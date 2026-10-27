@@ -9,16 +9,22 @@ pub(crate) fn options() -> ExecutionOptions {
 
 /// Applies `work` to independent items using Udon's scoped scheduler.
 ///
-/// Each callback receives the item's original index and the task allowance
-/// for nested Udon work. The current pool's worker count bounds concurrent
-/// jobs; builds without `multicore` execute serially. This does not allocate
-/// or create a new thread pool.
+/// Each callback receives the item's original index. The current pool's
+/// worker count bounds concurrent jobs; builds without `multicore` execute
+/// serially. This does not allocate or create a new thread pool.
 ///
 /// Callbacks may run in any order, but each item is visited exactly once on
 /// success. If a callback panics, all scheduled jobs finish or unwind before
 /// the panic propagates; some items may remain unvisited.
-pub fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T, TaskBudget) + Sync) {
-    udon::exec::for_each_mut(values, options().task_budget(), &PoolExecutor, work);
+pub fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+    // No Ragu kernel accepts a nested task budget, so the scheduler's
+    // per-job budget stays internal.
+    udon::exec::for_each_mut(
+        values,
+        options().task_budget(),
+        &PoolExecutor,
+        |index, value, _| work(index, value),
+    );
 }
 
 // Match maybe-rayon's serial fallback on WebAssembly without atomics.
