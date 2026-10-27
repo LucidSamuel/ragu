@@ -81,9 +81,9 @@ fn verify<C: Affine, R: Rank, B: Backend, Id: Copy + Sync>(
     let (mut a_public, mut b_public, mut target) =
         (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ZERO);
 
-    // Registry evaluations are independent once r is fixed. Combine their
-    // results in claim order after all jobs finish, leaving the transcript
-    // and weighted targets on the canonical serial path.
+    // Each claim's public parts depend only on r and data fixed before it,
+    // so the backend may evaluate them concurrently. Each result keeps its
+    // claim's slot, where it meets that claim's weights and target.
     for (i, (a, b)) in public_parts::<_, B, _>(shapes, r, public)
         .into_iter()
         .enumerate()
@@ -212,8 +212,9 @@ fn public<F: Field, R: Rank, Id>(
 }
 
 /// The verifier's native side: `commitment` gives each component's
-/// commitment, `registry` the native registry, and `targets` the claims'
-/// $k(y)$ values; the registry is read through the backend `B`.
+/// commitment, `registry` the native registry, and `targets` the raw and
+/// circuit claims' $k(y)$ values; the registry is read through the backend
+/// `B`.
 pub(crate) fn verify_native<C: Cycle, R: Rank, B: Backend>(
     circuit_id: CircuitIndex,
     commitment: impl Fn(native::RxComponent) -> C::HostCurve,
