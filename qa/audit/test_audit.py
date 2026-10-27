@@ -46,6 +46,7 @@ class API:
         self.comment = {"body": "/ragu-audit", "user": {"login": "alice", "type": "User"},
                         "issue_url": f"https://api.github.com/repos/{github.REPOSITORY}/issues/9"}
         self.checks, self.comments, self.mutations = [], [], []
+        self.files, self.reviews, self.review_comments = [], [], []
 
     @property
     def target(self):
@@ -69,6 +70,15 @@ class API:
                 return copy.deepcopy(self.comment)
             raise AssertionError(path)
         self.mutations.append((path, copy.deepcopy(data), method))
+        if path.endswith("/reviews") and method == "POST":
+            review = {"id": len(self.reviews) + 200, "user": {"type": "Bot", "login": APP["slug"] + "[bot]"},
+                      "body": data["body"], "state": "COMMENTED", "commit_id": data["commit_id"]}
+            self.reviews.append(review)
+            for comment in data["comments"]:
+                self.review_comments.append({"id": len(self.review_comments) + 300, "user": review["user"],
+                                             "pull_request_review_id": review["id"],
+                                             "commit_id": data["commit_id"], **comment})
+            return copy.deepcopy(review)
         if path.endswith("/check-runs"):
             check = {**data, "id": len(self.checks) + 1, "app": APP}
             self.checks.append(check)
@@ -89,7 +99,14 @@ class API:
         raise AssertionError(path)
 
     def pages(self, path, key=None):
-        if "check-runs" in path:
+        if path.endswith("/files"):
+            values = self.files
+        elif path.endswith("/reviews"):
+            values = self.reviews
+        elif "/reviews/" in path and path.endswith("/comments"):
+            review_id = int(path.split("/reviews/")[1].split("/")[0])
+            values = [comment for comment in self.review_comments if comment["pull_request_review_id"] == review_id]
+        elif "check-runs" in path:
             head = path.split("/commits/")[1].split("/")[0]
             values = [check for check in self.checks if check["head_sha"] == head]
         else:

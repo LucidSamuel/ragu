@@ -28,11 +28,15 @@ After this workflow lands on `main`:
    before merging" to enforce review against the current base. Keep the existing
    CI and approval rules.
 
-One App-owned comment shows a **For humans** summary with **Must-fix** and
-**Suggestions** lists, short explanations, source links, and reviewer attribution.
-Every retained finding appears in the summary after duplicate merging and
-source adjudication; there is no suggestion-count cutoff. Reviewed revisions, model settings, and extra notes are collapsed
-under Run details.
+The App posts retained findings as inline review comments after duplicate
+merging and source adjudication, preserving evidence, corrections, reviewer
+attribution, and disagreements. Comments attach to exact cited head-side lines
+in the reviewed diff; there is no suggestion-count cutoff. If none of a
+finding's cited lines appears in a diff hunk, it remains in the status comment
+with its source link rather than being moved to an unrelated line.
+One App-owned status comment shows **For humans** counts and links to the
+inline reviews. Reviewed revisions, model settings, and extra notes are
+collapsed under Run details.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
@@ -114,8 +118,8 @@ native Read tool: no shell, edits, tests, builds, or benchmarks. It must account
 for every original finding ID exactly once. Its separate receipt binds the
 input bundle and final report; it cannot modify the four-review completion
 receipt. Failure, timeout, invalid output, or damaged reconciliation artifacts
-publish the combined summary derived from all verified reviewers, with a
-notice that additional source checking did not finish. There is
+publish combined findings derived from all verified reviewers, with a notice
+that additional source checking did not finish. There is
 no extra model call when all reviewers return zero findings. Reconciliation does
 not determine the completion gate. Deleting the invoking comment also stops
 reconciliation; publication still marks the invocation cancelled.
@@ -161,9 +165,13 @@ No credentials travel through these outputs or control files.
 
 Controller reads and repeated updates retry transient GitHub server or
 connection failures, including interrupted HTTP responses, up to three times
-with bounded backoff. Check/comment
-creation is not retried automatically; a lost response is recovered only when
-the exact App-owned check or comment can be confirmed. Persistent publication failures keep the gate unsuccessful and
+with bounded backoff. Check, comment, and inline review creation are not
+retried automatically; a lost response is recovered only when the exact
+App-owned publication can be confirmed. Inline comments are grouped into
+comment-only reviews of at most 50 findings, pinned to the reviewed commit.
+Identical snapshots, configurations, and finding batches reuse existing
+reviews across retries and repeated commands. The publisher checks every
+posted comment before granting completion. Persistent publication failures keep the gate unsuccessful and
 attempt to replace the running comment with verified reports and an explicit
 publication-failed status.
 

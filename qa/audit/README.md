@@ -8,10 +8,12 @@ CI owns formatting, linting, documentation builds, and routine test suites.
 The bot runs focused tests only to investigate suspected bugs.
 
 Post the exact command as a new PR comment with write access. Commits do not
-trigger the bot. Their structured findings always produce one combined summary:
-**Must-fix** and **Suggestions**, with duplicate merging, reviewer attribution,
-and collapsed original reports below it. A short source-checking pass refines
-the summary; if it cannot finish, the combined summary is still published.
+trigger the bot. The bot posts merged **Must-fix** findings and **Suggestions**
+as inline review comments, with evidence and reviewer attribution. A short
+source-checking pass refines the findings; if it cannot finish, verified
+reviewer findings are still published. One status comment links to the inline
+reviews and preserves the collapsed original reports. Findings with no cited
+line in the diff remain in that comment.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.

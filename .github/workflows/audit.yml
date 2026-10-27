@@ -323,7 +323,7 @@ jobs:
           permission-checks: write
           permission-contents: read
           permission-pull-requests: write
-      - name: Verify reports and publish the summary and completion check
+      - name: Verify reports and publish inline findings and the completion check
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REVIEW_RESULT: ${{ needs.review.result }}

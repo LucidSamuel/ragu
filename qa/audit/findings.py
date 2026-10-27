@@ -215,6 +215,29 @@ def combined(candidates):
     return groups
 
 
+def inline_body(candidates, item):
+    """Render one retained finding with its evidence and reviewer attribution."""
+    originals = {record["id"]: record for record in candidates["findings"]}
+    reporters = [name for name in REVIEWERS
+                 if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"])]
+    label = "Must-fix" if item["disposition"] == "must-fix" else "Suggestion"
+    lines = [f"**[{item['priority']}] {safe(item['title'])}**", "",
+             f"{label} · {item['category']} · " + ", ".join(REVIEWER_NAMES[name] for name in reporters), "",
+             safe(item["cause"]), "", safe(item["evidence"]), "", safe(item["impact"]), "",
+             "**Suggested change:** " + safe(item["correction"]), ""]
+    if item["disagreement"]:
+        lines += ["**Disagreement:** " + safe(item["disagreement"]), ""]
+    lines += ["**Assessment:** " + safe(item["rationale"]), "", "Locations:"]
+    for location in item["locations"]:
+        path = safe(location["path"]).replace("[", "&#91;").replace("]", "&#93;")
+        url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(location['path'], safe='/')}#L{location['line']}"
+        lines.append(f"- [{path}:{location['line']}]({url})")
+    text = "\n".join(lines)
+    if len(text.encode()) > 60000:
+        text = text.encode()[:60000].decode("utf-8", errors="ignore") + "\n\nContinued in the full report artifacts."
+    return text
+
+
 def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
     """Show every retained finding, with merged attribution and bounded detail."""
     originals = {item["id"]: item for item in candidates["findings"]}
