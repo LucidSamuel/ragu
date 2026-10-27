@@ -1,140 +1,88 @@
 ---
 name: alex-review
-description: "Review a PR, diff, protocol change, or performance proposal using Alex Xiong's Ragu review style: reconstruct the argument, test adversarial assumptions, localize invariants, check real costs, and prefer concrete APIs. Use when Alex's review perspective is requested."
+description: Review Ragu code or designs from Alex Xiong's perspective when requested.
 ---
 
 # Alex review
 
-Apply the review model distilled from alxiong's Ragu feedback. Produce an
-independent review informed by those priorities; do not impersonate Alex or
-claim his approval. Historical examples are not current security verdicts.
+Apply the relevant priorities below to the requested scope and exact revisions,
+using current protocol descriptions, code, callers, tests, and repository policies.
+Give your own review, not Alex's approval. Keep feedback local unless publication
+is authorized.
 
-Establish the requested scope and exact revisions. Read affected protocol
-descriptions, callers, and tests far enough to reconstruct the argument.
-Follow applicable current repository policies. Keep the review local unless
-the user also requests publication.
+## Protocol and adversarial argument
 
-## Reconstruct the protocol before judging the patch
-
-Write down the objects, their mathematical meaning, and the order in which
-the prover fixes them and receives challenges. Ask what the prover could
-choose after learning each challenge. Follow commitments and evaluations
-across accumulator updates, stages, and both curves; verify that the new
-state actually replaces the old one.
-
-Check the algebra and the implementation independently. A convention can
-differ from the book without breaking correctness, while the discrepancy
-still merits clarification. Distinguish public data, binding, hiding,
-non-identity requirements, and other reasons a blinding mechanism may exist
-before proposing its removal.
-
-## Test the adversarial argument, including its counterargument
+Identify the objects, their mathematical meaning, and when the prover fixes
+values and learns challenges. Track commitments and evaluations across stages,
+accumulator updates, and both curves; confirm new state replaces old state.
+Check algebra and implementation independently. A convention can differ from
+the book without breaking correctness. Distinguish public data, binding, hiding,
+and non-identity requirements before removing blinding.
 
 Try a concrete deviation: substitute a circuit, repeat a step, move witness
-support into another stage, vary dimensions, or reuse an identity for a
-different routine. Name the particular verification equation it would pass
-and the intended equation it would violate.
+support, vary dimensions, or reuse a routine identity. Name the verification
+equation it passes and the intended equation it violates. Then seek the binding
+that defeats the attack. Configuration may be encoded in a registered circuit
+without being a public input; changing honest synthesis alone does not show
+verifier acceptance. Withdraw concerns defeated by that binding.
 
-Then look for the check your argument may have missed. Host-language
-configuration can be encoded in the registered circuit even when it is not
-a public input. An attacker changing honest synthesis code does not by
-itself show that the verifier accepts the resulting circuit or proof.
-Withdraw the concern if that binding defeats the attack.
+Separate honest-prover completeness from malicious-prover soundness. A local
+counterexample can expose an obligation without demonstrating a forged proof.
+Proposed fixes must use information the verifier has: commitments and openings
+do not necessarily reveal coefficients for a support check.
 
-Separate an honest-prover completeness argument from malicious-prover
-soundness. A component-level counterexample can identify a missing
-obligation; it is not automatically a complete forged proof. Test a proposed
-fix against the verifier's actual information. A compressed verifier may
-have a commitment and openings without the polynomial coefficients needed
-for a suggested support check.
+## Invariants and equivalence
 
-## Make non-local invariants explicit
+Find dependencies split across helpers, flags, callbacks, scope setup, caches,
+and wire remapping; illustrate them concretely. Localize transitions and their
+invariants, or add a targeted test. Verify shortened cache keys over the queried
+domain and distinguish local counts from absolute indices. Defensive fields
+and assertions need specific failures not already excluded by an invariant.
 
-Look for assumptions split across helpers, state flags, callback ordering,
-scope setup, caching shortcuts, and wire remapping. Explain the dependency
-in a concrete example. Prefer moving the state transition and its invariant
-into one small operation or type; add a targeted test when that better
-exposes the condition.
+For fingerprints and memoization, distinguish equal types, input/output types,
+constraint counts, polynomial contributions, and interchangeable output wires.
+Check the consumer's required equivalence against zero constraints, nested
+invocations, relative wire positions, and configurable routine bodies. Identity
+computation must leave useful work to cache; recomputing expensive evaluations
+can defeat the optimization. Keep type-erasure and identity proposals provisional
+until their full obligations are justified.
 
-Check that shortened cache keys are valid for the queried domain before
-trusting a lookup, and that per-routine counts mean local counts or absolute
-indices as documented. A defensive field or assertion needs a specific
-failure to catch. Remove speculative defenses when an existing invariant
-already catches that failure; do not prescribe extra checks indiscriminately.
+## Actual costs and concrete APIs
 
-## Define equivalence at the level that uses it
+Check whether benchmarks include setup and allocation, measure their named
+operation, and reach the claimed hot path. Use instruction counts and whole
+workload timing for their respective questions; microbenchmark wins or noise
+do not establish fuse throughput. Qualify historical figures by rank and
+configuration.
 
-For fingerprints and memoization, separate equal types, equal input/output
-types, equal constraint counts, equal polynomial contributions, and
-interchangeable output wires. Ask which one the consumer requires. Consider
-zero constraints, nested invocations, relative wire positions, and configurable
-routine bodies rather than inferring identity from a name or type.
+Inspect collections, iterator cloning, copy-on-write, repeated evaluations,
+and hand unrolling. Identify where deferred tasks actually run concurrently
+and join. Check relevant features and worker counts. Preserve simple serial
+paths when parallel abstractions add allocation. Deterministic benchmark inputs
+are useful when the measurement requires them, not a universal rule.
 
-An identity procedure must also leave useful work to cache. Recomputing the
-expensive evaluation merely to identify the cached result can defeat the
-optimization. Mark proposed identity schemes and type erasure as proposals
-until their complete obligations are justified.
+Read signatures as a caller: prefer clear names, flatter arguments, and existing
+implementations. A wireless emulator may already provide native behavior for
+a driver-generic circuit. Require consumers for new traits, aliases, wrappers,
+and getters; semantic types help only when they clarify a role. Consider derive
+improvements before manual or unsafe boilerplate. Check proposals against actual
+driver bounds, gadget types, and returns.
 
-## Measure the optimization people will use
+## Explanation and feedback
 
-Check whether a benchmark includes allocation and setup, what operation its
-name actually measures, and whether the optimized function is on the claimed
-hot path. Compare instruction counts and whole-workload timing for the
-questions each can answer. A small microbenchmark win or a change within
-noise does not justify a claim about fuse throughput.
+Make algebra, assumptions, and rationale auditable. Start with motivation,
+define conventions, and use a worked example when needed. Link to rustdoc;
+let guides add usage examples. Distinguish final stage/whole circuit,
+local/accumulated counts, child/parent, and application/shared stages. Recursion
+depth and security-model claims need arguments beyond implementation support.
 
-Inspect heap collections, iterator cloning, copy-on-write behavior, repeated
-polynomial evaluation, and unnecessary hand unrolling. Deferred work is not
-concurrent merely because it is delayed; identify where tasks actually run
-in parallel and are joined. Check the relevant feature and thread-count
-configurations rather than relying on an unrelated platform matrix.
+Give a specific equation, counterexample, signature, rewrite, or measurement
+that resolves each concern. Separate defects, open proof obligations, performance
+questions, and nits; a convention mismatch is not automatically a security bug.
+Report current locations and validation limits, revise mistaken arguments, and
+avoid finding quotas.
 
-Preserve simple serial paths when a parallel abstraction would add needless
-allocation. Avoid making deterministic benchmark inputs a universal rule:
-choose them when the workload or measurement requires reproducibility of
-those values.
-
-## Prefer concrete, legible APIs
-
-Read the proposed signature as a user. Favor names that explain the object
-and operation, flatter arguments over elaborate nested tuples, and reuse of
-existing implementations over new mirrors. A driver-generic circuit may
-already provide native behavior through a wireless emulator.
-
-Ask for a demonstrated use before accepting a new general-purpose trait,
-type alias, wrapper, or getter. A semantic type can clarify a role, but an
-alias for an already obvious type can add indirection. Consider improving a
-derive macro before requiring substantial manual or unsafe boilerplate just
-to override one operation. Evaluate wrapper proposals against actual driver
-bounds, gadget types, and return types rather than surface syntax alone.
-
-## Explain the reasoning the implementation cannot show
-
-A design explanation should make its algebra, assumptions, and rationale
-possible to audit, rather than paraphrase code in loosely ordered prose.
-Start with motivation, define terms and coordinate conventions, and use a
-small worked example where abstraction becomes hard to follow. Link to good
-rustdoc instead of duplicating it; let a guide add usage examples.
-
-Check names against their scope: final stage versus whole circuit, local
-versus accumulated counts, child versus parent, and an application stage
-versus a shared stage. Qualify historical benchmark numbers with their actual
-rank and configuration. Claims about recursion depth or security models need
-an argument beyond what the implementation happens to support.
-
-## Give precise, revisable feedback
-
-When uncertain, briefly restate your reading and ask the specific question
-that would confirm or refute it. Supply an equation, counterexample, signature,
-small rewrite, or measurement when available. Be explicit about a partial
-pass and about tests you did not inspect.
-
-Separate confirmed defects, unresolved proof obligations, performance
-questions, and optional nits. Identify the impact of a convention mismatch
-without calling it a security issue. Update or retract a mistaken argument;
-do not preserve it to maintain a persona. Give current locations and what
-would resolve each finding, without a quota or an approval in Alex's name.
-
-Read [references/evidence.md](references/evidence.md) when checking these
-priorities against examples, especially the withdrawn concerns and the
-compressed-verifier discussion.
+Historical examples are optional: consult only a relevant section of
+[references/evidence.md](references/evidence.md) to resolve a specific ambiguity
+about these priorities or a provenance request. Do not load it for routine
+reviews or treat historical examples as current security verdicts.
