@@ -15,7 +15,7 @@ the summary; if it cannot finish, the combined summary is still published.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.
-The four reviewers use Opus; reconciliation uses Sonnet.
+All four reviewers and reconciliation use Sonnet 5.5 at high effort.
 An internal spending limit stops runaway reviews.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.

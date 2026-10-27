@@ -9,12 +9,11 @@ After this workflow lands on `main`:
    `ragu-audit-publisher`, containing secret `RAGU_AUDIT_APP_PRIVATE_KEY`, and
    `ragu-audit-model`, containing secret `ANTHROPIC_API_KEY`.
    Keep these credentials out of repository and organization-wide secrets.
-3. Set repository variables `RAGU_AUDIT_APP_ID` to the App's numeric ID,
-   `RAGU_AUDIT_MODEL=claude-opus-5-5`, and `RAGU_AUDIT_EFFORT=xhigh`.
-   These apply to the four reviews and their subagents. Reconciliation defaults
-   to `claude-sonnet-5-5` at `xhigh`; optional variables
-   `RAGU_AUDIT_RECONCILE_MODEL` and `RAGU_AUDIT_RECONCILE_EFFORT` override those
-   settings. Each invocation pins both configurations.
+3. Set repository variable `RAGU_AUDIT_APP_ID` to the App's numeric ID.
+   Model and effort are configured in `.github/workflows/audit.yml`'s `env`
+   block. All four reviews, their subagents, and reconciliation use
+   `claude-sonnet-5-5` at `high` effort. Each invocation pins both the review
+   and reconciliation configurations.
    Claude Code is pinned to 2.1.310 in the runner and installation script.
 4. Set `RAGU_AUDIT_ENABLED=true` and post exactly `/ragu-audit` as a new PR
    conversation comment. The command requires live write, maintain, or admin
@@ -212,8 +211,8 @@ untrusted evidence. Project hooks/MCP configuration do not load, skill shell
 preprocessing is disabled, and shell commands cannot retry outside the sandbox.
 Native tests deliberately attempt credential reads and report tampering after
 reading injected instructions. These test containment with a fake API, not
-Opus's resistance to misleading text. Review coverage and findings remain
-model-reported and need human assessment.
+the configured model's resistance to misleading text. Review coverage and
+findings remain model-reported and need human assessment.
 
 A new command can cancel an older review on that PR; stale results cannot
 pass the gate. The publisher terminates the old invocation's check and updates

@@ -196,7 +196,7 @@ class ReuseTests(unittest.TestCase):
         self.api.source(self.old, status="in_progress", conclusion=None)
         for key, value in (("head", "c" * 40), ("base", "c" * 40), ("configuration", "c" * 40),
                            ("model", "claude-sonnet-5-5"), ("effort", "high"),
-                           ("reconcile_model", "claude-opus-5-5"), ("reconcile_effort", "high")):
+                           ("reconcile_model", "claude-opus-5-5"), ("reconcile_effort", "xhigh")):
             with self.subTest(key=key):
                 self.assertIsNone(reuse.active(self.api, {**self.current, key: value}))
 
@@ -215,7 +215,7 @@ class ReuseTests(unittest.TestCase):
     def test_changed_snapshot_settings_plan_or_core_are_never_reused(self):
         for key, value in (("head", "c" * 40), ("base", "c" * 40), ("configuration", "c" * 40),
                            ("model", "claude-sonnet-5-5"), ("effort", "high"),
-                           ("reconcile_model", "claude-opus-5-5"), ("reconcile_effort", "high")):
+                           ("reconcile_model", "claude-opus-5-5"), ("reconcile_effort", "xhigh")):
             with self.subTest(key=key):
                 self.seed()
                 changed = {**self.current, key: value}
