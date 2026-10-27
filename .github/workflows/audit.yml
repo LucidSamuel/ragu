@@ -11,10 +11,10 @@ permissions:
   pull-requests: read
 
 env:
-  RAGU_AUDIT_MODEL: ${{ vars.RAGU_AUDIT_MODEL }}
-  RAGU_AUDIT_EFFORT: ${{ vars.RAGU_AUDIT_EFFORT }}
-  RAGU_AUDIT_RECONCILE_MODEL: ${{ vars.RAGU_AUDIT_RECONCILE_MODEL }}
-  RAGU_AUDIT_RECONCILE_EFFORT: ${{ vars.RAGU_AUDIT_RECONCILE_EFFORT }}
+  RAGU_AUDIT_MODEL: claude-sonnet-5-5
+  RAGU_AUDIT_EFFORT: high
+  RAGU_AUDIT_RECONCILE_MODEL: claude-sonnet-5-5
+  RAGU_AUDIT_RECONCILE_EFFORT: high
   RAGU_AUDIT_APP_ID: ${{ vars.RAGU_AUDIT_APP_ID }}
 
 jobs:
@@ -323,7 +323,7 @@ jobs:
           permission-checks: write
           permission-contents: read
           permission-pull-requests: write
-      - name: Verify reports and publish the summary and completion check
+      - name: Verify reports and publish inline findings and the completion check
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           REVIEW_RESULT: ${{ needs.review.result }}

@@ -493,10 +493,17 @@ impl<C: Cycle> Instance<C> {
                     .native_commitment(native::RxComponent::Rx(native::RxIndex::PointsAb)),
             },
         )?;
-        Ok(B::sparse_commit_to_affine(&challenge_stage, generators)
-            == self.bridge(nested::RxIndex::ChallengeStage)
-            && B::sparse_commit_to_affine(&ab_bridge, generators)
-                == self.bridge(nested::RxIndex::BridgeAB))
+
+        // Both stage polynomials are fixed before either commitment is
+        // checked. Commit to them together, keeping the two equality checks
+        // separate.
+        let [challenge_commitment, ab_commitment] =
+            B::sparse_commit_batch([&challenge_stage, &ab_bridge], generators)
+                .map(C::NestedCurve::from);
+        Ok(
+            challenge_commitment == self.bridge(nested::RxIndex::ChallengeStage)
+                && ab_commitment == self.bridge(nested::RxIndex::BridgeAB),
+        )
     }
 
     /// The native wire claims under `sigma`: the preamble stage holds the

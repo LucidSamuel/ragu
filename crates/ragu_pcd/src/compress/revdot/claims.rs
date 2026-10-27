@@ -130,6 +130,18 @@ pub(crate) enum Kind {
     Masked(usize),
 }
 
+impl Kind {
+    /// Whether the claim's $k$ is one of the verifier's targets rather than
+    /// zero: true for raw and circuit claims, false for bonding and wire
+    /// binding claims.
+    pub(crate) fn takes_target(self) -> bool {
+        match self {
+            Kind::Raw | Kind::Circuit(_) => true,
+            Kind::Bonding(_) | Kind::Masked(_) => false,
+        }
+    }
+}
+
 /// A claim's committed structure: $a$, and a raw claim's $b$, as weighted
 /// sums of components.
 #[derive(Clone, Debug)]

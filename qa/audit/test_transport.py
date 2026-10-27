@@ -100,7 +100,8 @@ class TransportTests(unittest.TestCase):
 
     def test_real_controller_retries_without_losing_completed_reports(self):
         for endpoint in ("comment", "check", "check_after_apply", "create_after_apply", "summary_after_apply",
-                         "comment_truncated", "check_truncated", "create_truncated", "summary_truncated"):
+                         "comment_truncated", "check_truncated", "create_truncated", "summary_truncated",
+                         "review_after_apply", "review_truncated", "review_comments_truncated"):
             with self.subTest(endpoint=endpoint):
                 fixture = test_audit.AuditTests()
                 fixture.setUp()
@@ -119,6 +120,10 @@ class TransportTests(unittest.TestCase):
                             hit = path.endswith("/check-runs") and method == "POST"
                         elif endpoint.startswith("summary_"):
                             hit = url.path.endswith("/comments") and method == "POST"
+                        elif endpoint == "review_comments_truncated":
+                            hit = "/reviews/" in url.path and url.path.endswith("/comments") and method == "GET"
+                        elif endpoint.startswith("review_"):
+                            hit = url.path.endswith("/reviews") and method == "POST"
                         else:
                             hit = "/check-runs/" in path and method == "PATCH"
                         if enabled and hit and not injected:
@@ -130,7 +135,7 @@ class TransportTests(unittest.TestCase):
                             raise HTTPError(request.full_url, 503, "Unavailable", {}, None)
                         if method == "GET" and "/commits/" in path:
                             value = {"check_runs": list(backend.pages(path, "check_runs"))}
-                        elif method == "GET" and url.path.endswith("/comments"):
+                        elif method == "GET" and url.path.endswith(("/comments", "/files", "/reviews")):
                             value = list(backend.pages(path.split("?", 1)[0]))
                         else:
                             data = json.loads(request.data) if request.data is not None else None
@@ -141,7 +146,13 @@ class TransportTests(unittest.TestCase):
                          patch.object(runner, "urlopen", side_effect=send), patch.object(runner.time, "sleep"):
                         api = github.GitHub()
                         run = github.queue(api, 9, test_audit.HEAD, 12)
-                        fixture.reports(run)
+                        outputs = None
+                        if endpoint.startswith("review_"):
+                            backend.files = [{"filename": "src/lib.rs", "patch": "@@ -1 +1 @@\n-old\n+new"}]
+                            result = test_audit.native()
+                            result["structured_output"]["findings"] = [test_audit.candidate()]
+                            outputs = {name: result for name in runner.SKILLS}
+                        fixture.reports(run, outputs)
                         enabled = True
                         github.publish(api, run, fixture.out, "success")
                     self.assertTrue(injected)
@@ -150,6 +161,9 @@ class TransportTests(unittest.TestCase):
                     self.assertEqual(backend.checks[0]["conclusion"], "success")
                     self.assertIn("audit: completed", backend.comments[0]["body"])
                     self.assertIn("4/4 reviews completed", backend.comments[0]["body"])
+                    if endpoint.startswith("review_"):
+                        self.assertEqual(len(backend.reviews), 1)
+                        self.assertEqual(len(backend.review_comments), 1)
                 finally:
                     fixture.doCleanups()
 

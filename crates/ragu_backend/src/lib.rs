@@ -76,6 +76,32 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
         )
     }
 
+    /// Commits to independent sparse polynomials, returning results in input order.
+    ///
+    /// The default hands each polynomial's stored coefficients and matching
+    /// generators to [`Self::msm_batch`], whose default performs each MSM
+    /// separately and retains [`Self::msm`] overrides. It does not call
+    /// [`Self::sparse_commit`], so overriding that method alone leaves batched
+    /// commitments unchanged.
+    ///
+    /// # Correctness
+    ///
+    /// Each output must match [`sparse::Polynomial::commit`] exactly.
+    fn sparse_commit_batch<C: Affine, R: Rank, G: FixedGenerators<C>, const N: usize>(
+        polys: [&sparse::Polynomial<C::Scalar, R>; N],
+        generators: &G,
+    ) -> [C::Projective; N] {
+        let bases = generators.g();
+        assert!(bases.len() >= R::num_coeffs());
+        Self::msm_batch(polys.map(|poly| {
+            (
+                poly.iter_stored_coeffs()
+                    .map(|(_, coefficient)| coefficient),
+                poly.iter_stored_coeffs().map(|(index, _)| &bases[index]),
+            )
+        }))
+    }
+
     /// Commits to a sparse polynomial and normalizes the result to affine.
     ///
     /// # Correctness
@@ -189,10 +215,15 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     /// Computes the multiscalar multiplication
     /// $\langle \mathbf{a}, \mathbf{G} \rangle$.
     ///
+    /// # Panics
+    ///
+    /// Panics if `coeffs` and `bases` differ in length. Pairing them up to
+    /// the shorter one would silently drop terms from the sum.
+    ///
     /// # Correctness
     ///
-    /// Inputs are truncated to the shorter iterator. Overrides must match
-    /// [`Affine::msm`] on those paired elements exactly.
+    /// Overrides must match [`Affine::msm`] exactly, including the panic on
+    /// operands of unequal length.
     fn msm<
         'a,
         C: Affine,
@@ -205,10 +236,73 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
     where
         Bases::IntoIter: Clone + Sync,
     {
-        let coeffs: Vec<C::Scalar> = coeffs.into_iter().copied().collect();
-        let bases: Vec<C> = bases.into_iter().copied().collect();
-        let len = coeffs.len().min(bases.len());
-        ragu_core::msm(coeffs.into_iter().take(len), bases.into_iter().take(len))
+        ragu_core::msm(coeffs.into_iter().copied(), bases.into_iter().copied())
+    }
+
+    /// Computes independent MSMs, returning results in input order.
+    ///
+    /// The default calls [`Self::msm`] for each input, retaining MSM overrides.
+    /// Backends may override this method to schedule the MSMs together.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any input's operands differ in length, as [`Self::msm`]
+    /// does.
+    ///
+    /// # Correctness
+    ///
+    /// Outputs must match separate calls to [`Self::msm`] exactly.
+    fn msm_batch<
+        'a,
+        C: Affine,
+        A: IntoIterator<Item = &'a C::Scalar>,
+        Bases: IntoIterator<Item = &'a C>,
+        const N: usize,
+    >(
+        inputs: [(A, Bases); N],
+    ) -> [C::Projective; N]
+    where
+        Bases::IntoIter: Clone + Sync,
+    {
+        inputs.map(|(coeffs, bases)| Self::msm(coeffs, bases))
+    }
+
+    /// Maps a finite set of independent inputs to results in input order.
+    ///
+    /// The default is an ordinary lazy iterator, with no job buffer. Backends
+    /// may collect the inputs and evaluate them concurrently before returning.
+    /// Consequently, `work` must be independent of execution order and must not
+    /// have protocol side effects such as consuming transcript or RNG state.
+    /// Callers must not rely on unevaluated work when consuming only a prefix.
+    ///
+    /// # Correctness
+    ///
+    /// Collecting all results must match `inputs.into_iter().map(work)` exactly,
+    /// with one call per input and results in the original input order.
+    fn map<I: IntoIterator, T: Send>(
+        inputs: I,
+        work: impl Fn(I::Item) -> T + Sync,
+    ) -> impl Iterator<Item = T>
+    where
+        I::Item: Send,
+    {
+        inputs.into_iter().map(work)
+    }
+
+    /// Applies independent work to each item's original index and mutable slot.
+    ///
+    /// The default visits items serially. Backends may schedule them concurrently.
+    /// The callback's result for each item must be independent of visitation order.
+    ///
+    /// # Correctness
+    ///
+    /// On success, each item must be visited exactly once with its original index,
+    /// and the items must retain their original order. If the callback panics,
+    /// some items may remain unvisited.
+    fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+        for (index, value) in values.iter_mut().enumerate() {
+            work(index, value);
+        }
     }
 }
 

@@ -101,11 +101,13 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn("GH_TOKEN", env)
             self.assertNotIn("GH_READ_TOKEN", env)
             self.assertNotIn("ANTHROPIC_API_KEY", env)
-            previous = command[-1].split("Previous pass reports: ")[1].split(". Challenge")[0]
+            core_paths = [self.out / name for name in ("core-findings.json", "code-review.md")]
             if skill == "code-review":
-                self.assertEqual(previous, "none")
+                for path in core_paths:
+                    self.assertNotIn(str(path), command[-1])
             else:
-                self.assertEqual(previous, ", ".join(str(self.out / name) for name in ("code-review.md", "core-findings.json")))
+                for path in core_paths:
+                    self.assertIn(str(path), command[-1])
                 self.assertEqual(runner.read_json(self.out / "core-findings.json"), {"findings": []})
                 self.assertIn("Recorded review and validation evidence", (self.out / "code-review.md").read_text())
                 specialists.wait(timeout=5)

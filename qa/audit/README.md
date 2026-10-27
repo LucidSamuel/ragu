@@ -1,21 +1,25 @@
 # Ragu audit
 
 `/ragu-audit` runs Ragu's code-review skill, then the Sean, Tal, and Alex review
-skills in parallel against the same PR revision, sharing the core report and
-its validation evidence. These are complementary review
-perspectives; checks follow the changes and relevant project policies.
+skills in parallel against the same PR revision. Specialists start with the
+core finding index and consult the full core report when additional reasoning
+or validation details are needed. Each specialist reads its skill's evidence
+reference. These are complementary review perspectives; checks follow the
+changes and relevant project policies.
 CI owns formatting, linting, documentation builds, and routine test suites.
 The bot runs focused tests only to investigate suspected bugs.
 
 Post the exact command as a new PR comment with write access. Commits do not
-trigger the bot. Their structured findings always produce one combined summary:
-**Must-fix** and **Suggestions**, with duplicate merging, reviewer attribution,
-and collapsed original reports below it. A short source-checking pass refines
-the summary; if it cannot finish, the combined summary is still published.
+trigger the bot. The bot posts merged **Must-fix** findings and **Suggestions**
+as inline review comments, with evidence and reviewer attribution. A short
+source-checking pass refines the findings; if it cannot finish, verified
+reviewer findings are still published. One status comment links to the inline
+reviews and preserves the collapsed original reports. Findings with no cited
+line in the diff remain in that comment.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.
-The four reviewers use Opus; reconciliation uses Sonnet.
+All four reviewers and reconciliation use Sonnet 5.5 at high effort.
 An internal spending limit stops runaway reviews.
 
 Require `ragu-audit/completed` to gate merging on all four passes finishing.

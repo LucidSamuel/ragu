@@ -207,22 +207,8 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         // coefficients. A parent holds a child's stage to the child's headers
         // through `bind_beta`, its walk and its nested batch; the root has no
         // parent, so the decider holds the root's stage to its headers here.
-        let nested_challenges_claim = {
-            let (challenge_lifts, beta_lift) = lifts.split_at(nested_challenges::NUM);
-            let expected_challenges = nested_challenges::Stage::<C::HostCurve, R>::rx(
-                C::ScalarField::ZERO,
-                &nested_challenges::Witness::new::<_, HEADER_SIZE>(
-                    challenge_lifts.try_into().expect("NUM challenge lifts"),
-                    pcd.proof().left_header(),
-                    pcd.proof().right_header(),
-                    beta_lift[0],
-                ),
-            )?;
-            pcd.proof()
-                .nested_challenges_rx()
-                .iter_coeffs()
-                .eq(expected_challenges.iter_coeffs())
-        };
+        let nested_challenges_claim =
+            nested_challenges_match::<C, R, HEADER_SIZE>(pcd.proof(), &lifts)?;
 
         // Check cached commitments against their polynomials in one batch
         // per curve, including P = Com(p) and P_n = Com(p_n). The endoscaling
@@ -566,6 +552,33 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
         Ok(fixed_registry_claim && query_claim && eval_claim)
     }
+}
+
+/// Whether the proof's nested challenge stage equals the stage recomputed,
+/// with zero blinding, from `lifts` and the proof's headers.
+///
+/// `lifts` holds the native challenges' lifts followed by the lift of
+/// `pre_beta`, and the headers fix the base-case sign. `verify` checks this
+/// for the root; a parent enforces it for each child through `bind_beta`,
+/// its walk and its nested batch.
+pub(crate) fn nested_challenges_match<C: Cycle, R: Rank, const HEADER_SIZE: usize>(
+    proof: &Proof<C, R>,
+    lifts: &[C::ScalarField; nested_challenges::NUM + 1],
+) -> Result<bool> {
+    let (challenge_lifts, beta_lift) = lifts.split_at(nested_challenges::NUM);
+    let expected = nested_challenges::Stage::<C::HostCurve, R>::rx(
+        C::ScalarField::ZERO,
+        &nested_challenges::Witness::new::<_, HEADER_SIZE>(
+            challenge_lifts.try_into().expect("NUM challenge lifts"),
+            proof.left_header(),
+            proof.right_header(),
+            beta_lift[0],
+        ),
+    )?;
+    Ok(proof
+        .nested_challenges_rx()
+        .iter_coeffs()
+        .eq(expected.iter_coeffs()))
 }
 
 /// Whether the persistent nested points consumed by the native walk are

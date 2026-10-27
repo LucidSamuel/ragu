@@ -1,0 +1,234 @@
+"""Exercise inline publication, exact diff anchors, and duplicate recovery."""
+
+import copy
+import os
+import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
+
+import github
+import runner
+import test_audit
+from test_audit import APP, HEAD, candidate, native
+from test_findings import group
+
+
+class InlineTests(unittest.TestCase):
+    def setUp(self):
+        self.fixture = test_audit.AuditTests()
+        self.fixture.setUp()
+        self.addCleanup(self.fixture.doCleanups)
+        self.api, self.out = self.fixture.api, self.fixture.out
+        self.api.files = [{"filename": "src/lib.rs", "status": "modified", "patch": "@@ -1 +1 @@\n-old\n+new"}]
+        self.run = github.queue(self.api, 9, HEAD, 12)
+
+    def reports(self, *items):
+        result = native()
+        result["structured_output"]["findings"] = list(items or [candidate()])
+        self.fixture.reports(self.run, {name: copy.deepcopy(result) for name in runner.SKILLS})
+
+    def publish(self, result="success"):
+        github.publish(self.api, self.run, self.out, result)
+
+    def test_diff_parser_tracks_head_lines_across_hunks_and_deletions(self):
+        files = [{"filename": "renamed.rs", "previous_filename": "old.rs", "status": "renamed",
+                  "patch": "@@ -2,3 +2,4 @@\n context\n-old\n+new\n+extra\n context\n@@ -20 +30 @@\n-old\n+new\n\\ No newline at end of file"},
+                 {"filename": "deleted.rs", "status": "removed", "patch": "@@ -1 +0,0 @@\n-old"},
+                 {"filename": "binary", "status": "modified"}]
+        self.assertEqual(github.diff_lines(files), {("renamed.rs", line) for line in (2, 3, 4, 5, 30)})
+
+    def test_combined_finding_is_inline_once_with_all_reviewers_and_evidence(self):
+        self.reports()
+        self.publish()
+        self.assertEqual(len(self.api.reviews), 1)
+        self.assertEqual(len(self.api.review_comments), 1)
+        comment = self.api.review_comments[0]
+        self.assertEqual((comment["path"], comment["line"], comment["side"], comment["commit_id"]),
+                         ("src/lib.rs", 1, "RIGHT", HEAD))
+        for text in ("Incorrect result", "General, Sean, Tal, Alex", "A reachable counterexample.", "Correct the operation."):
+            self.assertIn(text, comment["body"])
+        summary = self.api.comments[0]["body"]
+        self.assertIn("1 finding posted inline", summary)
+        self.assertIn("#pullrequestreview-200", summary)
+        self.assertNotIn("**Incorrect result**", summary)
+        self.assertNotIn("#### Must-fix", summary)
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_reconciliation_controls_disposition_location_and_disagreement(self):
+        self.reports()
+        item = group(*[f"{name}:1" for name in runner.SKILLS], disposition="suggestion", title="Reconciled concern",
+                     locations=[{"path": "outside.rs", "line": 99}, {"path": "src/lib.rs", "line": 1}],
+                     disagreement="The evidence does not settle this concern.")
+        self.fixture.reconciliation(self.run, [item])
+        self.publish()
+        comment = self.api.review_comments[0]
+        self.assertEqual((comment["path"], comment["line"]), ("src/lib.rs", 1))
+        self.assertIn("Suggestion", comment["body"])
+        self.assertIn("Reconciled concern", comment["body"])
+        self.assertIn("The evidence does not settle", comment["body"])
+        self.assertIn("outside.rs:99", comment["body"])
+        self.assertIn("Must-fix: 0 · Suggestions: 1", self.api.comments[0]["body"])
+
+    def test_dismissed_findings_do_not_create_reviews(self):
+        self.reports()
+        self.fixture.reconciliation(self.run, [group(*[f"{name}:1" for name in runner.SKILLS], disposition="dismissed")])
+        self.publish()
+        self.assertEqual(self.api.reviews, [])
+        self.assertIn("None after reconciliation", self.api.comments[0]["body"])
+
+    def test_findings_outside_diff_are_retained_without_moving_their_anchor(self):
+        self.reports(candidate(), candidate(title="Outside hunk", cause="Different cause",
+                                           locations=[{"path": "src/lib.rs", "line": 90}]))
+        self.publish()
+        self.assertEqual(len(self.api.review_comments), 1)
+        summary = self.api.comments[0]["body"]
+        self.assertIn("no cited line in the current diff", summary)
+        self.assertIn("**Outside hunk**", summary)
+        self.assertNotIn("**Incorrect result**", summary)
+
+    def test_republication_and_reused_reports_do_not_duplicate_inline_threads(self):
+        self.reports()
+        self.publish()
+        self.publish()
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.run["run_id"] + 1)}):
+            self.run = github.queue(self.api, 9, HEAD, 12)
+            self.reports()
+            self.publish()
+        self.assertEqual(len(self.api.reviews), 1)
+        self.assertEqual(len(self.api.review_comments), 1)
+
+    def test_lost_creation_response_recovers_without_another_post(self):
+        self.reports()
+        call = self.api.call
+
+        def lose_response(path, data=None, method=None):
+            result = call(path, data, method)
+            if path.endswith("/reviews") and method == "POST":
+                raise OSError("response lost after creation")
+            return result
+
+        with patch.object(self.api, "call", side_effect=lose_response):
+            self.publish()
+        self.assertEqual(len(self.api.reviews), 1)
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_human_replies_do_not_prevent_reusing_an_existing_review(self):
+        self.reports()
+        self.publish()
+        comment = self.api.review_comments[0]
+        self.api.review_comments.append({**comment, "id": 999, "in_reply_to_id": comment["id"],
+                                         "user": {"type": "User", "login": "alice"}, "body": "Fixed."})
+        self.publish()
+        self.assertEqual(len(self.api.reviews), 1)
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_failed_creation_keeps_verified_findings_and_fails_completion(self):
+        self.reports()
+        call = self.api.call
+
+        def reject(path, data=None, method=None):
+            if path.endswith("/reviews"):
+                raise HTTPError(path, 422, "Invalid comment", {}, None)
+            return call(path, data, method)
+
+        with patch.object(self.api, "call", side_effect=reject), self.assertRaises(HTTPError):
+            self.publish()
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertIn("audit: publication failed", self.api.comments[0]["body"])
+        self.assertIn("**Incorrect result**", self.api.comments[0]["body"])
+
+    def test_missing_or_modified_remote_comments_cannot_grant_completion(self):
+        self.reports()
+        self.publish()
+        reviews, comments = copy.deepcopy(self.api.reviews), copy.deepcopy(self.api.review_comments)
+        for change in ("missing", "body", "commit", "author", "review_state"):
+            with self.subTest(change=change):
+                self.api.reviews, self.api.review_comments = copy.deepcopy(reviews), copy.deepcopy(comments)
+                if change == "missing":
+                    self.api.review_comments.clear()
+                elif change == "review_state":
+                    self.api.reviews[0]["state"] = "PENDING"
+                else:
+                    key, value = {"body": ("body", "modified"), "commit": ("commit_id", "c" * 40),
+                                  "author": ("user", {"type": "Bot", "login": "another-app[bot]"})}[change]
+                    self.api.review_comments[0][key] = value
+                with self.assertRaises(ValueError):
+                    self.publish()
+                self.assertEqual(len(self.api.reviews), 1)
+                self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_human_or_foreign_marker_is_not_reused(self):
+        self.reports()
+        self.publish()
+        self.api.reviews[0]["user"] = {"type": "User", "login": APP["slug"] + "[bot]"}
+        self.publish()
+        self.assertEqual(len(self.api.reviews), 2)
+
+    def test_head_movement_before_review_creation_cannot_post_inline_comments(self):
+        self.reports()
+        pages = self.api.pages
+
+        def move_head(path, key=None):
+            result = pages(path, key)
+            if path.endswith("/files"):
+                self.api.target["head"]["sha"] = "c" * 40
+            return result
+
+        with patch.object(self.api, "pages", side_effect=move_head), self.assertRaises(github.StaleReview):
+            self.publish()
+        self.assertEqual(self.api.reviews, [])
+        self.assertIn("audit: stale", self.api.comments[0]["body"])
+
+    def test_cancelled_command_does_not_create_inline_comments(self):
+        self.reports()
+        self.api.comment = None
+        with self.assertRaises(github.CancelledReview):
+            self.publish()
+        self.assertEqual(self.api.reviews, [])
+
+    def test_partial_reviews_publish_only_verified_completed_findings(self):
+        self.reports()
+        receipt = runner.read_json(self.out / "receipt.json")
+        receipt["phases"] = receipt["phases"][:1]
+        runner.write_json(self.out / "receipt.json", receipt)
+        with self.assertRaisesRegex(ValueError, "audit did not complete"):
+            self.publish("failure")
+        self.assertEqual(len(self.api.review_comments), 1)
+        self.assertIn("General", self.api.review_comments[0]["body"])
+        self.assertNotIn("Sean", self.api.review_comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+
+    def test_inline_text_escapes_mentions_html_and_images(self):
+        self.reports(candidate(evidence="<script>unsafe</script> @team ![image](https://example.com/image)"))
+        self.publish()
+        body = self.api.review_comments[0]["body"]
+        self.assertNotIn("<script>", body)
+        self.assertNotIn("@team", body)
+        self.assertNotIn("![", body)
+        self.assertIn("&lt;script&gt;", body)
+
+    def test_large_finding_sets_are_batched_and_every_comment_is_preserved(self):
+        self.reports(*[candidate(title=f"Concern {n}", cause=f"Cause {n}") for n in range(64)])
+        self.publish()
+        self.assertEqual(len(self.api.reviews), 2)
+        self.assertEqual(len(self.api.review_comments), 64)
+        self.assertIn("64 findings posted inline", self.api.comments[0]["body"])
+        self.publish()
+        self.assertEqual(len(self.api.reviews), 2)
+
+    def test_large_unicode_and_escaped_finding_fits_the_comment_limit(self):
+        locations = [{"path": "/".join(["界" * 30] * 9) + f"/{n}.rs", "line": 1} for n in range(8)]
+        self.api.files[0]["filename"] = locations[0]["path"]
+        self.reports(candidate(locations=locations))
+        item = group(*[f"{name}:1" for name in runner.SKILLS], locations=locations,
+                     cause="<" * 1600, evidence="<" * 2400, impact="<" * 1600,
+                     correction="<" * 1600, rationale="<" * 2400, disagreement="<" * 2400)
+        self.fixture.reconciliation(self.run, [item])
+        self.publish()
+        body = self.api.review_comments[0]["body"]
+        self.assertLess(len(body.encode()), 65536)
+        self.assertIn("Continued in the full report artifacts", body)
+
+
+if __name__ == "__main__":
+    unittest.main()

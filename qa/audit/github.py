@@ -16,6 +16,7 @@ import findings
 REPOSITORY = "tachyon-zcash/ragu"
 CHECK = "ragu-audit/completed"
 MARKER = "<!-- ragu-audit-summary:v2 -->"
+INLINE_MARKER = "<!-- ragu-audit-inline:v1:"
 
 
 class StaleReview(ValueError):
@@ -217,7 +218,111 @@ def review_excerpt(text, size):
     return text
 
 
-def summary(run, state, out=None):
+def verified_findings(run, out):
+    bundle = runner.candidates(run, out, partial=True)
+    if len(bundle["reviews"]) == len(runner.SKILLS):
+        try:
+            return runner.verify_reconciliation(run, out)
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    return bundle, None
+
+
+def diff_lines(files):
+    """Return exact head-side lines GitHub exposes in the PR's diff hunks."""
+    result = set()
+    for file in files:
+        if file.get("status") == "removed":
+            continue
+        line = None
+        for text in file.get("patch", "").splitlines():
+            header = re.match(r"^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@", text)
+            if header:
+                line = int(header[1])
+            elif line is not None and text.startswith((" ", "+")):
+                if line > 0:
+                    result.add((file["filename"], line))
+                line += 1
+    return result
+
+
+def owns_inline(review, app):
+    if not review.get("body", "").startswith(INLINE_MARKER) or review.get("user", {}).get("type") != "Bot":
+        return False
+    via = review.get("performed_via_github_app")
+    return via.get("id") == app["id"] if via else review["user"].get("login") == app["slug"] + "[bot]"
+
+
+def publish_inline(api, run, check, out):
+    try:
+        bundle, groups = verified_findings(run, out)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    active = [item for item in (groups if groups is not None else findings.combined(bundle))
+              if item["disposition"] != "dismissed"]
+    publication = {"urls": [], "fallback": [], "count": 0}
+    if not active:
+        return publication
+    path = f"/repos/{REPOSITORY}/pulls/{run['pr']}"
+    available = diff_lines(api.pages(path + "/files"))
+    comments = []
+    for item in active:
+        location = next((loc for loc in item["locations"] if (loc["path"], loc["line"]) in available), None)
+        if location is None:
+            publication["fallback"].append(item)
+        else:
+            comments.append({"path": location["path"], "line": location["line"], "side": "RIGHT",
+                             "body": findings.inline_body(bundle, item)})
+    if not comments:
+        return publication
+    reviews = list(api.pages(path + "/reviews"))
+    # Batch comments to avoid one notification-producing review per finding.
+    # Identity excludes invocation IDs so identical reused reports do not
+    # create duplicate threads on subsequent commands for the same snapshot.
+    for start in range(0, len(comments), 50):
+        batch = comments[start:start + 50]
+        identity = findings.fingerprint({"pr": run["pr"], "run": runner.reuse_key(run), "comments": batch})
+        body = f"{INLINE_MARKER}{identity} -->\n\nRagu audit findings for `{run['head']}` against `{run['base']}`.\n\nFull reports and validation limits are linked from the audit status comment."
+
+        def existing():
+            matches = [review for review in reviews if owns_inline(review, check["app"]) and review["body"] == body]
+            if len(matches) > 1:
+                raise ValueError("duplicate inline reviews")
+            return matches[0] if matches else None
+
+        review = existing()
+        guard(api, run)
+        if review is None:
+            try:
+                review = api.call(path + "/reviews", {"commit_id": run["head"], "body": body,
+                                                     "event": "COMMENT", "comments": batch}, "POST")
+            except (OSError, ValueError):
+                # Never repeat a creation after an ambiguous response. Recover
+                # only the exact App-owned review and verify every comment.
+                reviews = list(api.pages(path + "/reviews"))
+                review = existing()
+                if review is None:
+                    raise
+            if not any(item["id"] == review["id"] for item in reviews):
+                reviews.append(review)
+        if (not owns_inline(review, check["app"]) or review["body"] != body
+                or review.get("commit_id") != run["head"] or review.get("state") != "COMMENTED"):
+            raise ValueError("inline review publication was not confirmed")
+        actual = [item for item in api.pages(path + f"/reviews/{number(review['id'])}/comments")
+                  if not item.get("in_reply_to_id")]
+        expected = {(item["path"], item["line"], item["side"], item["body"]) for item in batch}
+        received = {(item.get("path"), item.get("line"), item.get("side"), item.get("body")) for item in actual
+                    if item.get("commit_id") == run["head"] and item.get("user", {}).get("type") == "Bot"
+                    and item["user"].get("login") == check["app"]["slug"] + "[bot]"}
+        if len(actual) != len(batch) or received != expected:
+            raise ValueError("inline review comments were not confirmed")
+        publication["urls"].append(f"https://github.com/{REPOSITORY}/pull/{run['pr']}#pullrequestreview-{review['id']}")
+        publication["count"] += len(batch)
+    guard(api, run)
+    return publication
+
+
+def summary(run, state, out=None, *, inline=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
     details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
                f"Model: `{run['model']}` · Effort: `{run['effort']}`", "",
@@ -229,7 +334,7 @@ def summary(run, state, out=None):
         names, bundle, groups = [], None, None
         if out is not None:
             try:
-                bundle = runner.candidates(run, out, partial=True)
+                bundle, groups = verified_findings(run, out)
                 names = [review["reviewer"] for review in bundle["reviews"]]
             except (OSError, ValueError, KeyError, TypeError):
                 pass
@@ -245,20 +350,30 @@ def summary(run, state, out=None):
             if out is not None:
                 lines += [incomplete_details(run, out), ""]
             lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry.", ""]
-        if names == list(runner.SKILLS):
-            try:
-                bundle, groups = runner.verify_reconciliation(run, out)
-            except (OSError, ValueError, KeyError, TypeError):
-                pass
         lines += ["### For humans", ""]
         if bundle is not None:
             if groups is None and bundle["findings"]:
                 notice = ("Combined reviewer findings. Additional source checking did not complete; disputed claims remain visible."
                           if len(names) == 4 else "Combined findings from the completed reviews.")
                 details += [notice, ""]
-            short = findings.shortlist(bundle, groups, heading_level=4)
+            shown = groups
+            if inline is not None:
+                active = [item for item in (groups if groups is not None else findings.combined(bundle))
+                          if item["disposition"] != "dismissed"]
+                fixes = sum(item["disposition"] == "must-fix" for item in active)
+                lines += [f"**Must-fix: {fixes} · Suggestions: {len(active) - fixes}**", ""]
+                if inline["urls"]:
+                    links = ", ".join(f"[review {index}]({url})" for index, url in enumerate(inline["urls"], 1))
+                    noun = "finding" if inline["count"] == 1 else "findings"
+                    lines += [f"{inline['count']} {noun} posted inline: {links}.", ""]
+                shown = inline["fallback"]
+                if shown:
+                    lines += ["The following findings have no cited line in the current diff; they are retained here.", ""]
+            short = findings.shortlist(bundle, shown, heading_level=4) if inline is None or shown else []
+            if inline is not None and not active:
+                short = ["None reported." if groups is None else "None after reconciliation.", ""]
             if len("\n".join(short).encode()) > 54000:
-                short = findings.shortlist(bundle, groups, compact=True, heading_level=4)
+                short = findings.shortlist(bundle, shown, compact=True, heading_level=4)
             lines += short
             if any(runner.read_json(out / f"{skill}.json").get("permission_denials") for skill in names):
                 details += ["Some tool requests were blocked; see the individual reports' limitations.", ""]
@@ -270,8 +385,7 @@ def summary(run, state, out=None):
             lines += ["No verified findings are available.", ""]
         if names:
             lines += ["### For agents", ""]
-            # Preserve every confirmed defect in the top shortlist, allocating
-            # the remaining comment budget to the collapsed original reports.
+            # Allocate the remaining comment budget to collapsed original reports.
             size = min(12000, max(0, 60000 - len("\n".join(lines).encode()) - 4000) // len(names))
             for skill in names:
                 variable = "RAGU_AUDIT_REPORT_" + skill.upper().replace("-", "_")
@@ -290,12 +404,12 @@ def summary(run, state, out=None):
     return "\n".join(lines)
 
 
-def upsert(api, run, check, state, *, out=None, only_current=False):
+def upsert(api, run, check, state, *, out=None, only_current=False, inline=None):
     comments = api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
     existing = next((comment for comment in comments if owns_comment(comment, check["app"])), None)
     if only_current and (existing is None or invocation_marker(run) not in existing["body"].splitlines()):
         return  # An older invocation must never replace a newer summary.
-    body = summary(run, state, out)
+    body = summary(run, state, out, inline=inline)
     path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
     try:
         result = api.call(path, {"body": body}, "PATCH" if existing else "POST")
@@ -418,7 +532,7 @@ def publication_failure(api, run, check, out=None):
     except (OSError, ValueError, KeyError, TypeError):
         print("Could not publish terminal summary; see workflow", flush=True)
     finally:
-        finish_check(api, run, False, "Summary publication failed")
+        finish_check(api, run, False, "Review publication failed")
 
 
 def publish(api, run, out, review_result):
@@ -435,7 +549,8 @@ def publish(api, run, out, review_result):
             success = True
         except (OSError, ValueError, KeyError, TypeError):
             print("Review incomplete; see verified phase reports and diagnostics", flush=True)
-        upsert(api, run, check, "completed" if success else "incomplete", out=out)
+        inline = publish_inline(api, run, check, out)
+        upsert(api, run, check, "completed" if success else "incomplete", out=out, inline=inline)
         guard(api, run)  # Recheck after reading artifacts and publishing.
         finish_check(api, run, success, "Four skill reviews completed" if success else "Review incomplete")
     except CancelledReview:

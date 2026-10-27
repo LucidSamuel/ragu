@@ -9,6 +9,29 @@
 //! Overrides of verifier-consulted kernels belong in this module and are
 //! reached from the `Backend` impl in the crate root by delegation, so code
 //! that can influence an acceptance decision can be reviewed and tested here.
-//!
-//! Nothing is overridden here yet; [`AcceleratedBackend`](crate::AcceleratedBackend)
-//! verifies with the reference kernels until the first override lands.
+
+use udon::curve::Affine;
+
+/// Computes independent MSMs, panicking before any of them if an input's
+/// operands differ in length.
+pub(crate) fn msm_batch<
+    'a,
+    C: Affine,
+    A: IntoIterator<Item = &'a C::Scalar>,
+    Bases: IntoIterator<Item = &'a C>,
+    const N: usize,
+>(
+    inputs: [(A, Bases); N],
+) -> [C::Projective; N]
+where
+    Bases::IntoIter: Clone + Sync,
+{
+    ragu_core::msm_batch(
+        inputs.map(|(coeffs, bases)| (coeffs.into_iter().copied(), bases.into_iter().copied())),
+    )
+}
+
+/// Schedules independent work without changing the items' original slots.
+pub(crate) fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+    ragu_core::for_each_mut(values, work);
+}
