@@ -815,6 +815,7 @@ fn batch_preserves_order_and_default_msm_override() {
             (&scalars[1..3], &bases[2..]),
             (&scalars[3..], &bases[3..]),
         ];
+
         // In order: 2G, G, the empty sum, -G and the zero scalar's sum. Only
         // the two identities coincide, so a reordered batch cannot match.
         let expected = inputs.map(|(scalars, bases)| C::msm(scalars, bases));
@@ -898,6 +899,7 @@ fn serial_map_prepares_one_input_at_a_time() {
 fn backend_map_preserves_owned_inputs_and_result_order() {
     fn check<B: Backend>(count: usize) {
         let calls: Vec<_> = (0..count).map(|_| AtomicUsize::new(0)).collect();
+
         // Non-Copy inputs and outputs exercise ownership across worker threads.
         let inputs = (0..count).map(|index| alloc::vec![index]);
         let results: Vec<_> = B::map(inputs, |mut input| {
@@ -1592,6 +1594,7 @@ mod independent_polynomials {
             (&polys[1], C::Scalar::ONE),
             (&polys[2], C::Scalar::from(2)),
         ];
+
         // A dense Horner evaluation is independent of the sparse evaluator.
         let expected = inputs.map(|(poly, point)| {
             let coefficients: Vec<_> = poly.iter_coeffs().collect();

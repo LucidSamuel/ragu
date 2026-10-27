@@ -185,6 +185,7 @@ pub(super) fn errors<'a, F: Field, R: Rank, B: Backend>(
 ) -> sparse::Polynomial<F, R> {
     let pairs: Vec<_> = pairs.map(|(i, j)| (a(i), b(j))).collect();
     let mut coefficients = vec![F::ZERO; pairs.len()];
+
     // Each off-diagonal product is independent. Keep its coefficient slot
     // fixed so scheduling cannot change either layer's committed polynomial.
     B::for_each_mut(&mut coefficients, |index, coefficient| {

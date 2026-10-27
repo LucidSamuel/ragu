@@ -53,6 +53,7 @@ fn planned_msms<C: PastaCurve>() {
             FieldAdapter::as_slice(scalars),
         )
     });
+
     // Fixed task budgets exercise serial and split plans on every host.
     for task_budget in [1, 4] {
         let options =

@@ -115,6 +115,7 @@ fn extra_targets_reject_before_public_evaluations() {
         COUNT,
         COUNT + 1,
     );
+
     // An unbounded stream is read only one target past the claims.
     assert_mismatch(
         run(&[Kind::Raw; COUNT], core::iter::repeat(Fp::ZERO)),

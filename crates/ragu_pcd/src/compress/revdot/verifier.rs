@@ -80,6 +80,7 @@ fn verify<C: Affine, R: Rank, B: Backend, Id: Copy + Sync>(
     let targets = claim_targets(shapes, targets)?;
     let (mut a_public, mut b_public, mut target) =
         (C::Scalar::ZERO, C::Scalar::ZERO, C::Scalar::ZERO);
+
     // Registry evaluations are independent once r is fixed. Combine their
     // results in claim order after all jobs finish, leaving the transcript
     // and weighted targets on the canonical serial path.

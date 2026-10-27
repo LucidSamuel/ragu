@@ -256,6 +256,7 @@ pub(crate) fn commitments<C: Affine, B: Backend, Id: Copy>(
             })
             .collect::<Vec<_>>()
     };
+
     // All three commitments depend only on the replayed weights. Keep their
     // jobs and results in Derived order, including an empty raw polynomial.
     let inputs = [

@@ -47,6 +47,7 @@ fn check_public_parts<F: Field, B: Backend>() {
                 b: vec![],
             })
             .collect();
+
         // Polynomial evaluation is an independent reference for the
         // masks' point formulas; each kind must stay in its claim slot.
         let expected: Vec<_> = kinds[..len]
