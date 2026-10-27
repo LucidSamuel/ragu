@@ -78,9 +78,11 @@ pub trait Backend: Clone + Copy + Debug + Default + Send + Sync + 'static {
 
     /// Commits to independent sparse polynomials, returning results in input order.
     ///
-    /// Inputs borrow the stored coefficients and generators without allocating.
-    /// Execution goes through [`Self::msm_batch`], whose default performs each
-    /// MSM separately and retains [`Self::msm`] overrides.
+    /// The default hands each polynomial's stored coefficients and matching
+    /// generators to [`Self::msm_batch`], whose default performs each MSM
+    /// separately and retains [`Self::msm`] overrides. It does not call
+    /// [`Self::sparse_commit`], so overriding that method alone leaves batched
+    /// commitments unchanged.
     ///
     /// # Correctness
     ///
