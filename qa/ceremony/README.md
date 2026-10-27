@@ -56,43 +56,43 @@ with `sort_keys=True`, `ensure_ascii=True`, and `separators=(",", ":")`,
 followed by one LF byte. Array order is preserved. These are this format's
 encoding rules, including for any additional setup fields.
 
-Run the following from the new ceremony directory to write `setup.manifest`
-and write `X` to `manifest_digest.txt`:
+Run the canonicalizer from the repository root, using a new record directory:
 
-```python
-import hashlib
-import json
-from pathlib import Path
-
-def unique_keys(pairs):
-    result = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError(f"duplicate key: {key}")
-        result[key] = value
-    return result
-
-def reject_number(value):
-    raise ValueError(f"non-integer number: {value}")
-
-manifest = json.loads(
-    Path("setup.json").read_text(encoding="utf-8"),
-    object_pairs_hook=unique_keys,
-    parse_float=reject_number,
-    parse_constant=reject_number,
-)
-if manifest["format"] != "ragu-setup-manifest-v1":
-    raise ValueError("unsupported manifest format")
-encoded = (json.dumps(manifest, sort_keys=True, ensure_ascii=True,
-                      separators=(",", ":"), allow_nan=False) + "\n").encode("ascii")
-Path("setup.manifest").write_bytes(encoded)
-digest = hashlib.sha256(encoded).hexdigest()
-Path("manifest_digest.txt").write_text(digest + "\n", encoding="ascii")
-print(digest)
+```sh
+python3 qa/ceremony/manifest.py path/to/setup.json > path/to/setup.manifest
+shasum -a 256 path/to/setup.manifest | cut -d ' ' -f 1 > path/to/manifest_digest.txt
 ```
 
-This serializes the supplied description; it does not check completeness or
-whether its artifact digests match the deployed setup.
+The helper rejects missing setup fields, unresolved placeholders, malformed
+digests, duplicate keys, floating-point numbers and profile/label mismatches.
+Its output follows the
+v1 canonical encoding above. These are description checks; the setup procedure
+must still match artifact contents and deployed configuration to the record,
+and authenticate the public commitment and beacon.
+
+## Profiles and verified setups
+
+Every new description names `setup.profile.name` and its `definition` in the
+frozen source. `standard` uses the existing labels `ragu_pcd native registry`
+and `ragu_pcd nested registry`. `aggregator` appends ` (aggregator)` to each.
+The current QA tools support these two built-in profiles; other profiles need
+an application-specific derivation using their compiled `RegistryTags<C>` type.
+
+Record other setups whose keys, tags or parameters the profile fixes at setup
+in `setup.verified_setups`, using their profile, approved `manifest_sha256`
+and `record_sha256`. The latter binds the approved record containing the
+beacon and final native/nested tags, not just the pre-keyed description.
+For example, a future Aggregator that verifies Standard compressed proofs must
+pin that Standard setup in its own description. Use an empty list when no
+other setup is fixed as a parameter. Those dependency parameters must already
+be fixed in the outer setup's complete description before its tags are sampled.
+Recording a dependency does not authenticate it or implement its verifier circuit.
+
+The profile name alone is not a setup identity. Changes to circuit order,
+staging, ranks, application inputs, public parameters, dependencies or transcript
+rules change the committed description and require fresh tags after that
+changed description is fixed. Do not finalize an Aggregator production manifest
+or ceremony until its actual circuits and configuration have landed and frozen.
 
 ## Timestamp and derive
 
@@ -114,8 +114,14 @@ the beacon selection rule and derivation labels:
 With `B` and `X` both expressed as hex, run from the repository root:
 
 ```sh
-cargo run -p ragu_ceremony --bin registry_tags -- B X
+cargo run -p ragu_ceremony --bin registry_tags -- --profile standard B X
 ```
+
+Select `--profile aggregator` for an Aggregator record. Omitting the flag
+retains the legacy Standard behavior. `continue.sh` reads the profile and labels
+from the frozen manifest, checks its Bitcoin/N+100 policy before external
+calls, and passes the profile to the derivation command. Old Standard v1 records
+without a profile field remain readable without rewriting their bytes.
 
 Keep the canonical manifest, timestamp proof, beacon selection record, and
 resulting tag pair together, with access to the referenced source and inputs.
@@ -145,5 +151,16 @@ proof is `setup.manifest.ots`, created when the manifest is timestamped.
 An explicit block-height argument exercises a dry run without the ordering
 guarantee. Pending fields are marked as such; they are not usable setup tags.
 
-The shared [continue.sh](continue.sh) implements this example. Its offline
-regressions run with `python3 qa/ceremony/test_continue.py`.
+The shared [continue.sh](continue.sh) implements this example. Run its offline
+regressions and the description checks with:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s qa/ceremony -p 'test_*.py'
+cargo test --release -p ragu_ceremony --bin registry_tags
+```
+
+`fixtures/` contains canonical, explicitly test-only Standard and Aggregator
+descriptions, their SHA-256 digests, and independently computed tag vectors.
+These are not deployment records or completed ceremonies. Their tests exercise
+profile selection, canonicalization and changes to setup choices; they do not
+supply production parameters or establish beacon provenance.

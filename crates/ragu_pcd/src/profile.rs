@@ -56,6 +56,12 @@
 //!   profile but Standard, so one beacon output and manifest digest never
 //!   give two profiles the same tags; they do not stand in for a description
 //!   of the profile's own.
+//!   `qa/ceremony/README.md` documents profile-aware descriptions and test
+//!   fixtures. TODO: when decompression circuits are introduced, freeze the
+//!   complete Aggregator setup, including the approved Standard manifest and
+//!   tag record. Publicly commit that description and the beacon-selection
+//!   rule before sampling fresh native/nested tags and publishing a new
+//!   deployment record.
 //! - The receiving application pins its expected manifest digest through
 //!   [`ApplicationBuilder::with_registry_tags`](crate::ApplicationBuilder::with_registry_tags).
 //!   Tags retain the manifest and profile they were derived for. The setup

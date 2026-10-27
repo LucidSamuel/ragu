@@ -17,6 +17,7 @@ if [ "$MANIFEST_DIGEST" != "$(cat manifest_digest.txt)" ]; then
   echo "setup.manifest does not match manifest_digest.txt; prepare a fresh record." >&2
   exit 1
 fi
+REGISTRY_PROFILE="$(python3 "$REPO/qa/ceremony/manifest.py" --continue-profile setup.manifest)"
 
 if command -v ots >/dev/null 2>&1; then
   OTS=ots
@@ -90,7 +91,7 @@ printf 'ATTESTATION_BLOCK=%s\nBEACON_RULE=%s\nBEACON_HEIGHT=%s\n' \
   "${N:-unverified}" "$RULE" "$BEACON_HEIGHT" > "$CEREMONY_OUTPUT/attestation.txt"
 
 echo "== 4. derive the tags =="
-(cd "$REPO" && cargo run -q -p ragu_ceremony --bin registry_tags -- "$B1" "$MANIFEST_DIGEST") \
+(cd "$REPO" && cargo run -q -p ragu_ceremony --bin registry_tags -- --profile "$REGISTRY_PROFILE" "$B1" "$MANIFEST_DIGEST") \
   > "$CEREMONY_OUTPUT/tags.txt"
 mv "$CEREMONY_OUTPUT/beacon.txt" "$CEREMONY_OUTPUT/attestation.txt" "$CEREMONY_OUTPUT/tags.txt" .
 cat tags.txt
