@@ -213,3 +213,24 @@ fn error_terms_match_dense_oracle_across_worker_counts() {
             });
     }
 }
+
+/// Leaves the last item unvisited, as a faulty scheduler might.
+#[derive(Clone, Copy, Debug, Default)]
+struct SkippingBackend;
+
+impl Backend for SkippingBackend {
+    fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+        let visited = values.len().saturating_sub(1);
+        for (index, value) in values.iter_mut().enumerate().take(visited) {
+            work(index, value);
+        }
+    }
+}
+
+/// An uncomputed error term must not be committed as zero.
+#[test]
+#[should_panic(expected = "the backend computes every error term")]
+fn error_terms_reject_an_uncomputed_product() {
+    let poly = sparse::Polynomial::<Fp, TestRank>::from_coeffs(vec![Fp::ONE]);
+    errors::<_, TestRank, SkippingBackend>(|_| &poly, |_| &poly, [(0, 0), (0, 1)].into_iter());
+}

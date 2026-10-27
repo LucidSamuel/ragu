@@ -184,15 +184,21 @@ pub(super) fn errors<'a, F: Field, R: Rank, B: Backend>(
     pairs: impl Iterator<Item = (usize, usize)>,
 ) -> sparse::Polynomial<F, R> {
     let pairs: Vec<_> = pairs.map(|(i, j)| (a(i), b(j))).collect();
-    let mut coefficients = vec![F::ZERO; pairs.len()];
+    let mut coefficients = vec![None; pairs.len()];
 
     // Each off-diagonal product is independent. Keep its coefficient slot
-    // fixed so scheduling cannot change either layer's committed polynomial.
+    // fixed so scheduling cannot change either layer's committed polynomial,
+    // and require every slot to be filled rather than defaulting to zero.
     B::for_each_mut(&mut coefficients, |index, coefficient| {
         let (a, b) = pairs[index];
-        *coefficient = B::sparse_revdot(a, b);
+        *coefficient = Some(B::sparse_revdot(a, b));
     });
-    sparse::Polynomial::from_coeffs(coefficients)
+    sparse::Polynomial::from_coeffs(
+        coefficients
+            .into_iter()
+            .map(|coefficient| coefficient.expect("the backend computes every error term"))
+            .collect(),
+    )
 }
 
 /// What the fold leaves the split: its messages, the three folded claims,

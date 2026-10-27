@@ -107,3 +107,29 @@ fn public_parts_preserve_claims_on_both_fields_and_worker_counts() {
             });
     }
 }
+
+/// Leaves the last item unvisited, as a faulty scheduler might.
+#[derive(Clone, Copy, Debug, Default)]
+struct SkippingBackend;
+
+impl Backend for SkippingBackend {
+    fn for_each_mut<T: Send>(values: &mut [T], work: impl Fn(usize, &mut T) + Sync) {
+        let visited = values.len().saturating_sub(1);
+        for (index, value) in values.iter_mut().enumerate().take(visited) {
+            work(index, value);
+        }
+    }
+}
+
+/// An unevaluated claim must not leave zero public parts for the reduction
+/// check to accept.
+#[test]
+#[should_panic(expected = "the backend evaluates every claim's public parts")]
+fn public_parts_reject_an_unevaluated_claim() {
+    let shapes = [Kind::Raw, Kind::Circuit(CircuitIndex::new(0))].map(|kind| Shape::<(), Fp> {
+        kind,
+        a: vec![],
+        b: vec![],
+    });
+    public_parts::<_, SkippingBackend, _>(&shapes, Fp::ONE, |_, _| (Fp::ONE, Fp::ONE));
+}

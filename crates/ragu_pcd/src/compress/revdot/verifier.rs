@@ -174,16 +174,22 @@ fn claim_targets<F: Field, Id>(
 }
 
 /// Evaluates the independent public parts into their original claim slots.
+///
+/// Every slot must be filled: a claim the backend left unevaluated would
+/// otherwise enter the reduction check with zero public parts.
 fn public_parts<F: Field, B: Backend, Id: Sync>(
     shapes: &[Shape<Id, F>],
     r: F,
     public: impl Fn(Kind, F) -> (F, F) + Sync,
 ) -> Vec<(F, F)> {
-    let mut values = alloc::vec![(F::ZERO, F::ZERO); shapes.len()];
+    let mut values = alloc::vec![None; shapes.len()];
     B::for_each_mut(&mut values, |index, value| {
-        *value = public(shapes[index].kind, r);
+        *value = Some(public(shapes[index].kind, r));
     });
     values
+        .into_iter()
+        .map(|value| value.expect("the backend evaluates every claim's public parts"))
+        .collect()
 }
 
 /// A claim's public parts of $a$ and $b$ at `r`, by kind: a wire binding
