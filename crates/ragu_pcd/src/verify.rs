@@ -554,11 +554,13 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     }
 }
 
-/// Whether the proof's nested challenge stage is the unblinded stage of
-/// `lifts`, its native challenges' lifts with `pre_beta`'s last, and of the
-/// base-case sign its headers give. `verify` holds the root to this; a
-/// parent holds a child to it through `bind_beta`, its walk and its nested
-/// batch.
+/// Whether the proof's nested challenge stage equals the stage recomputed,
+/// with zero blinding, from `lifts` and the proof's headers.
+///
+/// `lifts` holds the native challenges' lifts followed by the lift of
+/// `pre_beta`, and the headers fix the base-case sign. `verify` checks this
+/// for the root; a parent enforces it for each child through `bind_beta`,
+/// its walk and its nested batch.
 pub(crate) fn nested_challenges_match<C: Cycle, R: Rank, const HEADER_SIZE: usize>(
     proof: &Proof<C, R>,
     lifts: &[C::ScalarField; nested_challenges::NUM + 1],
