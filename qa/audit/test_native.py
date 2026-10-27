@@ -268,8 +268,6 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
             names = {tool.get("name") for tool in payload.get("tools", [])}
             self.require(names == {"Bash", "Read", "Edit", "StructuredOutput"}, "unexpected native tool authority")
             self.require(names == set(runner.TOOLS.split(",")) | {"StructuredOutput"}, "requested tools are not actually available")
-            if skill == "code-review":
-                self.require("In minimal runtimes without them, use Bash" in text and "rg --files --hidden" in text, "skill does not permit the tested search fallback")
             if server.mode == "skill_shell":
                 self.require("shell command execution disabled by policy" in text, "skill shell preprocessing was not disabled")
         if server.mode == "raw_report" and skill in runner.SKILLS[1:]:
@@ -278,6 +276,16 @@ print('LATE_REPORT_BLOCKED' if 'LATE_REPORT_CANARY' not in text else 'LATE_REPOR
                 return
             if turn == 1:
                 self.require("code-review:1" in tool_result(payload) and ATTACK in tool_result(payload), "normalized core finding IDs were not readable")
+            # One specialist needs the original prose; the others can assess
+            # the indexed findings without reading the same report again.
+            if skill == "sean-review":
+                if turn == 1:
+                    self.emit(payload, {"type": "tool_use", "id": "toolu_core_report", "name": "Read", "input": {"file_path": str(server.out / "code-review.md")}})
+                    return
+                if turn == 2:
+                    self.require("## code-review review" in tool_result(payload) and "### Checks" in tool_result(payload),
+                                 "original core reasoning and checks were not readable")
+                turn -= 1
             turn -= 1
         if server.mode == "output_files" and turn == 0:
             script = "print('SAVED_OUTPUT_CANARY\\n' + 'ordinary review output\\n' * 10000)"
@@ -414,6 +422,8 @@ else:
                 if results.get("control") is False:
                     results["control"] = (server.work / "control/run.json").read_text() == "trusted control"
                 self.require(bool(match) and results == DENIED, "sandbox probe failed: " + text[-2000:])
+                # Exercise the Bash search fallback and subsequent Read instead
+                # of requiring an exact sentence in the skill's instructions.
                 match = re.search(r"POLICY_DISCOVERY:(\[[^\n]*\])", text)
                 self.require(bool(match) and json.loads(match[1]) == server.policies, "policy discovery failed: " + text[-2000:])
                 block = {"type": "tool_use", "id": "toolu_policy", "name": "Read", "input": {"file_path": str(server.root / ".claude/code-review/standards.md")}}
@@ -663,7 +673,7 @@ class NativeTests(unittest.TestCase):
                         self.assertEqual(runner.read_json(out / "code-review.status.json")["state"], "budget")
                 else:
                     runner.verify(run, out)
-                    self.assertEqual(len(server.requests), {"flexible_budget": 16, "raw_report": 18, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
+                    self.assertEqual(len(server.requests), {"flexible_budget": 16, "raw_report": 19, "reconcile": 15, "reconcile_key": 15, "reconcile_link": 15, "reference": 16, "injection": 16, "cargo": 16, "read_dependency": 16, "read_git_dependency": 16, "recoverable_read": 20, "output_files": 20, "network_override": 16}.get(mode, 12))
                     if mode == "flexible_budget":
                         self.assertGreater(runner.read_json(out / "code-review.json")["total_cost_usd"], 6)
                     if mode.startswith("reconcile") or mode == "raw_report":

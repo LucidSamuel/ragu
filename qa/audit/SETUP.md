@@ -62,9 +62,12 @@ validation; CI results do not determine review completion. A reviewer can run
 a focused test or reproducer to investigate a concrete suspected defect.
 
 The core code-review pass runs first. Sean, Tal, and Alex then run concurrently,
-each with the core Markdown report, its normalized finding IDs and validation
-evidence, a separate source worktree, and separate Claude state. Specialists cannot read each other's
-reports or state, or modify another checkout. Cargo's download cache is shared
+each with a separate source worktree and Claude state. They start with the
+normalized core finding index and consult the original Markdown report only
+when they need additional reasoning or validation details. Full original
+reports remain in artifacts and under **For agents**. Specialists read their
+skill's evidence reference, but cannot read each other's reports or state, or
+modify another checkout. Cargo's download cache is shared
 within the fresh runner; adequate recorded validation can be reused instead of
 running the same checks four times. Each specialist defaults to one third of
 the runner's logical CPUs for Cargo compilation, with a minimum of one build

@@ -1,9 +1,11 @@
 # Ragu audit
 
 `/ragu-audit` runs Ragu's code-review skill, then the Sean, Tal, and Alex review
-skills in parallel against the same PR revision, sharing the core report and
-its validation evidence. These are complementary review
-perspectives; checks follow the changes and relevant project policies.
+skills in parallel against the same PR revision. Specialists start with the
+core finding index and consult the full core report when additional reasoning
+or validation details are needed. Each specialist reads its skill's evidence
+reference. These are complementary review perspectives; checks follow the
+changes and relevant project policies.
 CI owns formatting, linting, documentation builds, and routine test suites.
 The bot runs focused tests only to investigate suspected bugs.
 
