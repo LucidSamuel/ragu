@@ -214,19 +214,66 @@ class RunnerTests(unittest.TestCase):
         self.assertIn(str(self.out / "receipt.json"), fs["denyRead"])
         self.assertIn(str(self.private), fs["denyRead"])
 
-    def test_incomplete_core_never_starts_specialists(self):
-        calls = []
+    def test_incomplete_core_still_runs_specialists_independently(self):
+        calls, prompts = [], {}
 
         def execute(command, **kwargs):
-            calls.append(Path(kwargs["env"]["CLAUDE_CONFIG_DIR"]).name)
-            return self.result(command, complete=False)
+            skill = Path(kwargs["env"]["CLAUDE_CONFIG_DIR"]).name
+            calls.append(skill)
+            prompts[skill] = command[-1]
+            return self.result(command, complete=skill != "code-review")
 
-        with self.assertRaisesRegex(ValueError, "code-review: review incomplete"):
+        with self.assertRaisesRegex(ValueError, "review incomplete: code-review"):
             self.invoke(execute)
-        self.assertEqual(calls, ["code-review"])
-        self.assertEqual(runner.read_json(self.out / "receipt.json")["phases"], [])
+        self.assertEqual((calls[0], sorted(calls)), ("code-review", sorted(runner.SKILLS)))
+        for skill in runner.SKILLS[1:]:
+            self.assertIn("core review is unavailable", prompts[skill])
+            self.assertNotIn("core-findings.json", prompts[skill])
+        phases = runner.read_json(self.out / "receipt.json")["phases"]
+        self.assertEqual([phase["skill"] for phase in phases], list(runner.SKILLS[1:]))
         with self.assertRaises(ValueError):
             runner.verify(self.run, self.out)
+        recovered = runner.verify(self.run, self.out, partial=True)
+        self.assertEqual(([phase["skill"] for phase in recovered["phases"]], recovered["unavailable"]), (list(runner.SKILLS[1:]), []))
+        self.assertEqual((self.out / "reconciliation-receipt.json").read_text(), "")  # No reconciliation without the core.
+
+    def test_transient_failure_is_retried_once_but_incomplete_coverage_is_not(self):
+        attempts = {}
+
+        def execute(command, **kwargs):
+            skill = Path(kwargs["env"]["CLAUDE_CONFIG_DIR"]).name
+            attempts[skill] = attempts.get(skill, 0) + 1
+            if skill == "sean-review" and attempts[skill] == 1:
+                raise runner.TransientFailure("Claude Code exited unsuccessfully")
+            if skill == "tal-review":
+                raise runner.TransientFailure("Claude Code returned no final result")
+            return self.result(command, complete=skill != "alex-review")
+
+        output = io.StringIO()
+        with redirect_stdout(output), self.assertRaisesRegex(ValueError, "review incomplete: tal-review, alex-review"):
+            self.invoke(execute)
+        self.assertEqual(attempts, {"code-review": 1, "sean-review": 2, "tal-review": 2, "alex-review": 1})
+        self.assertIn("Retrying sean-review once", output.getvalue())
+        phases = runner.read_json(self.out / "receipt.json")["phases"]
+        self.assertEqual([phase["skill"] for phase in phases], ["code-review", "sean-review"])
+
+    def test_sessions_fit_the_job_time_and_short_ones_are_not_started(self):
+        schedule = runner.Schedule(runner.REVIEW_TIMEOUT + runner.RECONCILE_TIMEOUT + 600)
+        self.assertEqual(schedule.allowance(runner.RECONCILE_TIMEOUT), runner.REVIEW_TIMEOUT)
+        self.assertLess(schedule.allowance(runner.REVIEW_TIMEOUT + runner.RECONCILE_TIMEOUT), runner.MIN_REVIEW)
+        self.assertEqual(runner.Schedule(0).allowance(0), 0)
+        timeouts = {}
+
+        def execute(command, **kwargs):
+            timeouts[Path(kwargs["env"]["CLAUDE_CONFIG_DIR"]).name] = kwargs["timeout"]
+            return self.result(command)
+
+        budget = runner.REVIEW_TIMEOUT + runner.RECONCILE_TIMEOUT + runner.MIN_REVIEW - 60
+        with patch.object(runner, "CONTROLLER_BUDGET", budget), self.assertRaisesRegex(ValueError, "review incomplete: code-review"):
+            self.invoke(execute)
+        self.assertEqual(sorted(timeouts), sorted(runner.SKILLS[1:]))  # The core had no room; the specialists did.
+        self.assertTrue(all(runner.MIN_REVIEW <= value <= runner.REVIEW_TIMEOUT for value in timeouts.values()))
+        self.assertEqual(runner.read_json(self.out / "code-review.status.json")["state"], "schedule")
 
     def test_failed_specialist_preserves_siblings_and_cannot_pass_gate(self):
         specialists = threading.Barrier(3)
@@ -317,8 +364,9 @@ class RunnerTests(unittest.TestCase):
         for cpus in (None, 1, 2, 4, 8):
             with patch.object(os, "cpu_count", return_value=cpus):
                 values = [runner.environment(self.run, self.work, skill, self.work / "scratch") for skill in runner.SKILLS]
-            self.assertEqual(int(values[0]["CARGO_BUILD_JOBS"]), cpus or 1)
-            self.assertEqual([int(value["CARGO_BUILD_JOBS"]) for value in values[1:]], [max(1, (cpus or 1) // 3)] * 3)
+            self.assertEqual(int(values[0]["CARGO_BUILD_JOBS"]), max(2, cpus or 1))
+            self.assertEqual([int(value["CARGO_BUILD_JOBS"]) for value in values[1:]], [max(2, (cpus or 1) // 3)] * 3)
+            self.assertEqual({value["CARGO_PROFILE_DEV_DEBUG"] for value in values}, {"0"})
 
     def test_linux_mounts_private_temp_before_starting_claude(self):
         command = ["claude", "--print", "--", "trusted review prompt"]
