@@ -1,4 +1,5 @@
 import copy
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -595,8 +596,7 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             github.publish(self.api, run, self.out, "failure")
         body = self.api.comments[0]["body"]
-        self.assertIn("Stopped during `code-review`", body)
-        self.assertIn("sandbox permissions blocked", body)
+        self.assertIn("`code-review` did not finish: the reviewer reported incomplete coverage; sandbox permissions blocked 1 tool actions", body)
         self.assertIn("reviewer reported incomplete coverage", body)
         self.assertNotIn("SECRET_CANARY", body)
         self.assertNotIn("<script>", body)
@@ -610,7 +610,7 @@ class AuditTests(unittest.TestCase):
         runner.write_json(self.out / "receipt.json", receipt)
         body = github.summary(run, "incomplete", self.out)
         self.assertIn("without a verifiable phase result", body)
-        self.assertNotIn("Stopped during", body)
+        self.assertNotIn("did not finish", body)
 
     def test_incomplete_status_uses_only_fixed_skill_names(self):
         run = github.queue(self.api, 9)
@@ -633,9 +633,9 @@ class AuditTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             github.publish(self.api, run, self.out, "failure")
         body = self.api.comments[0]["body"]
-        self.assertIn("Stopped during `sean-review` before Claude Code returned a valid result", body)
-        self.assertIn("Stopped during `tal-review`: the reviewer reported incomplete coverage", body)
-        self.assertNotIn("Stopped during `alex-review`", body)
+        self.assertIn("`sean-review` did not finish: Claude Code returned no valid result", body)
+        self.assertIn("`tal-review` did not finish: the reviewer reported incomplete coverage", body)
+        self.assertNotIn("`alex-review` did not finish", body)
         self.assertNotIn("SECRET_CANARY", body)
         self.assertIn("2/4 reviews completed", body)
         self.assertIn("<summary>General</summary>", body)
@@ -700,10 +700,15 @@ class AuditTests(unittest.TestCase):
             {"finding_id": "code-review:1", "verdict": "support", "evidence": "Checked the same defect."}]
         self.reports(run, {"code-review": core, "alex-review": specialist})
         (self.out / "code-review.json").unlink()
-        with self.assertRaises(OSError):
-            runner.candidates(run, self.out, partial=True)
+        # Specialists that reviewed independently remain valid; one that assessed core findings does not.
+        recovered = runner.verify(run, self.out, partial=True)
+        self.assertEqual(([phase["skill"] for phase in recovered["phases"]], recovered["unavailable"]),
+                         (["sean-review", "tal-review"], ["code-review", "alex-review"]))
+        self.assertEqual([review["reviewer"] for review in runner.candidates(run, self.out, partial=True)["reviews"]],
+                         ["sean-review", "tal-review"])
         body = github.summary(run, "incomplete", self.out)
-        self.assertIn("0/4 reviews completed", body)
+        self.assertIn("2/4 reviews completed", body)
+        self.assertIn("Could not verify the recovered `alex-review` report", body)
         self.assertNotIn("DEPENDENT_REVIEW_CANARY", body)
 
     def test_timeout_diagnostics_are_bound_and_use_only_fixed_messages(self):
@@ -718,9 +723,9 @@ class AuditTests(unittest.TestCase):
         runner.write_json(self.out / "code-review.status.json", {"run": {**run, "attempt": 8}, "skill": "code-review", "state": "timeout"})
         self.assertNotIn("review reached its time limit", github.summary(run, "incomplete", self.out))
 
-    def test_parallel_receipt_requires_core_and_unique_canonical_names(self):
+    def test_parallel_receipt_requires_unique_canonical_names(self):
         run = github.queue(self.api, 9)
-        for names in (("alex-review",), ("code-review", "alex-review", "sean-review"), ("code-review", "tal-review", "tal-review")):
+        for names in (("alex-review", "sean-review"), ("code-review", "alex-review", "sean-review"), ("code-review", "tal-review", "tal-review")):
             receipt = self.reports(run)
             phases = {phase["skill"]: phase for phase in receipt["phases"]}
             receipt["phases"] = [phases[name] for name in names]
@@ -729,6 +734,13 @@ class AuditTests(unittest.TestCase):
             self.assertIn("without a verifiable phase result", body)
             with self.assertRaises(ValueError):
                 runner.verify(run, self.out)
+        # Specialists that reviewed without a core report are recoverable on their own.
+        receipt = self.reports(run)
+        receipt["phases"] = [phase for phase in receipt["phases"] if phase["skill"] in ("sean-review", "alex-review")]
+        runner.write_json(self.out / "receipt.json", receipt)
+        self.assertIn("2/4 reviews completed", github.summary(run, "incomplete", self.out))
+        with self.assertRaises(ValueError):
+            runner.verify(run, self.out)
 
     def test_receipt_order_revision_and_digest_are_bound(self):
         run = github.queue(self.api, 9)
@@ -916,14 +928,22 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
         self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude/code-review"))
 
-    def test_reviewers_are_told_their_time_budget_and_command_cap(self):
+    def test_reviewers_are_told_their_deadline_coverage_and_command_cap(self):
         run = {"model": "claude-sonnet-5-5", "effort": "high", "head": "a" * 40, "base": "b" * 40}
-        text = runner.prompt("code-review", self.out / "work/code-review", "m" * 40, run, self.out / "work/reports")
-        self.assertIn(f"about {runner.REVIEW_TIMEOUT // 60} minutes", text)
+        deadline = datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+        text = runner.prompt("tal-review", self.out / "work/tal-review", "m" * 40, run, self.out / "work/reports", deadline)
+        self.assertIn("stopped at 12:00 UTC", text)
+        self.assertIn(f"report by {(deadline - timedelta(minutes=runner.REPORT_MINUTES)):%H:%M} UTC", text)
         self.assertIn("once every changed file was examined", text)
-        self.assertIn(f"under {runner.COMMAND_MINUTES} minutes", text)
+        self.assertIn(f"{runner.COMMAND_MINUTES}-minute command cap", text)
+        self.assertIn("core-findings.json", text)
+        self.assertIn("UTC", runner.prompt("code-review", self.out / "work/code-review", "m" * 40, run, self.out / "work/reports"))
+        alone = runner.prompt("tal-review", self.out / "work/tal-review", "m" * 40, run, self.out / "work/reports", deadline, core=False)
+        self.assertIn("core review is unavailable", alone)
+        self.assertNotIn("core-findings.json", alone)
         values = runner.environment(run, self.out, "code-review", self.out / "scratch")
         self.assertEqual(values["BASH_MAX_TIMEOUT_MS"], str(runner.COMMAND_MINUTES * 60000))
+        self.assertEqual(values["CARGO_PROFILE_DEV_DEBUG"], "0")
 
     def test_core_review_can_use_a_stronger_model_than_the_specialists(self):
         base = {"RAGU_AUDIT_MODEL": "claude-sonnet-5-5", "RAGU_AUDIT_EFFORT": "high"}

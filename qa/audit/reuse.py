@@ -144,6 +144,9 @@ def restore_snapshot(run, out, cached):
                 or old["url"] != f"https://github.com/{github.REPOSITORY}/actions/runs/{old['run_id']}"):
             raise ValueError("reuse snapshot, settings, or provenance differ")
         verified = runner.verify(old, cached, partial=True)
+        if runner.SKILLS[0] in verified["unavailable"]:
+            # Those specialists reviewed against that core's index; without it, none is reusable.
+            raise ValueError("the original core report is unavailable")
         phases = [{**phase, "duration_seconds": 0, "reused_from": runner.reuse_origin(old)}
                   for phase in verified["phases"]]
         if not phases:

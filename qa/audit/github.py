@@ -194,18 +194,19 @@ def incomplete_details(run, out):
                 reasons = {"timeout": "the review reached its time limit", "cancelled": "the review was cancelled",
                            "exit": "Claude Code exited unsuccessfully", "protocol": "Claude Code returned an invalid event stream",
                            "cleanup": "review process cleanup did not finish",
-                           "budget": "the review reached its safety limit"}
+                           "budget": "the review reached its safety limit",
+                           "schedule": "the job had no time left for this review"}
                 if status.get("run") == run and status.get("skill") == skill and status.get("state") in reasons:
-                    lines.append(f"Stopped during `{skill}`: {reasons[status['state']]}.")
+                    lines.append(f"`{skill}` did not finish: {reasons[status['state']]}.")
                     continue
             except (OSError, ValueError, AttributeError, TypeError):
                 pass
             try:
                 result = runner.read_json(out / f"{skill}.json")
             except (OSError, ValueError):
-                lines.append(f"Stopped during `{skill}` before Claude Code returned a valid result.")
+                lines.append(f"`{skill}` did not finish: Claude Code returned no valid result.")
                 continue
-            lines.append(f"Stopped during `{skill}`: {runner.incomplete_reason(result)}.")
+            lines.append(f"`{skill}` did not finish: {runner.incomplete_reason(result)}.")
         return "\n\n".join(lines)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return "The review job failed without a verifiable phase result. Inspect the workflow."

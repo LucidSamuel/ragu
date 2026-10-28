@@ -366,13 +366,15 @@ else:
                 self.require("allowed_domains cannot widen network access" in text, "network expansion was not rejected: " + text[-1500:])
             turn -= 1
         direct_read = server.mode in ("read_key", "read_link", "output_key_link", "edit_policy", "read_peer_scratch", "edit_peer_scratch", "read_dependency_link", "edit_dependency")
+        # Specialists review even after an incomplete core, so each role probes a peer's scratch, never its own.
+        peer = "tal-review" if skill == "sean-review" else "sean-review"
         if direct_read:
             if turn == 0:
                 path = source / "key-link" if server.mode == "read_link" else server.private / "key"
                 if server.mode == "output_key_link":
                     path = server.work / "claude" / skill / "projects/probe/tool-results/key-link"
                 if server.mode in ("read_peer_scratch", "edit_peer_scratch"):
-                    path = server.scratch / "sean-review/peer-canary"
+                    path = server.scratch / peer / "peer-canary"
                 if server.mode == "read_dependency_link":
                     path = server.dependency.parent / "key-link"
                 block = {"type": "tool_use", "id": "toolu_secret", "name": "Read", "input": {"file_path": str(path)}}
@@ -389,7 +391,7 @@ else:
                 if server.mode == "read_peer_scratch":
                     self.require("PEER_SCRATCH_CANARY" not in text, "native Read exposed peer scratch")
                 if server.mode == "edit_peer_scratch":
-                    self.require((server.scratch / "sean-review/peer-canary").read_text() == "PEER_SCRATCH_CANARY", "native Edit modified peer scratch")
+                    self.require((server.scratch / peer / "peer-canary").read_text() == "PEER_SCRATCH_CANARY", "native Edit modified peer scratch")
                 if server.mode == "edit_dependency":
                     self.require(server.dependency.read_text() == "// DEPENDENCY_SOURCE_CANARY\n", "native Edit modified downloaded dependency source")
                 block = self.report(skill)

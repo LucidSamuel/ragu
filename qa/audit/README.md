@@ -19,6 +19,8 @@ line in the diff remain in that comment.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.
+A pass whose session fails without a verdict is retried once while the job has
+time; if the core pass fails, the specialists still review independently.
 All four reviewers and reconciliation use Sonnet 5.5 at high effort.
 `RAGU_AUDIT_CORE_MODEL` and `RAGU_AUDIT_CORE_EFFORT` give the core review,
 which must read the whole diff, a stronger model than the specialists.

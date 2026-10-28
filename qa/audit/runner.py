@@ -3,6 +3,7 @@
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from http.client import HTTPException
 import hashlib
@@ -36,6 +37,11 @@ TOOLS = "Bash,Read,Edit"
 INHERITED_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "CARGO_HOME", "RUSTUP_HOME")
 REVIEW_TIMEOUT = 3300
 COMMAND_MINUTES = 15  # Longest single Bash command, so one build or test run cannot consume a review.
+REPORT_MINUTES = 10  # Reviewers start their final report this long before the session is stopped.
+# The review job allows 180 minutes. Sessions are fitted into what remains so the
+# job timeout never kills one, and a session too short to review is not started.
+CONTROLLER_BUDGET = 165 * 60
+MIN_REVIEW = 20 * 60
 RECONCILE_TIMEOUT = 180
 GIT_TIMEOUT = 180
 HEARTBEAT_SECONDS = 30
@@ -98,6 +104,24 @@ def native_cost(result):
 
 class SafetyLimit(ValueError):
     """The shared invocation safety budget is exhausted or cannot be verified."""
+
+
+class TransientFailure(ValueError):
+    """The CLI or its session failed without a verdict; one retry may succeed."""
+
+
+class Schedule:
+    """Fit sessions into the job's remaining time so its timeout never kills one."""
+
+    def __init__(self, budget=None):
+        self.end = time.monotonic() + (CONTROLLER_BUDGET if budget is None else budget)
+
+    def remaining(self):
+        return max(0, int(self.end - time.monotonic()))
+
+    def allowance(self, reserve):
+        """Seconds a review session may run while leaving `reserve` for the phases after it."""
+        return max(0, min(REVIEW_TIMEOUT, self.remaining() - reserve))
 
 
 class RunBudget:
@@ -252,9 +276,12 @@ def verify_reuse(run, out, phase):
     if (source.get("claude_version") != CLAUDE_VERSION or original.get("complete") is not True
             or any(original[key] != phase[key] for key in ("sha256", "result_sha256"))):
         raise ValueError("reused review does not match its original receipt")
-    core = next(item for item in read_json(out / "receipt.json")["phases"] if item["skill"] == SKILLS[0])
-    if any(core[key] != records[SKILLS[0]][key] for key in ("sha256", "result_sha256")):
-        raise ValueError("reused specialist requires its original core report")
+    if SKILLS[0] in records:
+        # A specialist that saw a core index stays bound to that core report; one
+        # from a run whose core failed reviewed independently and needs none.
+        core = next((item for item in read_json(out / "receipt.json")["phases"] if item["skill"] == SKILLS[0]), None)
+        if core is None or any(core[key] != records[SKILLS[0]][key] for key in ("sha256", "result_sha256")):
+            raise ValueError("reused specialist requires its original core report")
 
 
 def git(root, *args, timeout=GIT_TIMEOUT):
@@ -376,7 +403,10 @@ def environment(run, work, skill, scratch):
         "CLAUDE_CODE_TMPDIR": str(scratch / skill),
         "TMPDIR": str(scratch / skill),
         "CARGO_HOME": str(cargo_home(work)),
-        "CARGO_BUILD_JOBS": str(max(1, (os.cpu_count() or 1) // workers)),
+        # Builds are rare and short-lived; a floor of two jobs keeps a specialist
+        # from compiling on one core, and dropping debuginfo speeds every build.
+        "CARGO_BUILD_JOBS": str(max(2, (os.cpu_count() or 1) // workers)),
+        "CARGO_PROFILE_DEV_DEBUG": "0",
         "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         "DISABLE_AUTOUPDATER": "1",
         "CLAUDE_CODE_SUBAGENT_MODEL": model,
@@ -388,9 +418,17 @@ def environment(run, work, skill, scratch):
     return result
 
 
-def prompt(skill, source, merge_base, run, out):
+def prompt(skill, source, merge_base, run, out, deadline=None, core=True):
+    now = datetime.now(timezone.utc)
+    if deadline is None:
+        deadline = now + timedelta(seconds=REVIEW_TIMEOUT)
+    report_by = deadline - timedelta(minutes=REPORT_MINUTES)
     if skill == SKILLS[0]:
         handoff = "Leave assessments empty."
+    elif not core:
+        handoff = """The core review is unavailable: review the pinned source independently
+and leave assessments empty. Do not read another specialist's reports or CLI
+state."""
     else:
         handoff = f"""Start with {out / 'core-findings.json'}. Read {out / 'code-review.md'}
 only when additional reasoning or recorded validation is needed; reuse adequate
@@ -411,15 +449,18 @@ scratch work and concurrent builds; shared temporary directories are blocked.
 The sandbox allowlist permits Cargo downloads and GitHub. Do not supply
 per-command allowed_domains or ask to widen permissions.
 
-This session may run for about {REVIEW_TIMEOUT // 60} minutes and is not stopped
-early; spend that time on coverage rather than finishing early. Start by listing
-every changed file and examine each one: read risky or novel code in full, and
-name the repetitive, mechanical changes you only skimmed. Coverage is complete
-once every changed file was examined; set complete=false only for files not
-examined at all or when the session ran out of time, and list them. Builds and
-tests are evidence for suspected defects, not a substitute for reading: keep
-each command under {COMMAND_MINUTES} minutes, filter tests narrowly, and never let
-one command consume the session.
+It is {now:%H:%M} UTC. This session is stopped at {deadline:%H:%M} UTC and nothing
+unsaved survives that, so check `date -u` after long steps and start the final
+report by {report_by:%H:%M} UTC; until then, spend the time on coverage rather
+than finishing early. Start by listing every changed file and examine each one:
+read risky or novel code in full, and name the repetitive, mechanical changes
+you only skimmed. Coverage is complete once every changed file was examined;
+set complete=false only for files not examined at all or when the session ran
+out of time, and list them. Builds and tests are evidence for suspected
+defects, not a substitute for reading: CI runs the suites, and a workspace test
+build can exceed the {COMMAND_MINUTES}-minute command cap on this machine, so
+compile one crate with -p, filter tests narrowly, and never let one command
+consume the session.
 
 Apply the skill to changed code and affected callers; mark irrelevant areas
 not applicable. {handoff}
@@ -464,13 +505,16 @@ def incomplete_reason(result):
     if result.get("subtype") == "error_max_budget_usd":
         return "the review reached its safety limit"
     reasons = []
-    if result.get("permission_denials"):
-        reasons.append("sandbox permissions blocked a tool action")
     if result.get("type") != "result" or result.get("subtype") != "success" or result.get("is_error") is not False:
         reasons.append("the Claude session did not finish successfully")
     output = result.get("structured_output", {})
     if not isinstance(output, dict) or output.get("complete") is not True:
         reasons.append("the reviewer reported incomplete coverage")
+    denials = result.get("permission_denials")
+    if denials:
+        # Denials never fail a pass by themselves; they are context for the reasons above.
+        count = str(len(denials)) if isinstance(denials, list) else "some"
+        reasons.append(f"sandbox permissions blocked {count} tool actions")
     return "; ".join(reasons) or "the controller could not validate completion"
 
 
@@ -726,9 +770,9 @@ def execute_review(command, *, cwd, env, run, skill, out, private, cancelled, ti
         status["exit_code"] = process.returncode
         if process.returncode:
             status["state"] = "exit"
-            raise ValueError("Claude Code exited unsuccessfully")
+            raise TransientFailure("Claude Code exited unsuccessfully")
         if result is None:
-            raise ValueError("Claude Code returned no final result")
+            raise TransientFailure("Claude Code returned no final result")
         status["state"] = "returned"
         return result
     except SafetyLimit:
@@ -781,20 +825,23 @@ def command(skill, executable, root, run, work, out, private, plugin, scratch, i
     return result + ["--", instruction]
 
 
-def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, scratch, cancelled, budget=None):
+def review_skill(skill, executable, root, run, work, out, private, plugin, merge_base, scratch, cancelled, budget=None,
+                 *, timeout=None, core=True):
     source = work / skill
+    limit = REVIEW_TIMEOUT if timeout is None else timeout
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=limit)
     try:
         invocation = command(skill, executable, root, run, work, out, private, plugin, scratch,
-                             prompt(skill, source, merge_base, run, out), SCHEMA, TOOLS, budget)
+                             prompt(skill, source, merge_base, run, out, deadline, core), SCHEMA, TOOLS, budget)
     except SafetyLimit:
         write_json(out / f"{skill}.status.json", {"run": run, "skill": skill, "state": "budget"})
         raise
-    print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']})", flush=True)
+    print(f"Running {skill} on {run['head']} ({run['model']}, {run['effort']}) for up to {limit // 60} minutes", flush=True)
     started = time.monotonic()
     try:
         result = execute_review(isolate_shared_temp(invocation, scratch / skill), cwd=root,
                                 env=environment(run, work, skill, scratch), run=run, skill=skill,
-                                out=out, private=private, cancelled=cancelled, budget=budget)
+                                out=out, private=private, cancelled=cancelled, timeout=limit, budget=budget)
         if budget is not None:
             budget.finish(skill, result)  # Idempotent; also covers injected test executors.
     except SafetyLimit as error:
@@ -807,13 +854,16 @@ def review_skill(skill, executable, root, run, work, out, private, plugin, merge
         if not completed(result):
             raise
     if not completed(result):
-        raise ValueError(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
+        # A session that failed without a verdict may succeed when retried; a
+        # verdict of incomplete coverage would only be repeated.
+        failed = not isinstance(result, dict) or result.get("subtype") != "success" or result.get("is_error") is not False
+        raise (TransientFailure if failed else ValueError)(f"{skill}: review incomplete ({incomplete_reason(result)}); see artifacts")
     native_cost(result)
     report_path = out / f"{skill}.md"
     core_ids = ()
-    if skill != SKILLS[0]:
-        core = read_json(out / "code-review.json")["structured_output"]
-        core_ids = [item["id"] for item in findings.review(core, SKILLS[0])[0]]
+    if skill != SKILLS[0] and core:
+        index = read_json(out / "code-review.json")["structured_output"]
+        core_ids = [item["id"] for item in findings.review(index, SKILLS[0])[0]]
     report_path.write_text(findings.render_review(skill, result["structured_output"], core_ids))
     if skill == SKILLS[0]:
         records, _ = findings.review(result["structured_output"], skill)
@@ -916,6 +966,7 @@ def review(root, run, work, out, private, reuse=None):
     if "ANTHROPIC_API_KEY" in os.environ:
         raise ValueError("store the key in a separate step; the review process must not inherit it")
     budget = RunBudget(run)
+    schedule = Schedule()
     executable = str(Path(shutil.which("claude")).resolve())
     version = subprocess.check_output([executable, "--version"], text=True, timeout=30,
                                       env={key: os.environ[key] for key in INHERITED_ENV if key in os.environ})
@@ -971,13 +1022,37 @@ def review(root, run, work, out, private, reuse=None):
             (scratch / skill / f"claude-{os.getuid()}").mkdir(mode=0o700)
             (scratch / skill / "shared-temp").mkdir(mode=0o700)
         arguments = (executable, root, run, work, out, private, plugin, merge_base, scratch)
+
+        def attempt(skill, reserve, core=True):
+            """One pass, retried once after a transient failure while the job has time for it."""
+            for retry in (False, True):
+                allowance = schedule.allowance(reserve)
+                if allowance < min(MIN_REVIEW, REVIEW_TIMEOUT):
+                    write_json(out / f"{skill}.status.json", {"run": run, "skill": skill, "state": "schedule"})
+                    raise ValueError(f"{skill}: the job has no time left for this review")
+                try:
+                    return review_skill(skill, *arguments, cancelled, budget, timeout=allowance, core=core)
+                except TransientFailure as error:
+                    if retry or cancelled.is_set() or budget.stopped.is_set():
+                        raise
+                    print(f"Retrying {skill} once: {error}", flush=True)
+
         if SKILLS[0] not in phases:
-            record(review_skill(SKILLS[0], *arguments, cancelled, budget))
+            try:
+                record(attempt(SKILLS[0], REVIEW_TIMEOUT + RECONCILE_TIMEOUT))
+            except SafetyLimit:
+                raise  # The shared pool is exhausted; no specialist could start.
+            except Exception:
+                if cancelled.is_set():
+                    raise
+                # The specialists still review, independently of the core index.
+                failed.append(SKILLS[0])
+                print(f"Incomplete {SKILLS[0]}; see artifacts", flush=True)
         else:
             core = read_json(out / "code-review.json")["structured_output"]
             write_json(out / "core-findings.json", {"findings": findings.review(core, SKILLS[0])[0]})
         with ThreadPoolExecutor(max_workers=len(SKILLS) - 1) as pool:
-            futures = {pool.submit(review_skill, skill, *arguments, cancelled, budget): skill
+            futures = {pool.submit(attempt, skill, RECONCILE_TIMEOUT, SKILLS[0] in phases): skill
                        for skill in SKILLS[1:] if skill not in phases}
             for future in as_completed(futures):
                 skill = futures[future]
@@ -989,7 +1064,10 @@ def review(root, run, work, out, private, reuse=None):
                     failed.append(skill)
                     print(f"Incomplete {skill}; see artifacts", flush=True)
         if not failed and not reconciled:
-            reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled, budget)
+            if schedule.remaining() >= RECONCILE_TIMEOUT:
+                reconcile_reviews(executable, root, run, work, out, private, plugin, scratch, cancelled, budget)
+            else:
+                print("Reconciliation skipped: the job has no time left", flush=True)
     if budget.stopped.is_set():
         raise SafetyLimit("review reached its safety limit")
     if failed:
@@ -1007,8 +1085,8 @@ def verify(run, out, *, partial=False):
         raise ValueError("invalid completed phases")
     names = [phase.get("skill") for phase in phases]
     expected = [skill for skill in SKILLS if skill in names] if partial else list(SKILLS)
-    if names != expected or (names and names[0] != SKILLS[0]):
-        raise ValueError("skill reports must be present in canonical order, starting with core")
+    if names != expected:
+        raise ValueError("skill reports must be present in canonical order")
     core_ids = ()
     verified, unavailable = [], []
     for phase in phases:
@@ -1028,10 +1106,11 @@ def verify(run, out, *, partial=False):
             if (out / f"{skill}.md").read_text() != findings.render_review(skill, result["structured_output"], core_ids):
                 raise ValueError("report does not match native findings")
         except (OSError, ValueError, KeyError, TypeError):
-            # A missing/corrupt specialist archive must not hide its verified
-            # siblings. Core evidence is still required to bind assessments;
+            # A missing/corrupt archive must not hide its verified siblings.
+            # Without a verified core, core_ids stays empty, so a specialist
+            # that assessed core findings fails here and is omitted too;
             # completion and reconciliation always use the strict path.
-            if not partial or skill == SKILLS[0]:
+            if not partial:
                 raise
             unavailable.append(skill)
             continue
