@@ -315,8 +315,9 @@ def publish_inline(api, run, check, out):
         if (not owns_inline(review, check["app"]) or review["body"] != body
                 or review.get("commit_id") != run["head"] or review.get("state") != "COMMENTED"):
             raise ValueError("inline review publication was not confirmed")
-        actual = [item for item in api.pages(path + f"/reviews/{number(review['id'])}/comments")
-                  if not item.get("in_reply_to_id")]
+        # The per-review comment listing omits line and side; the PR's listing has them.
+        actual = [item for item in api.pages(path + "/comments")
+                  if item.get("pull_request_review_id") == review["id"] and not item.get("in_reply_to_id")]
         expected = {(item["path"], item["line"], item["side"], item["body"]) for item in batch}
         received = {(item.get("path"), item.get("line"), item.get("side"), item.get("body")) for item in actual
                     if item.get("commit_id") == run["head"] and item.get("user", {}).get("type") == "Bot"
@@ -360,7 +361,6 @@ def summary(run, state, out=None, *, inline=None):
             if out is not None:
                 lines += [incomplete_details(run, out), ""]
             lines += ["The review did not complete. Inspect the workflow and available reports, then post `/ragu-audit` to retry.", ""]
-        lines += ["### For humans", ""]
         if bundle is not None:
             if groups is None and bundle["findings"]:
                 notice = ("Combined reviewer findings. Additional source checking did not complete; disputed claims remain visible."
@@ -368,20 +368,22 @@ def summary(run, state, out=None, *, inline=None):
                 details += [notice, ""]
             shown = groups
             if inline is not None:
+                # Findings posted inline are not repeated here: one line counts them and links the reviews.
                 active = [item for item in (groups if groups is not None else findings.combined(bundle))
                           if item["disposition"] != "dismissed"]
                 fixes = sum(item["disposition"] == "must-fix" for item in active)
-                lines += [f"**Must-fix: {fixes} · Suggestions: {len(active) - fixes}**", ""]
+                counts = f"**Must-fix: {fixes} · Suggestions: {len(active) - fixes}**"
                 if inline["urls"]:
                     links = ", ".join(f"[review {index}]({url})" for index, url in enumerate(inline["urls"], 1))
                     noun = "finding" if inline["count"] == 1 else "findings"
-                    lines += [f"{inline['count']} {noun} posted inline: {links}.", ""]
+                    counts += f" · {inline['count']} {noun} posted inline: {links}"
+                lines += [counts, ""]
                 shown = inline["fallback"]
                 if shown:
-                    lines += ["The following findings have no cited line in the current diff; they are retained here.", ""]
+                    lines += ["### For humans", "", "These findings have no cited line in the current diff, so they are kept here.", ""]
+            else:
+                lines += ["### For humans", ""]
             short = findings.shortlist(bundle, shown, heading_level=4) if inline is None or shown else []
-            if inline is not None and not active:
-                short = ["None reported." if groups is None else "None after reconciliation.", ""]
             if len("\n".join(short).encode()) > 54000:
                 short = findings.shortlist(bundle, shown, compact=True, heading_level=4)
             lines += short
@@ -392,7 +394,7 @@ def summary(run, state, out=None, *, inline=None):
                 noun = "finding group" if dismissed == 1 else "finding groups"
                 details += [f"{dismissed} {noun} dismissed; reasons are in the reconciliation report in the full bundle.", ""]
         else:
-            lines += ["No verified findings are available.", ""]
+            lines += ["### For humans", "", "No verified findings are available.", ""]
         if names:
             lines += ["### For agents", ""]
             # Allocate the remaining comment budget to collapsed original reports.

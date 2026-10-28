@@ -121,7 +121,7 @@ class TransportTests(unittest.TestCase):
                         elif endpoint.startswith("summary_"):
                             hit = url.path.endswith("/comments") and method == "POST"
                         elif endpoint == "review_comments_truncated":
-                            hit = "/reviews/" in url.path and url.path.endswith("/comments") and method == "GET"
+                            hit = "/pulls/" in url.path and url.path.endswith("/comments") and method == "GET"
                         elif endpoint.startswith("review_"):
                             hit = url.path.endswith("/reviews") and method == "POST"
                         else:
