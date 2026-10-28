@@ -143,7 +143,7 @@ fn check_extension<P>()
 where
     P: Profile<Context<'static, Pasta, R<14>, ReferenceBackend> = CrossingContext<'static, Pasta>>,
 {
-    let params = crate::pasta::baked();
+    let params = crate::pasta::baked_aggregator();
     let bits = [true, false, false, true];
     let app = ApplicationBuilder::<Profiled<Pasta, P>, R<14>, HEADER_SIZE>::new()
         .finalize_with(

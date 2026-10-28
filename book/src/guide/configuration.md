@@ -54,6 +54,13 @@ The `baked()` function returns precomputed generator points for Pallas and
 Vesta, loaded from data embedded in the binary. Poseidon parameters are
 compile-time constants and do not require initialization.
 
+Standard uses the original tables of $2^{13}$ vector generators per curve.
+For larger Aggregator extensions, `baked-aggregator` adds separate $2^{14}$
+tables through `ragu_pcd::pasta::baked_aggregator()`. The regular `baked()`
+tables remain the same size even when that feature is enabled; the larger
+tables are initialized only when their loader is called. The production
+Aggregator rank will be fixed when its decompression circuits land.
+
 ### Why Pasta?
 
 - **Efficient recursion**: Designed specifically for recursive proof systems

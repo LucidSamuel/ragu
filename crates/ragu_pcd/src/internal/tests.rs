@@ -597,6 +597,7 @@ fn test_non_step_slots_reject_application_instances() {
 
     // Profiles with extension circuits, at the rank where they fit.
     type Wide = ragu_circuits::polynomials::R<14>;
+    let params = crate::pasta::baked_aggregator();
     check(
         &ApplicationBuilder::<Profiled<Pasta, Proving>, Wide, 4>::new()
             .finalize(params)

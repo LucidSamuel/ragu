@@ -104,7 +104,7 @@ pub use backend::SelectableBackend;
 ///
 /// [`Self::from_beacon`] retains the manifest digest alongside the derived
 /// tags. [`ApplicationBuilder::with_registry_tags`] checks it against the
-/// receiver's expected manifest before installing the final tag values.
+/// verifier's expected manifest before installing the final tag values.
 /// The fields are private so tags cannot be relabeled with another profile
 /// or manifest through this API. Finalization does not hash them again.
 ///
@@ -112,19 +112,32 @@ pub use backend::SelectableBackend;
 /// procedure must still authenticate that record, check its artifacts against
 /// the deployed code and parameters, and verify the beacon's provenance.
 ///
-/// Tags cannot be assembled from another profile's tag values:
+/// Tag values can be inspected through the public accessors:
 ///
-/// ```compile_fail
+/// ```
+/// use ragu_core::pasta::Pasta;
+/// use ragu_pcd::RegistryTags;
+///
+/// fn inspect(tags: &RegistryTags<Pasta>) {
+///     let _ = (tags.native(), tags.nested());
+/// }
+/// ```
+///
+/// The fields are private, so those values cannot be used to assemble another
+/// profile's tags through a struct literal:
+///
+/// ```compile_fail,E0451
 /// use ragu_circuits::registry::Tag;
 /// use ragu_core::pasta::Pasta;
 /// use ragu_pcd::{RegistryTags, profile::{Aggregator, Profiled}};
 ///
-/// let standard = RegistryTags::<Pasta>::from_beacon(b"beacon", b"manifest");
-/// let relabeled = RegistryTags::<Profiled<Pasta, Aggregator>> {
-///     native: Tag::new(standard.native()),
-///     nested: Tag::new(standard.nested()),
-///     manifest_digest: b"manifest".to_vec(),
-/// };
+/// fn relabel(standard: RegistryTags<Pasta>) -> RegistryTags<Profiled<Pasta, Aggregator>> {
+///     RegistryTags {
+///         native: Tag::new(standard.native()),
+///         nested: Tag::new(standard.nested()),
+///         manifest_digest: Vec::new(),
+///     }
+/// }
 /// ```
 pub struct RegistryTags<C: Cycle> {
     native: Tag<C::CircuitField>,
@@ -220,13 +233,13 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
         }
     }
 
-    /// Checks the tags against the receiver's expected setup manifest and
+    /// Checks the tags against the verifier's expected setup manifest and
     /// supplies their final values to both registries.
     ///
     /// The caller's setup procedure must satisfy the
     /// [sampling requirement](Tag#sampling-requirement) for the complete
     /// application, including the public parameters supplied to [`Self::finalize`].
-    /// `expected_manifest_digest` must come from trusted receiver configuration,
+    /// `expected_manifest_digest` must come from trusted verifier configuration,
     /// fixed independently of incoming proofs or setup records. It identifies
     /// the complete versioned setup, including this profile, the application
     /// steps and the public parameters supplied to [`Self::finalize`].

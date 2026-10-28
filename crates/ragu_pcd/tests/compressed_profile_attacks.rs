@@ -428,7 +428,7 @@ fn check_extension_edits<P>() -> Result<()>
 where
     P: Profile<Context<'static, Pasta, R<14>, ReferenceBackend> = CrossingContext<'static, Pasta>>,
 {
-    let params = crate::pasta::baked();
+    let params = crate::pasta::baked_aggregator();
     let bits = [true, false, false, true];
     let app = ApplicationBuilder::<C<P>, R<14>, HEADER_SIZE>::new()
         .register(Seed {

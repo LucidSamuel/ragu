@@ -351,7 +351,11 @@ where
         .register(Seed { expected })?
         .register(Sum)?
         .with_registry_tags(tags, manifest)?
-        .finalize(crate::pasta::baked())
+        .finalize(if Rk::RANK <= 13 {
+            crate::pasta::baked()
+        } else {
+            crate::pasta::baked_aggregator()
+        })
 }
 
 #[derive(Clone, Copy, Debug)]

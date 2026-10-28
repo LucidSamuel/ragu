@@ -39,65 +39,74 @@
 //! binds its side's view of the other side's stages to their commitments.
 //! No profile declares an extension yet; [`Aggregator`] says why.
 //!
-//! # Profile isolation follow-up
+//! The extension API is experimental while production decompression is being
+//! integrated. Profile authors must review and test agreement between their
+//! declarations, registered stages and masks, and the intended circuit relation.
 //!
-//! Track these requirements as profiles and their circuits evolve:
-//!
-//! - TODO: preserve Standard's setup, wire layout and transcript domains when
-//!   adding isolation. Pin proof bytes and RNG consumption against main so any
-//!   wallet protocol change is explicit and reviewed separately.
-//! - TODO: commit each profile setup's full versioned description, including the
-//!   profile, ordered circuits, ranks, capacities, public parameters and
-//!   transcript rules/domain tags. Give Aggregator a distinct setup and sample
-//!   fresh native/nested registry tags after fixing the description, following
-//!   [`Tag`](ragu_circuits::registry::Tag)'s setup contract. Changed descriptions
-//!   require new tags even when the profile's name stays the same. The
-//!   [`from_beacon`](crate::RegistryTags::from_beacon) labels name every
-//!   profile but Standard, so one beacon output and manifest digest never
-//!   give two profiles the same tags; they do not stand in for a description
-//!   of the profile's own.
-//!   `qa/ceremony/README.md` documents profile-aware descriptions and test
-//!   fixtures. TODO: when decompression circuits are introduced, freeze the
-//!   complete Aggregator setup, including the approved Standard manifest and
-//!   tag record. Publicly commit that description and the beacon-selection
-//!   rule before sampling fresh native/nested tags and publishing a new
-//!   deployment record.
-//! - The verifier application pins its expected manifest digest through
-//!   [`ApplicationBuilder::with_registry_tags`](crate::ApplicationBuilder::with_registry_tags).
-//!   Tags retain the manifest and profile they were derived for. The setup
-//!   procedure must authenticate the manifest and match its artifacts to the
-//!   actual code, steps and parameters.
-//! - Both finalized registries carry the setup tags into proving and recursive
-//!   folding. Ordinary verification checks their polynomial restrictions;
-//!   compressed verification opens those restrictions against the verifier
-//!   application's registries. `tests/setup_binding.rs` changes each tag
-//!   independently through both verifiers and recursive descendants.
-//!   TODO: when decompression circuits are introduced, pin their inner-proof
-//!   verification to the approved Standard setup and Standard transcript
-//!   domains. The outer Aggregator proof uses Aggregator's registries.
-//! - Internal value containers and their gadget kinds retain the profile;
-//!   profile-sized parts use fixed vectors. `tests/profile_layout.rs` checks
-//!   allocation, traversal, equality and distinct kinds for identical shapes.
-//! - `tests/profile_substitution.rs` tests complete proof payloads in both
-//!   directions between profiles with equal or different shapes, including a
-//!   profile with weaker application constraints. Each registry tag is tested
-//!   independently through ordinary/compressed verification and recursive
-//!   parents/grandparents. TODO: when decompression circuits are introduced,
-//!   add the intended Standard-to-Aggregator decompression as a positive
-//!   control and reject substitution of either the inner or outer proof role.
-//! - TODO (#824): validate extension declarations against registered circuits'
-//!   loaded stages and stage/final-mask ranges. Until then, profile authors
-//!   must review and test this agreement. Statement and binding semantics
-//!   remain separate circuit-review obligations.
-//! - TODO: when decompression circuits are introduced, complete the remaining
-//!   Daybreak audit coverage: shared-stage circuit permutations; dummy-suffix
-//!   forgeries through a complete statement extension; disposable variants
-//!   with stage or folding checks disabled to validate the tests; and broader
-//!   recursive property runs. Complete this alongside the inner/outer proof-role
-//!   checks, frozen Aggregator setup and production tag ceremony tracked above.
-//!
-//! TODO: review new verifier circuits independently; profile isolation does
-//! not establish the soundness of decompression's outstanding checks.
+//! The verifier fixes its profile, registries and public parameters at setup.
+//! Registry tags must be sampled for that complete setup. Matching an expected
+//! manifest digest is a mix-up check; the setup procedure must authenticate the
+//! manifest and its artifacts independently.
+
+// # Profile isolation follow-up
+//
+// Track these requirements as profiles and their circuits evolve:
+//
+// - TODO: preserve Standard's setup, wire layout and transcript domains when
+//   adding isolation. Pin proof bytes and RNG consumption against main so any
+//   wallet protocol change is explicit and reviewed separately.
+// - TODO: commit each profile setup's full versioned description, including the
+//   profile, ordered circuits, ranks, capacities, public parameters and
+//   transcript rules/domain tags. Give Aggregator a distinct setup and sample
+//   fresh native/nested registry tags after fixing the description, following
+//   [`Tag`](ragu_circuits::registry::Tag)'s setup contract. Changed descriptions
+//   require new tags even when the profile's name stays the same. The
+//   [`from_beacon`](crate::RegistryTags::from_beacon) labels name every
+//   profile but Standard, so one beacon output and manifest digest never
+//   give two profiles the same tags; they do not stand in for a description
+//   of the profile's own.
+//   `qa/ceremony/README.md` documents profile-aware descriptions and test
+//   fixtures. TODO: when decompression circuits are introduced, freeze the
+//   complete Aggregator setup, including the approved Standard manifest and
+//   tag record. Publicly commit that description and the beacon-selection
+//   rule before sampling fresh native/nested tags and publishing a new
+//   deployment record.
+// - The verifier application pins its expected manifest digest through
+//   [`ApplicationBuilder::with_registry_tags`](crate::ApplicationBuilder::with_registry_tags).
+//   Tags retain the manifest and profile they were derived for. The setup
+//   procedure must authenticate the manifest and match its artifacts to the
+//   actual code, steps and parameters.
+// - Both finalized registries carry the setup tags into proving and recursive
+//   folding. Ordinary verification checks their polynomial restrictions;
+//   compressed verification opens those restrictions against the verifier
+//   application's registries. `tests/setup_binding.rs` changes each tag
+//   independently through both verifiers and recursive descendants.
+//   TODO: when decompression circuits are introduced, pin their inner-proof
+//   verification to the approved Standard setup and Standard transcript
+//   domains. The outer Aggregator proof uses Aggregator's registries.
+// - Internal value containers and their gadget kinds retain the profile;
+//   profile-sized parts use fixed vectors. `tests/profile_layout.rs` checks
+//   allocation, traversal, equality and distinct kinds for identical shapes.
+// - `tests/profile_substitution.rs` tests complete proof payloads in both
+//   directions between profiles with equal or different shapes, including a
+//   profile with weaker application constraints. Each registry tag is tested
+//   independently through ordinary/compressed verification and recursive
+//   parents/grandparents. TODO: when decompression circuits are introduced,
+//   add the intended Standard-to-Aggregator decompression as a positive
+//   control and reject substitution of either the inner or outer proof role.
+// - TODO (#894): validate extension declarations against registered circuits'
+//   loaded stages and stage/final-mask ranges. Until then, profile authors
+//   must review and test this agreement. Statement and binding semantics
+//   remain separate circuit-review obligations.
+// - TODO: when decompression circuits are introduced, complete the remaining
+//   Daybreak audit coverage: shared-stage circuit permutations; dummy-suffix
+//   forgeries through a complete statement extension; disposable variants
+//   with stage or folding checks disabled to validate the tests; and broader
+//   recursive property runs. Complete this alongside the inner/outer proof-role
+//   checks, frozen Aggregator setup and production tag ceremony tracked above.
+//
+// TODO: review new verifier circuits independently; profile isolation does
+// not establish the soundness of decompression's outstanding checks.
 
 use alloc::vec::Vec;
 use core::{any::type_name, fmt, marker::PhantomData};
@@ -2178,7 +2187,7 @@ mod tests {
 
         let app = ApplicationBuilder::<Profiled<Pasta, Proving>, R<14>, HEADER_SIZE>::new()
             .register(UnitStep)?
-            .finalize(crate::pasta::baked())?;
+            .finalize(crate::pasta::baked_aggregator())?;
         let mut rng = StdRng::seed_from_u64(14);
         let (left, ()) = app.seed(&mut rng, UnitStep, ())?;
         let (right, ()) = app.seed(&mut rng, UnitStep, ())?;
@@ -2208,7 +2217,7 @@ mod tests {
         use super::testing::UnitStep;
         use crate::ApplicationBuilder;
 
-        let params = crate::pasta::baked();
+        let params = crate::pasta::baked_aggregator();
         let application = |native, nested| {
             ApplicationBuilder::<Profiled<Pasta, P>, R<14>, 4>::new()
                 .register(UnitStep)?
@@ -2282,7 +2291,7 @@ mod tests {
         use super::testing::UnitStep;
         use crate::ApplicationBuilder;
 
-        let params = crate::pasta::baked();
+        let params = crate::pasta::baked_aggregator();
         let bits = [false, true, true, false];
         let app = ApplicationBuilder::<Profiled<Pasta, P>, R<14>, 4>::new()
             .register(UnitStep)?

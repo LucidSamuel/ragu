@@ -25,7 +25,7 @@ bento::embed_array! {
 
 /// The artifact's points as the vector generators and the blinding
 /// generator, leaving the IPA's generator to [`ipa_generator`].
-fn generators<C: PastaCurve>(points: &'static [AffinePoint<C>]) -> Generators<C> {
+pub(super) fn generators<C: PastaCurve>(points: &'static [AffinePoint<C>]) -> Generators<C> {
     let (_, points) = points
         .split_last()
         .expect("the artifact includes the IPA's generator");

@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added recursion profiles through `profile::{Profile, ProfiledCycle, Profiled,
+  Standard, Aggregator, Shape}`. Profiles declare internal extension circuits,
+  stages, statement and cross-cycle bindings, and endoscaling work.
+- Added `ApplicationBuilder::finalize_with` and `Application::context` for
+  profile-specific prover context. The extension API is experimental while
+  decompression is integrated; the built-in profiles currently add no extensions.
+- Added optional `baked-aggregator` parameters through
+  `pasta::baked_aggregator()` for `R<14>` extension tests. Standard's `baked()`
+  keeps its original `R<13>` table sizes and generators, including when the
+  additional Aggregator parameters are enabled and loaded. The production
+  Aggregator rank remains to be fixed with its decompression circuits.
 - Added sealed, static computational-backend selection between Ragu's reference
   and accelerated implementations, defaulting to
   `ragu_backend::ReferenceBackend`.
@@ -22,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ApplicationBuilder`, `Application`, and their proving, verification and
+  compression methods now require `ProfiledCycle` rather than only `Cycle`.
+  Custom cycles must select a profile; Pasta's implementation requires `baked`.
+- Ordinary verification rejects malformed proof shapes before traversal.
+  Compression returns `Error::InvalidWitness` for malformed shapes.
+- `RegistryTags` fields are private. Direct construction from final `Tag::new`
+  values is no longer supported; use `RegistryTags::from_beacon` and supply an
+  independently trusted expected manifest digest to `with_registry_tags`.
 - Fuse batches independent registry commitments and challenge binding partials
   through the selected backend. Its two error-term layers and child rx
   evaluations use ordered backend iteration, with a lazy serial default.
