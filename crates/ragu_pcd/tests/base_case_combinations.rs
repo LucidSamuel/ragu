@@ -199,20 +199,20 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
     }
     for (case, base_case, honest) in cases {
         assert!(
-            app.verify(&honest, inputs.verifier_rng())?,
+            app.verify_uncompressed(&honest, inputs.verifier_rng())?,
             "{case}: honest proof"
         );
         let sign = if base_case { Fq::ONE } else { -Fq::ONE };
         let forged =
             flipped_sign(app, honest.proof(), sign_wire, sign).carry::<Value>(*honest.data());
         assert!(
-            !app.verify(&forged, inputs.verifier_rng())?,
+            !app.verify_uncompressed(&forged, inputs.verifier_rng())?,
             "{case}: forged sign"
         );
         for (label, child, expected) in [("honest", &honest, true), ("forged", &forged, false)] {
             for (position, descendant) in support::descendants(app, child, &left, &mut rng)? {
                 assert_eq!(
-                    app.verify(&descendant, inputs.verifier_rng())?,
+                    app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                     expected,
                     "{case}/{label}: {position}"
                 );
@@ -226,7 +226,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
     let forged = flipped_sign(app, bootstrap.proof(), sign_wire, Fq::ONE).carry::<()>(());
     for (label, child, expected) in [("honest", &bootstrap, true), ("forged", &forged, false)] {
         assert_eq!(
-            app.verify(child, inputs.verifier_rng())?,
+            app.verify_uncompressed(child, inputs.verifier_rng())?,
             expected,
             "bootstrap/{label}"
         );
@@ -250,7 +250,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
             };
             support::assert_copied_endpoints(parent.proof(), child.proof(), parent_side)?;
             assert_eq!(
-                app.verify(&parent, inputs.verifier_rng())?,
+                app.verify_uncompressed(&parent, inputs.verifier_rng())?,
                 expected,
                 "bootstrap/{label}: parent {parent_side:?}"
             );
@@ -267,7 +267,7 @@ fn check_signs(app: &support::App, inputs: &support::Inputs) -> Result<()> {
                     grandparent_side,
                 )?;
                 assert_eq!(
-                    app.verify(&grandparent, inputs.verifier_rng())?,
+                    app.verify_uncompressed(&grandparent, inputs.verifier_rng())?,
                     expected,
                     "bootstrap/{label}: parent {parent_side:?}, grandparent {grandparent_side:?}"
                 );
@@ -569,8 +569,8 @@ fn nested_collapse_uses_challenge_stage_y_even_in_bootstrap() -> Result<()> {
             bootstrap.clone(),
             bootstrap.clone(),
         )?;
-        assert!(app.verify(&bootstrap, StdRng::seed_from_u64(873009))?);
-        assert!(app.verify(&ordinary, StdRng::seed_from_u64(873010))?);
+        assert!(app.verify_uncompressed(&bootstrap, StdRng::seed_from_u64(873009))?);
+        assert!(app.verify_uncompressed(&ordinary, StdRng::seed_from_u64(873010))?);
 
         let stage_wires =
             stage_wire_indices::<_, R, challenges::Stage<EqAffine, R, crate::profile::Standard>>(
@@ -690,7 +690,7 @@ fn check_guards(
         ),
     ];
     let bootstrap = app.bootstrap_pcd();
-    assert!(app.verify(&bootstrap, inputs.verifier_rng())?);
+    assert!(app.verify_uncompressed(&bootstrap, inputs.verifier_rng())?);
     check_proof_guards(
         bootstrap.proof(),
         "bootstrap",
@@ -700,7 +700,7 @@ fn check_guards(
     )?;
     for (case, exempt, pcd) in cases {
         assert!(
-            app.verify(&pcd, inputs.verifier_rng())?,
+            app.verify_uncompressed(&pcd, inputs.verifier_rng())?,
             "{case}: honest proof"
         );
         check_proof_guards(pcd.proof(), case, exempt, native_delta, nested_delta)?;
@@ -721,7 +721,10 @@ fn noncanonical_unit_children_reject_through_two_generations() {
     let (control, ()) = app
         .fuse(&mut rng, UnitStep, (), honest.clone(), honest.clone())
         .expect("honest unit parent");
-    assert!(app.verify(&control, StdRng::seed_from_u64(873004)).unwrap());
+    assert!(
+        app.verify_uncompressed(&control, StdRng::seed_from_u64(873004))
+            .unwrap()
+    );
 
     for (origin, original) in [
         ("raw dummy retyped as unit", app.dummy_proof()),
@@ -750,21 +753,23 @@ fn noncanonical_unit_children_reject_through_two_generations() {
             }
             let child = proof.carry::<()>(());
             assert!(
-                !app.verify(&child, StdRng::seed_from_u64(873005)).unwrap(),
+                !app.verify_uncompressed(&child, StdRng::seed_from_u64(873005))
+                    .unwrap(),
                 "{origin}/{mutation}: invalid child must reject after cache repair",
             );
             let (parent, ()) = app
                 .fuse(&mut rng, UnitStep, (), child.clone(), child)
                 .expect("assemble parent");
             assert!(
-                !app.verify(&parent, StdRng::seed_from_u64(873006)).unwrap(),
+                !app.verify_uncompressed(&parent, StdRng::seed_from_u64(873006))
+                    .unwrap(),
                 "{origin}/{mutation}: parent must reject",
             );
             let (grandparent, ()) = app
                 .fuse(&mut rng, UnitStep, (), parent.clone(), parent)
                 .expect("assemble grandparent");
             assert!(
-                !app.verify(&grandparent, StdRng::seed_from_u64(873007))
+                !app.verify_uncompressed(&grandparent, StdRng::seed_from_u64(873007))
                     .unwrap(),
                 "{origin}/{mutation}: grandparent must reject",
             );

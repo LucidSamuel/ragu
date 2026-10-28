@@ -445,7 +445,7 @@ fn verifier_outcome<B: SelectableBackend>(
     seed: u64,
 ) -> Outcome {
     let mut rng = StdRng::seed_from_u64(seed);
-    let decision = match app.verify(pcd, &mut rng) {
+    let decision = match app.verify_uncompressed(pcd, &mut rng) {
         Ok(true) => VerifierDecision::Accept,
         Ok(false) => VerifierDecision::Reject,
         Err(_) => VerifierDecision::Error,
@@ -956,7 +956,7 @@ fn serial_fuse_keeps_individual_msms_and_original_iteration() {
     let (left, ()) = app.seed(&mut rng, UnitStep, ()).unwrap();
     let (right, ()) = app.seed(&mut rng, UnitStep, ()).unwrap();
     let (fused, ()) = app.fuse(&mut rng, UnitStep, (), left, right).unwrap();
-    assert!(app.verify(&fused, &mut rng).unwrap());
+    assert!(app.verify_uncompressed(&fused, &mut rng).unwrap());
 }
 
 #[test]
@@ -999,7 +999,7 @@ fn selected_backend_dispatch_reaches_protocol_phases() {
     );
 
     TrackingBackend::reset_calls();
-    assert!(app.verify(&fused, &mut rng).unwrap());
+    assert!(app.verify_uncompressed(&fused, &mut rng).unwrap());
     let [msm, _, _, _] = TrackingBackend::calls();
     assert_dispatch("uncompressed verification", &[("MSM", msm)]);
 

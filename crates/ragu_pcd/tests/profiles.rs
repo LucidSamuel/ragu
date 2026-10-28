@@ -50,7 +50,7 @@ where
     let poseidon_params = C::circuit_poseidon(ragu_pcd::pasta::baked());
     let (leaf, _) = app.seed(&mut rng, WitnessLeaf { poseidon_params }, Fp::from(42))?;
     let (node, _) = app.fuse(&mut rng, Hash2 { poseidon_params }, (), leaf.clone(), leaf)?;
-    assert!(app.verify(&node, &mut rng)?);
+    assert!(app.verify_uncompressed(&node, &mut rng)?);
     let compressed = app.compress(&node, &mut rng)?;
     assert!(app.verify_compressed(&compressed)?);
     Ok(())

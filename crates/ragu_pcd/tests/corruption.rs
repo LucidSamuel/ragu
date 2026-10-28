@@ -3,8 +3,9 @@
 //! `qa/fuzz`'s `fuzz_verify_reject`, `fuzz_verify_reject_full` and
 //! `fuzz_pcd_lifecycle` all rest on one contract: when
 //! [`Proof::corrupt`](ragu_pcd::Proof::corrupt) reports
-//! [`Binding::MustReject`], `verify` must not accept. A wrong classification
-//! can either skip a required rejection check or report a false positive.
+//! [`Binding::MustReject`], `verify_uncompressed` must not accept. A wrong
+//! classification can either skip a required rejection check or report a false
+//! positive.
 //!
 //! So the contract is pinned here instead, over the whole vocabulary and over
 //! proofs of two shapes: a `WitnessLeaf` seed, and a `Merge2` fuse of two
@@ -14,10 +15,10 @@
 //! dedicated Linux PR job with `--test corruption -- --include-ignored`.
 //!
 //! What is deliberately *not* a fixture is
-//! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof): `verify`
-//! rejects it outright, so asserting that a corrupted copy is rejected asserts
-//! nothing. [`the_dummy_proof_does_not_verify`] pins that, because a fuzz
-//! target that starts from it passes vacuously.
+//! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof):
+//! `verify_uncompressed` rejects it outright, so asserting that a corrupted
+//! copy is rejected asserts nothing. [`the_dummy_proof_does_not_verify`] pins
+//! that, because a fuzz target that starts from it passes vacuously.
 
 mod nontrivial_support;
 
@@ -58,8 +59,8 @@ impl Fixture {
         let proof = self.proof;
         let rng = StdRng::seed_from_u64(seed);
         match self.shape {
-            Shape::Leaf => app.verify(&proof.carry::<LeafNode>(self.data), rng),
-            Shape::Deep => app.verify(&proof.carry::<InternalNode>(self.data), rng),
+            Shape::Leaf => app.verify_uncompressed(&proof.carry::<LeafNode>(self.data), rng),
+            Shape::Deep => app.verify_uncompressed(&proof.carry::<InternalNode>(self.data), rng),
         }
         .expect("verify must not error")
     }
@@ -365,7 +366,7 @@ corruption_tests!(leaf, Shape::Leaf);
 corruption_tests!(deep, Shape::Deep);
 
 /// The synthesized dummy the Bootstrap base case consumes is not a proof
-/// `verify` accepts — in the empty application or any other.
+/// `verify_uncompressed` accepts — in the empty application or any other.
 ///
 /// A corruption harness that starts from it proves nothing: the rejection it
 /// asserts holds before the corruption. `qa/fuzz`'s proof-level targets build
@@ -378,7 +379,7 @@ fn the_dummy_proof_does_not_verify() {
         let proof = verifier.test_dummy_proof();
         assert!(
             !verifier
-                .verify(&proof.carry::<()>(()), StdRng::seed_from_u64(1234))
+                .verify_uncompressed(&proof.carry::<()>(()), StdRng::seed_from_u64(1234))
                 .expect("verify must not error"),
             "the dummy proof verified — corrupting it would then be a meaningful test, \
              and the fuzz targets should be pointed back at it",

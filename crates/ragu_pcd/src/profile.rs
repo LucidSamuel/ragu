@@ -2436,7 +2436,7 @@ mod tests {
         let (left, ()) = app.seed(&mut rng, UnitStep, ())?;
         let (right, ()) = app.seed(&mut rng, UnitStep, ())?;
         let (fused, ()) = app.fuse(&mut rng, UnitStep, (), left, right)?;
-        assert!(app.verify(&fused, &mut rng)?);
+        assert!(app.verify_uncompressed(&fused, &mut rng)?);
         let compressed = app.compress(&fused, &mut rng)?;
         assert!(app.verify_compressed(&compressed)?);
         Ok(())
@@ -2483,7 +2483,7 @@ mod tests {
         let (left, ()) = honest.seed(&mut rng, UnitStep, ())?;
         let (right, ()) = honest.seed(&mut rng, UnitStep, ())?;
         let (fused, ()) = honest.fuse(&mut rng, UnitStep, (), left.clone(), right)?;
-        assert!(honest.verify(&fused, &mut rng)?);
+        assert!(honest.verify_uncompressed(&fused, &mut rng)?);
         let compressed = honest.compress(&fused, &mut rng)?;
         assert!(honest.verify_compressed(&compressed)?);
 
@@ -2491,11 +2491,11 @@ mod tests {
         // digits the nested side holds.
         let disagreeing = application(bits, other)?;
         let (leaf, ()) = disagreeing.seed(&mut rng, UnitStep, ())?;
-        assert!(!honest.verify(&leaf, &mut rng)?);
+        assert!(!honest.verify_uncompressed(&leaf, &mut rng)?);
         let compressed = honest.compress(&leaf, &mut rng)?;
         assert!(!honest.verify_compressed(&compressed)?);
         let (parent, ()) = honest.fuse(&mut rng, UnitStep, (), leaf, left)?;
-        assert!(!honest.verify(&parent, &mut rng)?);
+        assert!(!honest.verify_uncompressed(&parent, &mut rng)?);
         Ok(())
     }
 
@@ -2550,7 +2550,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(16);
         let (leaf, ()) = app.seed(&mut rng, UnitStep, ())?;
         let (sibling, ()) = app.seed(&mut rng, UnitStep, ())?;
-        assert!(app.verify(&leaf, &mut rng)?);
+        assert!(app.verify_uncompressed(&leaf, &mut rng)?);
 
         let native_extension = P::native_extension();
         let nested_extension = P::nested_extension();
@@ -2582,14 +2582,20 @@ mod tests {
 
         for (what, proof) in corrupted {
             let pcd = proof.carry::<()>(());
-            assert!(!app.verify(&pcd, &mut rng)?, "{what}: the decider");
+            assert!(
+                !app.verify_uncompressed(&pcd, &mut rng)?,
+                "{what}: the decider"
+            );
             let compressed = app.compress(&pcd, &mut rng)?;
             assert!(
                 !app.verify_compressed(&compressed)?,
                 "{what}: the compressed verifier"
             );
             let (parent, ()) = app.fuse(&mut rng, UnitStep, (), pcd, sibling.clone())?;
-            assert!(!app.verify(&parent, &mut rng)?, "{what}: a parent");
+            assert!(
+                !app.verify_uncompressed(&parent, &mut rng)?,
+                "{what}: a parent"
+            );
         }
         Ok(())
     }

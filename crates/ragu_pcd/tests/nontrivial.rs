@@ -28,7 +28,7 @@ fn various_merging_operations() -> Result<()> {
         },
         Fp::from(42u64),
     )?;
-    assert!(app.verify(&leaf1, &mut rng)?);
+    assert!(app.verify_uncompressed(&leaf1, &mut rng)?);
 
     let (leaf2, _) = app.seed(
         &mut rng,
@@ -37,7 +37,7 @@ fn various_merging_operations() -> Result<()> {
         },
         Fp::from(42u64),
     )?;
-    assert!(app.verify(&leaf2, &mut rng)?);
+    assert!(app.verify_uncompressed(&leaf2, &mut rng)?);
 
     let (node1, _) = app.fuse(
         &mut rng,
@@ -48,7 +48,7 @@ fn various_merging_operations() -> Result<()> {
         leaf1,
         leaf2,
     )?;
-    assert!(app.verify(&node1, &mut rng)?);
+    assert!(app.verify_uncompressed(&node1, &mut rng)?);
 
     Ok(())
 }

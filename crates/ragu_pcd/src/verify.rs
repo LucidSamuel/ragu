@@ -1,6 +1,7 @@
 #![cfg(any(test, feature = "test-utils"))]
-//! This module provides the [`Application::verify`] method implementation:
-//! the uncompressed verifier, a test oracle rather than a production path.
+//! This module provides the [`Application::verify_uncompressed`] method
+//! implementation: the uncompressed verifier, a test oracle rather than a
+//! production path.
 //!
 //! It gates itself behind the `test-utils` feature (or the crate's own
 //! tests) with the inner attribute above. Production verification compresses
@@ -71,10 +72,10 @@ use crate::{
     profile::ProfiledCycle,
 };
 
-/// The backend whose kernels [`Application::verify`] consults for the selected
-/// backend `B`. Every computational call in this module goes through this
-/// alias, never through `B` directly, so which code path decides acceptance is
-/// fixed by the sealed [`SelectableBackend::Verifier`] mapping.
+/// The backend whose kernels [`Application::verify_uncompressed`] consults for
+/// the selected backend `B`. Every computational call in this module goes
+/// through this alias, never through `B` directly, so which code path decides
+/// acceptance is fixed by the sealed [`SelectableBackend::Verifier`] mapping.
 type Verifier<B> = <B as SelectableBackend>::Verifier;
 
 impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
@@ -101,7 +102,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// Production verification compresses the proof with
     /// [`compress`](Self::compress) and checks it with
     /// [`verify_compressed`](Self::verify_compressed).
-    pub fn verify<RNG: CryptoRng, H: Header<C::CircuitField>>(
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+    pub fn verify_uncompressed<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,
@@ -408,7 +410,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             && mesh_claim)
     }
 
-    /// The native mesh claim: see [`verify`](Self::verify).
+    /// The native mesh claim: see
+    /// [`verify_uncompressed`](Self::verify_uncompressed).
     fn native_mesh_claim(&self, proof: &Proof<C, R>) -> Result<bool> {
         use native_internal::{InternalCircuitIndex, RxIndex, stages};
         type Preamble<C, R, const H: usize> = stages::preamble::Stage<C, R, H>;
@@ -499,7 +502,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         Ok(fixed_registry_claim && query_claim && eval_claim)
     }
 
-    /// The nested mesh claim: see [`verify`](Self::verify).
+    /// The nested mesh claim: see
+    /// [`verify_uncompressed`](Self::verify_uncompressed).
     fn nested_mesh_claim(&self, proof: &Proof<C, R>) -> Result<bool> {
         use nested_internal::{InternalCircuitIndex, RxIndex, stages};
         type Preamble<C, R, P> = stages::preamble::Stage<C, R, P>;
@@ -594,9 +598,9 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 /// with zero blinding, from `lifts` and the proof's headers.
 ///
 /// `lifts` holds the native challenges' lifts followed by the lift of
-/// `pre_beta`, and the headers fix the base-case sign. `verify` checks this
-/// for the root; a parent enforces it for each child through `bind_beta`,
-/// its walk and its nested batch.
+/// `pre_beta`, and the headers fix the base-case sign. `verify_uncompressed`
+/// checks this for the root; a parent enforces it for each child through
+/// `bind_beta`, its walk and its nested batch.
 pub(crate) fn nested_challenges_match<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize>(
     proof: &Proof<C, R>,
     lifts: &[C::ScalarField; nested_challenges::NUM + 1],
@@ -618,9 +622,9 @@ pub(crate) fn nested_challenges_match<C: ProfiledCycle, R: Rank, const HEADER_SI
 }
 
 /// Whether the persistent nested points consumed by the native walk are
-/// the proof's polynomial commitments. `verify` separately recomputes the
-/// caches; the recursive counterpart is `bind_endoscalar`'s exports and the
-/// parent's `bind_beta` checks.
+/// the proof's polynomial commitments. `verify_uncompressed` separately
+/// recomputes the caches; the recursive counterpart is `bind_endoscalar`'s
+/// exports and the parent's `bind_beta` checks.
 pub(crate) fn nested_points_match<C: ProfiledCycle, R: Rank>(proof: &Proof<C, R>) -> Result<bool> {
     use native_internal::{RxIndex, stages::points};
 

@@ -3,10 +3,10 @@
 //! [`Corruption`] names one edit to a finished [`Proof`], and
 //! [`Proof::corrupt`] applies it and reports whether the verifier is obliged
 //! to notice. The vocabulary covers what
-//! [`verify`](crate::Application::verify) actually reads: the application
-//! metadata, every challenge and bridge commitment the unified instance
-//! carries, and an individual coefficient of any native or nested polynomial
-//! a revdot claim folds.
+//! [`verify_uncompressed`](crate::Application::verify_uncompressed) actually
+//! reads: the application metadata, every challenge and bridge commitment the
+//! unified instance carries, and an individual coefficient of any native or
+//! nested polynomial a revdot claim folds.
 //!
 //! # Why a corruption is not always a rejection
 //!
@@ -303,16 +303,16 @@ impl NestedAccumulator {
     pub const ALL: [Self; 2] = [Self::A, Self::B];
 }
 
-/// Whether [`verify`](crate::Application::verify) is obliged to reject a
-/// corrupted proof.
+/// Whether [`verify_uncompressed`](crate::Application::verify_uncompressed)
+/// is obliged to reject a corrupted proof.
 ///
 /// See the [module documentation](self) for how each [`Corruption`] is
 /// classified.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Binding {
-    /// The corruption moved a value some verifier check binds, so `verify`
-    /// must not accept — except with negligible probability over the
-    /// randomness the verifier samples for itself.
+    /// The corruption moved a value some verifier check binds, so
+    /// `verify_uncompressed` must not accept — except with negligible
+    /// probability over the randomness the verifier samples for itself.
     MustReject,
     /// The edit made no change, such as a zero delta or an out-of-range
     /// coefficient index. It creates no obligation to reject.
@@ -671,7 +671,8 @@ fn monomial<F: Field, R: Rank>(coeff: usize, delta: F) -> Option<sparse::Polynom
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
     /// Apply a [`Corruption`] to this proof, reporting whether
-    /// [`verify`](crate::Application::verify) is obliged to reject afterwards.
+    /// [`verify_uncompressed`](crate::Application::verify_uncompressed) is obliged
+    /// to reject afterwards.
     #[doc(hidden)]
     pub fn corrupt(&mut self, corruption: Corruption<C>) -> Binding {
         match corruption {

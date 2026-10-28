@@ -1,24 +1,24 @@
 //! Fuzz the verifier with corrupted proofs.
 //!
-//! Applies fuzzer-chosen corruptions to a valid leaf proof, one or several at
-//! a time. A leaf is the cheapest proof `verify` actually accepts, so the
-//! per-input cost is a clone, a corruption and a verify — this is the target
-//! that explores the corruption vocabulary at speed.
+//! Applies fuzzer-chosen corruptions to a valid leaf proof, one or several at a
+//! time. A leaf is the cheapest proof `verify_uncompressed` actually accepts,
+//! so the per-input cost is a clone, a corruption and a verify — this is the
+//! target that explores the corruption vocabulary at speed.
 //! `fuzz_verify_reject_full` runs the same vocabulary against fused proofs,
 //! whose accumulators are not degenerate.
 //!
-//! Invariant: `verify()` never panics, and never accepts a corruption that
-//! bound it (`Ok(false)` or `Err` are both rejections). No-op edits are still
-//! exercised, but their verdict is not asserted. Every effective coefficient
-//! edit leaves a stale commitment and requires rejection; see
-//! [`ragu_pcd::fuzzing::corrupt`] for the classification.
+//! Invariant: `verify_uncompressed()` never panics, and never accepts a
+//! corruption that bound it (`Ok(false)` or `Err` are both rejections). No-op
+//! edits are still exercised, but their verdict is not asserted. Every
+//! effective coefficient edit leaves a stale commitment and requires rejection;
+//! see [`ragu_pcd::fuzzing::corrupt`] for the classification.
 //!
 //! This target used to corrupt Ragu's synthesized dummy proof. That fixture is
-//! the placeholder the internal Bootstrap step consumes, and `verify` rejects
-//! it outright — so "the verifier did not accept the corrupted proof" held
-//! before the corruption too, and every assertion passed vacuously.
-//! [`ragu_testing_fuzz::pcd`] now checks each fixture verifies before handing
-//! it over.
+//! the placeholder the internal Bootstrap step consumes, and
+//! `verify_uncompressed` rejects it outright — so "the verifier did not accept
+//! the corrupted proof" held before the corruption too, and every assertion
+//! passed vacuously. [`ragu_testing_fuzz::pcd`] now checks each fixture
+//! verifies before handing it over.
 
 #![no_main]
 

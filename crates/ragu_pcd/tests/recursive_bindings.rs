@@ -61,7 +61,7 @@ fn check_descendants(
     let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(0x873));
     let verify = |pcd: &support::TestPcd, seed, position: &str| -> Result<()> {
         assert_eq!(
-            app.verify(pcd, StdRng::seed_from_u64(seed))?,
+            app.verify_uncompressed(pcd, StdRng::seed_from_u64(seed))?,
             expected,
             "{label}: {position}"
         );
@@ -187,7 +187,7 @@ mod challenge_binding {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         let (mut control, data) = honest.clone().into_parts();
         install_lifts(app, &mut control, &witness(honest.proof())?)?;
         assert!(stage_matches(&control)?);
@@ -241,7 +241,7 @@ mod challenge_binding {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         check_descendants(
             app,
             inputs,
@@ -543,7 +543,7 @@ mod walk_binding {
         let (honest, left, right) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         let original_inputs = walk_inputs(honest.proof(), left.proof(), right.proof())?;
         let (mut control, data) = honest.clone().into_parts();
         install_walk(app, &mut control, &original_inputs, &mut rng)?;
@@ -614,7 +614,7 @@ mod walk_binding {
         let (honest, left, right) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         let original_inputs = walk_inputs(honest.proof(), left.proof(), right.proof())?;
         let (mut control, data) = honest.clone().into_parts();
         install_walk(app, &mut control, &original_inputs, &mut rng)?;
@@ -828,13 +828,13 @@ mod claim_values {
     ) -> Result<()> {
         let mut rng = inputs.prover_rng();
         assert_eq!(
-            app.verify(&child, inputs.verifier_rng())?,
+            app.verify_uncompressed(&child, inputs.verifier_rng())?,
             expected,
             "{label}: bootstrap"
         );
         let reblinded = app.rerandomize(child.clone(), &mut rng)?;
         assert_eq!(
-            app.verify(&reblinded, inputs.verifier_rng())?,
+            app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
             expected,
             "{label}: rerandomized bootstrap"
         );
@@ -864,13 +864,13 @@ mod claim_values {
             };
             support::assert_copied_endpoints(parent.proof(), child.proof(), side)?;
             assert_eq!(
-                app.verify(&parent, inputs.verifier_rng())?,
+                app.verify_uncompressed(&parent, inputs.verifier_rng())?,
                 expected,
                 "{label}: bootstrap parent {side:?}"
             );
             let reblinded = app.rerandomize(parent.clone(), &mut rng)?;
             assert_eq!(
-                app.verify(&reblinded, inputs.verifier_rng())?,
+                app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
                 expected,
                 "{label}: rerandomized bootstrap parent {side:?}"
             );
@@ -888,13 +888,13 @@ mod claim_values {
                     grandparent_side,
                 )?;
                 assert_eq!(
-                    app.verify(&grandparent, inputs.verifier_rng())?,
+                    app.verify_uncompressed(&grandparent, inputs.verifier_rng())?,
                     expected,
                     "{label}: bootstrap grandparent {grandparent_side:?} / parent {side:?}"
                 );
                 let reblinded = app.rerandomize(grandparent, &mut rng)?;
                 assert_eq!(
-                    app.verify(&reblinded, inputs.verifier_rng())?,
+                    app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
                     expected,
                     "{label}: rerandomized bootstrap grandparent {grandparent_side:?} / parent {side:?}"
                 );
@@ -915,7 +915,7 @@ mod claim_values {
         let bootstrap = app.bootstrap_pcd();
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         let sign =
             stage_wire_indices::<_, R, challenges::Stage<EqAffine, R, crate::profile::Standard>>(
                 |stage| wires_of(&stage.base_case.lift),

@@ -33,7 +33,7 @@ fn check_identity_commitments<C: IpaCycle + ProfiledCycle, R: Rank>(
 ) -> Result<()> {
     let mut rng = StdRng::seed_from_u64(0x908_1de);
     let honest = app.bootstrap_pcd();
-    assert!(app.verify(&honest, &mut rng)?);
+    assert!(app.verify_uncompressed(&honest, &mut rng)?);
     let compressed = app.compress(&honest, &mut rng)?;
     assert!(app.verify_compressed(&compressed)?);
 
@@ -55,7 +55,7 @@ fn check_identity_commitments<C: IpaCycle + ProfiledCycle, R: Rank>(
         *point = C::NestedCurve::identity();
         assert!(proof.well_formed::<HEADER_SIZE>());
         assert!(
-            !app.verify(&proof.carry::<()>(()), &mut rng)?,
+            !app.verify_uncompressed(&proof.carry::<()>(()), &mut rng)?,
             "identity nested commitment {index:?}"
         );
 
@@ -70,7 +70,7 @@ fn check_identity_commitments<C: IpaCycle + ProfiledCycle, R: Rank>(
         proof.native_extension_stage_commitments[j].0 = C::HostCurve::identity();
         assert!(proof.well_formed::<HEADER_SIZE>());
         assert!(
-            !app.verify(&proof.carry::<()>(()), &mut rng)?,
+            !app.verify_uncompressed(&proof.carry::<()>(()), &mut rng)?,
             "identity native extension commitment {j}"
         );
 
@@ -86,14 +86,14 @@ fn check_identity_commitments<C: IpaCycle + ProfiledCycle, R: Rank>(
     // as points, before the verifier replays the bridge transcript.
     let mut proof = honest.proof().clone();
     proof.native_p_commitment.0 = C::HostCurve::identity();
-    assert!(!app.verify(&proof.carry::<()>(()), &mut rng)?);
+    assert!(!app.verify_uncompressed(&proof.carry::<()>(()), &mut rng)?);
     let mut proof = compressed.proof().clone();
     proof.instance.native_p = C::HostCurve::identity();
     assert!(!app.verify_compressed(&proof.carry::<()>(()))?);
 
     let mut proof = honest.proof().clone();
     proof.nested_p_commitment.0 = C::NestedCurve::identity();
-    assert!(!app.verify(&proof.carry::<()>(()), &mut rng)?);
+    assert!(!app.verify_uncompressed(&proof.carry::<()>(()), &mut rng)?);
     let mut proof = compressed.proof().clone();
     proof.instance.nested_p = C::NestedCurve::identity();
     assert!(!app.verify_compressed(&proof.carry::<()>(()))?);
@@ -156,13 +156,13 @@ fn header_computation_errors_are_preserved() -> Result<()> {
         .finalize(crate::pasta::baked())?;
     let mut rng = StdRng::seed_from_u64(0x908_e77);
     let honest = app.bootstrap_pcd();
-    assert!(app.verify(&honest, &mut rng)?);
+    assert!(app.verify_uncompressed(&honest, &mut rng)?);
     let compressed = app.compress(&honest, &mut rng)?;
     assert!(app.verify_compressed(&compressed)?);
 
     let pcd = honest.into_parts().0.carry::<FailingHeader>(());
     assert!(matches!(
-        app.verify(&pcd, &mut rng),
+        app.verify_uncompressed(&pcd, &mut rng),
         Err(Error::InvalidWitness(message)) if message.to_string() == "header computation failed"
     ));
     let pcd = compressed.into_parts().0.carry::<FailingHeader>(());

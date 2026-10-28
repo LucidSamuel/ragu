@@ -132,7 +132,7 @@ fn verify_leaf(
         StdRng,
     ),
 ) {
-    black_box(app.verify(&leaf, &mut rng)).unwrap();
+    black_box(app.verify_uncompressed(&leaf, &mut rng)).unwrap();
 }
 
 #[library_benchmark(setup = setup_verify_node)]
@@ -144,7 +144,7 @@ fn verify_node(
         StdRng,
     ),
 ) {
-    black_box(app.verify(&node, &mut rng)).unwrap();
+    black_box(app.verify_uncompressed(&node, &mut rng)).unwrap();
 }
 
 #[library_benchmark(setup = setup_verify_node)]

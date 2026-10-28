@@ -165,7 +165,7 @@ mod registry {
             first_leaf.proof().circuit_id(),
             second_leaf.proof().circuit_id()
         );
-        assert!(equivalent.verify(&first_leaf, inputs.verifier_rng())?);
+        assert!(equivalent.verify_uncompressed(&first_leaf, inputs.verifier_rng())?);
 
         for (name, source, target, mut foreign, mut sibling) in [
             (
@@ -183,19 +183,19 @@ mod registry {
                 first_leaf,
             ),
         ] {
-            assert!(source.verify(&foreign, inputs.verifier_rng())?);
+            assert!(source.verify_uncompressed(&foreign, inputs.verifier_rng())?);
             assert!(
-                !target.verify(&foreign, inputs.verifier_rng())?,
+                !target.verify_uncompressed(&foreign, inputs.verifier_rng())?,
                 "{name}: foreign seed"
             );
             if reblind {
                 foreign = source.rerandomize(foreign, &mut rng)?;
                 sibling = target.rerandomize(sibling, &mut rng)?;
             }
-            assert!(source.verify(&foreign, inputs.verifier_rng())?);
-            assert!(target.verify(&sibling, inputs.verifier_rng())?);
+            assert!(source.verify_uncompressed(&foreign, inputs.verifier_rng())?);
+            assert!(target.verify_uncompressed(&sibling, inputs.verifier_rng())?);
             assert!(
-                !target.verify(&foreign, inputs.verifier_rng())?,
+                !target.verify_uncompressed(&foreign, inputs.verifier_rng())?,
                 "{name}: foreign child"
             );
 
@@ -206,7 +206,7 @@ mod registry {
                     support::descendants(target, child, &sibling, &mut rng)?
                 {
                     assert_eq!(
-                        target.verify(&descendant, inputs.verifier_rng())?,
+                        target.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                         expected,
                         "{name}: {position}"
                     );
@@ -247,13 +247,13 @@ mod registry {
         let child = app.seed(&mut rng, ConstantSeed::<0>(inputs.left), ())?.0;
         let other = app.seed(&mut rng, ConstantSeed::<2>(inputs.right), ())?.0;
         assert_ne!(child.data(), other.data());
-        assert!(app.verify(&child, inputs.verifier_rng())?);
-        assert!(app.verify(&other, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&child, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&other, inputs.verifier_rng())?);
         let sibling = support::sibling(&app, &child, &mut rng)?;
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         for (position, descendant) in support::descendants(&app, &child, &sibling, &mut rng)? {
             assert!(
-                app.verify(&descendant, inputs.verifier_rng())?,
+                app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                 "honest {position}"
             );
         }
@@ -289,7 +289,7 @@ mod registry {
             let (mut proof, data) = child.clone().into_parts();
             proof.circuit_id = id;
             assert!(
-                !app.verify(&proof.carry::<Value>(data), inputs.verifier_rng())?,
+                !app.verify_uncompressed(&proof.carry::<Value>(data), inputs.verifier_rng())?,
                 "{name}"
             );
         }
@@ -307,7 +307,7 @@ mod registry {
             for (position, descendant) in support::descendants(&app, &changed, &sibling, &mut rng)?
             {
                 assert!(
-                    !app.verify(&descendant, inputs.verifier_rng())?,
+                    !app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                     "slot {}: {position}",
                     usize::from(id)
                 );
@@ -448,8 +448,8 @@ mod stages {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify(&honest, inputs.verifier_rng())?);
-        assert!(app.verify(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&honest, inputs.verifier_rng())?);
+        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
         let (native_wires, nested_wires) = match mutation {
             Mutation::Bits(_) => (
                 stage_wire_indices::<_, R, WalkStage<EpAffine, crate::profile::Standard>>(
@@ -550,13 +550,13 @@ mod stages {
             let child = changed.carry::<Value>(data);
             let expected = !native && !nested;
             assert_eq!(
-                app.verify(&child, inputs.verifier_rng())?,
+                app.verify_uncompressed(&child, inputs.verifier_rng())?,
                 expected,
                 "{mutation:?}, native {native}, nested {nested}: child"
             );
             for (position, descendant) in support::descendants(app, &child, &sibling, &mut rng)? {
                 assert_eq!(
-                    app.verify(&descendant, inputs.verifier_rng())?,
+                    app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                     expected,
                     "{mutation:?}, native {native}, nested {nested}: {position}"
                 );

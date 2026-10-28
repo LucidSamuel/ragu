@@ -1,14 +1,14 @@
 //! Proof compression: the decider's checks restated over commitments and
 //! openings, ending in one IPA opening per curve.
 //!
-//! The uncompressed verifier, `Application::verify`, holds every polynomial
-//! of a proof. A compressed proof carries none: its [`Instance`] holds the
-//! commitments, the headers and the scalars the decider derives or reads off
-//! polynomials, and the prover's messages of three reductions on each curve
-//! stand in for the polynomials. The verifier rederives the fuse's challenges
-//! from the bridge commitments, recomputes the two nested stages the decider
-//! recomputes, samples its own challenges from a transcript over the instance
-//! and the output header, and then, on each curve:
+//! `Application::verify_uncompressed` holds every polynomial of a proof. A
+//! compressed proof carries none: its [`Instance`] holds the commitments, the
+//! headers and the scalars the decider derives or reads off polynomials, and
+//! the prover's messages of three reductions on each curve stand in for the
+//! polynomials. The verifier rederives the fuse's challenges from the bridge
+//! commitments, recomputes the two nested stages the decider recomputes,
+//! samples its own challenges from a transcript over the instance and the
+//! output header, and then, on each curve:
 //!
 //! - [`revdot`] folds the revdot claims, the decider's and the wire
 //!   bindings that pin the instance's wires to the stage commitments, to

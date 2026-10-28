@@ -213,10 +213,10 @@ rejection for `MustReject` edits. `crates/ragu_pcd/tests/corruption.rs` checks b
 the classification and the verifier's response against real proofs.
 
 These targets used to corrupt Ragu's synthesized dummy proof. That fixture is
-the placeholder the internal Bootstrap step consumes, and `verify` rejects it
-outright — so "the verifier did not accept the corrupted proof" held *before*
-the corruption, and every assertion passed vacuously. Every fixture is now
-built with `seed`/`fuse` and checked to verify before anything is corrupted.
+the placeholder the internal Bootstrap step consumes, and `verify_uncompressed`
+rejects it outright — so "the verifier did not accept the corrupted proof" held
+*before* the corruption, and every assertion passed vacuously. Every fixture is
+now built with `seed`/`fuse` and checked to verify before anything is corrupted.
 
 ### Circuit-pipeline targets
 

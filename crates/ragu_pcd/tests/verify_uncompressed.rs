@@ -34,7 +34,7 @@ fn verifying_proof(
 ) -> Proof<Pasta, TestR> {
     let bootstrap = app.bootstrap_pcd();
     assert!(
-        app.verify(&bootstrap, &mut *rng)
+        app.verify_uncompressed(&bootstrap, &mut *rng)
             .expect("verify should not error"),
         "the uncorrupted bootstrap proof must verify"
     );
@@ -147,7 +147,9 @@ fn verify_rejects_invalid_circuit_id() {
     proof.circuit_id = CircuitIndex::new(u32::MAX as usize);
 
     let pcd = proof.carry::<()>(());
-    let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+    let result = app
+        .verify_uncompressed(&pcd, &mut rng)
+        .expect("verify should not error");
     assert!(!result, "verify should reject invalid circuit_id");
 }
 
@@ -162,7 +164,9 @@ fn verify_rejects_wrong_left_header_size() {
     proof.left_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE + 1];
 
     let pcd = proof.carry::<()>(());
-    let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+    let result = app
+        .verify_uncompressed(&pcd, &mut rng)
+        .expect("verify should not error");
     assert!(!result, "verify should reject wrong left_header size");
 }
 
@@ -177,7 +181,9 @@ fn verify_rejects_wrong_right_header_size() {
     proof.right_header = alloc::vec![<Pasta as Cycle>::CircuitField::ZERO; HEADER_SIZE - 1];
 
     let pcd = proof.carry::<()>(());
-    let result = app.verify(&pcd, &mut rng).expect("verify should not error");
+    let result = app
+        .verify_uncompressed(&pcd, &mut rng)
+        .expect("verify should not error");
     assert!(!result, "verify should reject wrong right_header size");
 }
 
@@ -239,7 +245,7 @@ fn base_case_confined_to_bootstrap_rejects_invalid_unit_children() {
     // honestly produced unit proof verifies.
     let (valid_unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
     assert!(
-        app.verify(&valid_unit, StdRng::seed_from_u64(2))
+        app.verify_uncompressed(&valid_unit, StdRng::seed_from_u64(2))
             .expect("valid child verify should not error"),
         "honestly produced unit proof should still verify"
     );
@@ -257,14 +263,14 @@ fn base_case_confined_to_bootstrap_rejects_invalid_unit_children() {
         )
         .expect("honest fuse");
     assert!(
-        app.verify(&honest_parent, StdRng::seed_from_u64(3))
+        app.verify_uncompressed(&honest_parent, StdRng::seed_from_u64(3))
             .expect("honest parent verify should not error"),
         "a parent fused from valid children must verify"
     );
 
     let invalid_child = invalidate(valid_unit);
     assert!(
-        !app.verify(&invalid_child, StdRng::seed_from_u64(4))
+        !app.verify_uncompressed(&invalid_child, StdRng::seed_from_u64(4))
             .expect("invalid child verify should not error"),
         "invalidated child proof should not verify on its own"
     );
@@ -278,7 +284,7 @@ fn base_case_confined_to_bootstrap_rejects_invalid_unit_children() {
         .fuse(&mut rng, UnitStep, (), invalid_child.clone(), invalid_child)
         .expect("fuse assembles a proof regardless of satisfiability");
     assert!(
-        !app.verify(&parent, StdRng::seed_from_u64(5))
+        !app.verify_uncompressed(&parent, StdRng::seed_from_u64(5))
             .expect("parent verify should not error"),
         "a parent fused from invalid children must not verify"
     );
@@ -325,7 +331,7 @@ fn forged_dummy_headers_cannot_trigger_the_base_case() {
         let parent = proof.carry::<()>(());
 
         assert!(
-            !app.verify(&parent, StdRng::seed_from_u64(12))
+            !app.verify_uncompressed(&parent, StdRng::seed_from_u64(12))
                 .expect("parent verify should not error"),
             "forged dummy suffixes over {child_desc} children must not verify"
         );
@@ -350,14 +356,14 @@ fn rerandomize_unit_proof_still_verifies() {
     let mut rng = StdRng::seed_from_u64(7);
     let (unit, ()) = app.seed(&mut rng, UnitSeed, ()).expect("seed");
     assert!(
-        app.verify(&unit, StdRng::seed_from_u64(8))
+        app.verify_uncompressed(&unit, StdRng::seed_from_u64(8))
             .expect("verify should not error"),
         "seeded unit proof should verify"
     );
 
     let rerandomized = app.rerandomize(unit, &mut rng).expect("rerandomize");
     assert!(
-        app.verify(&rerandomized, StdRng::seed_from_u64(9))
+        app.verify_uncompressed(&rerandomized, StdRng::seed_from_u64(9))
             .expect("verify should not error"),
         "rerandomized unit proof should still verify through the enforced path"
     );
@@ -368,7 +374,7 @@ fn bootstrap_proof_verifies_as_unit() {
     let app = unit_app();
     let t = app.bootstrap_pcd();
     assert!(
-        app.verify(&t, StdRng::seed_from_u64(51))
+        app.verify_uncompressed(&t, StdRng::seed_from_u64(51))
             .expect("verify should not error"),
         "the bootstrap proof must verify as ()"
     );
@@ -394,7 +400,7 @@ fn bootstrap_exempts_child_claims_with_consistent_commitments() {
         // the child claim false without changing any polynomial or point.
         let child = proof.carry::<Dummy>(());
         assert!(
-            !app.verify(&child, StdRng::seed_from_u64(74))
+            !app.verify_uncompressed(&child, StdRng::seed_from_u64(74))
                 .expect("child verify should not error"),
             "{case}: the child claim must be invalid"
         );
@@ -403,7 +409,7 @@ fn bootstrap_exempts_child_claims_with_consistent_commitments() {
             .fuse(&mut rng, Bootstrap::new(), (), child.clone(), child)
             .expect("fuse");
         assert_eq!(
-            app.verify(&minted, StdRng::seed_from_u64(72))
+            app.verify_uncompressed(&minted, StdRng::seed_from_u64(72))
                 .expect("verify should not error"),
             expected,
             "{case}: bootstrap exempts child claims while enforcing PCS consistency"
@@ -415,7 +421,7 @@ fn bootstrap_exempts_child_claims_with_consistent_commitments() {
             .fuse(&mut rng, UnitSeed, (), minted.clone(), minted)
             .expect("fuse");
         assert_eq!(
-            app.verify(&seeded, StdRng::seed_from_u64(73))
+            app.verify_uncompressed(&seeded, StdRng::seed_from_u64(73))
                 .expect("verify should not error"),
             expected,
             "{case}: the seed step must preserve the bootstrap verdict"

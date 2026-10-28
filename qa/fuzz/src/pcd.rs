@@ -11,8 +11,8 @@
 //! # No fixture is the dummy proof
 //!
 //! Ragu's synthesized dummy proof is the placeholder the internal Bootstrap
-//! step consumes, not a proof the verifier accepts: `verify` returns
-//! `Ok(false)` for it in any application. Corrupting it and asserting
+//! step consumes, not a proof the verifier accepts: `verify_uncompressed`
+//! returns `Ok(false)` for it in any application. Corrupting it and asserting
 //! non-acceptance therefore asserts nothing — the assertion holds before the
 //! corruption too. Every fixture here is a proof that verifies, and both
 //! [`leaf_fixture`] and [`fused_fixtures`] check that before handing any of
@@ -166,8 +166,10 @@ impl Fixture {
     pub fn verify(&self, app: &Application<'_, C, R, HEADER_SIZE>, rng: StdRng) -> Result<bool> {
         let proof = self.proof.clone();
         match self.shape {
-            Shape::Leaf => app.verify(&proof.carry::<LeafNode>(self.data), rng),
-            Shape::Node | Shape::Deep => app.verify(&proof.carry::<InternalNode>(self.data), rng),
+            Shape::Leaf => app.verify_uncompressed(&proof.carry::<LeafNode>(self.data), rng),
+            Shape::Node | Shape::Deep => {
+                app.verify_uncompressed(&proof.carry::<InternalNode>(self.data), rng)
+            }
         }
     }
 }
@@ -277,10 +279,10 @@ pub enum FuzzCorruption {
     CircuitId {
         /// The raw choice.
         raw: u32,
-        /// Fold it into the registry's domain rather than leaving it wild.
-        /// An out-of-domain id is rejected by the very first check in
-        /// `verify`, so without this almost every draw would stop there and
-        /// the id would never reach the instance.
+        /// Fold it into the registry's domain rather than leaving it wild. An
+        /// out-of-domain id is rejected by the very first check in
+        /// `verify_uncompressed`, so without this almost every draw would stop
+        /// there and the id would never reach the instance.
         in_domain: bool,
     },
     /// Perturb one element of a child header.
@@ -574,8 +576,8 @@ pub fn apply(
 
 /// Asserts the verifier's response to a corrupted fixture.
 ///
-/// `verify` must never accept a corruption that bound it, and must never
-/// panic on one that did not — an internal error is a rejection, not a
+/// `verify_uncompressed` must never accept a corruption that bound it, and must
+/// never panic on one that did not — an internal error is a rejection, not a
 /// crash.
 pub fn assert_rejected(
     app: &Application<'_, C, R, HEADER_SIZE>,

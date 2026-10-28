@@ -38,7 +38,7 @@ fn check_targets<H: Header<Fp>>(
     label: &str,
     rng: &mut StdRng,
 ) {
-    assert!(app.verify(pcd, &mut *rng).unwrap(), "{label}");
+    assert!(app.verify_uncompressed(pcd, &mut *rng).unwrap(), "{label}");
     let compressed = app.compress(pcd, &mut *rng).unwrap();
     assert!(app.verify_compressed(&compressed).unwrap(), "{label}");
     let instance = &compressed.proof().instance;
@@ -178,7 +178,7 @@ fn rejects_edit(
 ) {
     let mut proof = pcd.proof().clone();
     edit(&mut proof);
-    let result = app.verify(
+    let result = app.verify_uncompressed(
         &proof.carry::<Value>(*pcd.data()),
         StdRng::seed_from_u64(0xA11CE),
     );
@@ -194,7 +194,10 @@ fn decider_rejects_malformed_inputs_and_propagates_header_errors() {
         let (pcd, ()) = app
             .fuse(&mut rng, Merge::new(), Fp::from(7), left, right)
             .unwrap();
-        assert!(app.verify(&pcd, StdRng::seed_from_u64(0xA11CE)).unwrap());
+        assert!(
+            app.verify_uncompressed(&pcd, StdRng::seed_from_u64(0xA11CE))
+                .unwrap()
+        );
 
         macro_rules! bump {
             ($field:ident, $one:expr) => {
@@ -272,10 +275,10 @@ fn decider_rejects_malformed_inputs_and_propagates_header_errors() {
         bump_poly!(nested_challenges_rx, Fq::ONE);
 
         let changed_output = pcd.proof().clone().carry::<Value>(*pcd.data() + Fp::ONE);
-        assert!(!app.verify(&changed_output, &mut rng).unwrap());
+        assert!(!app.verify_uncompressed(&changed_output, &mut rng).unwrap());
         let failed_header = pcd.proof().clone().carry::<RejectHeader>(*pcd.data());
         assert!(matches!(
-            app.verify(&failed_header, &mut rng),
+            app.verify_uncompressed(&failed_header, &mut rng),
             Err(Error::InvalidWitness(error)) if error.to_string() == HEADER_ERROR
         ));
     });

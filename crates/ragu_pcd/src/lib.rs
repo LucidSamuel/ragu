@@ -6,8 +6,8 @@
 //!   [`seed`](Application::seed), [`fuse`](Application::fuse) and
 //!   [`rerandomize`](Application::rerandomize) proofs, and
 //!   [`compress`](Application::compress) them to check the result with
-//!   [`verify_compressed`](Application::verify_compressed). The uncompressed
-//!   verifier, `Application::verify`, is a test oracle behind the
+//!   [`verify_compressed`](Application::verify_compressed).
+//!   `Application::verify_uncompressed` is a test oracle behind the
 //!   `test-utils` feature.
 //! - [`step::Step`] — the trait that defines computation nodes (transitions).
 //! - [`header::Header`] — the trait that defines succinct state representations.
@@ -19,6 +19,7 @@
 //!   with the `baked` feature.
 
 #![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![allow(clippy::type_complexity, clippy::too_many_arguments)]
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_docs)]
@@ -639,9 +640,8 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
     /// This will internally fold the [`Pcd`] with a cached seeded `Pcd<()>`
     /// using an internal rerandomization step, producing a
     /// fresh proof that is valid for the same [`Header`] and carries the same
-    /// data. The uncompressed verifier, `Application::verify`, produces the
-    /// same result on the provided `pcd` as it would on the output of this
-    /// method.
+    /// data. `Application::verify_uncompressed` produces the same result on
+    /// the provided `pcd` as it would on the output of this method.
     ///
     /// The intent is that the output be unlinkable to the input. Today that is
     /// not achieved at all: the output embeds the input's commitments and stage

@@ -42,9 +42,9 @@ pub(crate) use sealed::Sealed as TestSealed;
 /// Each selectable backend also fixes [`Verifier`](Self::Verifier), the
 /// backend whose kernels
 /// [`Application::verify_compressed`](crate::Application::verify_compressed)
-/// (and, under `test-utils`, the uncompressed `Application::verify`) consult,
-/// so accelerating verification is an explicit choice rather than a
-/// consequence of accelerating proving.
+/// (and, under `test-utils`, `Application::verify_uncompressed`) consult, so
+/// accelerating verification is an explicit choice rather than a consequence
+/// of accelerating proving.
 pub trait SelectableBackend: Backend + sealed::Sealed {
     /// The backend whose kernels the verifier consults.
     ///

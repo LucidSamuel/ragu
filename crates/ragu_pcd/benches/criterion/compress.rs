@@ -62,7 +62,7 @@ fn bench_compression<B: SelectableBackend>(
     let (root, _) = app
         .fuse(&mut rng, nontrivial::Merge2 { poseidon_params }, (), p1, p2)
         .unwrap();
-    assert!(app.verify(&root, &mut rng).unwrap());
+    assert!(app.verify_uncompressed(&root, &mut rng).unwrap());
 
     c.bench_function(
         &format!("compress/{mode}/{workers}-workers/{backend}"),

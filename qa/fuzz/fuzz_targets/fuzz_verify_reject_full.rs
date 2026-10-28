@@ -9,8 +9,8 @@
 //! building the deeper one runs five fuses, which no per-input budget could
 //! afford.
 //!
-//! Invariant: as `fuzz_verify_reject` — `verify()` never panics, and never
-//! accepts a corruption that bound it.
+//! Invariant: as `fuzz_verify_reject` — `verify_uncompressed()` never panics,
+//! and never accepts a corruption that bound it.
 
 #![no_main]
 

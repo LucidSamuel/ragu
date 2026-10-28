@@ -89,7 +89,12 @@ fn verify_bench(c: &mut Criterion) {
         c.bench_function(name, |b| {
             b.iter_batched(
                 || StdRng::seed_from_u64(5678),
-                |rng| assert_eq!(app.verify(black_box(proof), rng).unwrap(), *expected),
+                |rng| {
+                    assert_eq!(
+                        app.verify_uncompressed(black_box(proof), rng).unwrap(),
+                        *expected
+                    )
+                },
                 criterion::BatchSize::PerIteration,
             );
         });

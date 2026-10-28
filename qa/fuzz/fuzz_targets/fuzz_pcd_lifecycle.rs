@@ -175,7 +175,7 @@ fn assert_honest<H: ragu_pcd::header::Header<NativeField>>(
 ) {
     assert!(
         matches!(
-            app.verify(pcd, StdRng::seed_from_u64(verify_seed)),
+            app.verify_uncompressed(pcd, StdRng::seed_from_u64(verify_seed)),
             Ok(true)
         ),
         "the verifier rejected an honest {} proof",
