@@ -916,6 +916,38 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(values["CLAUDE_CODE_EFFORT_LEVEL"], "xhigh")
         self.assertEqual(values["CLAUDE_CONFIG_DIR"], str(self.out / "claude/code-review"))
 
+    def test_reviewers_are_told_their_time_budget_and_command_cap(self):
+        run = {"model": "claude-sonnet-5-5", "effort": "high", "head": "a" * 40, "base": "b" * 40}
+        text = runner.prompt("code-review", self.out / "work/code-review", "m" * 40, run, self.out / "work/reports")
+        self.assertIn(f"about {runner.REVIEW_TIMEOUT // 60} minutes", text)
+        self.assertIn("once every changed file was examined", text)
+        self.assertIn(f"under {runner.COMMAND_MINUTES} minutes", text)
+        values = runner.environment(run, self.out, "code-review", self.out / "scratch")
+        self.assertEqual(values["BASH_MAX_TIMEOUT_MS"], str(runner.COMMAND_MINUTES * 60000))
+
+    def test_core_review_can_use_a_stronger_model_than_the_specialists(self):
+        base = {"RAGU_AUDIT_MODEL": "claude-sonnet-5-5", "RAGU_AUDIT_EFFORT": "high"}
+        with patch.dict(os.environ, base, clear=True):
+            plain = github.model_configuration()
+        with patch.dict(os.environ, {**base, "RAGU_AUDIT_CORE_MODEL": "claude-opus-5-5", "RAGU_AUDIT_CORE_EFFORT": "xhigh"}, clear=True):
+            strong = github.model_configuration()
+        with patch.dict(os.environ, {**base, "RAGU_AUDIT_CORE_MODEL": "gpt-6"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "explicit Claude model"):
+                github.model_configuration()
+        self.assertNotIn("core_model", plain)
+        self.assertEqual((strong["core_model"], strong["core_effort"]), ("claude-opus-5-5", "xhigh"))
+        identity = {"repository": github.REPOSITORY, "pr": 9, "head": "a" * 40, "base": "b" * 40, "configuration": "b" * 40,
+                    "run_id": "1", "attempt": "1", "check_id": "1", "url": "https://github.com/example"}
+        plain_run, strong_run = {**identity, **plain}, {**identity, **strong}
+        self.assertEqual(runner.model_settings(strong_run, "code-review"), ("claude-opus-5-5", "xhigh"))
+        self.assertEqual(runner.model_settings(strong_run, "tal-review"), ("claude-sonnet-5-5", "high"))
+        self.assertEqual(runner.model_settings(plain_run, "code-review"), ("claude-sonnet-5-5", "high"))
+        runner.RunBudget(strong_run)  # Both models are priced by the safety guard.
+        self.assertNotIn("core", runner.reuse_key(plain_run))  # Existing checks and reusable reports keep their identity.
+        self.assertEqual(runner.reuse_key(strong_run)["core"], ("claude-opus-5-5", "xhigh"))
+        self.assertIn("Core review: `claude-opus-5-5` · Effort: `xhigh`", github.summary(strong_run, "incomplete"))
+        self.assertNotIn("Core review", github.summary(plain_run, "incomplete"))
+
     def test_cargo_preparation_preserves_existing_trusted_configuration(self):
         home = self.out / "fresh-cargo"
         home.mkdir()

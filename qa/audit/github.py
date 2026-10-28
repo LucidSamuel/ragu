@@ -131,7 +131,13 @@ def model_configuration():
     result = {"model": os.environ["RAGU_AUDIT_MODEL"], "effort": os.environ["RAGU_AUDIT_EFFORT"],
               "reconcile_model": os.environ.get("RAGU_AUDIT_RECONCILE_MODEL") or runner.RECONCILE_MODEL,
               "reconcile_effort": os.environ.get("RAGU_AUDIT_RECONCILE_EFFORT") or runner.RECONCILE_EFFORT}
-    for prefix in ("", "reconcile_"):
+    prefixes = ["", "reconcile_"]
+    if os.environ.get("RAGU_AUDIT_CORE_MODEL") or os.environ.get("RAGU_AUDIT_CORE_EFFORT"):
+        # The core review reads the whole diff and may get a stronger model than the specialists.
+        result["core_model"] = os.environ.get("RAGU_AUDIT_CORE_MODEL") or result["model"]
+        result["core_effort"] = os.environ.get("RAGU_AUDIT_CORE_EFFORT") or result["effort"]
+        prefixes.append("core_")
+    for prefix in prefixes:
         if (not re.fullmatch(r"claude-[a-z0-9.-]{1,100}", result[prefix + "model"])
                 or result[prefix + "effort"] not in ("low", "medium", "high", "xhigh", "max")):
             raise ValueError("set an explicit Claude model ID and valid effort")
@@ -325,9 +331,12 @@ def publish_inline(api, run, check, out):
 def summary(run, state, out=None, *, inline=None):
     lines = [MARKER, invocation_marker(run), "", f"## Ragu audit: {state}", ""]
     details = [f"Head: `{run['head']}` · Base: `{run['base']}`", "",
-               f"Model: `{run['model']}` · Effort: `{run['effort']}`", "",
-               f"Reconciliation: `{runner.model_settings(run, runner.RECONCILER)[0]}` · "
-               f"Effort: `{runner.model_settings(run, runner.RECONCILER)[1]}`", ""]
+               f"Model: `{run['model']}` · Effort: `{run['effort']}`", ""]
+    if "core_model" in run:
+        details += [f"Core review: `{runner.model_settings(run, runner.SKILLS[0])[0]}` · "
+                    f"Effort: `{runner.model_settings(run, runner.SKILLS[0])[1]}`", ""]
+    details += [f"Reconciliation: `{runner.model_settings(run, runner.RECONCILER)[0]}` · "
+                f"Effort: `{runner.model_settings(run, runner.RECONCILER)[1]}`", ""]
     if state == "running":
         lines += ["Running `code-review`, then `sean-review`, `tal-review`, and `alex-review` in parallel, followed by a short reconciliation. This comment will be updated.", ""]
     else:

@@ -35,6 +35,7 @@ MAX_RUN_COST_USD = Decimal("25.00")
 TOOLS = "Bash,Read,Edit"
 INHERITED_ENV = ("PATH", "HOME", "LANG", "LC_ALL", "SHELL", "CARGO_HOME", "RUSTUP_HOME")
 REVIEW_TIMEOUT = 3300
+COMMAND_MINUTES = 15  # Longest single Bash command, so one build or test run cannot consume a review.
 RECONCILE_TIMEOUT = 180
 GIT_TIMEOUT = 180
 HEARTBEAT_SECONDS = 30
@@ -114,7 +115,7 @@ class RunBudget:
               "claude-sonnet-5-5": tuple(map(Decimal, ("2", "10", "2.5", "4", ".10")))}
 
     def __init__(self, run, limit=None):
-        for role in (SKILLS[0], RECONCILER):
+        for role in (SKILLS[0], SKILLS[1], RECONCILER):
             if model_settings(run, role)[0] not in self.PRICES:
                 raise ValueError("the safety guard needs pricing for the configured model")
         self.limit = MAX_RUN_COST_USD if limit is None else Decimal(str(limit))
@@ -225,12 +226,17 @@ class RunBudget:
 def model_settings(run, skill):
     if skill == RECONCILER:
         return run.get("reconcile_model", RECONCILE_MODEL), run.get("reconcile_effort", RECONCILE_EFFORT)
+    if skill == SKILLS[0] and "core_model" in run:
+        return run["core_model"], run.get("core_effort", run["effort"])
     return run["model"], run["effort"]
 
 
 def reuse_key(run):
-    return {**{key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")},
-            "reconciliation": model_settings(run, RECONCILER), "claude_version": CLAUDE_VERSION}
+    key = {**{key: run[key] for key in ("repository", "head", "base", "configuration", "model", "effort")},
+           "reconciliation": model_settings(run, RECONCILER), "claude_version": CLAUDE_VERSION}
+    if "core_model" in run:  # Only then, so existing checks and reusable reports keep their identity.
+        key["core"] = model_settings(run, SKILLS[0])
+    return key
 
 
 def reuse_origin(run):
@@ -376,7 +382,7 @@ def environment(run, work, skill, scratch):
         "CLAUDE_CODE_SUBAGENT_MODEL": model,
         "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
         "CLAUDE_CODE_EFFORT_LEVEL": effort,
-        "BASH_MAX_TIMEOUT_MS": "1200000",
+        "BASH_MAX_TIMEOUT_MS": str(COMMAND_MINUTES * 60000),
         "GIT_OPTIONAL_LOCKS": "0",
     })
     return result
@@ -404,6 +410,16 @@ authentication configuration. Use inherited TMPDIR and CARGO_BUILD_JOBS for
 scratch work and concurrent builds; shared temporary directories are blocked.
 The sandbox allowlist permits Cargo downloads and GitHub. Do not supply
 per-command allowed_domains or ask to widen permissions.
+
+This session may run for about {REVIEW_TIMEOUT // 60} minutes and is not stopped
+early; spend that time on coverage rather than finishing early. Start by listing
+every changed file and examine each one: read risky or novel code in full, and
+name the repetitive, mechanical changes you only skimmed. Coverage is complete
+once every changed file was examined; set complete=false only for files not
+examined at all or when the session ran out of time, and list them. Builds and
+tests are evidence for suspected defects, not a substitute for reading: keep
+each command under {COMMAND_MINUTES} minutes, filter tests narrowly, and never let
+one command consume the session.
 
 Apply the skill to changed code and affected callers; mark irrelevant areas
 not applicable. {handoff}
