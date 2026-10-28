@@ -46,11 +46,12 @@ class InlineTests(unittest.TestCase):
         comment = self.api.review_comments[0]
         self.assertEqual((comment["path"], comment["line"], comment["side"], comment["commit_id"]),
                          ("src/lib.rs", 1, "RIGHT", HEAD))
-        for text in ("**Incorrect result** — A reachable counterexample.", "Must-fix · General, Sean, Tal, Alex"):
-            self.assertIn(text, comment["body"])
-        for text in ("Correct the operation.", "[P", "Locations", "src/lib.rs"):  # Only what the summary shows.
+        self.assertTrue(comment["body"].startswith(
+            "**Must-fix** · Code review, Sean, Tal, Alex\n\n**Incorrect result**\n\nA concrete cause.\n\n**Fix:** Correct the operation."))
+        for text in ("A reachable counterexample.", "[P", "Locations", "src/lib.rs"):  # Validation notes stay in the reports.
             self.assertNotIn(text, comment["body"])
-        self.assertEqual(comment["body"].splitlines(), findings.entry(runner.candidates(self.run, self.out), findings.combined(runner.candidates(self.run, self.out))[0], located=False))
+        bundle = runner.candidates(self.run, self.out)
+        self.assertEqual(comment["body"], findings.inline_body(bundle, findings.combined(bundle)[0]))
         summary = self.api.comments[0]["body"]
         self.assertIn("**Must-fix: 1 · Suggestions: 0** · 1 finding posted inline", summary)
         self.assertIn("#pullrequestreview-200", summary)
@@ -68,7 +69,7 @@ class InlineTests(unittest.TestCase):
         self.publish()
         comment = self.api.review_comments[0]
         self.assertEqual((comment["path"], comment["line"]), ("src/lib.rs", 1))
-        self.assertIn("Suggestion · ", comment["body"])
+        self.assertIn("**Suggestion** · ", comment["body"])
         self.assertIn("Reconciled concern", comment["body"])
         self.assertIn("**Disagreement:** The evidence does not settle", comment["body"])
         self.assertNotIn("outside.rs:99", comment["body"])
@@ -202,12 +203,12 @@ class InlineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "audit did not complete"):
             self.publish("failure")
         self.assertEqual(len(self.api.review_comments), 1)
-        self.assertIn("General", self.api.review_comments[0]["body"])
+        self.assertIn("Code review", self.api.review_comments[0]["body"])
         self.assertNotIn("Sean", self.api.review_comments[0]["body"])
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
 
     def test_inline_text_escapes_mentions_html_and_images(self):
-        self.reports(candidate(evidence="<script>unsafe</script> @team ![image](https://example.com/image)"))
+        self.reports(candidate(cause="<script>unsafe</script> @team ![image](https://example.com/image)"))
         self.publish()
         body = self.api.review_comments[0]["body"]
         self.assertNotIn("<script>", body)
@@ -234,8 +235,8 @@ class InlineTests(unittest.TestCase):
         self.fixture.reconciliation(self.run, [item])
         self.publish()
         body = self.api.review_comments[0]["body"]
-        self.assertLess(len(body.encode()), 4000)  # Evidence and disagreement are excerpts, as in the summary.
-        self.assertIn("…", body)
+        self.assertLess(len(body.encode()), 65536)
+        self.assertNotIn("…", body)  # Nothing is cut off; the schema bounds each field.
 
 
 if __name__ == "__main__":

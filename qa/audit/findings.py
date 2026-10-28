@@ -3,11 +3,12 @@
 import hashlib
 import html
 import json
+import re
 from pathlib import PurePosixPath
 from urllib.parse import quote
 
 REVIEWERS = ("code-review", "sean-review", "tal-review", "alex-review")
-REVIEWER_NAMES = dict(zip(REVIEWERS, ("General", "Sean", "Tal", "Alex")))
+REVIEWER_NAMES = dict(zip(REVIEWERS, ("Code review", "Sean", "Tal", "Alex")))
 RECONCILER = "reconcile"
 MAX_FINDINGS = 64
 PRIORITIES = ("P0", "P1", "P2", "P3")
@@ -147,11 +148,46 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+CODE_SPAN = re.compile(r"`[^`\n]+`")
+# Bare code in prose: attributes, paths, calls, CONSTANTS, snake_case, and CamelCase names.
+IDENTIFIER = re.compile(r"""(?<![\w/.`#-])(?:
+    \#\[[^\[\]\s]+\]
+  | [A-Za-z_]\w*(?:::[\w<>]+)+
+  | [A-Za-z_]\w*\([\w, ]*\)
+  | [A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+
+  | [a-z][a-z0-9]*(?:_[a-z0-9]+)+
+  | [A-Z][a-z0-9]+(?:[A-Z][a-z0-9]*)+
+)(?![\w/]|\.\w)""", re.X)
+PROPER_NOUNS = {"GitHub", "GitLab", "LaTeX", "OpenSSL", "JavaScript", "TypeScript", "WebAssembly", "MacOS"}
+
+
+def escape(text):
+    return html.escape(text, quote=False).replace("@", "&#64;").replace("![", "[")
+
+
+def spans(text, transform):
+    """Apply `transform` to the text between code spans; GitHub renders span contents literally."""
+    parts, end = [], 0
+    for match in CODE_SPAN.finditer(text):
+        parts += [transform(text[end:match.start()]), match.group()]
+        end = match.end()
+    return "".join(parts + [transform(text[end:])])
+
+
 def safe(text, limit=None):
-    text = html.escape(text, quote=False).replace("@", "&#64;").replace("![", "[")
+    """Escape untrusted report text whole; verified reports are digested in this form."""
+    text = escape(text)
     if limit is not None and len(text.encode()) > limit:
         text = text.encode()[:limit].decode("utf-8", errors="ignore") + "…"
+        if text.count("`") % 2:
+            text += "`"
     return text
+
+
+def prose(text):
+    """Untrusted finding prose for readers: single spaced, code identifiers in backticks, escaped."""
+    mark = lambda part: IDENTIFIER.sub(lambda m: m.group() if m.group() in PROPER_NOUNS else f"`{m.group()}`", part)
+    return spans(" ".join(text.split()), lambda part: escape(mark(part)))
 
 
 def detail_lines(item):
@@ -222,27 +258,26 @@ def attribution(candidates, item):
 
 
 def entry(candidates, item, *, located=True):
-    """One retained finding as the summary lists it: title, evidence, attribution, disagreement.
+    """One retained finding for a reader: kind and reviewers, title, cause, fix, and any disagreement.
 
-    The full reasoning stays in the reviewers' reports; the priority only orders the list.
+    Validation notes and the priority stay in the reports; the priority only orders the list.
     """
     label = "Must-fix" if item["disposition"] == "must-fix" else "Suggestion"
-    lines = [f"**{safe(item['title'])}** — " + safe(" ".join(item["evidence"].split()), 240) + "  "]
-    place = ""
+    kind = f"**{label}** · {attribution(candidates, item)}"
     if located:
         loc = item["locations"][0]
         path = safe(PurePosixPath(loc["path"]).name).replace("[", "&#91;").replace("]", "&#93;")
         url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(loc['path'], safe='/')}#L{loc['line']}"
-        place = f"[{path}:{loc['line']}]({url}) · "
-    lines.append(f"<sub>{place}{label} · {attribution(candidates, item)}</sub>  ")
+        kind += f" · [{path}:{loc['line']}]({url})"
+    lines = [kind, f"**{prose(item['title'])}**", prose(item["cause"]), "**Fix:** " + prose(item["correction"])]
     if item["disagreement"]:
-        lines.append("**Disagreement:** " + safe(" ".join(item["disagreement"].split()), 600))
+        lines.append("**Disagreement:** " + prose(item["disagreement"]))
     return lines
 
 
 def inline_body(candidates, item):
-    """The summary's entry, anchored to the finding's line instead of linking it."""
-    return "\n".join(entry(candidates, item, located=False))
+    """The summary's entry as paragraphs, anchored to the finding's line instead of linking it."""
+    return "\n\n".join(entry(candidates, item, located=False))
 
 
 def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
@@ -264,7 +299,7 @@ def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
                 lines += [f"- **{safe(item['title'], 120)}** — {attribution(candidates, item)}", ""]
             else:
                 first, *rest = entry(candidates, item)
-                lines += [f"- {first}", *(f"  {line}" for line in rest), ""]
+                lines += [f"- {first}  ", *(f"  {line}  " for line in rest), ""]
     if compact:
         lines += ["Compact view: locations, evidence, corrections and disagreement details are in the full reports.", ""]
     return lines

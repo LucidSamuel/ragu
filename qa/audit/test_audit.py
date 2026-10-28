@@ -642,7 +642,7 @@ class AuditTests(unittest.TestCase):
         self.assertNotIn("`alex-review` did not finish", body)
         self.assertNotIn("SECRET_CANARY", body)
         self.assertIn("2/4 reviews completed", body)
-        self.assertIn("<summary>General</summary>", body)
+        self.assertIn("<summary>Code review</summary>", body)
         self.assertIn("<summary>Alex</summary>", body)
         self.assertNotIn("<summary>Tal</summary>", body)
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
@@ -799,7 +799,7 @@ class AuditTests(unittest.TestCase):
             github.publish(self.api, run, self.out, "success")
         text = self.api.comments[0]["body"]
         self.assertEqual(text.count("**One shared defect**"), 1)
-        self.assertIn("General, Sean, Tal, Alex", text)
+        self.assertIn("Code review, Sean, Tal, Alex", text)
         self.assertIn(f"[Full report]({artifact})", text)
         self.assertIn(f"[Full report]({run['url']})", text)
         self.assertNotIn("example.invalid", text)
@@ -824,7 +824,7 @@ class AuditTests(unittest.TestCase):
         self.assertIn("4/4 reviews completed", body)
         self.assertIn("Combined reviewer findings", body)
         self.assertEqual(body.count("**Incorrect result**"), 1)
-        self.assertIn("General, Sean, Tal, Alex", body)
+        self.assertIn("Code review, Sean, Tal, Alex", body)
 
     def test_corrupt_optional_reconciliation_publishes_verified_fallback(self):
         run = github.queue(self.api, 9, HEAD)
@@ -837,7 +837,7 @@ class AuditTests(unittest.TestCase):
         text = self.api.comments[0]["body"]
         self.assertIn("Combined reviewer findings", text)
         self.assertEqual(text.count("**Incorrect result**"), 1)
-        self.assertIn("General, Sean, Tal, Alex", text)
+        self.assertIn("Code review, Sean, Tal, Alex", text)
         self.assertNotIn("Edited finding", text)
         self.assertNotIn("FORGED_SUCCESS_CANARY", text)
         self.assertIn("4/4 reviews completed", text)
