@@ -248,17 +248,6 @@ impl<'dr, D: Driver<'dr, F = C::CircuitField>, C: Cycle, const HEADER_SIZE: usiz
         })
     }
 
-    /// Allocate ProofInputs from a proof reference and some unprocessed header
-    /// data.
-    pub fn alloc_for_verify<R: Rank, H: Header<C::CircuitField>>(
-        dr: &mut D,
-        proof: DriverValue<D, &Proof<C, R>>,
-        header_data: DriverValue<D, H::Data>,
-    ) -> Result<Self> {
-        let header_data = encode_output_header::<D, H, HEADER_SIZE>(header_data)?;
-        Self::alloc(dr, proof, header_data.as_ref())
-    }
-
     /// Allocate ProofInputs from the parts a proof's instance carries: the
     /// child headers, the encoded output header, the circuit id as its
     /// domain point, and the unified instance's values.

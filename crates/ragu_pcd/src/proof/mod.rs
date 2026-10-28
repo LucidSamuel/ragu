@@ -42,6 +42,9 @@ mod profile_substitution_tests;
 #[cfg(test)]
 #[path = "../../tests/proof_shape.rs"]
 mod proof_shape_tests;
+#[cfg(test)]
+#[path = "../../tests/verify_rejections.rs"]
+mod verify_rejection_tests;
 // Mutable component access for the corruption vocabulary (see
 // `crate::fuzzing`). Its source lives with the rest of the fuzzing surface in
 // `src/fuzzing/`, but it is mounted here, as a child of `proof`, so it can

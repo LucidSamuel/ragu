@@ -14,7 +14,10 @@ use ragu_core::{
     },
     maybe::{Always, Maybe},
 };
-use ragu_primitives::{Element, GadgetExt, Point};
+use ragu_primitives::{
+    Element, GadgetExt, Point,
+    vec::{ConstLen, FixedVec},
+};
 use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 use super::{
@@ -25,8 +28,10 @@ use super::{
     },
     nested::{self, unified as nested_unified},
 };
+#[cfg(test)]
+use crate::Pcd;
 use crate::{
-    Pcd, Proof,
+    Proof,
     header::Header,
     profile::{Binding, Profile, ProfiledCycle},
 };
@@ -37,7 +42,7 @@ use crate::{
 /// the circuit's public inputs as coefficients, so the verifier computes
 /// $k(y)$ from the instance. The raw claim's target is different: $c$ is the
 /// accumulator's own value, folded alongside $a$ and $b$, and depends on
-/// neither public inputs nor $y$. [`native_ky`] fills the $k(y)$ targets and
+/// neither public inputs nor $y$. [`native_ky_from_header`] fills the $k(y)$ targets and
 /// leaves `c` as `None`, which omits the raw claim; the decider verifies that
 /// way, deriving $c$ from the very polynomials the claim would check. The
 /// compressed verifier sets `c` to the value the instance carries.
@@ -216,6 +221,7 @@ pub fn binding_ky_of<F: Field, P: Affine<Base = F>>(points: &[P], y: F) -> Resul
 
 /// The native $k(y)$ values of `pcd` at `y`, read off the proof's public
 /// data and the header data.
+#[cfg(test)]
 pub fn native_ky<
     C: ProfiledCycle,
     R: Rank,
@@ -225,14 +231,29 @@ pub fn native_ky<
     pcd: &Pcd<C, R, H>,
     y: C::CircuitField,
 ) -> Result<NativeKy<C::CircuitField>> {
-    Emulator::emulate_wireless((pcd.proof(), pcd.data().clone(), y), |dr, witness| {
-        let (proof, data, y) = witness.cast();
+    native_ky_from_header::<C, R, HEADER_SIZE>(
+        pcd.proof(),
+        output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?.try_into()?,
+        y,
+    )
+}
+
+/// The native targets with an already encoded output header. Verification
+/// encodes the header separately so application errors remain distinct from
+/// malformed proof points.
+pub fn native_ky_from_header<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize>(
+    proof: &Proof<C, R>,
+    output_header: FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
+    y: C::CircuitField,
+) -> Result<NativeKy<C::CircuitField>> {
+    Emulator::emulate_wireless((proof, output_header, y), |dr, witness| {
+        let (proof, output_header, y) = witness.cast();
         let y = Element::alloc(dr, &mut (), y)?;
         let bound = proof
             .as_ref()
             .map(|proof| native_bound::<C::Profile, _>(|index| proof.nested_rx_commitment(index)));
         let proof_inputs =
-            ProofInputs::<_, C, HEADER_SIZE>::alloc_for_verify::<R, H>(dr, proof, data)?;
+            ProofInputs::<_, C, HEADER_SIZE>::alloc::<R>(dr, proof, output_header.as_ref())?;
 
         let (unified, unified_bridge) = proof_inputs.unified_ky_values(dr, &y)?;
         let application = proof_inputs.application_ky(dr, &y)?;
@@ -295,7 +316,7 @@ pub struct NativeParts<'a, C: Cycle> {
 }
 
 /// The native $k(y)$ values at `y` from an instance's parts, as
-/// [`native_ky`] computes them from a proof.
+/// [`native_ky_from_header`] computes them from a proof and its encoded header.
 pub fn native_ky_of<C: ProfiledCycle, const HEADER_SIZE: usize>(
     parts: NativeParts<'_, C>,
     y: C::CircuitField,

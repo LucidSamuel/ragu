@@ -215,6 +215,8 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
     /// over the nested batch takes a step per so many points, so more per
     /// step is fewer steps and fewer polynomials, and the other side's walk
     /// shortens with them. The standard profile's is the production rank's.
+    /// Both endoscaling counts must be nonzero and their product must exceed
+    /// four, so the mutually dependent walk sizes can converge.
     const NATIVE_ENDOSCALINGS_PER_STEP: usize = native::ENDOSCALINGS_PER_STEP;
     /// The endoscalings a nested endoscaling step performs, likewise.
     const NESTED_ENDOSCALINGS_PER_STEP: usize = nested::ENDOSCALINGS_PER_STEP;
@@ -379,7 +381,8 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
     }
 
     /// Checks that the constants agree with the extensions and that the
-    /// extensions are well formed.
+    /// extensions are well formed, and that the endoscaling counts allow
+    /// the walk sizes to converge.
     ///
     /// # Errors
     ///
@@ -390,8 +393,19 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
     /// lay out a proof; if either extension is not
     /// [consistent](Extension::is_consistent); if the nested extension names
     /// a statement circuit, which only the native side carries; or if an
-    /// extension's binding names a stage the other extension does not have.
+    /// extension's binding names a stage the other extension does not have;
+    /// or if the product of the two endoscaling counts is at most four.
     fn check() -> Result<()> {
+        // Each added step contributes two points to the other side's walk.
+        // A full pass must shrink that contribution for a fixed point to exist.
+        if Self::NATIVE_ENDOSCALINGS_PER_STEP.saturating_mul(Self::NESTED_ENDOSCALINGS_PER_STEP)
+            <= 4
+        {
+            return Err(Error::Initialization(
+                "the profile's endoscaling counts must be nonzero and their product exceed four"
+                    .into(),
+            ));
+        }
         if Self::NAME.is_empty() {
             return Err(Error::Initialization("the profile has no name".into()));
         }
@@ -633,11 +647,11 @@ pub struct Extension {
 /// The circuit recomputes a commitment from the stage's values, so the
 /// other side commits a bound stage unblinded, and the commitment then
 /// hides nothing of the values, or the circuit takes the stage's blinding
-/// as a witness and adds its term. Nothing checks the circuit's output
-/// against the declaration: a circuit exposing other points, or the stages
-/// in another order, fails the claim for every proof rather than passing
-/// one it should not, since the $k(y)$ is computed from the commitments
-/// the proof carries either way.
+/// as a witness and adds its term. The profile must ensure that the output
+/// order matches `stages` and that each commitment is recomputed from the
+/// values its circuits actually use for that stage. This agreement is part
+/// of the trusted setup: a mismatched association can accept unintended
+/// statements even when the exposed commitments match the claim's target.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Binding {
     /// The binding circuit, by index among the extension's circuits.
@@ -944,6 +958,11 @@ pub struct Shape {
 
 impl Shape {
     /// The shape of profile `P`.
+    ///
+    /// # Panics
+    ///
+    /// Panics under the same conditions as [`Self::solve`]. When used in
+    /// a constant layout, an invalid shape fails at compile time.
     pub const fn of<P: Profile>() -> Self {
         Self::solve(
             P::NATIVE_EXTENSION,
@@ -956,6 +975,11 @@ impl Shape {
     /// Solves the walk sizes for the given extensions at the given
     /// endoscalings per native and nested step, iterating the native step
     /// count to its fixed point.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an endoscaling count is zero or the walk sizes do not
+    /// converge within 64 iterations.
     pub const fn solve(
         native_extension: usize,
         nested_extension: usize,
@@ -2002,6 +2026,52 @@ mod tests {
         testing::{Crossing, CrossingBack, CrossingContext, Mismatched, Wider},
         *,
     };
+
+    #[test]
+    fn endoscaling_counts_must_allow_convergent_walks() {
+        #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+        struct Walk<const N: usize, const M: usize>;
+
+        impl<const N: usize, const M: usize> Profile for Walk<N, M> {
+            const NAME: &'static str = "walk parameters";
+            const NATIVE_EXTENSION: usize = 0;
+            const NESTED_EXTENSION: usize = 0;
+            const NATIVE_ENDOSCALINGS_PER_STEP: usize = N;
+            const NESTED_ENDOSCALINGS_PER_STEP: usize = M;
+
+            type Context<'params, Base, R, B>
+                = ()
+            where
+                Base: IpaCycle + ProfiledCycle<Profile = Standard>,
+                R: Rank,
+                B: SelectableBackend;
+        }
+
+        for result in [
+            Walk::<0, 4>::check(),
+            Walk::<4, 0>::check(),
+            Walk::<1, 1>::check(),
+            Walk::<1, 4>::check(),
+            Walk::<4, 1>::check(),
+            Walk::<2, 2>::check(),
+            Walk::<0, { usize::MAX }>::check(),
+        ] {
+            assert!(matches!(result, Err(Error::Initialization(_))));
+        }
+
+        fn converges<const N: usize, const M: usize>() {
+            Walk::<N, M>::check().unwrap();
+            let shape = Shape::of::<Walk<N, M>>();
+            assert!(shape.native_steps > 0 && shape.nested_steps > 0);
+        }
+        converges::<1, 5>();
+        converges::<5, 1>();
+        converges::<2, 3>();
+        converges::<3, 4>();
+        converges::<4, 4>();
+        // Validation must not overflow when multiplying the counts.
+        converges::<{ usize::MAX }, { usize::MAX }>();
+    }
 
     #[test]
     fn declared_extensions_check() {

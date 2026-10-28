@@ -40,12 +40,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Compression returns `Error::InvalidWitness` for malformed shapes, and so do
   `Application::fuse` and `Application::rerandomize` for a child proof of
   another shape.
+- Ordinary verification returns rejection for identity commitments used by
+  claim targets or the bridge transcript, instead of an input error, while
+  preserving application header-encoding errors.
 - `Profile::check`, which finalization runs, refuses an empty profile name and
   a built-in profile's name on any other profile, since the name is what
   separates two profiles' registry tags under one beacon output and manifest
   digest. `Extension::is_consistent` requires each circuit's stage list to be
   strictly increasing, so that the stage whose final mask covers the circuit is
   the last it loads.
+- Profile validation rejects zero endoscaling counts and counts whose product
+  is at most four, which cannot produce convergent walk sizes. Binding
+  documentation now makes declaration/circuit agreement a setup obligation
+  rather than claiming a mismatch always rejects.
 - `RegistryTags` fields are private. Direct construction from final `Tag::new`
   values is no longer supported; use `RegistryTags::from_beacon` and supply an
   independently trusted expected manifest digest to `with_registry_tags`.

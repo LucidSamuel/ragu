@@ -40,7 +40,7 @@ use ragu_circuits::{
     registry::CircuitIndex,
     staging::{StageExt, StageReader, stage_wire_indices, wires_of},
 };
-use ragu_core::{Cycle, FixedGenerators, Result, drivers::emulator::Emulator, maybe::Maybe};
+use ragu_core::{Cycle, Error, FixedGenerators, Result, drivers::emulator::Emulator, maybe::Maybe};
 use ragu_primitives::{GadgetExt as _, Point, extract_endoscalar};
 use rand::CryptoRng;
 use udon::{
@@ -95,6 +95,18 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
         pcd: &Pcd<C, R, H>,
         mut rng: RNG,
     ) -> Result<bool> {
+        // Translate only proof-dependent failures. Header encoding may use
+        // InvalidWitness for application errors and runs outside this check.
+        macro_rules! proof_check {
+            ($result:expr) => {
+                match $result {
+                    Ok(value) => value,
+                    Err(Error::InvalidWitness(_)) => return Ok(false),
+                    Err(error) => return Err(error),
+                }
+            };
+        }
+
         if !pcd.proof().well_formed::<HEADER_SIZE>() {
             return Ok(false);
         }
@@ -132,7 +144,13 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
 
         // Compute unified k(y), unified_bridge k(y), and application k(y).
         // The raw claim's target stays `None`: see `SingleProofSource::rx`.
-        let native_ky = ky::native_ky::<C, R, H, HEADER_SIZE>(pcd, y)?;
+        let output_header =
+            ky::output_header::<C, H, HEADER_SIZE>(pcd.data().clone())?.try_into()?;
+        let native_ky = proof_check!(ky::native_ky_from_header::<C, R, HEADER_SIZE>(
+            pcd.proof(),
+            output_header,
+            y,
+        ));
 
         // Build a and b polynomials for each revdot claim.
         let source = native::SingleProofSource { proof: pcd.proof() };
@@ -163,7 +181,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             // for the instance circuits' claims: the instance is read off
             // the proof (c_n and v_n derived from its polynomials), and the
             // claims bind it to those circuits' traces.
-            let nested_ky = ky::nested_ky(pcd.proof(), y_nested)?;
+            let nested_ky = proof_check!(ky::nested_ky(pcd.proof(), y_nested));
             let native_bound =
                 ky::nested_bound::<C::Profile, _>(|index| pcd.proof().native_rx_commitment(index));
             let ky_source = ky::NestedKy {
@@ -179,7 +197,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 // The nested binding circuit's claim holds its recomputation
                 // of the native extension stages it names to their
                 // commitments.
-                binding: ky::binding_ky_of(&native_bound, y_nested)?,
+                binding: proof_check!(ky::binding_ky_of(&native_bound, y_nested)),
             };
             nested::ky_values::<C::Profile, _>(&ky_source)
                 .zip(nested_builder.a.iter().zip(nested_builder.b.iter()))
@@ -285,7 +303,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
                 Transcript::new(&mut dr, C::circuit_poseidon(self.params), RAGU_TAG)?;
             macro_rules! absorb {
                 ($point:expr) => {
-                    Point::constant(&mut dr, $point)?.write(&mut dr, &mut transcript)?
+                    proof_check!(Point::constant(&mut dr, $point))
+                        .write(&mut dr, &mut transcript)?
                 };
             }
             macro_rules! squeeze {

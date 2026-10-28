@@ -381,6 +381,8 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
         params: &'params C::Params,
         context: <C::Profile as Profile>::Context<'params, C::Base, R, B>,
     ) -> Result<Application<'params, C, R, HEADER_SIZE, B>> {
+        C::Profile::check()?;
+
         // Build the native registry:
         // 1. Application circuits (already registered)
         // 2. Internal circuits and masks
