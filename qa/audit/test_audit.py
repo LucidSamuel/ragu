@@ -105,8 +105,12 @@ class API:
         elif path.endswith("/reviews"):
             values = self.reviews
         elif "/reviews/" in path and path.endswith("/comments"):
+            # GitHub's per-review listing uses the legacy schema without line or side.
             review_id = int(path.split("/reviews/")[1].split("/")[0])
-            values = [comment for comment in self.review_comments if comment["pull_request_review_id"] == review_id]
+            values = [{key: value for key, value in comment.items() if key not in ("line", "side")}
+                      for comment in self.review_comments if comment["pull_request_review_id"] == review_id]
+        elif "/pulls/" in path and path.endswith("/comments"):
+            values = self.review_comments
         elif "check-runs" in path:
             head = path.split("/commits/")[1].split("/")[0]
             values = [check for check in self.checks if check["head_sha"] == head]

@@ -215,32 +215,38 @@ def combined(candidates):
     return groups
 
 
-def inline_body(candidates, item):
-    """Render one retained finding with its evidence and reviewer attribution."""
+def attribution(candidates, item):
     originals = {record["id"]: record for record in candidates["findings"]}
-    reporters = [name for name in REVIEWERS
-                 if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"])]
+    return ", ".join(REVIEWER_NAMES[name] for name in REVIEWERS
+                     if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"]))
+
+
+def entry(candidates, item, *, located=True):
+    """One retained finding as the summary lists it: title, evidence, attribution, disagreement.
+
+    The full reasoning stays in the reviewers' reports; the priority only orders the list.
+    """
     label = "Must-fix" if item["disposition"] == "must-fix" else "Suggestion"
-    lines = [f"**[{item['priority']}] {safe(item['title'])}**", "",
-             f"{label} · {item['category']} · " + ", ".join(REVIEWER_NAMES[name] for name in reporters), "",
-             safe(item["cause"]), "", safe(item["evidence"]), "", safe(item["impact"]), "",
-             "**Suggested change:** " + safe(item["correction"]), ""]
+    lines = [f"**{safe(item['title'])}** — " + safe(" ".join(item["evidence"].split()), 240) + "  "]
+    place = ""
+    if located:
+        loc = item["locations"][0]
+        path = safe(PurePosixPath(loc["path"]).name).replace("[", "&#91;").replace("]", "&#93;")
+        url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(loc['path'], safe='/')}#L{loc['line']}"
+        place = f"[{path}:{loc['line']}]({url}) · "
+    lines.append(f"<sub>{place}{label} · {attribution(candidates, item)}</sub>  ")
     if item["disagreement"]:
-        lines += ["**Disagreement:** " + safe(item["disagreement"]), ""]
-    lines += ["**Assessment:** " + safe(item["rationale"]), "", "Locations:"]
-    for location in item["locations"]:
-        path = safe(location["path"]).replace("[", "&#91;").replace("]", "&#93;")
-        url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(location['path'], safe='/')}#L{location['line']}"
-        lines.append(f"- [{path}:{location['line']}]({url})")
-    text = "\n".join(lines)
-    if len(text.encode()) > 60000:
-        text = text.encode()[:60000].decode("utf-8", errors="ignore") + "\n\nContinued in the full report artifacts."
-    return text
+        lines.append("**Disagreement:** " + safe(" ".join(item["disagreement"].split()), 600))
+    return lines
+
+
+def inline_body(candidates, item):
+    """The summary's entry, anchored to the finding's line instead of linking it."""
+    return "\n".join(entry(candidates, item, located=False))
 
 
 def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
     """Show every retained finding, with merged attribution and bounded detail."""
-    originals = {item["id"]: item for item in candidates["findings"]}
     reconciled = groups is not None
     if not reconciled:
         groups = combined(candidates)
@@ -254,20 +260,11 @@ def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
         if not items:
             lines += ["None reported." if not reconciled else "None after reconciliation.", ""]
         for item in items:
-            reporters = [name for name in REVIEWERS if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"])]
-            title = safe(item["title"], 120 if compact else None)
-            lines += [f"- **{title}**"]
-            if not compact:
-                loc = item["locations"][0]
-                path = safe(PurePosixPath(loc["path"]).name).replace("[", "&#91;").replace("]", "&#93;")
-                url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(loc['path'], safe='/')}#L{loc['line']}"
-                lines[-1] += " — " + safe(" ".join(item["evidence"].split()), 240) + "  "
-                lines += [f"  <sub>[{path}:{loc['line']}]({url}) · " + ", ".join(REVIEWER_NAMES[name] for name in reporters) + "</sub>  "]
-                if item["disagreement"]:
-                    lines += ["  **Disagreement:** " + safe(" ".join(item["disagreement"].split()), 600)]
+            if compact:
+                lines += [f"- **{safe(item['title'], 120)}** — {attribution(candidates, item)}", ""]
             else:
-                lines[-1] += " — " + ", ".join(REVIEWER_NAMES[name] for name in reporters)
-            lines.append("")
+                first, *rest = entry(candidates, item)
+                lines += [f"- {first}", *(f"  {line}" for line in rest), ""]
     if compact:
         lines += ["Compact view: locations, evidence, corrections and disagreement details are in the full reports.", ""]
     return lines

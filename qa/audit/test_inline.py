@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
+import findings
 import github
 import runner
 import test_audit
@@ -45,13 +46,17 @@ class InlineTests(unittest.TestCase):
         comment = self.api.review_comments[0]
         self.assertEqual((comment["path"], comment["line"], comment["side"], comment["commit_id"]),
                          ("src/lib.rs", 1, "RIGHT", HEAD))
-        for text in ("Incorrect result", "General, Sean, Tal, Alex", "A reachable counterexample.", "Correct the operation."):
+        for text in ("**Incorrect result** — A reachable counterexample.", "Must-fix · General, Sean, Tal, Alex"):
             self.assertIn(text, comment["body"])
+        for text in ("Correct the operation.", "[P", "Locations", "src/lib.rs"):  # Only what the summary shows.
+            self.assertNotIn(text, comment["body"])
+        self.assertEqual(comment["body"].splitlines(), findings.entry(runner.candidates(self.run, self.out), findings.combined(runner.candidates(self.run, self.out))[0], located=False))
         summary = self.api.comments[0]["body"]
-        self.assertIn("1 finding posted inline", summary)
+        self.assertIn("**Must-fix: 1 · Suggestions: 0** · 1 finding posted inline", summary)
         self.assertIn("#pullrequestreview-200", summary)
-        self.assertNotIn("**Incorrect result**", summary)
-        self.assertNotIn("#### Must-fix", summary)
+        for text in ("**Incorrect result**", "#### Must-fix", "### For humans"):
+            self.assertNotIn(text, summary)
+        self.assertIn("### For agents", summary)
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
     def test_reconciliation_controls_disposition_location_and_disagreement(self):
@@ -63,10 +68,10 @@ class InlineTests(unittest.TestCase):
         self.publish()
         comment = self.api.review_comments[0]
         self.assertEqual((comment["path"], comment["line"]), ("src/lib.rs", 1))
-        self.assertIn("Suggestion", comment["body"])
+        self.assertIn("Suggestion · ", comment["body"])
         self.assertIn("Reconciled concern", comment["body"])
-        self.assertIn("The evidence does not settle", comment["body"])
-        self.assertIn("outside.rs:99", comment["body"])
+        self.assertIn("**Disagreement:** The evidence does not settle", comment["body"])
+        self.assertNotIn("outside.rs:99", comment["body"])
         self.assertIn("Must-fix: 0 · Suggestions: 1", self.api.comments[0]["body"])
 
     def test_dismissed_findings_do_not_create_reviews(self):
@@ -74,7 +79,10 @@ class InlineTests(unittest.TestCase):
         self.fixture.reconciliation(self.run, [group(*[f"{name}:1" for name in runner.SKILLS], disposition="dismissed")])
         self.publish()
         self.assertEqual(self.api.reviews, [])
-        self.assertIn("None after reconciliation", self.api.comments[0]["body"])
+        body = self.api.comments[0]["body"]
+        self.assertIn("**Must-fix: 0 · Suggestions: 0**", body)
+        self.assertIn("1 finding group dismissed", body)
+        self.assertNotIn("### For humans", body)
 
     def test_findings_outside_diff_are_retained_without_moving_their_anchor(self):
         self.reports(candidate(), candidate(title="Outside hunk", cause="Different cause",
@@ -226,8 +234,8 @@ class InlineTests(unittest.TestCase):
         self.fixture.reconciliation(self.run, [item])
         self.publish()
         body = self.api.review_comments[0]["body"]
-        self.assertLess(len(body.encode()), 65536)
-        self.assertIn("Continued in the full report artifacts", body)
+        self.assertLess(len(body.encode()), 4000)  # Evidence and disagreement are excerpts, as in the summary.
+        self.assertIn("…", body)
 
 
 if __name__ == "__main__":
