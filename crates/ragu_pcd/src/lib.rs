@@ -3,11 +3,12 @@
 //! This crate provides the top-level API for building PCD applications:
 //!
 //! - [`ApplicationBuilder`] / [`Application`] — configure, build, then
-//!   [`seed`](Application::seed), [`fuse`](Application::fuse),
-//!   [`rerandomize`](Application::rerandomize), and
-//!   [`verify`](Application::verify) proofs, or
-//!   [`compress`](Application::compress) them and
-//!   [`verify_compressed`](Application::verify_compressed) the result.
+//!   [`seed`](Application::seed), [`fuse`](Application::fuse) and
+//!   [`rerandomize`](Application::rerandomize) proofs, and
+//!   [`compress`](Application::compress) them to check the result with
+//!   [`verify_compressed`](Application::verify_compressed). The uncompressed
+//!   verifier, `Application::verify`, is a test oracle behind the
+//!   `test-utils` feature.
 //! - [`step::Step`] — the trait that defines computation nodes (transitions).
 //! - [`header::Header`] — the trait that defines succinct state representations.
 //! - [`Proof`] / [`Pcd`] — the proof and proof-carrying-data structures.
@@ -46,6 +47,8 @@ pub mod pasta;
 pub mod profile;
 mod proof;
 pub mod step;
+// The uncompressed verifier. Gates itself behind `test-utils` (or the crate's
+// own tests) with an inner `#![cfg]`, like `fuzzing`.
 mod verify;
 
 #[cfg(test)]
@@ -276,8 +279,8 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
     /// Selects a Ragu-owned computational backend.
     ///
     /// The selected backend is used for proving and native witness
-    /// computation; [`Application::verify`] consults the kernels of its
-    /// [`SelectableBackend::Verifier`], which the selection fixes (for
+    /// computation; [`Application::verify_compressed`] consults the kernels
+    /// of its [`SelectableBackend::Verifier`], which the selection fixes (for
     /// example `AcceleratedProver` accelerates proving only). Applications may
     /// select a Ragu implementation but cannot provide one.
     pub fn with_backend<SelectedBackend: SelectableBackend>(
@@ -636,8 +639,9 @@ impl<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectable
     /// This will internally fold the [`Pcd`] with a cached seeded `Pcd<()>`
     /// using an internal rerandomization step, producing a
     /// fresh proof that is valid for the same [`Header`] and carries the same
-    /// data. [`Application::verify`] produces the same result on the provided
-    /// `pcd` as it would on the output of this method.
+    /// data. The uncompressed verifier, `Application::verify`, produces the
+    /// same result on the provided `pcd` as it would on the output of this
+    /// method.
     ///
     /// The intent is that the output be unlinkable to the input. Today that is
     /// not achieved at all: the output embeds the input's commitments and stage

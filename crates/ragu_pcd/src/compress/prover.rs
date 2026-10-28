@@ -48,7 +48,7 @@ impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectab
     /// messages of the revdot reduction, the batch and the IPA opening, in
     /// place of the proof's polynomials. Compression checks the proof's shape
     /// but not its validity: [`verify_compressed`](Self::verify_compressed)
-    /// judges the instance the proof commits to, as [`verify`](Self::verify)
+    /// judges the instance the proof commits to, as the uncompressed `verify`
     /// judges the proof.
     ///
     /// # Errors

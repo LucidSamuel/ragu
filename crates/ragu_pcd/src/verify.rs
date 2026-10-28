@@ -1,4 +1,10 @@
-//! This module provides the [`Application::verify`] method implementation.
+#![cfg(any(test, feature = "test-utils"))]
+//! This module provides the [`Application::verify`] method implementation:
+//! the uncompressed verifier, a test oracle rather than a production path.
+//!
+//! It gates itself behind the `test-utils` feature (or the crate's own
+//! tests) with the inner attribute above. Production verification compresses
+//! a proof and checks it with [`Application::verify_compressed`].
 //!
 //! The verifier is the decider: it holds every polynomial of the proof and
 //! checks the accumulated claims on them directly, at challenges it samples
@@ -90,6 +96,11 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// kernels for `ReferenceBackend` and `AcceleratedProver`, the accelerated
     /// ones for `AcceleratedBackend`. Applications choose between them but
     /// cannot supply the implementation that controls the acceptance decision.
+    ///
+    /// This is a test oracle, available only with the `test-utils` feature.
+    /// Production verification compresses the proof with
+    /// [`compress`](Self::compress) and checks it with
+    /// [`verify_compressed`](Self::verify_compressed).
     pub fn verify<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: &Pcd<C, R, H>,

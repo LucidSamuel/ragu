@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Application::verify` computes its acceptance kernels through the sealed
   `SelectableBackend::Verifier` of the selected backend rather than through
   the selected backend directly.
+- `Application::verify`, the uncompressed verifier, is now a test oracle
+  behind the new `test-utils` feature, which `unstable-fuzzing` enables.
+  Production verification compresses a proof with `Application::compress` and
+  checks it with `Application::verify_compressed`.
 
 ## [0.0.0] - 2025-11-05
 

@@ -161,8 +161,8 @@ pub(crate) fn bridge_alpha_power<F: Field>(bridge_alpha: F, idx: nested::RxIndex
 ///
 /// All fields are flat (no nested component structs). Polynomial fields are
 /// primary data; commitment fields are `Cached` values derivable from
-/// polynomials, which [`verify`](crate::Application::verify) rederives
-/// rather than trusts. The `ab` bridge polynomial is also `Cached`,
+/// polynomials, which the uncompressed verifier, `Application::verify`,
+/// rederives rather than trusts. The `ab` bridge polynomial is also `Cached`,
 /// derivable from `bridge_alpha` and native commitments; the other seven
 /// carry prover-chosen data (the nested fold's error terms and the nested
 /// batch's values among them) and are primary.

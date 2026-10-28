@@ -5,7 +5,9 @@
 use alloc::vec::Vec;
 use core::iter::once;
 
-use ragu_circuits::{horner::Horner, polynomials::Rank, registry::CircuitIndex};
+#[cfg(any(test, feature = "test-utils"))]
+use ragu_circuits::polynomials::Rank;
+use ragu_circuits::{horner::Horner, registry::CircuitIndex};
 use ragu_core::{
     Cycle, Result,
     drivers::{
@@ -14,10 +16,9 @@ use ragu_core::{
     },
     maybe::{Always, Maybe},
 };
-use ragu_primitives::{
-    Element, GadgetExt, Point,
-    vec::{ConstLen, FixedVec},
-};
+#[cfg(any(test, feature = "test-utils"))]
+use ragu_primitives::vec::{ConstLen, FixedVec};
+use ragu_primitives::{Element, GadgetExt, Point};
 use udon::{curve::EndomorphismAffine as Affine, field::Field};
 
 use super::{
@@ -30,8 +31,9 @@ use super::{
 };
 #[cfg(test)]
 use crate::Pcd;
+#[cfg(any(test, feature = "test-utils"))]
+use crate::Proof;
 use crate::{
-    Proof,
     header::Header,
     profile::{Binding, Profile, ProfiledCycle},
 };
@@ -42,10 +44,10 @@ use crate::{
 /// the circuit's public inputs as coefficients, so the verifier computes
 /// $k(y)$ from the instance. The raw claim's target is different: $c$ is the
 /// accumulator's own value, folded alongside $a$ and $b$, and depends on
-/// neither public inputs nor $y$. [`native_ky_from_header`] fills the $k(y)$ targets and
-/// leaves `c` as `None`, which omits the raw claim; the decider verifies that
-/// way, deriving $c$ from the very polynomials the claim would check. The
-/// compressed verifier sets `c` to the value the instance carries.
+/// neither public inputs nor $y$. `native_ky_from_header` fills the $k(y)$
+/// targets and leaves `c` as `None`, which omits the raw claim; the decider
+/// verifies that way, deriving $c$ from the very polynomials the claim would
+/// check. The compressed verifier sets `c` to the value the instance carries.
 pub struct NativeKy<F> {
     /// The accumulator value $c$, the raw claim's target, or `None` to omit
     /// the raw claim.
@@ -241,6 +243,7 @@ pub fn native_ky<
 /// The native targets with an already encoded output header. Verification
 /// encodes the header separately so application errors remain distinct from
 /// malformed proof points.
+#[cfg(any(test, feature = "test-utils"))]
 pub fn native_ky_from_header<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize>(
     proof: &Proof<C, R>,
     output_header: FixedVec<C::CircuitField, ConstLen<HEADER_SIZE>>,
@@ -273,6 +276,7 @@ pub fn native_ky_from_header<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize
 
 /// The nested unified instance's $k(y)$ of `proof` at the nested `y`, with
 /// $c_n$ and $v_n$ derived from the proof's polynomials.
+#[cfg(any(test, feature = "test-utils"))]
 pub fn nested_ky<C: Cycle, R: Rank>(
     proof: &Proof<C, R>,
     y: C::ScalarField,
@@ -316,7 +320,8 @@ pub struct NativeParts<'a, C: Cycle> {
 }
 
 /// The native $k(y)$ values at `y` from an instance's parts, as
-/// [`native_ky_from_header`] computes them from a proof and its encoded header.
+/// the decider's `native_ky_from_header` computes them from a proof and its
+/// encoded header.
 pub fn native_ky_of<C: ProfiledCycle, const HEADER_SIZE: usize>(
     parts: NativeParts<'_, C>,
     y: C::CircuitField,
@@ -350,7 +355,7 @@ pub fn native_ky_of<C: ProfiledCycle, const HEADER_SIZE: usize>(
 }
 
 /// The nested unified instance's $k(y)$ at the nested `y` from the
-/// instance's values, as [`nested_ky`] computes it from a proof.
+/// instance's values, as the decider's `nested_ky` computes it from a proof.
 pub fn nested_ky_of<C: Cycle>(
     instance: &nested_unified::Instance<C::HostCurve>,
     y: C::ScalarField,

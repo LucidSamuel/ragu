@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// The backend whose kernels [`Application::verify_compressed`] consults for
-/// the selected backend `B`, as [`Application::verify`] does.
+/// the selected backend `B`, as the uncompressed `Application::verify` does.
 type Verifier<B> = <B as SelectableBackend>::Verifier;
 
 impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
@@ -26,13 +26,13 @@ impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectab
     /// opening), or `Err` if an internal computation error occurs.
     ///
     /// Uses this application's fixed profile, registries and public
-    /// parameters, as [`verify`](Self::verify) does. Proof data cannot select
+    /// parameters, as the uncompressed `verify` does. Proof data cannot select
     /// another profile or setup; its circuit ID selects only within this
     /// application's registry.
     ///
     /// The registry and polynomial evaluations and the recomputed stage
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
-    /// the selected backend, as in [`verify`](Self::verify). This also applies
+    /// the selected backend, as in the uncompressed `verify`. This also applies
     /// to transcript bridges, batch commitment combinations, and IPA MSMs.
     pub fn verify_compressed<H: Header<C::CircuitField>>(
         &self,
