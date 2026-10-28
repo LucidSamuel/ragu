@@ -23,9 +23,19 @@
 //! statement's therefore has a false claim, as a proof with relabelled
 //! application headers does.
 //!
+//! The statement circuit exposes the compressed proof's padded output header,
+//! suffix included, so the suffix is what selects which of this application's
+//! header types a decompressed statement is taken as. The application must
+//! register, at each suffix a decompressed header can carry, a header type
+//! with the inner application's encoding and meaning; nothing checks that
+//! agreement, which the setup description a profile's tags cover must
+//! record.
+//!
 //! Only a profile whose native extension declares a statement circuit
 //! registers this step ([`num_internal_steps`]); for any other, its
-//! witnessed header would bind to nothing.
+//! witnessed header would bind to nothing. `tests/decompress_statement.rs`
+//! proves the step under a stand-in statement circuit and checks the
+//! binding both ways.
 //!
 //! [`Rerandomize`]: super::rerandomize::Rerandomize
 //! [`Encoded::new_uniform`]: crate::step::Encoded::new_uniform

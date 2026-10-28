@@ -1,4 +1,5 @@
-//! Malformed ordinary proofs must reject before indexing or compression.
+//! Malformed ordinary proofs must reject before indexing, compression or
+//! fusion.
 
 use alloc::format;
 
@@ -16,6 +17,7 @@ use crate::{
         Profile, Profiled, ProfiledCycle,
         testing::{Crossing, CrossingBack, CrossingContext},
     },
+    step::internal::rerandomize::Rerandomize,
 };
 
 const HEADER_SIZE: usize = 4;
@@ -40,6 +42,20 @@ fn check_shapes<C: IpaCycle + ProfiledCycle, R: Rank>(app: &Application<'_, C, R
             ),
             "compression did not reject {label}"
         );
+        // The prover reads its children by this profile's layout too, and
+        // refuses one of another shape in either position.
+        for (left, right) in [
+            (malformed.clone(), honest.clone()),
+            (honest.clone(), malformed.clone()),
+        ] {
+            assert!(
+                matches!(
+                    app.fuse(&mut rng, Rerandomize::<()>::new(), (), left, right),
+                    Err(Error::InvalidWitness(_))
+                ),
+                "fusion did not reject {label}"
+            );
+        }
     };
 
     // Mutate polynomial and cache lengths independently, and together: equal

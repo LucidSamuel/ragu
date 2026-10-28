@@ -35,7 +35,7 @@ use ragu_circuits::{
     staging::StageExt,
 };
 use ragu_core::{
-    Cycle, Result,
+    Cycle, Error, Result,
     drivers::{
         Driver,
         emulator::{Emulator, Wireless},
@@ -192,6 +192,12 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     ///   [`Step::Left`] header.
     /// * `right`: the right [`Pcd`] to fuse in this step; must correspond to
     ///   the [`Step::Right`] header.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if either child proof does not have
+    /// this application's profile's shape, which the verifier rejects too,
+    /// and propagates the step's and the prover's errors otherwise.
     pub fn fuse<'source, RNG: CryptoRng, S: Step<C>>(
         &self,
         rng: &mut RNG,
@@ -200,6 +206,16 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         left: Pcd<C, R, S::Left>,
         right: Pcd<C, R, S::Right>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
+        // The children's polynomials are read by this profile's layout
+        // below; a child of another shape is refused, as the verifier
+        // refuses it, rather than read past its ends.
+        if !left.proof().well_formed::<HEADER_SIZE>() || !right.proof().well_formed::<HEADER_SIZE>()
+        {
+            return Err(Error::InvalidWitness(
+                "a child proof does not have this profile's shape".into(),
+            ));
+        }
+
         let mut builder = ProofBuilder::<C, R, B>::new(
             self.params,
             C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),

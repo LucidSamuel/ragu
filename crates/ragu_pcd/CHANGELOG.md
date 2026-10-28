@@ -37,7 +37,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compression methods now require `ProfiledCycle` rather than only `Cycle`.
   Custom cycles must select a profile; Pasta's implementation requires `baked`.
 - Ordinary verification rejects malformed proof shapes before traversal.
-  Compression returns `Error::InvalidWitness` for malformed shapes.
+  Compression returns `Error::InvalidWitness` for malformed shapes, and so do
+  `Application::fuse` and `Application::rerandomize` for a child proof of
+  another shape.
+- `Profile::check`, which finalization runs, refuses an empty profile name and
+  a built-in profile's name on any other profile, since the name is what
+  separates two profiles' registry tags under one beacon output and manifest
+  digest. `Extension::is_consistent` requires each circuit's stage list to be
+  strictly increasing, so that the stage whose final mask covers the circuit is
+  the last it loads.
 - `RegistryTags` fields are private. Direct construction from final `Tag::new`
   values is no longer supported; use `RegistryTags::from_beacon` and supply an
   independently trusted expected manifest digest to `with_registry_tags`.

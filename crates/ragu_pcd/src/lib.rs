@@ -56,6 +56,14 @@ mod setup_binding_tests;
 #[path = "../tests/profile_layout.rs"]
 mod profile_layout_tests;
 
+#[cfg(test)]
+#[path = "../tests/decompress_statement.rs"]
+mod decompress_statement_tests;
+
+#[cfg(all(test, feature = "unstable-fuzzing"))]
+#[path = "../tests/profile_corruption.rs"]
+mod profile_corruption_tests;
+
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::{any::TypeId, cell::OnceCell, marker::PhantomData};
 

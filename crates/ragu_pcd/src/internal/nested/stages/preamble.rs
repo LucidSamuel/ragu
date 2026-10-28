@@ -47,7 +47,9 @@ pub fn num_points<P: Profile>() -> usize {
 /// instance-circuit claims with that expected value, outside the base case.
 #[derive(Clone)]
 pub struct ChildWitness<C: Affine, P: Profile> {
-    // Field order matches the `_10_p` accumulation order.
+    // The `_10_p` accumulation order is `RxIndex::all`'s, which the `Index`
+    // impl on `ChildOutput` reads the fields in; the field order itself is
+    // not load-bearing.
     /// Commitment from the child's application circuit.
     pub application: C,
     /// Commitment from the child's first hashes circuit.
@@ -200,7 +202,8 @@ pub struct Witness<C: Affine, P: Profile> {
 /// Output gadget for a single child proof in the preamble bridge stage.
 #[derive(Gadget, Write)]
 pub struct ChildOutput<'dr, D: Driver<'dr>, C: Affine<Base = D::F>, P: Profile> {
-    // Field order matches `_10_p` accumulation order.
+    // Read by `RxIndex` through the `Index` impl below, in the `_10_p`
+    // accumulation order; the field order itself is not load-bearing.
     /// Point commitment from the child's application circuit.
     #[ragu(gadget)]
     pub application: Point<'dr, D, C>,

@@ -94,22 +94,39 @@
 //   parents/grandparents. TODO: when decompression circuits are introduced,
 //   add the intended Standard-to-Aggregator decompression as a positive
 //   control and reject substitution of either the inner or outer proof role.
+// - TODO (#894): constrain every decompression circuit to the same compressed
+//   Standard-profile proof and statement. The statement circuit must expose
+//   the header checked by those circuits. Cross-cycle bindings must recompute
+//   commitments from the values those circuits use. The statement claim then
+//   binds that verified header to the Aggregator-profile PCD's output header.
+// - TODO (#894): verify and record in the setup manifest that Standard and
+//   Aggregator assign the same encoding and meaning to every accepted
+//   decompressed header suffix, including field order and padding. The claim
+//   compares field elements; it does not check this agreement between apps.
 // - TODO (#894): validate extension declarations against registered circuits'
 //   loaded stages and stage/final-mask ranges. Until then, profile authors
 //   must review and test this agreement. Statement and binding semantics
 //   remain separate circuit-review obligations.
-// - TODO: when decompression circuits are introduced, complete the remaining
-//   Daybreak audit coverage: shared-stage circuit permutations; dummy-suffix
-//   forgeries through a complete statement extension; disposable variants
-//   with stage or folding checks disabled to validate the tests; and broader
-//   recursive property runs. Complete this alongside the inner/outer proof-role
-//   checks, frozen Aggregator setup and production tag ceremony tracked above.
+// - TODO (#894): complete the remaining Daybreak audit coverage when
+//   decompression circuits are introduced: shared-stage circuit permutations;
+//   dummy-suffix forgeries through a complete statement extension; disposable
+//   variants with stage or folding checks disabled to validate the tests;
+//   and broader recursive property runs. Complete this alongside the
+//   inner/outer proof-role checks, frozen Aggregator setup and production tag
+//   ceremony tracked above.
+//   `tests/decompress_statement.rs` uses a stand-in statement circuit to test
+//   output-header binding. Add corresponding controls with the real circuits
+//   verifying a compressed Standard-profile proof and its statement.
 //
 // TODO: review new verifier circuits independently; profile isolation does
 // not establish the soundness of decompression's outstanding checks.
 
 use alloc::vec::Vec;
-use core::{any::type_name, fmt, marker::PhantomData};
+use core::{
+    any::{TypeId, type_name},
+    fmt,
+    marker::PhantomData,
+};
 
 use ragu_circuits::{
     BondingObject, Circuit, WithAux,
@@ -161,6 +178,14 @@ use crate::{
 /// uses. These circuit semantics are part of the verifier's trusted setup.
 /// Prover hooks and the polynomials they return are untrusted witnesses.
 ///
+/// A statement circuit exposes the inner proof's padded output header,
+/// suffix included, and the suffix is what selects which of the
+/// application's header types a decompressed statement is taken as. The
+/// application must register, at every suffix a decompressed header can
+/// carry, a header type with the inner application's encoding and meaning.
+/// Nothing checks that agreement; it is part of the setup description the
+/// profile's tags cover.
+///
 /// A profile is part of an application's setup description, so its
 /// registries take their own [`RegistryTags`](crate::RegistryTags): the
 /// standard profile's tags are not another profile's, even over the same
@@ -172,8 +197,12 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
     /// The profile's name, which
     /// [`from_beacon`](crate::RegistryTags::from_beacon) puts in the labels
     /// it derives the setup tags under, for every profile but the standard
-    /// one, whose labels its ceremony fixed. Distinct across profiles and
-    /// fixed: a renamed profile derives other tags.
+    /// one, whose labels its ceremony fixed. For one beacon output and
+    /// manifest digest the name is all that separates two such profiles'
+    /// tags, so it must be distinct across the profiles over a cycle and
+    /// fixed: two profiles sharing a name share their tags, and a renamed
+    /// profile derives other tags. [`check`](Self::check) refuses an empty
+    /// name, and a built-in profile's name on any other profile.
     const NAME: &'static str;
 
     /// The native rx polynomials the profile adds: its native extension's.
@@ -354,13 +383,28 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
     ///
     /// # Errors
     ///
-    /// Fails if an extension's rx count differs from its constant, so that a
-    /// profile declaring one without the other does not lay out a proof; if
-    /// either extension is not [consistent](Extension::is_consistent); if
-    /// the nested extension names a statement circuit, which only the native
-    /// side carries; or if an extension's binding names a stage the other
-    /// extension does not have.
+    /// Fails if the name is empty or a built-in profile's on another
+    /// profile, which would share that profile's tags (see
+    /// [`NAME`](Self::NAME)); if an extension's rx count differs from its
+    /// constant, so that a profile declaring one without the other does not
+    /// lay out a proof; if either extension is not
+    /// [consistent](Extension::is_consistent); if the nested extension names
+    /// a statement circuit, which only the native side carries; or if an
+    /// extension's binding names a stage the other extension does not have.
     fn check() -> Result<()> {
+        if Self::NAME.is_empty() {
+            return Err(Error::Initialization("the profile has no name".into()));
+        }
+        for (name, profile) in [
+            (Standard::NAME, TypeId::of::<Standard>()),
+            (Aggregator::NAME, TypeId::of::<Aggregator>()),
+        ] {
+            if Self::NAME == name && TypeId::of::<Self>() != profile {
+                return Err(Error::Initialization(
+                    alloc::format!("the profile takes the built-in {name} profile's name").into(),
+                ));
+            }
+        }
         let native = Self::native_extension();
         let nested = Self::nested_extension();
         for (side, declared, extension, other) in [
@@ -553,7 +597,10 @@ impl<F: Field, R: Rank> Default for ExtensionRxs<F, R> {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Extension {
     /// Each circuit's stages, by index among the stages, in the order the
-    /// circuit loads them.
+    /// circuit loads them, which is the order of their gates: a stage's
+    /// gates follow its parent's, so the indices number the stages in gate
+    /// order and each list is strictly increasing. Its last entry is then
+    /// the stage whose final mask covers the circuit's gates.
     pub circuits: Vec<Vec<u32>>,
     /// The number of stages.
     pub stages: usize,
@@ -640,18 +687,20 @@ impl Extension {
     }
 
     /// Whether the declaration is well formed: every index the circuits,
-    /// final masks, statement and binding name exists; neither a circuit
-    /// nor a final mask names anything twice, nor the binding a stage
-    /// twice; the statement and binding circuits differ and the binding
-    /// names at least one stage; every circuit that loads a stage is named
-    /// by exactly one final mask and a circuit that loads none by no final
-    /// mask; and a final mask's circuits share their last stage. A stage's
-    /// final mask confines the traces of the circuits whose last stage it is
-    /// to the gates after it, so a circuit under no final mask has a trace
-    /// that can reach into the stages it loads, and one under another
-    /// stage's is checked against the wrong gates. Whether the binding's
-    /// stages exist is the other extension's to say, which
-    /// [`Profile::check`] asks.
+    /// final masks, statement and binding name exists; each circuit lists
+    /// its stages in strictly increasing order, so in gate order with no
+    /// stage twice (see [`circuits`](Self::circuits)); neither a final mask
+    /// names a circuit twice nor the binding a stage twice; the statement
+    /// and binding circuits differ and the binding names at least one stage;
+    /// every circuit that loads a stage is named by exactly one final mask
+    /// and a circuit that loads none by no final mask; and a final mask's
+    /// circuits share their last stage. A stage's final mask confines the
+    /// traces of the circuits whose last stage it is to the gates after it,
+    /// so a circuit under no final mask has a trace that can reach into the
+    /// stages it loads, and one under another stage's, or whose list ends
+    /// in a stage before the last it loads, is checked against the wrong
+    /// gates. Whether the binding's stages exist is the other extension's
+    /// to say, which [`Profile::check`] asks.
     pub fn is_consistent(&self) -> bool {
         fn distinct(values: &[u32]) -> bool {
             values
@@ -678,8 +727,11 @@ impl Extension {
                     && !binding.stages.is_empty()
                     && distinct(&binding.stages)
             });
+        // In gate order, which leaves `last()` the stage whose final mask
+        // covers the circuit, and names no stage twice.
+        let increasing = |stages: &[u32]| stages.windows(2).all(|pair| pair[0] < pair[1]);
         in_range
-            && self.circuits.iter().all(|stages| distinct(stages))
+            && self.circuits.iter().all(|stages| increasing(stages))
             && self.final_masks.iter().all(|mask| distinct(mask))
             && self.circuits.iter().enumerate().all(|(circuit, stages)| {
                 let masks = self
@@ -979,6 +1031,7 @@ const _: () = {
 #[cfg(test)]
 pub(crate) mod testing {
     use alloc::vec;
+    use std::sync::Mutex;
 
     use ragu_circuits::{
         Circuit, CircuitExt, WithAux,
@@ -998,7 +1051,10 @@ pub(crate) mod testing {
     use udon::curve::EndomorphismAffine as Affine;
 
     use super::*;
-    use crate::step::{Encoded, Index, Step};
+    use crate::{
+        internal::ky,
+        step::{Encoded, Index, Step},
+    };
 
     /// A step with unit headers and no witness.
     pub(crate) struct UnitStep;
@@ -1266,6 +1322,153 @@ pub(crate) mod testing {
             circuits: vec![registry.assemble(&trace, circuit, rng)?],
             stages: Vec::new(),
         })
+    }
+
+    /// A statement circuit for the tests of the decompression step: its
+    /// public output is the header it is given, `HEADER_SIZE` elements
+    /// whose suffix it holds nonzero, standing in for the output header of
+    /// the compressed proof a decompression extension verifies.
+    pub(crate) struct StatementCircuit<F, const HEADER_SIZE: usize>(PhantomData<fn() -> F>);
+
+    impl<F, const HEADER_SIZE: usize> StatementCircuit<F, HEADER_SIZE> {
+        pub(crate) const fn new() -> Self {
+            StatementCircuit(PhantomData)
+        }
+    }
+
+    impl<F: Field, const HEADER_SIZE: usize> Circuit<F> for StatementCircuit<F, HEADER_SIZE> {
+        type Instance<'source> = &'source [F];
+        type Witness<'source> = &'source [F];
+        type Output = Kind![F; FixedVec<Element<'_, _>, ConstLen<HEADER_SIZE>>];
+        type Aux<'source> = ();
+
+        fn instance<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+            &self,
+            dr: &mut D,
+            instance: DriverValue<D, Self::Instance<'source>>,
+        ) -> Result<Bound<'dr, D, Self::Output>> {
+            FixedVec::try_from_fn(|i| {
+                Element::alloc(dr, &mut (), instance.as_ref().map(|header| header[i]))
+            })
+        }
+
+        fn witness<'dr, 'source: 'dr, D: Driver<'dr, F = F>>(
+            &self,
+            dr: &mut D,
+            witness: DriverValue<D, Self::Witness<'source>>,
+        ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>>
+        {
+            let header: FixedVec<Element<'dr, D>, ConstLen<HEADER_SIZE>> =
+                FixedVec::try_from_fn(|i| {
+                    Element::alloc(dr, &mut (), witness.as_ref().map(|header| header[i]))
+                })?;
+            // One check stands in for what a decompression verifies of its
+            // statement: a header's suffix is never zero.
+            header[HEADER_SIZE - 1].clone().enforce_nonzero(dr)?;
+            Ok(WithAux::new(header, D::unit()))
+        }
+    }
+
+    /// What [`Decompressing`]'s prover holds: the header its statement
+    /// circuit exposes in the proofs made next, or none for the unit
+    /// header, which the circuit must expose for every step but the
+    /// decompression step (see [`statement_ky`]). A test sets it before
+    /// proving, as a decompression prover would be handed the compressed
+    /// proof to verify.
+    ///
+    /// [`statement_ky`]: crate::internal::native::stages::preamble::ProofInputs::statement_ky
+    pub(crate) struct StatementContext<F> {
+        header: Mutex<Option<Vec<F>>>,
+    }
+
+    impl<F> Default for StatementContext<F> {
+        fn default() -> Self {
+            StatementContext {
+                header: Mutex::new(None),
+            }
+        }
+    }
+
+    impl<F: Field> StatementContext<F> {
+        /// Exposes `header` from now on, or the unit header for `None`.
+        pub(crate) fn expose(&self, header: Option<Vec<F>>) {
+            *self.header.lock().unwrap() = header;
+        }
+
+        /// The header the statement circuit exposes: the one set, or the
+        /// unit header padded to `HEADER_SIZE`.
+        fn header<C: Cycle<CircuitField = F>, const HEADER_SIZE: usize>(&self) -> Result<Vec<F>> {
+            match self.header.lock().unwrap().clone() {
+                Some(header) => Ok(header),
+                None => ky::output_header::<C, (), HEADER_SIZE>(()),
+            }
+        }
+    }
+
+    /// One statement circuit and no stage on the native side, exposing the
+    /// header its context holds: the profile that registers the
+    /// decompression step, so that the step and the statement claim's
+    /// binding of its output header prove and verify without decompression
+    /// circuits. Proves at a rank above the production one, as [`Proving`]
+    /// does.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub(crate) struct Decompressing;
+
+    impl Profile for Decompressing {
+        const NAME: &'static str = "decompressing";
+        const NATIVE_EXTENSION: usize = 1;
+        const NESTED_EXTENSION: usize = 0;
+
+        type Context<'params, Base, R, B>
+            = StatementContext<Base::CircuitField>
+        where
+            Base: IpaCycle + ProfiledCycle<Profile = Standard>,
+            R: Rank,
+            B: SelectableBackend;
+
+        fn native_extension() -> Extension {
+            Extension {
+                circuits: vec![vec![]],
+                stages: 0,
+                final_masks: vec![],
+                statement: Some(0),
+                binding: None,
+            }
+        }
+
+        fn register_native_circuit<'params, Base, R: Rank, const HEADER_SIZE: usize>(
+            circuit: usize,
+            slot: CircuitSlot<'params, Base::CircuitField, R>,
+            _: &'params Base::Params,
+        ) -> Result<Registered<'params, Base::CircuitField, R>>
+        where
+            Base: IpaCycle + ProfiledCycle<Profile = Standard>,
+        {
+            assert_eq!(circuit, 0);
+            slot.register(StatementCircuit::<Base::CircuitField, HEADER_SIZE>::new())
+        }
+
+        fn native_extension_rxs<'params, Base, R, const HEADER_SIZE: usize, B, RNG>(
+            context: &Self::Context<'params, Base, R, B>,
+            registry: &Registry<'params, Base::CircuitField, R>,
+            rng: &mut RNG,
+        ) -> Result<ExtensionRxs<Base::CircuitField, R>>
+        where
+            Base: IpaCycle + ProfiledCycle<Profile = Standard>,
+            R: Rank,
+            B: SelectableBackend,
+            RNG: CryptoRng,
+        {
+            let header = context.header::<Base, HEADER_SIZE>()?;
+            let (trace, ()) = StatementCircuit::<Base::CircuitField, HEADER_SIZE>::new()
+                .trace(header.as_slice())?
+                .into_parts();
+            let circuit = native::InternalCircuitIndex::ExtensionCircuit(0);
+            Ok(ExtensionRxs {
+                circuits: vec![registry.assemble(&trace, circuit.circuit_index::<Self>(), rng)?],
+                stages: Vec::new(),
+            })
+        }
     }
 
     /// One [`Trivial`] circuit and no stage on each side, with the hooks
@@ -1813,9 +2016,10 @@ mod tests {
     }
 
     /// A declaration is well formed only with every index in range, nothing
-    /// named twice, every staged circuit under exactly one final mask, its
-    /// last stage's, and a binding circuit other than the statement circuit
-    /// naming at least one stage, none twice.
+    /// named twice, every circuit's stages in gate order, every staged
+    /// circuit under exactly one final mask, its last stage's, and a binding
+    /// circuit other than the statement circuit naming at least one stage,
+    /// none twice.
     #[test]
     fn consistency_binds_every_staged_circuit() {
         use alloc::vec;
@@ -1853,6 +2057,10 @@ mod tests {
         // A stage or a circuit named twice.
         assert!(!extension(vec![vec![0, 0]], 1, vec![vec![0]], None).is_consistent());
         assert!(!extension(vec![vec![0]], 1, vec![vec![0, 0]], None).is_consistent());
+        // A circuit's stages out of gate order: its final mask would be an
+        // earlier stage's than the last it loads, under either grouping.
+        assert!(!extension(vec![vec![1, 0]], 2, vec![vec![0]], None).is_consistent());
+        assert!(extension(vec![vec![0, 1]], 2, vec![vec![0]], None).is_consistent());
 
         // Two circuits without stages, the first the statement circuit and
         // the second binding the other side's stages, which the other side
@@ -2008,6 +2216,45 @@ mod tests {
         assert!(NestedStatement::check().is_err());
         assert!(StrayBinding::check().is_err());
         assert!(StrayNestedBinding::check().is_err());
+    }
+
+    /// A profile's name is what separates its tags from another profile's
+    /// under one beacon output and manifest digest, so the checks refuse an
+    /// empty name and a built-in profile's name on any other profile, and
+    /// accept the built-in profiles' own.
+    #[test]
+    fn names_are_checked() {
+        macro_rules! named {
+            ($profile:ident, $name:expr) => {
+                #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+                struct $profile;
+
+                impl Profile for $profile {
+                    const NAME: &'static str = $name;
+                    const NATIVE_EXTENSION: usize = 0;
+                    const NESTED_EXTENSION: usize = 0;
+
+                    type Context<'params, Base, R, B>
+                        = ()
+                    where
+                        Base: IpaCycle + ProfiledCycle<Profile = Standard>,
+                        R: Rank,
+                        B: SelectableBackend;
+                }
+            };
+        }
+        named!(Nameless, "");
+        named!(StandardImpostor, "standard");
+        named!(AggregatorImpostor, "aggregator");
+        named!(Named, "named");
+
+        assert!(Nameless::check().is_err());
+        assert!(StandardImpostor::check().is_err());
+        assert!(AggregatorImpostor::check().is_err());
+        assert!(Named::check().is_ok());
+        assert!(Standard::check().is_ok());
+        assert!(Aggregator::check().is_ok());
+        assert!(testing::Decompressing::check().is_ok());
     }
 
     #[test]
