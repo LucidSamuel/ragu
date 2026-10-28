@@ -39,6 +39,10 @@ pub use verifier::{Accumulator, Guard, verify_proof};
 ///
 /// The prover and all verifier paths must agree on this tag. Changing it
 /// breaks compatibility with existing proofs.
+///
+/// Profiles share this protocol domain. Compression opens the native and
+/// nested registry restrictions against the receiving application's tagged
+/// registries, preserving the fuse's setup binding.
 pub const IPA_TAG: &[u8] = b"ragu-ipa-v1";
 
 /// Log-size unblinded IPA opening proof.

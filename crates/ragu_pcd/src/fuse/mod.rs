@@ -35,7 +35,7 @@ use ragu_circuits::{
     staging::StageExt,
 };
 use ragu_core::{
-    Cycle, Result,
+    Cycle, Error, Result,
     drivers::{
         Driver,
         emulator::{Emulator, Wireless},
@@ -52,6 +52,7 @@ use crate::{
         nested::{self, pcs},
         transcript::Transcript,
     },
+    profile::ProfiledCycle,
     proof::ProofBuilder,
     step::Step,
 };
@@ -101,7 +102,7 @@ struct NestedSPrime<C: Cycle, R: Rank> {
 type NativeFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::CircuitField>>;
 type NestedFuseEmulator<C> = Emulator<Wireless<Always<()>, <C as Cycle>::ScalarField>>;
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// The nested batch this step opens, over the nested polynomials the
@@ -139,10 +140,11 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<nested::stages::challenges::Witness<C::ScalarField>> {
         challenges.beta = nested::challenge::<C>(pre_beta)?;
-        builder.set_nested_challenges_rx(nested::stages::challenges::Stage::<C::HostCurve, R>::rx(
-            C::ScalarField::ZERO,
-            &challenges,
-        )?);
+        builder.set_nested_challenges_rx(nested::stages::challenges::Stage::<
+            C::HostCurve,
+            R,
+            C::Profile,
+        >::rx(C::ScalarField::ZERO, &challenges)?);
         Ok(challenges)
     }
 
@@ -168,7 +170,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     }
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Fuse two [`Pcd`] into one using a provided [`Step`].
@@ -190,6 +192,12 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     ///   [`Step::Left`] header.
     /// * `right`: the right [`Pcd`] to fuse in this step; must correspond to
     ///   the [`Step::Right`] header.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if either child proof does not have
+    /// this application's profile's shape, which the verifier rejects too,
+    /// and propagates the step's and the prover's errors otherwise.
     pub fn fuse<'source, RNG: CryptoRng, S: Step<C>>(
         &self,
         rng: &mut RNG,
@@ -198,6 +206,16 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
         left: Pcd<C, R, S::Left>,
         right: Pcd<C, R, S::Right>,
     ) -> Result<(Pcd<C, R, S::Output>, S::Aux<'source>)> {
+        // The children's polynomials are read by this profile's layout
+        // below; a child of another shape is refused, as the verifier
+        // refuses it, rather than read past its ends.
+        if !left.proof().well_formed::<HEADER_SIZE>() || !right.proof().well_formed::<HEADER_SIZE>()
+        {
+            return Err(Error::InvalidWitness(
+                "a child proof does not have this profile's shape".into(),
+            ));
+        }
+
         let mut builder = ProofBuilder::<C, R, B>::new(
             self.params,
             C::ScalarField::random(|bytes| rng.fill_bytes(bytes)),

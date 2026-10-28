@@ -31,6 +31,8 @@ all-features = true
 alloc = []
 # Embeds the Pasta generators derived at build time; see `pasta`.
 baked = ["alloc", "dep:bento", "dep:lazy_static"]
+# Additional, separately loaded generators for Aggregator extensions above R<13>.
+baked-aggregator = ["baked"]
 default = ["alloc"]
 multicore = ["maybe-rayon/threads", "ragu_acceleration/multicore", "ragu_backend/multicore", "ragu_circuits/multicore", "std"]
 std = ["alloc", "ragu_core/std"]
@@ -66,8 +68,8 @@ blake2b_simd = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 criterion = { workspace = true }
 ragu_circuits = { path = "../ragu_circuits", version = "0.0.0", default-features = false, features = ["alloc", "test-utils"] }
-# Enable baked parameters for this crate's tests and benchmarks.
-ragu_pcd = { path = ".", version = "0.0.0", default-features = false, features = ["baked"] }
+# Extension tests also need the optional larger Aggregator parameters.
+ragu_pcd = { path = ".", version = "0.0.0", default-features = false, features = ["baked-aggregator"] }
 gungraun = { workspace = true }
 ragu_testing = { path = "../ragu_testing", version = "0.0.0" }
 proptest = { workspace = true }
@@ -109,6 +111,9 @@ name = "nontrivial"
 
 [[test]]
 name = "pasta_parameters"
+
+[[test]]
+name = "profiles"
 
 [[test]]
 name = "registration_errors"

@@ -13,6 +13,8 @@ import unittest
 
 
 SCRIPT = Path(__file__).parent / "continue.sh"
+MANIFEST_TOOL = Path(__file__).parent / "manifest.py"
+FIXTURES = Path(__file__).parent / "fixtures"
 VERIFIED = "Success! Bitcoin block 967690 attests existence as of 2026-09-20 UTC"
 BEACON = "11" * 32
 ARTIFACTS = ("attestation.txt", "beacon.txt", "tags.txt")
@@ -27,7 +29,10 @@ class ContinueTests(unittest.TestCase):
         self.bin.mkdir()
         shutil.copyfile(SCRIPT, self.directory / "continue.sh")
         (self.directory / "commit.txt").write_text("24" * 20 + "\n")
-        (self.directory / "setup.manifest").write_bytes(b'{"format":"test-fixture"}\n')
+        manifest_tool = self.directory / "qa/ceremony/manifest.py"
+        manifest_tool.parent.mkdir(parents=True)
+        shutil.copyfile(MANIFEST_TOOL, manifest_tool)
+        (self.directory / "setup.manifest").write_bytes((FIXTURES / "standard.manifest").read_bytes())
         self.manifest_digest = hashlib.sha256(
             (self.directory / "setup.manifest").read_bytes(),
         ).hexdigest()
@@ -77,10 +82,13 @@ class ContinueTests(unittest.TestCase):
                 else:
                     raise AssertionError(url)
             elif name == "cargo":
-                assert sys.argv[1:-2] == [
+                assert sys.argv[1:-4] == [
                     "run", "-q", "-p", "ragu_ceremony", "--bin", "registry_tags", "--",
                 ]
-                assert sys.argv[-2:] == ["11" * 32, os.environ["RAGU_TEST_MANIFEST_DIGEST"]]
+                assert sys.argv[-4:] == [
+                    "--profile", os.environ.get("RAGU_TEST_PROFILE", "standard"),
+                    "11" * 32, os.environ["RAGU_TEST_MANIFEST_DIGEST"],
+                ]
                 print(os.environ.get("RAGU_TEST_TAG_OUTPUT", "derived tags"))
                 sys.exit(int(os.environ.get("RAGU_TEST_CARGO_STATUS", "0")))
             else:
@@ -110,6 +118,63 @@ class ContinueTests(unittest.TestCase):
         for name, contents in self.original.items():
             self.assertEqual((self.directory / name).read_text(), contents)
         self.assertEqual(list(self.directory.glob(".continue.*")), [])
+
+    def replace_manifest(self, document):
+        data = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        (self.directory / "setup.manifest").write_bytes(data)
+        self.manifest_digest = hashlib.sha256(data).hexdigest()
+        (self.directory / "manifest_digest.txt").write_text(self.manifest_digest + "\n")
+
+    def test_aggregator_uses_its_recorded_profile(self):
+        document = json.loads((FIXTURES / "aggregator.manifest").read_text())
+        self.replace_manifest(document)
+        result = self.run_script(RAGU_TEST_PROFILE="aggregator")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_legacy_standard_record_is_not_rewritten(self):
+        document = json.loads((FIXTURES / "standard.manifest").read_text())
+        del document["setup"]["profile"]
+        del document["setup"]["verified_setups"]
+        self.replace_manifest(document)
+        original = (self.directory / "setup.manifest").read_bytes()
+        result = self.run_script()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.directory / "setup.manifest").read_bytes(), original)
+
+    def test_profile_label_mismatch_stops_before_external_calls(self):
+        document = json.loads((FIXTURES / "standard.manifest").read_text())
+        document["setup"]["profile"]["name"] = "aggregator"
+        self.replace_manifest(document)
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not match profile", result.stderr)
+        self.assert_records_unchanged()
+        calls = [json.loads(line) for line in (self.directory / "calls.jsonl").read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("ots", "curl", "cargo") for call in calls))
+
+    def test_different_beacon_policy_stops_before_external_calls(self):
+        document = json.loads((FIXTURES / "standard.manifest").read_text())
+        document["beacon"]["height_rule"] = "different rule"
+        self.replace_manifest(document)
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("N+100", result.stderr)
+        self.assert_records_unchanged()
+        calls = [json.loads(line) for line in (self.directory / "calls.jsonl").read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("ots", "curl", "cargo") for call in calls))
+
+    def test_noncanonical_profile_record_stops_before_external_calls(self):
+        document = json.loads((FIXTURES / "standard.manifest").read_text())
+        data = json.dumps(document, indent=2).encode()
+        (self.directory / "setup.manifest").write_bytes(data)
+        self.manifest_digest = hashlib.sha256(data).hexdigest()
+        (self.directory / "manifest_digest.txt").write_text(self.manifest_digest + "\n")
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("canonical bytes", result.stderr)
+        self.assert_records_unchanged()
+        calls = [json.loads(line) for line in (self.directory / "calls.jsonl").read_text().splitlines()]
+        self.assertFalse(any(call[0] in ("ots", "curl", "cargo") for call in calls))
 
     def test_changed_manifest_does_not_contact_beacon_or_publish(self):
         (self.directory / "setup.manifest").write_bytes(b"changed setup")

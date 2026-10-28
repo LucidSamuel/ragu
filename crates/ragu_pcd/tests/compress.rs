@@ -1,7 +1,7 @@
 //! The compressed proof against the decider: what the decider accepts
 //! compresses into a proof the compressed verifier accepts, what the decider
-//! rejects for the instance's sake compresses into one it rejects, and a
-//! tampered message or the wrong data is rejected.
+//! rejects for the instance's sake compresses into one it rejects. Malformed
+//! shapes fail compression itself; tampered messages or the wrong data reject.
 
 use alloc::vec;
 
@@ -162,13 +162,9 @@ fn rejects_what_the_decider_rejects() {
         edit(&app, &mut proof);
         proof.carry::<Value>(data)
     };
-    let corruptions: [(&str, fn(&App, &mut Proof<Pasta, TestR>)); 6] = [
+    let corruptions: [(&str, fn(&App, &mut Proof<Pasta, TestR>)); 4] = [
         ("circuit id out of the domain", |_, p| {
             p.circuit_id = CircuitIndex::new(u32::MAX as usize)
-        }),
-        ("left header too long", |_, p| p.left_header.push(Fp::ZERO)),
-        ("right header too short", |_, p| {
-            p.right_header.pop();
         }),
         ("left header element", |_, p| p.left_header[0] += Fp::ONE),
         ("polynomial with a stale commitment", |_, p| {
@@ -197,6 +193,24 @@ fn rejects_what_the_decider_rejects() {
         assert!(
             !accepts(&app, &compress(&app, &pcd, 3)),
             "{case}: the compressed verifier rejects"
+        );
+    }
+
+    let malformed_headers: [(&str, fn(&App, &mut Proof<Pasta, TestR>)); 2] = [
+        ("left header too long", |_, p| p.left_header.push(Fp::ZERO)),
+        ("right header too short", |_, p| {
+            p.right_header.pop();
+        }),
+    ];
+    for (case, edit) in malformed_headers {
+        let pcd = edited(edit);
+        assert!(!decides(&app, &pcd, 2), "{case}: the decider rejects");
+        assert!(
+            matches!(
+                app.compress(&pcd, &mut StdRng::seed_from_u64(3)),
+                Err(Error::InvalidWitness(_))
+            ),
+            "{case}: compression rejects the malformed shape"
         );
     }
 }
@@ -241,17 +255,23 @@ fn rejects_malformed_messages_without_error() {
             p.native.reduction.p = Default::default()
         }),
         ("identity fuse bridge", |p| {
-            let bridge = nested_position(nested::RxComponent::Rx(nested::RxIndex::BridgePreamble));
+            let bridge = nested_position::<crate::profile::Standard>(nested::RxComponent::Rx(
+                nested::RxIndex::BridgePreamble,
+            ));
             p.instance.nested[bridge] = Default::default();
         }),
         ("identity native accumulator", |p| {
-            p.instance.native[native_position(native::RxComponent::AbA)] = Default::default()
+            p.instance.native
+                [native_position::<crate::profile::Standard>(native::RxComponent::AbA)] =
+                Default::default()
         }),
         ("identity native registry restriction", |p| {
             p.instance.native_registry_xy = Default::default()
         }),
         ("identity nested accumulator", |p| {
-            p.instance.nested[nested_position(nested::RxComponent::AbA)] = Default::default()
+            p.instance.nested
+                [nested_position::<crate::profile::Standard>(nested::RxComponent::AbA)] =
+                Default::default()
         }),
         ("nested reduction identity p", |p| {
             p.nested.reduction.p = Default::default()
@@ -362,7 +382,9 @@ fn rejects_tampered_messages() {
         p.instance.nested_challenges_partial = -p.instance.nested_challenges_partial
     });
     tamper("bridge commitment", &|p| {
-        let bridge = nested_position(nested::RxComponent::Rx(nested::RxIndex::BridgeAB));
+        let bridge = nested_position::<crate::profile::Standard>(nested::RxComponent::Rx(
+            nested::RxIndex::BridgeAB,
+        ));
         p.instance.nested[bridge] = -p.instance.nested[bridge];
     });
     tamper("header element", &|p| p.instance.right_header[0] += Fp::ONE);

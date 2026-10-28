@@ -5,9 +5,13 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 
 use ragu_backend::ReferenceBackend;
 use ragu_circuits::polynomials::TestRank;
-use ragu_core::pasta::{Fp, Fq, Pasta};
+use ragu_core::{
+    Cycle,
+    pasta::{Fp, Fq, Pasta},
+};
 
 use super::*;
+use crate::profile::Standard;
 
 type Host = <Pasta as Cycle>::HostCurve;
 
@@ -162,6 +166,8 @@ fn claim_targets_match_positional_ky_values() {
         unified: Fp::from(3),
         unified_bridge: Fp::from(5),
         application: Fp::from(7),
+        statement: None,
+        binding: None,
     };
     let masked = [Masked::new(
         native::RxComponent::AbA,
@@ -169,10 +175,15 @@ fn claim_targets_match_positional_ky_values() {
         vec![Fp::ONE],
         Fp::ONE,
     )];
-    let shapes = claims::native_shapes(CircuitIndex::new(0), Fp::from(11), &masked).unwrap();
+    let shapes =
+        claims::native_shapes::<Standard, _>(CircuitIndex::new(0), Fp::from(11), &masked).unwrap();
     assert_eq!(
-        claim_targets(&shapes, native::claims::ky_prefix(&native_ky)).unwrap(),
-        native::claims::ky_values(&native_ky)
+        claim_targets(
+            &shapes,
+            native::claims::ky_prefix::<Standard, _>(&native_ky)
+        )
+        .unwrap(),
+        native::claims::ky_values::<Standard, _>(&native_ky)
             .take(shapes.len())
             .collect::<Vec<_>>(),
     );
@@ -180,6 +191,7 @@ fn claim_targets_match_positional_ky_values() {
     let nested_ky = NestedKy {
         c: Fq::from(2),
         unified: Fq::from(3),
+        binding: None,
     };
     let masked = [Masked::new(
         nested::RxComponent::AbA,
@@ -187,10 +199,14 @@ fn claim_targets_match_positional_ky_values() {
         vec![Fq::ONE],
         Fq::ONE,
     )];
-    let shapes = claims::nested_shapes(Fq::from(11), &masked).unwrap();
+    let shapes = claims::nested_shapes::<Standard, _>(Fq::from(11), &masked).unwrap();
     assert_eq!(
-        claim_targets(&shapes, nested::claims::ky_prefix(&nested_ky)).unwrap(),
-        nested::claims::ky_values(&nested_ky)
+        claim_targets(
+            &shapes,
+            nested::claims::ky_prefix::<Standard, _>(&nested_ky)
+        )
+        .unwrap(),
+        nested::claims::ky_values::<Standard, _>(&nested_ky)
             .take(shapes.len())
             .collect::<Vec<_>>(),
     );

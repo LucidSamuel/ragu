@@ -54,6 +54,13 @@ The `baked()` function returns precomputed generator points for Pallas and
 Vesta, loaded from data embedded in the binary. Poseidon parameters are
 compile-time constants and do not require initialization.
 
+Standard uses the original tables of $2^{13}$ vector generators per curve.
+For larger Aggregator extensions, `baked-aggregator` adds separate $2^{14}$
+tables through `ragu_pcd::pasta::baked_aggregator()`. The regular `baked()`
+tables remain the same size even when that feature is enabled; the larger
+tables are initialized only when their loader is called. The production
+Aggregator rank will be fixed when its decompression circuits land.
+
 ### Why Pasta?
 
 - **Efficient recursion**: Designed specifically for recursive proof systems
@@ -198,24 +205,22 @@ The type system will catch mismatches at compile time.
 Here's a production-ready configuration:
 
 ```rust
-use ragu_circuits::{polynomials::R, registry::Tag};
+use ragu_circuits::polynomials::R;
 use ragu_core::pasta::Pasta;
 use ragu_pcd::{ApplicationBuilder, RegistryTags};
 
 // Initialize Pasta curves
 let pasta = ragu_pcd::pasta::baked();
 
-// Pin the final field elements supplied by your setup procedure.
-let tags = RegistryTags::<Pasta> {
-    native: Tag::new(native_kappa), // Fp
-    nested: Tag::new(nested_kappa), // Fq
-};
+// expected_manifest_digest is pinned in trusted receiver configuration.
+// The setup procedure checks the manifest and beacon against that configuration.
+let tags = RegistryTags::<Pasta>::from_beacon(&beacon, &manifest_digest);
 
 // Build application with production parameters
 let app = ApplicationBuilder::<Pasta, R<13>, 4>::new()
     .register(step1)?
     .register(step2)?
-    .with_registry_tags(tags)
+    .with_registry_tags(tags, &expected_manifest_digest)?
     .finalize(pasta)?;
 ```
 
@@ -241,10 +246,12 @@ per registry, injected into every circuit's wiring polynomial. They exist so
 that whoever controls the circuit definitions cannot adapt them to
 Fiat-Shamir challenges that have already been derived.
 
-Production callers can supply the final $\kappa$ values directly, as above.
-The native and nested tags use distinct registry labels and fields, so both
-values are needed, passed together as one `RegistryTags` argument. The builder
-stores them and `finalize` installs them without hashing them again.
+`RegistryTags::from_beacon` derives both final $\kappa$ values and retains
+their manifest digest. Its type fixes the profile, and its fields are private
+so an application cannot relabel tags derived for another profile or manifest.
+`with_registry_tags` requires the receiver's independently pinned expected
+manifest digest and rejects a mismatch. The builder stores the tag values and
+`finalize` installs them without hashing them again.
 
 `finalize` requires these tags and returns an initialization error if they
 are missing.
@@ -274,19 +281,23 @@ Values fixed unambiguously by the committed code need not be repeated; every
 remaining setup choice must be committed explicitly. Changing the description
 requires a new set of tags.
 
-`RegistryTags::from_beacon` is an optional helper that derives both tags from
+`RegistryTags::from_beacon` derives both tags from
 caller-supplied beacon bytes and `manifest_digest`. It hashes each registry's
 label, the manifest digest, and the beacon output together with length prefixes.
-Consumers can instead supply the final field elements directly through
-`with_registry_tags`. When using the helper, a canonical, versioned manifest
-records the complete description. Hash the manifest and the actual contents of
+The standard profile's labels are `ragu_pcd native registry` and
+`ragu_pcd nested registry`; another profile's labels follow those with the
+profile's name in parentheses, so one beacon output and manifest digest give
+each profile its own tags.
+A canonical, versioned manifest records the complete description.
+Hash the manifest and the actual contents of
 referenced artifacts with SHA-256 or an equivalent collision-resistant hash;
 a Git commit ID alone does not provide that content binding.
 
 The consumer is responsible for the sampling requirement and for checking
-that the committed description matches the setup. Ragu does not perform
-ceremony verification. The `Tag::from_beacon` documentation states the
-helper's input contract in full.
+that the committed description matches the deployed code, steps and parameters.
+The API checks the supplied manifest against the receiver's expected digest;
+it does not authenticate artifacts or perform ceremony verification. The
+`Tag::from_beacon` documentation states the derivation's input contract in full.
 
 ### Ceremony
 
@@ -344,7 +355,7 @@ let test_app = ApplicationBuilder::<Pasta, TestRank, 1>::new()
 // Production application, with tags drawn for exactly this set of steps
 let prod_app = ApplicationBuilder::<Pasta, ProductionRank, 8>::new()
     .register(complex_step)?
-    .with_registry_tags(prod_tags)
+    .with_registry_tags(prod_tags, &expected_prod_manifest_digest)?
     .finalize(pasta)?;
 ```
 

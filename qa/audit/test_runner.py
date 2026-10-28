@@ -177,7 +177,7 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(len(runner.candidates(self.run, self.out)["findings"]), 4)
                 summary = (self.out / "combined.md").read_text()
                 self.assertEqual(summary.count("**Incorrect output**"), 1)
-                self.assertIn("General, Sean, Tal, Alex", summary)
+                self.assertIn("Code review, Sean, Tal, Alex", summary)
 
     def test_modified_reconciliation_result_or_bundle_is_rejected(self):
         self.invoke(self.reconcile_result)

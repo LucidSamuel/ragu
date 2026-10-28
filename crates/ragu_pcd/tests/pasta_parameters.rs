@@ -1,24 +1,42 @@
 //! Pin the embedded generators independently of their derivation and storage
 //! representation by comparing their canonical coordinates with the original.
 
-use ragu_core::{Cycle, FixedGenerators, pasta::Pasta};
+use ragu_core::{
+    Cycle, FixedGenerators,
+    pasta::{Pasta, PastaParams},
+};
 use ragu_pcd::ipa::IpaCycle;
 use udon::{curve::Affine, field::Field};
 
-#[test]
-fn baked_points_match_original_parameters() {
-    fn append<C: Affine<Base: Field>>(out: &mut Vec<u8>, generators: &impl FixedGenerators<C>) {
-        for point in generators.g().iter().chain([generators.h()]) {
+/// The canonical coordinates of the first `vector` vector generators and the
+/// blinding generator of both curves, nested then host.
+fn canonical_blob(params: &PastaParams, vector: usize) -> Vec<u8> {
+    fn append<C: Affine<Base: Field>>(
+        out: &mut Vec<u8>,
+        generators: &impl FixedGenerators<C>,
+        vector: usize,
+    ) {
+        for point in generators.g()[..vector].iter().chain([generators.h()]) {
             let (x, y) = point.coordinates().expect("nonidentity generator");
             out.extend_from_slice(x.to_bytes().as_ref());
             out.extend_from_slice(y.to_bytes().as_ref());
         }
     }
 
-    let params = ragu_pcd::pasta::baked();
     let mut loaded = Vec::new();
-    append(&mut loaded, Pasta::nested_generators(params));
-    append(&mut loaded, Pasta::host_generators(params));
+    append(&mut loaded, Pasta::nested_generators(params), vector);
+    append(&mut loaded, Pasta::host_generators(params), vector);
+    loaded
+}
+
+/// The complete Standard tables retain their original size and values, even
+/// when the optional Aggregator tables are also compiled into this binary.
+#[test]
+fn baked_points_match_original_parameters() {
+    let params = ragu_pcd::pasta::baked();
+    assert_eq!(Pasta::nested_generators(params).g().len(), 1 << 13);
+    assert_eq!(Pasta::host_generators(params).g().len(), 1 << 13);
+    let loaded = canonical_blob(params, 1 << 13);
     assert_eq!(loaded.len(), 16_386 * 64);
 
     // BLAKE2b-256 of the original canonical generator blob at Ragu commit
@@ -28,6 +46,38 @@ fn baked_points_match_original_parameters() {
         digest.to_hex().as_str(),
         "f5b1146e2b607c83dcfd8630d117af24c8ea12593395a764100d81efca818ef2"
     );
+}
+
+/// The optional Aggregator tables retain the larger rank's pinned values.
+#[cfg(feature = "baked-aggregator")]
+#[test]
+fn aggregator_points_are_pinned_in_full() {
+    let params = ragu_pcd::pasta::baked_aggregator();
+    assert_eq!(Pasta::nested_generators(params).g().len(), 1 << 14);
+    assert_eq!(Pasta::host_generators(params).g().len(), 1 << 14);
+    let loaded = canonical_blob(params, 1 << 14);
+    assert_eq!(loaded.len(), 32_770 * 64);
+
+    let digest = blake2b_simd::Params::new().hash_length(32).hash(&loaded);
+    assert_eq!(
+        digest.to_hex().as_str(),
+        "fd59c12496d26b073f7fa397b8ea25832e430bac8d8c3b8c52d867220e44d0ec"
+    );
+}
+
+/// Both parameter sets use identical vector prefixes and blinding generators;
+/// loading Aggregator parameters does not replace or enlarge Standard's tables.
+#[cfg(feature = "baked-aggregator")]
+#[test]
+fn aggregator_parameters_preserve_standard_tables() {
+    let standard = ragu_pcd::pasta::baked();
+    let before = canonical_blob(standard, 1 << 13);
+    let aggregator = ragu_pcd::pasta::baked_aggregator();
+    assert_eq!(before, canonical_blob(aggregator, 1 << 13));
+    assert!(core::ptr::eq(standard, ragu_pcd::pasta::baked()));
+    assert!(!core::ptr::eq(standard, aggregator));
+    assert_eq!(Pasta::nested_generators(standard).g().len(), 1 << 13);
+    assert_eq!(Pasta::host_generators(standard).g().len(), 1 << 13);
 }
 
 /// The IPA's generators are hash-to-curve outputs on the message `2`, after

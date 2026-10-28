@@ -24,6 +24,11 @@
     }
   },
   "setup": {
+    "profile": {
+      "name": "standard",
+      "definition": "source:crates/ragu_pcd/src/profile.rs::Standard"
+    },
+    "verified_setups": [],
     "application_builder": "<concrete ApplicationBuilder<C, R, HEADER_SIZE, B> type>",
     "application_steps": [
       {

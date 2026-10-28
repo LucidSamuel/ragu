@@ -5,20 +5,39 @@
 //! and embeds their typed representations. `baked()` assembles Udon's parameter
 //! containers once on first access. Generation and loading are owned here;
 //! runtime arithmetic, cycle types, and Poseidon constants come from Udon.
+//!
+//! `baked()` always returns the original Standard-profile tables. The optional
+//! `baked-aggregator` feature adds separate larger tables, loaded only by
+//! `baked_aggregator()`. Enabling it does not enlarge or initialize the Standard
+//! parameters. The larger capacity supports extension tests; the production
+//! Aggregator rank will be fixed with its decompression circuits.
 
 pub use ragu_core::pasta::{Pasta, PastaParams};
 
-/// Log2 of the number of Pallas generators. The build script's derivation
+/// Log2 of the number of Standard-profile Pallas generators.
+/// The build script's derivation
 /// carries its own copy of these counts; Bento checks the artifact lengths
 /// against the consumer's array types at compile time.
 pub const DEFAULT_EP_K: usize = 13;
-/// Log2 of the number of Vesta generators.
+/// Log2 of the number of Standard-profile Vesta generators.
 pub const DEFAULT_EQ_K: usize = 13;
+
+/// Log2 of the optional Aggregator Pallas table's capacity.
+#[cfg(feature = "baked-aggregator")]
+pub const AGGREGATOR_EP_K: usize = 14;
+/// Log2 of the optional Aggregator Vesta table's capacity.
+#[cfg(feature = "baked-aggregator")]
+pub const AGGREGATOR_EQ_K: usize = 14;
 
 #[cfg(feature = "baked")]
 mod baked;
 #[cfg(feature = "baked")]
 pub use baked::baked;
+
+#[cfg(feature = "baked-aggregator")]
+mod aggregator;
+#[cfg(feature = "baked-aggregator")]
+pub use aggregator::baked_aggregator;
 
 #[cfg(all(test, feature = "baked"))]
 mod tests {

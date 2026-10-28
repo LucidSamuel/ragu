@@ -45,7 +45,7 @@ class FindingsTests(unittest.TestCase):
         groups = self.reconcile(group("code-review:1", "sean-review:1"))
         text = "\n".join(findings.shortlist(self.bundle, groups))
         self.assertEqual(text.count("**Incorrect output**"), 1)
-        self.assertIn("General, Sean", text)
+        self.assertIn("Code review, Sean", text)
         self.assertIn("### Must-fix", text)
         self.assertIn("### Suggestions", text)
 
@@ -55,7 +55,7 @@ class FindingsTests(unittest.TestCase):
         self.assertEqual(groups[0]["finding_ids"], ["code-review:1", "sean-review:1"])
         text = "\n".join(findings.shortlist(self.bundle))
         self.assertEqual(text.count("**Incorrect output**"), 1)
-        self.assertIn("General, Sean", text)
+        self.assertIn("Code review, Sean", text)
 
     def test_combination_does_not_guess_semantic_duplicates(self):
         self.bundle["findings"][1]["correction"] = "Use a different branch selection algorithm."
@@ -66,7 +66,7 @@ class FindingsTests(unittest.TestCase):
         text = "\n".join(findings.shortlist(self.bundle))
         self.assertNotIn("Incorrect output", text.split("### Suggestions")[0])
         self.assertIn("Reviewers differ", text)
-        self.assertIn("General, Sean", text)
+        self.assertIn("Code review, Sean", text)
 
     def test_omitted_duplicate_and_unknown_ids_are_rejected(self):
         for groups in ((group("code-review:1"),), (group("code-review:1", "code-review:1", "sean-review:1"),),
@@ -181,6 +181,14 @@ Source and affected callers reviewed. Benchmark results weren't assessed.
         changed = copy.deepcopy(output)
         changed["groups"][0]["rationale"] = "Different reason."
         self.assertNotEqual(findings.fingerprint(output), findings.fingerprint(changed))
+
+    def test_prose_marks_identifiers_and_keeps_code_spans_literal(self):
+        text = findings.prose("RegistryTags keeps `Vec<u32>` and with_registry_tags; NATIVE_EXTENSION = 0 in\n"
+                              "tests/profile_layout.rs, see #[doc(hidden)] and Application::context on GitHub <b>@team</b>")
+        self.assertEqual(text, "`RegistryTags` keeps `Vec<u32>` and `with_registry_tags`; `NATIVE_EXTENSION` = 0 in "
+                               "tests/profile_layout.rs, see `#[doc(hidden)]` and `Application::context` on GitHub &lt;b&gt;&#64;team&lt;/b&gt;")
+        self.assertEqual((findings.prose("`<a>` <a>"), findings.safe("`<a>`")), ("`<a>` &lt;a&gt;", "`&lt;a&gt;`"))
+        self.assertTrue(findings.safe("`long code span here`", 8).endswith("…`"))
 
 
 if __name__ == "__main__":

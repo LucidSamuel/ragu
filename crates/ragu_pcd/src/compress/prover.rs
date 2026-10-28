@@ -3,7 +3,7 @@
 use alloc::borrow::Cow;
 
 use ragu_circuits::polynomials::{Rank, sparse};
-use ragu_core::{FixedGenerators, Result};
+use ragu_core::{Error, FixedGenerators, Result};
 use rand::CryptoRng;
 use udon::curve::Affine;
 
@@ -19,6 +19,7 @@ use crate::{
     header::Header,
     internal::{ky, native, nested},
     ipa::{self, IpaCycle, IpaProof, IpaTranscript, Params},
+    profile::ProfiledCycle,
 };
 
 /// Batches `openings` over `polys` and opens the batched claim through the
@@ -38,23 +39,30 @@ fn open<P: Affine, R: Rank, B: SelectableBackend>(
     Ok((batch, opening))
 }
 
-impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Compresses `pcd` into a [`CompressedPcd`] over the same data.
     ///
     /// The result carries the proof's instance and, on each curve, the
     /// messages of the revdot reduction, the batch and the IPA opening, in
-    /// place of the proof's polynomials. Compressing does not check the
-    /// proof: [`verify_compressed`](Self::verify_compressed) judges the
-    /// instance the proof commits to, as [`verify`](Self::verify) judges
-    /// the proof.
+    /// place of the proof's polynomials. Compression checks the proof's shape
+    /// but not its validity: [`verify_compressed`](Self::verify_compressed)
+    /// judges the instance the proof commits to, as [`verify`](Self::verify)
+    /// judges the proof.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidWitness`] if the proof's shape is malformed.
     pub fn compress<RNG: CryptoRng, H: Header<C::CircuitField>>(
         &self,
         pcd: &Pcd<C, R, H>,
         rng: &mut RNG,
     ) -> Result<CompressedPcd<C, H>> {
         let proof = pcd.proof();
+        if !proof.well_formed::<HEADER_SIZE>() {
+            return Err(Error::InvalidWitness("malformed proof shape".into()));
+        }
         let instance = Instance::of::<R, HEADER_SIZE>(proof)?;
         // The challenges as the proof stores them: a cache of the fuse's own
         // squeezes, which the decider holds to the transcript. `Instance::of`

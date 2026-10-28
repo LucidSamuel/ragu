@@ -14,5 +14,9 @@ fn main() {
     }
 
     let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    generate::write_parameters(&out_dir).unwrap();
+    generate::write_parameters(
+        &out_dir,
+        env::var_os("CARGO_FEATURE_BAKED_AGGREGATOR").is_some(),
+    )
+    .unwrap();
 }

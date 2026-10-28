@@ -473,7 +473,9 @@ remains inaccessible.
 
 Put every actionable finding or material question in findings, with locations
 relative to the repository root, cause, evidence, impact, correction, category,
-and priority.
+and priority. Write the title, cause, and correction for the PR author: plain
+prose with code identifiers in backticks and no file paths or line numbers,
+which belong in locations; keep validation notes in evidence.
 Separate defects, suggestions, and questions; unmeasured performance concerns
 remain questions or suggestions. There is no finding quota.
 
@@ -909,7 +911,10 @@ Use must-fix for an evidenced defect (including documentation errors), suggestio
 for a worthwhile improvement, an unmeasured concern, or a disagreement the
 evidence does not settle, and dismissed when counterevidence defeats it.
 Explain every disposition and merge, including how evidence resolves disagreements;
-keep unresolved disagreements visible. Reviewer agreement is not evidence of
+keep unresolved disagreements visible. Write each group's title, cause, and
+correction for the PR author: plain prose with code identifiers in backticks and
+no file paths or line numbers; keep validation notes in evidence and rationale.
+Reviewer agreement is not evidence of
 correctness or severity. Do not suppress defects for brevity or present
 unmeasured estimates as demonstrated performance problems.
 Return complete=false if you cannot account for all findings. The report field

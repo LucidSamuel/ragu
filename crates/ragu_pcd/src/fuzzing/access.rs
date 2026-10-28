@@ -53,6 +53,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 BindBeta => &mut self.native_bind_beta_rx,
                 BindEndoscalar => &mut self.native_bind_endoscalar_rx,
                 EndoscalingStep(step) => &mut self.native_endoscaling_step_rxs[step as usize],
+                ExtensionCircuit(k) => &mut self.native_extension_circuit_rxs[k as usize],
+                ExtensionStage(k) => &mut self.native_extension_stage_rxs[k as usize],
                 PointsBinding => &mut self.native_points_binding_rx,
                 PointsChildren => &mut self.native_points_children_rx,
                 PointsRegistryWx => &mut self.native_points_registry_wx_rx,
@@ -110,6 +112,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
         use NestedRx::*;
         match idx {
             EndoscalingStep(step) => &mut self.nested_endoscaling_step_rxs[step as usize],
+            ExtensionCircuit(k) => &mut self.nested_extension_circuit_rxs[k as usize],
+            ExtensionStage(k) => &mut self.nested_extension_stage_rxs[k as usize],
             Export => &mut self.nested_export_rx,
             Collapse => &mut self.nested_collapse_rx,
             ComputeV => &mut self.nested_compute_v_rx,
@@ -164,6 +168,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 EndoscalingStep(step) => {
                     &mut self.native_endoscaling_step_commitments[step as usize].0
                 }
+                ExtensionCircuit(k) => &mut self.native_extension_circuit_commitments[k as usize].0,
+                ExtensionStage(k) => &mut self.native_extension_stage_commitments[k as usize].0,
                 PointsBinding => &mut self.native_points_binding_commitment.0,
                 PointsChildren => &mut self.native_points_children_commitment.0,
                 PointsRegistryWx => &mut self.native_points_registry_wx_commitment.0,
@@ -189,6 +195,8 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                 EndoscalingStep(step) => {
                     &mut self.nested_endoscaling_step_commitments[step as usize].0
                 }
+                ExtensionCircuit(k) => &mut self.nested_extension_circuit_commitments[k as usize].0,
+                ExtensionStage(k) => &mut self.nested_extension_stage_commitments[k as usize].0,
                 Export => &mut self.nested_export_commitment.0,
                 Collapse => &mut self.nested_collapse_commitment.0,
                 ComputeV => &mut self.nested_compute_v_commitment.0,

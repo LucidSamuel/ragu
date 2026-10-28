@@ -65,8 +65,15 @@
 //! against the registry by reading the query and eval stage polynomials.
 //! Those stored stages, rather than the ephemeral restriction polynomials,
 //! are the corresponding corruption targets.
+//!
+//! The constant lists ([`NativeRx::ALL`], [`NestedRx::ALL`],
+//! [`NativeCommitment::ALL`], [`NestedCommitment::ALL`]) are the standard
+//! profile's, which the out-of-tree harness fuzzes. The `all::<P>()` lists
+//! are any profile's, its extension's polynomials and their commitments
+//! included, for the sweeps over extension profiles
+//! (`tests/profile_corruption.rs`).
 
-use alloc::vec;
+use alloc::{vec, vec::Vec};
 
 use ragu_circuits::{
     polynomials::{Rank, sparse},
@@ -75,7 +82,10 @@ use ragu_circuits::{
 use ragu_core::Cycle;
 use udon::field::Field;
 
-use crate::{Application, Proof};
+use crate::{
+    Application, Proof,
+    profile::{Profile, ProfiledCycle},
+};
 
 // The corruption vocabulary names proof components, and the names it uses are
 // the ones `internal` uses. Those enums are *not* re-exported here, and the
@@ -140,6 +150,8 @@ pub enum NativeRx {
     BindEndoscalar,
     /// A native endoscaling step's rx polynomial.
     EndoscalingStep(u32),
+    /// The rx polynomial of a circuit of the profile's native extension.
+    ExtensionCircuit(u32),
     /// The `preamble` stage's rx polynomial.
     Preamble,
     /// The `inner_error` stage's rx polynomial.
@@ -162,13 +174,17 @@ pub enum NativeRx {
     PointsF,
     /// The native walk stage's rx polynomial.
     PointsWalk,
+    /// The rx polynomial of a stage of the profile's native extension.
+    ExtensionStage(u32),
 }
 
 impl NativeRx {
-    /// The number of native rx polynomial components.
+    /// The number of native rx polynomial components in the standard
+    /// profile.
     pub const NUM: usize = crate::internal::native::RxIndex::NUM;
 
-    /// All variants, in the canonical order `internal` defines.
+    /// All variants in the standard profile, in the canonical order
+    /// `internal` defines.
     ///
     /// Derived from `internal::native::RxIndex::ALL` rather than restated.
     /// That order is not cosmetic — it drives the `Write` impl for `RxValues`
@@ -176,6 +192,18 @@ impl NativeRx {
     /// could drift from it silently, which an exhaustive `match` would not
     /// catch.
     pub const ALL: [Self; Self::NUM] = Self::derive_all();
+
+    /// All variants in profile `P`, in the canonical order `internal`
+    /// defines: [`ALL`](Self::ALL) with the walk resized to the profile's
+    /// steps and the extension's circuits' and stages' polynomials appended.
+    /// Derived from `internal::native::RxIndex::all` as [`ALL`](Self::ALL)
+    /// is from the constant list.
+    pub fn all<P: Profile>() -> Vec<Self> {
+        crate::internal::native::RxIndex::all::<P>()
+            .into_iter()
+            .map(Self::from_internal)
+            .collect()
+    }
 
     const fn derive_all() -> [Self; Self::NUM] {
         let src = crate::internal::native::RxIndex::ALL;
@@ -191,6 +219,8 @@ impl NativeRx {
     const fn from_internal(v: crate::internal::native::RxIndex) -> Self {
         use crate::internal::native::RxIndex as I;
         match v {
+            I::ExtensionCircuit(k) => Self::ExtensionCircuit(k),
+            I::ExtensionStage(k) => Self::ExtensionStage(k),
             I::Application => Self::Application,
             I::Hashes1 => Self::Hashes1,
             I::Hashes2 => Self::Hashes2,
@@ -229,6 +259,8 @@ pub enum NestedRx {
     Collapse,
     /// Compute-v circuit rx polynomial.
     ComputeV,
+    /// The rx polynomial of a circuit of the profile's nested extension.
+    ExtensionCircuit(u32),
     /// EndoscalarStage rx polynomial.
     EndoscalarStage,
     /// PointsStage rx polynomial.
@@ -251,6 +283,8 @@ pub enum NestedRx {
     BridgeEval,
     /// Nested challenge stage rx polynomial.
     ChallengeStage,
+    /// The rx polynomial of a stage of the profile's nested extension.
+    ExtensionStage(u32),
 }
 
 /// One of the two nested accumulator polynomials.
@@ -346,10 +380,21 @@ pub enum NativeCommitment {
 }
 
 impl NativeCommitment {
-    /// The number of cached native commitments.
+    /// The number of cached native commitments in the standard profile.
     pub const NUM: usize = NativeRx::NUM + 4;
 
-    /// All variants, the rx commitments in [`NativeRx::ALL`] order.
+    /// All variants in profile `P`, the rx commitments in
+    /// [`NativeRx::all`] order.
+    pub fn all<P: Profile>() -> Vec<Self> {
+        NativeRx::all::<P>()
+            .into_iter()
+            .map(Self::Rx)
+            .chain([Self::AbA, Self::AbB, Self::RegistryXy, Self::P])
+            .collect()
+    }
+
+    /// All variants in the standard profile, the rx commitments in
+    /// [`NativeRx::ALL`] order.
     pub const ALL: [Self; Self::NUM] = {
         let mut out = [Self::AbA; Self::NUM];
         let mut i = 0;
@@ -383,11 +428,23 @@ pub enum NestedCommitment {
 }
 
 impl NestedCommitment {
-    /// The number of cached nested commitments this addresses.
+    /// The number of cached nested commitments this addresses in the
+    /// standard profile.
     pub const NUM: usize = NestedRx::NUM - BridgeCommitment::ALL.len() + 4;
 
-    /// All variants, the rx commitments in [`NestedRx::ALL`] order with the
-    /// bridges skipped.
+    /// All variants in profile `P`, the rx commitments in
+    /// [`NestedRx::all`] order with the bridges skipped.
+    pub fn all<P: Profile>() -> Vec<Self> {
+        NestedRx::all::<P>()
+            .into_iter()
+            .filter(|rx| !rx.is_bridge())
+            .map(Self::Rx)
+            .chain([Self::AbA, Self::AbB, Self::RegistryXy, Self::P])
+            .collect()
+    }
+
+    /// All variants in the standard profile, the rx commitments in
+    /// [`NestedRx::ALL`] order with the bridges skipped.
     pub const ALL: [Self; Self::NUM] = {
         let mut out = [Self::AbA; Self::NUM];
         let mut i = 0;
@@ -845,7 +902,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
     }
 }
 
-impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
+impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Create the synthesized dummy proof used to bootstrap recursion.
@@ -856,7 +913,7 @@ impl<C: Cycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBackend>
 }
 
 impl NestedRx {
-    /// The number of nested rx components.
+    /// The number of nested rx components in the standard profile.
     pub const NUM: usize = crate::internal::nested::RxIndex::NUM;
 
     /// Whether this is a bridge stage's rx, whose commitment
@@ -875,13 +932,24 @@ impl NestedRx {
         )
     }
 
-    /// All variants, in the canonical order `internal` defines.
+    /// All variants in the standard profile, in the canonical order
+    /// `internal` defines.
     ///
     /// Derived from `internal::nested::RxIndex::ALL` for the same reason as
     /// [`NativeRx::ALL`], and more urgently: this order is pinned by
     /// `test_nested_registry_tag`, so restating it by hand would put a
     /// consensus-relevant ordering in two places.
     pub const ALL: [Self; Self::NUM] = Self::derive_all();
+
+    /// All variants in profile `P`, in the canonical order `internal`
+    /// defines: [`ALL`](Self::ALL) with the walk resized to the profile's
+    /// steps and the extension's circuits' and stages' polynomials appended.
+    pub fn all<P: Profile>() -> Vec<Self> {
+        crate::internal::nested::RxIndex::all::<P>()
+            .into_iter()
+            .map(Self::from_internal)
+            .collect()
+    }
 
     const fn derive_all() -> [Self; Self::NUM] {
         let src = crate::internal::nested::RxIndex::ALL;
@@ -897,6 +965,8 @@ impl NestedRx {
     const fn from_internal(v: crate::internal::nested::RxIndex) -> Self {
         use crate::internal::nested::RxIndex as I;
         match v {
+            I::ExtensionCircuit(k) => Self::ExtensionCircuit(k),
+            I::ExtensionStage(k) => Self::ExtensionStage(k),
             I::EndoscalingStep(n) => Self::EndoscalingStep(n),
             I::Export => Self::Export,
             I::Collapse => Self::Collapse,

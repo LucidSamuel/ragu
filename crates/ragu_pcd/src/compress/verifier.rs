@@ -9,13 +9,14 @@ use crate::{
     header::Header,
     internal::ky,
     ipa::{CycleTranscript, IpaCycle},
+    profile::ProfiledCycle,
 };
 
 /// The backend whose kernels [`Application::verify_compressed`] consults for
 /// the selected backend `B`, as [`Application::verify`] does.
 type Verifier<B> = <B as SelectableBackend>::Verifier;
 
-impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     Application<'_, C, R, HEADER_SIZE, B>
 {
     /// Verifies some [`CompressedPcd`] for the provided [`Header`].
@@ -23,6 +24,11 @@ impl<C: IpaCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
     /// Returns `Ok(true)` if every check passes, `Ok(false)` if any fails
     /// (an invalid circuit id, a malformed proof, a rejected reduction or
     /// opening), or `Err` if an internal computation error occurs.
+    ///
+    /// Uses this application's fixed profile, registries and public
+    /// parameters, as [`verify`](Self::verify) does. Proof data cannot select
+    /// another profile or setup; its circuit ID selects only within this
+    /// application's registry.
     ///
     /// The registry and polynomial evaluations and the recomputed stage
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
