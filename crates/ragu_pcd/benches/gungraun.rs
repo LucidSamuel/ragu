@@ -11,12 +11,13 @@ use ragu_core::{
     Cycle,
     pasta::{Fp, Pasta},
 };
-use ragu_pcd::{Application, ApplicationBuilder, Pcd};
+use ragu_pcd::{Application, ApplicationBuilder, CompressedPcd, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::rngs::StdRng;
 use setup::{
     setup_finalize, setup_fuse, setup_fuse_accelerated, setup_register, setup_seed,
-    setup_verify_leaf, setup_verify_node,
+    setup_verify_compressed_leaf, setup_verify_compressed_node, setup_verify_leaf,
+    setup_verify_node,
 };
 
 #[library_benchmark(setup = setup_register)]
@@ -123,6 +124,9 @@ library_benchmark_group!(
     benchmarks = fuse_accelerated
 );
 
+// `verify_leaf` and `verify_node` measure the uncompressed test oracle;
+// the production path is `compress_node`, `verify_compressed_leaf` and
+// `verify_compressed_node` below.
 #[library_benchmark(setup = setup_verify_leaf)]
 #[bench::verify_leaf()]
 fn verify_leaf(
@@ -164,9 +168,52 @@ library_benchmark_group!(
     benchmarks = verify_leaf, verify_node, rerandomize
 );
 
+// The production verification path: compress a proof, then verify the
+// compressed proof. Compression is set up outside the two verification
+// measurements so each tracks its own cost.
+#[library_benchmark(setup = setup_verify_node)]
+#[bench::compress_node()]
+fn compress_node(
+    (app, node, mut rng): (
+        Application<'static, Pasta, ProductionRank, 4>,
+        Pcd<Pasta, ProductionRank, nontrivial::InternalNode>,
+        StdRng,
+    ),
+) {
+    black_box(app.compress(&node, &mut rng)).unwrap();
+}
+
+#[library_benchmark(setup = setup_verify_compressed_leaf)]
+#[bench::verify_compressed_leaf()]
+fn verify_compressed_leaf(
+    (app, compressed): (
+        Application<'static, Pasta, ProductionRank, 4>,
+        CompressedPcd<Pasta, nontrivial::LeafNode>,
+    ),
+) {
+    black_box(app.verify_compressed(&compressed)).unwrap();
+}
+
+#[library_benchmark(setup = setup_verify_compressed_node)]
+#[bench::verify_compressed_node()]
+fn verify_compressed_node(
+    (app, compressed): (
+        Application<'static, Pasta, ProductionRank, 4>,
+        CompressedPcd<Pasta, nontrivial::InternalNode>,
+    ),
+) {
+    black_box(app.verify_compressed(&compressed)).unwrap();
+}
+
+library_benchmark_group!(
+    name = app_verify_compressed;
+    benchmarks = compress_node, verify_compressed_leaf, verify_compressed_node
+);
+
 main!(
     library_benchmark_groups = app_setup,
     app_proof,
     app_proof_accelerated,
-    app_verify
+    app_verify,
+    app_verify_compressed
 );
