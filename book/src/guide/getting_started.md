@@ -283,7 +283,10 @@ fn main() -> Result<()> {
 
 ## Step 5: Create and Verify Proofs
 
-The application can now be used to create and verify proofs:
+The application can now be used to create proofs. `seed` and `fuse` return
+proofs in _uncompressed_ form, the form that can be fused further. To check a
+proof, compress it: `compress` reduces it to a succinct proof, and
+`verify_compressed` verifies that.
 
 ```rust
 // Create first leaf using seed
@@ -293,8 +296,7 @@ let leaf1 = app.seed(
     Fp::from(100u64),  // Hash the value 100
 )?;
 let leaf1 = leaf1.0.carry(leaf1.1);
-assert!(app.verify(&leaf1, &mut rng)?);
-println!("Seed 1 verified (value: 100)");
+println!("Seed 1 created (value: 100)");
 
 // Create second leaf
 let leaf2 = app.seed(
@@ -303,8 +305,7 @@ let leaf2 = app.seed(
     Fp::from(200u64),  // Hash the value 200
 )?;
 let leaf2 = leaf2.0.carry(leaf2.1);
-assert!(app.verify(&leaf2, &mut rng)?);
-println!("Seed 2 verified (value: 200)");
+println!("Seed 2 created (value: 200)");
 
 // Combine leaves into internal node using fuse
 let node1 = app.fuse(
@@ -315,7 +316,10 @@ let node1 = app.fuse(
     leaf2,
 )?;
 let node1 = node1.0.carry::<InternalNode>(node1.1);
-assert!(app.verify(&node1, &mut rng)?);
+
+// Compress the root and verify the compressed proof
+let compressed = app.compress(&node1, &mut rng)?;
+assert!(app.verify_compressed(&compressed)?);
 println!("Internal node verified!");
 
 println!("\nTree structure:");
@@ -324,6 +328,11 @@ println!("      /     \\");
 println!("  leaf1   leaf2");
 println!("   (100)    (200)");
 ```
+
+Verifying the root checks the whole tree: `node1`'s proof attests that `leaf1`
+and `leaf2` were correctly formed, so the leaves need no separate check. Any
+proof can be compressed and verified the same way. A compressed proof is
+terminal: it can be verified but not fused further.
 
 ## Understanding the Flow
 
@@ -337,7 +346,8 @@ The proof creation and verification process follows these steps:
    - Cryptographic proof of correctness
    - References to input proofs (if any)
 
-5. **verify()** checks:
+5. **compress()** reduces the proof to its succinct, terminal form
+6. **verify_compressed()** checks:
    - The SNARK proof is valid
    - Input proofs are valid (recursively)
    - Header data matches claimed computation

@@ -164,14 +164,21 @@ applications use to construct the final header.
 
 ## Verification
 
-Proofs are verified using `verify`:
+Proofs are verified in compressed form. `compress` reduces a proof to a
+succinct proof, and `verify_compressed` checks it:
 
 ```rust
-let valid: bool = app.verify(&pcd, &mut rng)?;
+let compressed = app.compress(&pcd, &mut rng)?;
+let valid: bool = app.verify_compressed(&compressed)?;
 ```
 
 Verification confirms the entire recursive proof structure is sound, including
 all accumulated claims from previous steps.
+
+An uncompressed proof can be checked directly with `verify_uncompressed`, which
+holds every polynomial of the proof and checks the accumulated claims on them.
+It is a test oracle behind the `test-utils` feature of `ragu_pcd`, not a
+production path.
 
 ## Rerandomization
 
