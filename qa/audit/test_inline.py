@@ -126,12 +126,37 @@ class InlineTests(unittest.TestCase):
         self.reports()
         self.publish()
         self.publish()
+        summary = copy.deepcopy(self.api.comments[0])
+        threads = copy.deepcopy(self.api.review_comments)
         with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.run["run_id"] + 1)}):
             self.run = github.queue(self.api, 9, HEAD, 12)
             self.reports()
             self.publish()
         self.assertEqual(len(self.api.reviews), 1)
         self.assertEqual(len(self.api.review_comments), 1)
+        self.assertEqual(self.api.review_comments, threads)
+        self.assertEqual(len(self.api.comments), 2)
+        self.assertEqual(self.api.comments[0], summary)
+        for comment in self.api.comments:
+            self.assertIn("1 finding posted inline", comment["body"])
+
+    def test_new_snapshot_preserves_earlier_summary_and_inline_threads(self):
+        self.reports()
+        self.publish()
+        summary = copy.deepcopy(self.api.comments[0])
+        thread = copy.deepcopy(self.api.review_comments[0])
+        self.api.target["head"]["sha"] = "c" * 40
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": str(self.run["run_id"] + 1)}):
+            self.run = github.queue(self.api, 9, "c" * 40, 12)
+            self.reports()
+            self.publish()
+        self.assertEqual(len(self.api.comments), 2)
+        self.assertEqual(len(self.api.reviews), 2)
+        self.assertEqual(len(self.api.review_comments), 2)
+        self.assertEqual(self.api.comments[0], summary)
+        self.assertEqual(self.api.review_comments[0], thread)
+        self.assertEqual(self.api.review_comments[1]["commit_id"], "c" * 40)
+        self.assertIn(github.invocation_marker(self.run), self.api.comments[1]["body"])
 
     def test_lost_creation_response_recovers_without_another_post(self):
         self.reports()

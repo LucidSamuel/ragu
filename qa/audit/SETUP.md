@@ -38,10 +38,12 @@ and links the cited line. A finding without an inline anchor remains in the
 status comment, with its source link. The diff and comments use the invocation's
 pinned base and head commits. New pushes, updates to main, or closing the PR
 do not invalidate that snapshot or change how its findings are published.
-One App-owned status comment shows **For humans** counts and links to the
-inline reviews. Each invocation posts its status comment below the command,
-where it appears without a page reload, and deletes the previous one; later
-states of that invocation edit its own comment. Reviewed revisions, model
+Each invocation keeps an App-owned status comment with **For humans** counts
+and links to its inline reviews. It posts the comment below the command, where
+it appears without a page reload; later states edit only that invocation's
+comment.
+Earlier summaries, report links, and inline threads remain available. Identical
+reruns reuse existing inline reviews. Reviewed revisions, model
 settings, and extra notes are collapsed under Run details.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.

@@ -448,18 +448,14 @@ def upsert(api, run, check, state, *, out=None, only_current=False, inline=None,
     """Publish this invocation's status comment.
 
     A `new` invocation posts its comment below the command, where GitHub shows
-    it without a reload, then deletes earlier invocations' comments so that
-    one remains. Later states edit only the comment carrying this invocation's
-    marker, so an older invocation never replaces or deletes a newer summary.
+    it without a reload. Earlier summaries remain available with their reports
+    and links. Later states edit only this invocation's marked comment.
     """
     listing = f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
     owned = [comment for comment in api.pages(listing) if owns_comment(comment, check["app"])]
     existing = next((comment for comment in owned if invocation_marker(run) in comment["body"].splitlines()), None)
-    if existing is None and not new:
-        if only_current:
-            return  # An older invocation must never replace a newer summary.
-        if owned:
-            raise ValueError("a newer invocation replaced this summary")
+    if existing is None and not new and only_current:
+        return  # Terminal cleanup edits only this invocation's existing summary.
     body = summary(run, state, out, inline=inline)
     path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else listing
     try:
@@ -473,15 +469,6 @@ def upsert(api, run, check, state, *, out=None, only_current=False, inline=None,
             raise
     if not owns_comment(result, check["app"]) or result["body"] != body:
         raise ValueError("summary publication was not confirmed")
-    if new:
-        for comment in owned:
-            if comment["id"] == result["id"]:
-                continue
-            try:
-                api.call(f"/repos/{REPOSITORY}/issues/comments/{comment['id']}", method="DELETE")
-            except (OSError, ValueError):
-                # A leftover summary is harmless: later states edit only this invocation's comment.
-                print("Could not delete an earlier summary; leaving it in place", flush=True)
 
 
 def queue(api, value, expected_head=None, comment_id=None, *, read_api=None):
@@ -563,11 +550,13 @@ def guard(api, run):
     own, values = own_check(api, run)
     command_present(api, run)
     # Branch updates do not invalidate a frozen review. A newer invocation
-    # can replace its summary even when the new check belongs to another head.
+    # can supersede it even when the new check belongs to another head.
     owned = [comment for comment in api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
              if owns_comment(comment, own["app"])]
-    if owned and invocation_marker(run) not in max(owned, key=lambda comment: comment["id"])["body"].splitlines():
-        raise SupersededReview("a newer review superseded this invocation")
+    for comment in owned:
+        marker = re.search(r"^<!-- ragu-audit-run:[0-9]+:[0-9]+:([0-9]+) -->$", comment["body"], re.MULTILINE)
+        if marker and int(marker[1]) > run["check_id"]:
+            raise SupersededReview("a newer review superseded this invocation")
     prefix = scope(run)
     if not values or not (values[0].get("external_id") or "").startswith(prefix):
         raise SupersededReview("a newer review uses a different configuration")
