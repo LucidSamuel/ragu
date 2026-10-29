@@ -137,9 +137,9 @@ fn try_fixed_vec<T, L: Len, E>(
 pub const NUM_FIXED_RX: usize = 19 + NUM_BINDERS;
 
 /// The native internal circuits that are not endoscaling steps: the rx
-/// polynomials' circuits and stages, the application's aside, and the four
+/// polynomials' circuits and stages, the application's aside, and the five
 /// final stage masks.
-pub const NUM_FIXED_INTERNAL: usize = NUM_FIXED_RX - 1 + 4;
+pub const NUM_FIXED_INTERNAL: usize = NUM_FIXED_RX - 1 + 5;
 
 /// The minimum groups for the native quotient fold: fourteen groups of
 /// seven provide room for 98 claims. Larger profiles grow the group count.
@@ -263,6 +263,8 @@ pub enum InternalCircuitIndex {
     OuterErrorFinalStaged,
     EvalFinalStaged,
     PointsWalkFinalStaged,
+    /// The preamble's final mask, under which `bind_beta` ends.
+    PreambleFinalStaged,
     /// A bonding of the profile's native extension, a stage's mask or a
     /// final mask, in [`Extension::bondings`](crate::profile::Extension::bondings)
     /// order.
@@ -334,6 +336,7 @@ impl InternalCircuitIndex {
         push(&mut slots, &mut c, Self::OuterErrorFinalStaged);
         push(&mut slots, &mut c, Self::EvalFinalStaged);
         push(&mut slots, &mut c, Self::PointsWalkFinalStaged);
+        push(&mut slots, &mut c, Self::PreambleFinalStaged);
         assert!(c == Self::NUM);
         slots
     }
@@ -416,6 +419,7 @@ impl InternalCircuitIndex {
             | OuterErrorFinalStaged
             | EvalFinalStaged
             | PointsWalkFinalStaged
+            | PreambleFinalStaged
             | ExtensionBonding(_) => true,
         }
     }
@@ -456,6 +460,7 @@ pub struct InternalCircuitValues<T, P: Profile> {
     pub outer_error_final_staged: T,
     pub eval_final_staged: T,
     pub points_walk_final_staged: T,
+    pub preamble_final_staged: T,
     /// One per bonding of the profile's native extension.
     pub extension_bondings: FixedVec<T, NumExtensionBondings<P>>,
 }
@@ -506,6 +511,7 @@ impl<T, P: Profile> InternalCircuitValues<T, P> {
             OuterErrorFinalStaged => &self.outer_error_final_staged,
             EvalFinalStaged => &self.eval_final_staged,
             PointsWalkFinalStaged => &self.points_walk_final_staged,
+            PreambleFinalStaged => &self.preamble_final_staged,
             ExtensionBonding(j) => &self.extension_bondings[j as usize],
         }
     }
@@ -559,6 +565,7 @@ impl<T, P: Profile> InternalCircuitValues<T, P> {
             outer_error_final_staged: f(OuterErrorFinalStaged)?,
             eval_final_staged: f(EvalFinalStaged)?,
             points_walk_final_staged: f(PointsWalkFinalStaged)?,
+            preamble_final_staged: f(PreambleFinalStaged)?,
             extension_bondings: try_fixed_vec(|j| f(ExtensionBonding(j as u32)))?,
         })
     }
@@ -983,6 +990,10 @@ pub fn register_all<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize
             EvalFinalStaged => {
                 registry.register_bonding(stages::eval::Stage::<C, R, HEADER_SIZE>::final_mask()?)
             }
+            PreambleFinalStaged => {
+                registry
+                    .register_bonding(stages::preamble::Stage::<C, R, HEADER_SIZE>::final_mask()?)
+            }
             PointsBindingStage => registry.register_bonding(<stages::points::BindingStage<
                 C::NestedCurve,
                 C::Profile,
@@ -1065,13 +1076,13 @@ pub fn register_all<'params, C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize
                     registry.register_internal_circuit(circuit)?
                 })
             }
-            BindBetaCircuit => registry
-                .register_internal_circuit(circuits::bind_beta::Circuit::<
-                C,
-                R,
-                HEADER_SIZE,
-                RevdotParameters<C::Profile>,
-            >::new(params))?,
+            BindBetaCircuit => {
+                registry.register_internal_circuit(circuits::bind_beta::Circuit::<
+                    C,
+                    R,
+                    HEADER_SIZE,
+                >::new(params))?
+            }
         };
     }
 

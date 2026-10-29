@@ -23,7 +23,7 @@ use core::ops::AddAssign;
 
 use ragu_circuits::polynomials::{Rank, sparse};
 use ragu_core::{Cycle, Result};
-use ragu_primitives::{EndoscalarChallenge, lift_endoscalar, vec::Len};
+use ragu_primitives::{EndoscalarChallenge, Uendo, lift_endoscalar, vec::Len};
 use udon::field::Field;
 
 use super::{
@@ -162,7 +162,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     fn compute_native_p<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
-        beta_endo: u128,
+        beta_endo: Uendo,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         s_prime: &NativeSPrime<C, R>,
@@ -252,7 +252,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     fn compute_nested_p<RNG: rand::CryptoRng>(
         &self,
         rng: &mut RNG,
-        beta_endo: u128,
+        beta_endo: Uendo,
         left: &Proof<C, R>,
         right: &Proof<C, R>,
         nested_s_prime: &NestedSPrime<C, R>,

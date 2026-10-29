@@ -17,7 +17,7 @@ use ragu_core::{
     drivers::{Driver, DriverValue},
     maybe::Maybe,
 };
-use ragu_primitives::Endoscalar;
+use ragu_primitives::{HoistedEndoscalar, Uendo};
 use udon::curve::EndomorphismAffine as Affine;
 
 use crate::{
@@ -32,7 +32,7 @@ use crate::{
 /// unified instance the circuit outputs.
 pub struct Witness<'a, C: Affine, P: Profile> {
     pub instance: unified::Instance<C>,
-    pub endoscalar: u128,
+    pub endoscalar: Uendo,
     pub points: &'a PointsWitness<C, P>,
     pub preamble: &'a stages::preamble::Witness<C, P>,
     pub s_prime: &'a stages::s_prime::Witness<C>,
@@ -47,7 +47,7 @@ pub struct Witness<'a, C: Affine, P: Profile> {
 
 /// The output gadgets of the stages a circuit reads, once loaded.
 pub struct Loaded<'dr, D: Driver<'dr>, C: Affine<Base = D::F>, P: Profile> {
-    pub endoscalar: Endoscalar<'dr, D>,
+    pub endoscalar: HoistedEndoscalar<'dr, D>,
     pub points: Points<'dr, D, C, P>,
     pub preamble: stages::preamble::Output<'dr, D, C, P>,
     pub s_prime: stages::s_prime::Output<'dr, D, C>,

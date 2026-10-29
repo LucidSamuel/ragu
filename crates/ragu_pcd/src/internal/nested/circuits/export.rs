@@ -19,13 +19,14 @@
 //! establishes the local instance-to-stage relation; collapse enforces its
 //! use in the parent's recursive fold.
 //!
-//! It also emits the stage contracts the endoscaling walk rests on, which
+//! It also re-emits the stage contracts the endoscaling walk rests on, which
 //! the loading circuit, a bonding claim, cannot: every point of the points
-//! stage lies on the curve, and the endoscalar stage's wires are bits (the
-//! [`compute_v`](super::compute_v) circuit ties their lift to the challenge
-//! stage's beta lift). Every other point the nested stages hold is equal, by the
-//! loading circuit or by this one, to a point of the points stage or to one
-//! a parent walks.
+//! stage lies on the curve, and the endoscalar stage's
+//! [`HoistedEndoscalar`](ragu_primitives::HoistedEndoscalar) holds boolean
+//! bits and the products of those bits (the [`compute_v`](super::compute_v)
+//! circuit ties their lift to the challenge stage's beta lift). Every other
+//! point the nested stages hold is equal, by the loading circuit or by this
+//! one, to a point of the points stage or to one a parent walks.
 
 use core::marker::PhantomData;
 
@@ -40,7 +41,7 @@ use ragu_core::{
     gadgets::Bound,
     maybe::Maybe,
 };
-use ragu_primitives::{Endoscalar, GadgetExt as _, allocator::Standard, consistent::Consistent};
+use ragu_primitives::{GadgetExt as _, allocator::Standard, consistent::Consistent};
 use udon::curve::EndomorphismAffine as Affine;
 
 use super::common;
@@ -82,19 +83,16 @@ impl<C: Affine, R: Rank, P: Profile> MultiStageCircuit<C::Base, R> for Circuit<C
         dr: StageBuilder<'a, 'dr, D, R, (), Self::Last>,
         witness: DriverValue<D, Self::Witness<'source>>,
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>> {
-        // Load shared stage wires; enforce the walk's contracts below.
+        // Load shared stage wires; re-emit the walk's contracts below.
         // Allocating the exported instance also checks its points' curve
         // membership, which the equalities transfer to their stage copies.
         let (dr, stages) = common::load_all(dr, &witness)?;
 
-        // The walk's contracts: points on the curve, endoscalar wires bits.
-        // The bits are constrained fresh from the witness endoscalar and
-        // the stage's wires enforced equal to them.
+        // The walk's contracts: points on the curve, and the endoscalar
+        // stage's bit wires bits with its product wires the products of those
+        // bits, each gadget re-emitted on the stage's wires.
         stages.points.enforce_consistent(dr)?;
-        let bits = Endoscalar::alloc(dr, witness.as_ref().map(|w| w.endoscalar))?;
-        for (staged, fresh) in stages.endoscalar.bits().zip(bits.bits()) {
-            staged.element().enforce_equal(dr, &fresh.element())?;
-        }
+        stages.endoscalar.enforce_consistent(dr)?;
 
         let allocator = &mut Standard::new();
         let mut unified = unified::OutputBuilder::new(witness.map(|w| w.instance));
