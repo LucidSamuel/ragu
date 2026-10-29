@@ -72,68 +72,6 @@ impl<H: Header> Clone for Pcd<H> {
     }
 }
 
-/// Mocks `ragu_pcd::CompressedProof`.
-///
-/// The real compressed proof replaces the proof's polynomials with the
-/// messages of the compression argument. The mock proof carries only hashes,
-/// so compression leaves them as they are; the type exists so that consumers
-/// integrate against the production verification path, `compress` followed
-/// by `verify_compressed`.
-#[derive(Clone)]
-pub struct CompressedProof {
-    pub(crate) proof: Proof,
-}
-
-impl CompressedProof {
-    /// Mirrors `ragu_pcd::CompressedProof::carry`.
-    #[must_use]
-    pub fn carry<H: Header>(self, data: H::Data) -> CompressedPcd<H> {
-        CompressedPcd { proof: self, data }
-    }
-}
-
-/// Mocks `ragu_pcd::CompressedPcd`.
-pub struct CompressedPcd<H: Header> {
-    pub(crate) proof: CompressedProof,
-    pub(crate) data: H::Data,
-}
-
-impl<H: Header> CompressedPcd<H> {
-    /// Returns a reference to the data that the proof accompanies.
-    ///
-    /// Mirrors `ragu_pcd::CompressedPcd::data`.
-    #[must_use]
-    pub fn data(&self) -> &H::Data {
-        &self.data
-    }
-
-    /// Returns a reference to the compressed proof.
-    ///
-    /// Mirrors `ragu_pcd::CompressedPcd::proof`.
-    #[must_use]
-    pub fn proof(&self) -> &CompressedProof {
-        &self.proof
-    }
-
-    /// Consumes the proof-carrying data and returns the proof and data
-    /// separately.
-    ///
-    /// Mirrors `ragu_pcd::CompressedPcd::into_parts`.
-    #[must_use]
-    pub fn into_parts(self) -> (CompressedProof, H::Data) {
-        (self.proof, self.data)
-    }
-}
-
-impl<H: Header> Clone for CompressedPcd<H> {
-    fn clone(&self) -> Self {
-        Self {
-            proof: self.proof.clone(),
-            data: self.data.clone(),
-        }
-    }
-}
-
 impl Proof {
     /// Mirrors `ragu_pcd`'s bootstrap proof: the output of the internal
     /// bootstrap step, carrying the unit header.
