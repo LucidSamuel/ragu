@@ -71,13 +71,14 @@ use super::super::{
 };
 use crate::{internal::nested, profile::ProfiledCycle};
 
-/// The number of binding circuits: two challenges each over the ten the
-/// challenge stage holds.
-pub const NUM_BINDERS: usize = 5;
+/// The number of binding circuits, with two challenges per circuit.
+pub const NUM_BINDERS: usize = nested::stages::challenges::NUM / 2;
+
+const _: () = assert!(nested::stages::challenges::NUM.is_multiple_of(2));
 
 /// The challenges the binders cover, two per circuit, in challenge-stage
 /// order.
-pub const NUM_BOUND: usize = 2 * NUM_BINDERS;
+pub const NUM_BOUND: usize = nested::stages::challenges::NUM;
 
 /// Reads the `i`-th challenge, in challenge-stage order, from the unified
 /// instance.
@@ -95,9 +96,7 @@ fn read_challenge<'dr, D: Driver<'dr>, A: Allocator<'dr, D>, C: Cycle<CircuitFie
         &mut unified.y,
         &mut unified.z,
         &mut unified.mu,
-        &mut unified.nu,
         &mut unified.mu_prime,
-        &mut unified.nu_prime,
         &mut unified.x,
         &mut unified.alpha,
         &mut unified.u,
@@ -259,10 +258,6 @@ macro_rules! with_binder {
             }
             3 => {
                 let $circuit = Circuit::<$C, $R, $H, 3>::new($params);
-                $body
-            }
-            4 => {
-                let $circuit = Circuit::<$C, $R, $H, 4>::new($params);
                 $body
             }
             _ => panic!("no binding circuit {}", $k),

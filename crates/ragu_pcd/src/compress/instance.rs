@@ -335,10 +335,8 @@ impl<C: ProfiledCycle> Instance<C> {
         let z = squeeze!();
         absorb!(BridgeInnerError);
         let mu = squeeze!();
-        let nu = squeeze!();
         absorb!(BridgeOuterError);
         let mu_prime = squeeze!();
-        let nu_prime = squeeze!();
         absorb!(BridgeAB);
         let x = squeeze!();
         absorb!(BridgeQuery);
@@ -356,9 +354,7 @@ impl<C: ProfiledCycle> Instance<C> {
             y,
             z,
             mu,
-            nu,
             mu_prime,
-            nu_prime,
             x,
             alpha,
             u,
@@ -380,10 +376,8 @@ impl<C: ProfiledCycle> Instance<C> {
             z: challenges.z,
             bridge_inner_error_commitment: self.bridge(BridgeInnerError),
             mu: challenges.mu,
-            nu: challenges.nu,
             bridge_outer_error_commitment: self.bridge(BridgeOuterError),
             mu_prime: challenges.mu_prime,
-            nu_prime: challenges.nu_prime,
             c: self.c,
             bridge_ab_commitment: self.bridge(BridgeAB),
             x: challenges.x,

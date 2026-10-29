@@ -40,7 +40,7 @@ pub type InternalOutputKind<C: Cycle> = Kind![C::CircuitField; WithSuffix<'_, _,
 /// The number of wires in an [`Output`] gadget.
 ///
 /// Used for allocation sizing and verified by tests.
-pub const NUM_WIRES: usize = 39;
+pub const NUM_WIRES: usize = 37;
 
 /// Maps a field type to its `Output` gadget type.
 macro_rules! unified_output_type {
@@ -286,14 +286,10 @@ define_unified_instance! {
     bridge_inner_error_commitment: Point,
     /// First folding layer challenge $\mu$.
     mu: Element,
-    /// First folding layer challenge $\nu$.
-    nu: Element,
     /// Bridge commitment from the outer error proof component.
     bridge_outer_error_commitment: Point,
     /// Second folding layer challenge $\mu'$.
     mu_prime: Element,
-    /// Second folding layer challenge $\nu'$.
-    nu_prime: Element,
     /// Final revdot claim value from the ab proof component.
     c: Element,
     /// Bridge commitment from the ab proof component.
@@ -484,10 +480,8 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
             z: element!(z),
             bridge_inner_error_commitment: point!(bridge_inner_error_commitment),
             mu: element!(mu),
-            nu: element!(nu),
             bridge_outer_error_commitment: point!(bridge_outer_error_commitment),
             mu_prime: element!(mu_prime),
-            nu_prime: element!(nu_prime),
             c: element!(c),
             bridge_ab_commitment: point!(bridge_ab_commitment),
             x: element!(x),
@@ -530,13 +524,11 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
             proof.as_ref().map(|p| p.bridge_inner_error_commitment()),
         )?;
         let mu = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.mu()))?;
-        let nu = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.nu()))?;
         let bridge_outer_error_commitment = Point::alloc(
             dr,
             proof.as_ref().map(|p| p.bridge_outer_error_commitment()),
         )?;
         let mu_prime = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.mu_prime()))?;
-        let nu_prime = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.nu_prime()))?;
         let c = Element::alloc(dr, allocator, proof.as_ref().map(|p| p.native_c()))?;
         let bridge_ab_commitment =
             Point::alloc(dr, proof.as_ref().map(|p| p.bridge_ab_commitment()))?;
@@ -572,10 +564,8 @@ impl<'dr, D: Driver<'dr>, C: Cycle<CircuitField = D::F>> Output<'dr, D, C> {
             z,
             bridge_inner_error_commitment,
             mu,
-            nu,
             bridge_outer_error_commitment,
             mu_prime,
-            nu_prime,
             c,
             bridge_ab_commitment,
             x,
@@ -656,10 +646,8 @@ mod tests {
             z: true,
             bridge_inner_error_commitment: true,
             mu: true,
-            nu: true,
             bridge_outer_error_commitment: true,
             mu_prime: true,
-            nu_prime: true,
             c: true,
             bridge_ab_commitment: true,
             x: true,

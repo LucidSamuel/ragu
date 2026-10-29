@@ -12,7 +12,7 @@
 //!   (scalar) field, including endoscaling verification
 //! - [`claims`] — generic [`claims::Builder`] for assembling revdot
 //!   claims, shared by both fields
-//! - [`fold_revdot`] — two-layer Horner-style folding that batch-reduces
+//! - [`fold_revdot`] — two-layer quotient folding that batch-reduces
 //!   revdot claims
 //! - [`endoscalar`] — endoscaling circuit and witness types for iterative
 //!   curve scalar multiplication

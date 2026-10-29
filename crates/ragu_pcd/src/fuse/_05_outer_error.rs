@@ -1,5 +1,4 @@
-//! Commit to the error (off-diagonal) terms of the second revdot folding
-//! reduction.
+//! Commit to the quotient error terms of the second revdot folding layer.
 //!
 //! This sets the outer-error fields on the [`ProofBuilder`], which commits to
 //! the `outer_error` stage. The stage contains the error terms and is used to store
@@ -8,7 +7,8 @@
 //!
 //! The second layer of the nested fold is committed here as well: its error
 //! terms and its layer-1 folded claim values ride inside the `outer_error`
-//! bridge stage, so they are committed before $\mu'$ and $\nu'$ are squeezed.
+//! bridge stage, so they are committed before the second-layer folding
+//! challenge is squeezed.
 
 use ragu_circuits::{
     polynomials::{Rank, sparse},
@@ -60,7 +60,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         nested_preamble: &nested::stages::preamble::Witness<C::HostCurve, C::Profile>,
         y: &Element<'dr, D>,
         mu: &Element<'dr, D>,
-        nu: &Element<'dr, D>,
         sponge_state_elements: FixedVec<
             C::CircuitField,
             ragu_primitives::poseidon::PoseidonStateLen<C::CircuitField, C::CircuitPoseidon>,
@@ -79,16 +78,13 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     {
         let y = *y.value().take();
         let mu = *mu.value().take();
-        let nu = *nu.value().take();
-        let mu_inv = mu.invert().expect("mu must be non-zero");
-        let mu_nu = mu * nu;
         let native_a = fold_revdot::fold_inner::<_, _, native::RevdotParameters<C::Profile>>(
             &native_claims.a,
-            mu_inv,
+            mu,
         );
         let native_b = fold_revdot::fold_inner::<_, _, native::RevdotParameters<C::Profile>>(
             &native_claims.b,
-            mu_nu,
+            mu,
         );
         drop(native_claims);
 
@@ -98,10 +94,9 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
                 &native_inner_error_witness.error_terms,
                 y,
                 mu,
-                nu,
             ),
             |dr, witness| {
-                let (preamble_witness, inner_error_terms, y, mu, nu) = witness.cast();
+                let (preamble_witness, inner_error_terms, y, mu) = witness.cast();
                 let allocator = &mut ();
 
                 let preamble = native::stages::preamble::Stage::<C, R, HEADER_SIZE>::default()
@@ -125,7 +120,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
                 };
 
                 let mu = Element::alloc(dr, allocator, mu)?;
-                let nu = Element::alloc(dr, allocator, nu)?;
 
                 // Build k(y) values in claim order.
                 let left_statement = preamble.left.statement_ky::<C::Profile>(dr, &y)?;
@@ -160,7 +154,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
                 );
                 let mut ky = native::claims::ky_values::<C::Profile, _>(&ky_source);
 
-                let fold_products = fold_revdot::ClaimFolder::new(dr, &mu, &nu)?;
+                let fold_products = fold_revdot::ClaimFolder::new(&mu);
 
                 let collapsed = FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {
@@ -216,7 +210,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             nested_preamble,
             y,
             mu,
-            nu,
             builder,
         )?;
 
@@ -257,9 +250,9 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     /// Applies the first layer of the nested fold and commits its second
     /// layer's data into the `outer_error` bridge stage.
     ///
-    /// The nested $y$, $\mu$ and $\nu$ are derived from the native challenges
+    /// The nested $y$ and $\mu$ are derived from the native challenges
     /// (see [`nested::challenge`]). The transcript squeezes $y$ after the
-    /// `s_prime` bridge, and $\mu$ and $\nu$ only after the bridge carrying
+    /// `s_prime` bridge, and $\mu$ only after the bridge carrying
     /// the layer-1 error terms is absorbed. The collapsed values are computed
     /// through [`fold_revdot::ClaimFolder`] exactly as the nested collapse
     /// circuit does, from the children's $k(y_n)$ values
@@ -276,7 +269,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         nested_preamble: &nested::stages::preamble::Witness<C::HostCurve, C::Profile>,
         native_y: C::CircuitField,
         native_mu: C::CircuitField,
-        native_nu: C::CircuitField,
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<(
         nested::stages::outer_error::Witness<C::HostCurve, C::Profile>,
@@ -285,30 +277,22 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     )> {
         let nested_y = nested::challenge::<C>(native_y)?;
         let nested_mu = nested::challenge::<C>(native_mu)?;
-        let nested_nu = nested::challenge::<C>(native_nu)?;
-        let nested_mu_inv = nested_mu.invert().expect("nested mu must be non-zero");
-        let nested_mu_nu = nested_mu * nested_nu;
 
         let a = fold_revdot::fold_inner::<
             sparse::Polynomial<C::ScalarField, R>,
             _,
             nested::RevdotParameters<C::Profile>,
-        >(&nested_claims.a, nested_mu_inv);
+        >(&nested_claims.a, nested_mu);
         let b = fold_revdot::fold_inner::<
             sparse::Polynomial<C::ScalarField, R>,
             _,
             nested::RevdotParameters<C::Profile>,
-        >(&nested_claims.b, nested_mu_nu);
+        >(&nested_claims.b, nested_mu);
         drop(nested_claims);
 
         let collapsed = NestedFuseEmulator::<C>::emulate_wireless(
             (
-                (
-                    &nested_inner_error_witness.error_terms,
-                    nested_y,
-                    nested_mu,
-                    nested_nu,
-                ),
+                (&nested_inner_error_witness.error_terms, nested_y, nested_mu),
                 (
                     nested_source.left.nested_c(),
                     nested_source.right.nested_c(),
@@ -317,7 +301,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
             ),
             |dr, witness| {
                 let (challenges, cs, nested_preamble) = witness.cast();
-                let (inner_error_terms, nested_y, nested_mu, nested_nu) = challenges.cast();
+                let (inner_error_terms, nested_y, nested_mu) = challenges.cast();
                 let (left_c, right_c) = cs.cast();
                 let allocator = &mut ();
 
@@ -327,7 +311,6 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
 
                 let nested_y = Element::alloc(dr, allocator, nested_y)?;
                 let nested_mu = Element::alloc(dr, allocator, nested_mu)?;
-                let nested_nu = Element::alloc(dr, allocator, nested_nu)?;
                 let left_c = Element::alloc(dr, allocator, left_c)?;
                 let right_c = Element::alloc(dr, allocator, right_c)?;
 
@@ -367,7 +350,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
                 );
                 let mut ky = nested::claims::ky_values::<C::Profile, _>(&ky_source);
 
-                let fold_products = fold_revdot::ClaimFolder::new(dr, &nested_mu, &nested_nu)?;
+                let fold_products = fold_revdot::ClaimFolder::new(&nested_mu);
 
                 FixedVec::try_from_fn(|i| {
                     let errors = FixedVec::try_from_fn(|j| {

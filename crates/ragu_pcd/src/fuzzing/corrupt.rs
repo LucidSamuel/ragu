@@ -355,7 +355,7 @@ impl Binding {
     }
 }
 
-/// One of the eleven verifier challenges the unified instance carries.
+/// One of the verifier challenges the unified instance carries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Challenge {
     /// The `w` challenge.
@@ -366,12 +366,8 @@ pub enum Challenge {
     Z,
     /// The `mu` challenge.
     Mu,
-    /// The `nu` challenge.
-    Nu,
     /// The `mu'` challenge.
     MuPrime,
-    /// The `nu'` challenge.
-    NuPrime,
     /// The `x` challenge, which also feeds the `registry_xy` check.
     X,
     /// The `alpha` challenge.
@@ -384,14 +380,12 @@ pub enum Challenge {
 
 impl Challenge {
     /// All variants, in the order the unified instance writes them.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; crate::internal::nested::stages::challenges::NUM + 1] = [
         Self::W,
         Self::Y,
         Self::Z,
         Self::Mu,
-        Self::Nu,
         Self::MuPrime,
-        Self::NuPrime,
         Self::X,
         Self::Alpha,
         Self::U,
@@ -760,9 +754,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                     Challenge::Y => &mut self.y,
                     Challenge::Z => &mut self.z,
                     Challenge::Mu => &mut self.mu,
-                    Challenge::Nu => &mut self.nu,
                     Challenge::MuPrime => &mut self.mu_prime,
-                    Challenge::NuPrime => &mut self.nu_prime,
                     Challenge::X => &mut self.x,
                     Challenge::Alpha => &mut self.alpha,
                     Challenge::U => &mut self.u,

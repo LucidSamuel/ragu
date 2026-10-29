@@ -208,9 +208,7 @@ fn decider_rejects_malformed_inputs_and_propagates_header_errors() {
         bump!(y, Fp::ONE);
         bump!(z, Fp::ONE);
         bump!(mu, Fp::ONE);
-        bump!(nu, Fp::ONE);
         bump!(mu_prime, Fp::ONE);
-        bump!(nu_prime, Fp::ONE);
         bump!(x, Fp::ONE);
         bump!(alpha, Fp::ONE);
         bump!(u, Fp::ONE);
@@ -318,11 +316,12 @@ fn output_header_preserves_padding_capacity_and_errors() {
 /// Each bridge commitment and the number of Fuse challenges drawn after it.
 fn fuse_schedule() -> [(nested::RxIndex, usize); 8] {
     use nested::RxIndex::*;
+    let folding_challenges = 1;
     [
         (BridgePreamble, 1),
         (BridgeSPrime, 2),
-        (BridgeInnerError, 2),
-        (BridgeOuterError, 2),
+        (BridgeInnerError, folding_challenges),
+        (BridgeOuterError, folding_challenges),
         (BridgeAB, 1),
         (BridgeQuery, 1),
         (BridgeF, 1),

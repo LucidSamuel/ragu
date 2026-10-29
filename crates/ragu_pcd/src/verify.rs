@@ -333,10 +333,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             let z = squeeze!();
             absorb!(proof.bridge_inner_error_commitment());
             let mu = squeeze!();
-            let nu = squeeze!();
             absorb!(proof.bridge_outer_error_commitment());
             let mu_prime = squeeze!();
-            let nu_prime = squeeze!();
             absorb!(proof.bridge_ab_commitment());
             let x = squeeze!();
             absorb!(proof.bridge_query_commitment());
@@ -346,15 +344,13 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             absorb!(proof.bridge_eval_commitment());
             let pre_beta = squeeze!();
 
-            [w, y, z, mu, nu, mu_prime, nu_prime, x, alpha, u, pre_beta]
+            [w, y, z, mu, mu_prime, x, alpha, u, pre_beta]
                 == [
                     proof.w(),
                     proof.y(),
                     proof.z(),
                     proof.mu(),
-                    proof.nu(),
                     proof.mu_prime(),
-                    proof.nu_prime(),
                     proof.x(),
                     proof.alpha(),
                     proof.u(),

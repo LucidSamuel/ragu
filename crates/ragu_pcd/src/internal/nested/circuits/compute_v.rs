@@ -10,7 +10,7 @@
 //! ## Operations
 //!
 //! ### Revdot folding
-//! - Takes the lifted $\mu$, $\nu$, $\mu'$, $\nu'$ from the challenge stage.
+//! - Takes the lifted $\mu$ and $\mu'$ from the challenge stage.
 //! - Computes $a_n(x_n z_n)$ and $b_n(x_n)$ by the two-layer fold of the
 //!   children's claim evaluations, in [`build`] order, exactly as the
 //!   prover folded the polynomials.
@@ -62,7 +62,7 @@ use super::common;
 use crate::{
     internal::{
         claims::Source,
-        fold_revdot::fold_two_layer,
+        fold_revdot::EvaluationFolder,
         inverter::Inverter,
         nested::{
             InternalCircuitIndex, RevdotParameters, RxComponent, RxIndex,
@@ -125,13 +125,7 @@ impl<C: Affine, R: Rank, P: Profile> MultiStageCircuit<C::Base, R> for Circuit<C
         // evaluations.
         let (computed_ax, computed_bx) = {
             let mu = lift(challenges::MU);
-            let nu = lift(challenges::NU);
             let mu_prime = lift(challenges::MU_PRIME);
-            let nu_prime = lift(challenges::NU_PRIME);
-            let mu_inv = mu.invert(dr)?;
-            let mu_prime_inv = mu_prime.invert(dr)?;
-            let mu_nu = mu.mul(dr, nu)?;
-            let mu_prime_nu_prime = mu_prime.mul(dr, nu_prime)?;
 
             let source = EvaluationSource {
                 left: &query.left,
@@ -141,10 +135,8 @@ impl<C: Affine, R: Rank, P: Profile> MultiStageCircuit<C::Base, R> for Circuit<C
                 EvaluationProcessor::new(dr, z.element(), &txz, &query.fixed_registry);
             claims::build::<P, _, _>(&source, &mut processor)?;
             let (ax, bx) = processor.build();
-            (
-                fold_two_layer::<_, RevdotParameters<P>>(dr, &ax, &mu_inv, &mu_prime_inv)?,
-                fold_two_layer::<_, RevdotParameters<P>>(dr, &bx, &mu_nu, &mu_prime_nu_prime)?,
-            )
+            let folder = EvaluationFolder::<_, RevdotParameters<P>>::new(dr, mu, mu_prime)?;
+            (folder.fold(dr, &ax)?, folder.fold(dr, &bx)?)
         };
 
         // f_n(u_n), from the quotients of every opening.
