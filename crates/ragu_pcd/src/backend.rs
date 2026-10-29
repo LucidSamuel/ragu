@@ -40,10 +40,11 @@ pub(crate) use sealed::Sealed as TestSealed;
 /// This trait is sealed: applications may select one of Ragu's supported
 /// implementations, but cannot provide their own backend implementation.
 /// Each selectable backend also fixes [`Verifier`](Self::Verifier), the
-/// backend whose kernels [`Application::verify`](crate::Application::verify)
-/// and [`Application::verify_compressed`](crate::Application::verify_compressed)
-/// consult, so accelerating verification is an explicit choice rather than a
-/// consequence of accelerating proving.
+/// backend whose kernels
+/// [`Application::verify_compressed`](crate::Application::verify_compressed)
+/// (and, under `test-utils`, `Application::verify_uncompressed`) consult, so
+/// accelerating verification is an explicit choice rather than a consequence
+/// of accelerating proving.
 pub trait SelectableBackend: Backend + sealed::Sealed {
     /// The backend whose kernels the verifier consults.
     ///

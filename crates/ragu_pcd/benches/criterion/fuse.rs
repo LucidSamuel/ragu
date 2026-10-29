@@ -71,7 +71,7 @@ fn fuse_bench<B: SelectableBackend>(c: &mut Criterion, backend: &str, mode: &str
                     .unwrap();
                 elapsed += start.elapsed();
                 assert!(
-                    app.verify(black_box(&proof), StdRng::seed_from_u64(0xfeed))
+                    app.verify_uncompressed(black_box(&proof), StdRng::seed_from_u64(0xfeed))
                         .unwrap()
                 );
                 black_box(proof);

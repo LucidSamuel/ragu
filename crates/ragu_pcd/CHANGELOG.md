@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `RegistryTags::from_beacon` and `ApplicationBuilder::with_registry_tags`
   to supply both registry tags before finalization. Production callers must
   choose the values after fixing and publicly committing the complete application.
+- Added `Application::verify_differential` under `test-utils`: checks a proof
+  with both verifiers and asserts they agree, returning the uncompressed
+  verdict. The adversarial test suites and the fuzz harness check every proof
+  with both verifiers.
 
 ### Changed
 
@@ -78,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Application::verify` computes its acceptance kernels through the sealed
   `SelectableBackend::Verifier` of the selected backend rather than through
   the selected backend directly.
+- `Application::verify`, the uncompressed verifier, is renamed to
+  `Application::verify_uncompressed` and is now a test oracle behind the new
+  `test-utils` feature, which `unstable-fuzzing` enables. Production
+  verification compresses a proof with `Application::compress` and checks it
+  with `Application::verify_compressed`.
 
 ## [0.0.0] - 2025-11-05
 

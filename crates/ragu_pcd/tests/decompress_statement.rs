@@ -111,7 +111,7 @@ fn check_both<H: Header<Fp>>(
     case: &str,
 ) -> Result<()> {
     assert_eq!(
-        app.verify(pcd, &mut *rng)?,
+        app.verify_uncompressed(pcd, &mut *rng)?,
         expected,
         "{case}: ordinary verifier"
     );

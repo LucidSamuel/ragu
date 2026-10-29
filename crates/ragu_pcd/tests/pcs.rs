@@ -295,7 +295,7 @@ fn check_batch<H: Header<Fp>>(
     );
     assert_eq!(expected_p.eval(u), parent.nested_v()?);
     assert_eq!(commit(&expected_p), parent.nested_p_commitment());
-    assert!(app.verify(parent_pcd, inputs.verifier_rng())?);
+    assert!(app.verify_uncompressed(parent_pcd, inputs.verifier_rng())?);
 
     Ok(())
 }
@@ -829,12 +829,12 @@ mod child_openings {
     fn check(app: &support::App, inputs: &support::Inputs, delta: Fp) -> Result<()> {
         let (parent, _, right) = support::fused(app, inputs)?;
         assert!(
-            app.verify(&parent, inputs.verifier_rng())?,
+            app.verify_uncompressed(&parent, inputs.verifier_rng())?,
             "the honest root verifies"
         );
         let data = *parent.data();
         let rejected = |proof: Proof<C, R>| -> Result<bool> {
-            Ok(!app.verify(&proof.carry::<Value>(data), inputs.verifier_rng())?)
+            Ok(!app.verify_uncompressed(&proof.carry::<Value>(data), inputs.verifier_rng())?)
         };
 
         for wire in ChildWire::ALL {
@@ -862,7 +862,7 @@ mod child_openings {
             )?
             .0;
         assert!(
-            !app.verify(&root, inputs.verifier_rng())?,
+            !app.verify_uncompressed(&root, inputs.verifier_rng())?,
             "a child that never ran must be rejected"
         );
         Ok(())
@@ -922,7 +922,7 @@ mod challenge_stage {
         let sibling = support::sibling(app, &child, &mut rng)?;
         for (label, honest) in [("child", &child), ("sibling", &sibling)] {
             assert!(
-                app.verify(honest, inputs.verifier_rng())?,
+                app.verify_uncompressed(honest, inputs.verifier_rng())?,
                 "the honest {label} verifies"
             );
         }
@@ -953,7 +953,10 @@ mod challenge_stage {
                 "{case}: the edit must break the root's challenge-stage equality"
             );
             let forged = forged.carry::<Value>(*child.data());
-            assert!(!app.verify(&forged, inputs.verifier_rng())?, "{case}: root");
+            assert!(
+                !app.verify_uncompressed(&forged, inputs.verifier_rng())?,
+                "{case}: root"
+            );
 
             // The honest prover debug-asserts that its walk ends at Com(p_n),
             // which a stale child cache breaks before the decider is reached.
@@ -962,7 +965,7 @@ mod challenge_stage {
             }
             for (position, descendant) in support::descendants(app, &forged, &sibling, &mut rng)? {
                 assert!(
-                    !app.verify(&descendant, inputs.verifier_rng())?,
+                    !app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
                     "{case}: {position}"
                 );
             }

@@ -371,7 +371,11 @@ fn check_both_verifiers<P: Profile, Rk: Rank>(
     expected: bool,
     rng: &mut StdRng,
 ) -> Result<()> {
-    assert_eq!(app.verify(pcd, &mut *rng)?, expected, "ordinary verifier");
+    assert_eq!(
+        app.verify_uncompressed(pcd, &mut *rng)?,
+        expected,
+        "ordinary verifier"
+    );
     let compressed = app.compress(pcd, rng)?;
     assert_eq!(
         app.verify_compressed(&compressed)?,
@@ -403,7 +407,7 @@ where
         },
         foreign_value,
     )?;
-    assert!(sender.verify(&source, &mut rng)?);
+    assert!(sender.verify_uncompressed(&source, &mut rng)?);
     let compressed_source = sender.compress(&source, &mut rng)?;
     assert!(sender.verify_compressed(&compressed_source)?);
 
@@ -547,8 +551,8 @@ where
         },
         Fp::from(7),
     )?;
-    assert!(sender.verify(&source, &mut rng)?);
-    assert!(receiver.verify(&local, &mut rng)?);
+    assert!(sender.verify_uncompressed(&source, &mut rng)?);
+    assert!(receiver.verify_uncompressed(&local, &mut rng)?);
     let compressed = sender.compress(&source, &mut rng)?;
     assert!(sender.verify_compressed(&compressed)?);
     let local_compressed = receiver.compress(&local, &mut rng)?;
@@ -557,7 +561,7 @@ where
     let foreign =
         copy_proof_payload::<C<S>, C<T>, R<14>>(source.into_parts().0).carry::<Value>(Fp::from(7));
     assert!(!foreign.proof().well_formed::<HEADER_SIZE>());
-    assert!(!receiver.verify(&foreign, &mut rng)?);
+    assert!(!receiver.verify_uncompressed(&foreign, &mut rng)?);
     assert!(matches!(
         receiver.compress(&foreign, &mut rng),
         Err(Error::InvalidWitness(_))

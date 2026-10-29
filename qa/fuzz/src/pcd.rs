@@ -11,8 +11,8 @@
 //! # No fixture is the dummy proof
 //!
 //! Ragu's synthesized dummy proof is the placeholder the internal Bootstrap
-//! step consumes, not a proof the verifier accepts: `verify` returns
-//! `Ok(false)` for it in any application. Corrupting it and asserting
+//! step consumes, not a proof the verifier accepts: `verify_uncompressed`
+//! returns `Ok(false)` for it in any application. Corrupting it and asserting
 //! non-acceptance therefore asserts nothing — the assertion holds before the
 //! corruption too. Every fixture here is a proof that verifies, and both
 //! [`leaf_fixture`] and [`fused_fixtures`] check that before handing any of
@@ -29,7 +29,7 @@ use ragu_pcd::{
     },
 };
 use ragu_testing::pcd::nontrivial::{Hash2, InternalNode, LeafNode, Merge2, WitnessLeaf};
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{RngExt, SeedableRng, rngs::StdRng};
 use udon::field::Field;
 
 /// The cycle every PCD target works over.
@@ -166,14 +166,37 @@ impl Fixture {
     pub fn verify(&self, app: &Application<'_, C, R, HEADER_SIZE>, rng: StdRng) -> Result<bool> {
         let proof = self.proof.clone();
         match self.shape {
-            Shape::Leaf => app.verify(&proof.carry::<LeafNode>(self.data), rng),
-            Shape::Node | Shape::Deep => app.verify(&proof.carry::<InternalNode>(self.data), rng),
+            Shape::Leaf => app.verify_uncompressed(&proof.carry::<LeafNode>(self.data), rng),
+            Shape::Node | Shape::Deep => {
+                app.verify_uncompressed(&proof.carry::<InternalNode>(self.data), rng)
+            }
+        }
+    }
+
+    /// Compress this fixture's proof and verify the result under the header
+    /// its shape names: the production verification path.
+    ///
+    /// Any error is a rejection to the harness, compression refusing the
+    /// proof's shape included.
+    pub fn verify_compressed(
+        &self,
+        app: &Application<'_, C, R, HEADER_SIZE>,
+        rng: &mut StdRng,
+    ) -> Result<bool> {
+        let proof = self.proof.clone();
+        match self.shape {
+            Shape::Leaf => app
+                .compress(&proof.carry::<LeafNode>(self.data), rng)
+                .and_then(|compressed| app.verify_compressed(&compressed)),
+            Shape::Node | Shape::Deep => app
+                .compress(&proof.carry::<InternalNode>(self.data), rng)
+                .and_then(|compressed| app.verify_compressed(&compressed)),
         }
     }
 }
 
-/// Checks every fixture verifies before it is handed out, so no target can
-/// start from a proof the verifier already rejects.
+/// Checks every fixture verifies, under both verifiers, before it is handed
+/// out, so no target can start from a proof a verifier already rejects.
 fn checked(app: &Application<'_, C, R, HEADER_SIZE>, fixtures: Vec<Fixture>) -> Vec<Fixture> {
     for fixture in &fixtures {
         assert!(
@@ -182,6 +205,14 @@ fn checked(app: &Application<'_, C, R, HEADER_SIZE>, fixtures: Vec<Fixture>) -> 
                 Ok(true)
             ),
             "the honest {} fixture must verify",
+            fixture.shape.name(),
+        );
+        assert!(
+            matches!(
+                fixture.verify_compressed(app, &mut StdRng::seed_from_u64(0xf1_47u64)),
+                Ok(true)
+            ),
+            "the honest {} fixture must verify compressed",
             fixture.shape.name(),
         );
     }
@@ -277,10 +308,10 @@ pub enum FuzzCorruption {
     CircuitId {
         /// The raw choice.
         raw: u32,
-        /// Fold it into the registry's domain rather than leaving it wild.
-        /// An out-of-domain id is rejected by the very first check in
-        /// `verify`, so without this almost every draw would stop there and
-        /// the id would never reach the instance.
+        /// Fold it into the registry's domain rather than leaving it wild. An
+        /// out-of-domain id is rejected by the very first check in
+        /// `verify_uncompressed`, so without this almost every draw would stop
+        /// there and the id would never reach the instance.
         in_domain: bool,
     },
     /// Perturb one element of a child header.
@@ -564,31 +595,39 @@ pub fn apply(
             continue;
         }
         seen.push(target);
-        if proof.corrupt(choice.resolve()) == Binding::MustReject {
-            binding = Binding::MustReject;
-        }
+        binding = binding.max(proof.corrupt(choice.resolve()));
         applied.push(choice.clone());
     }
     (applied, binding)
 }
 
-/// Asserts the verifier's response to a corrupted fixture.
+/// Asserts the verifiers' response to a corrupted fixture.
 ///
-/// `verify` must never accept a corruption that bound it, and must never
-/// panic on one that did not — an internal error is a rejection, not a
-/// crash.
+/// Neither verifier may panic: an internal error is a rejection, not a crash.
+/// `verify_uncompressed` must never accept a corruption that bound it, and
+/// `compress` followed by `verify_compressed` must never accept one that bound
+/// the compressed statement — every binding edit but a stored challenge's,
+/// which the compressed proof does not carry.
 pub fn assert_rejected(
     app: &Application<'_, C, R, HEADER_SIZE>,
     fixture: &Fixture,
     applied: &[FuzzCorruption],
     binding: Binding,
-    rng: StdRng,
+    mut rng: StdRng,
 ) {
-    let result = fixture.verify(app, rng);
-    if binding == Binding::MustReject {
+    let uncompressed = fixture.verify(app, StdRng::seed_from_u64(rng.random()));
+    if binding.binds_uncompressed() {
         assert!(
-            !matches!(result, Ok(true)),
+            !matches!(uncompressed, Ok(true)),
             "the verifier accepted a corrupted {} proof: {applied:?}",
+            fixture.shape.name(),
+        );
+    }
+    let compressed = fixture.verify_compressed(app, &mut rng);
+    if binding.binds_compressed() {
+        assert!(
+            !matches!(compressed, Ok(true)),
+            "the compressed verifier accepted a corrupted {} proof: {applied:?}",
             fixture.shape.name(),
         );
     }

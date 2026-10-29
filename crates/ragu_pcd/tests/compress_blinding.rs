@@ -35,7 +35,10 @@ fn rejects_recompressed_blinded_trace_commitments() {
             + (base * Fp::from(0x462)))
         .to_affine();
         let blinded = proof.carry::<()>(());
-        assert!(!app.verify(&blinded, StdRng::seed_from_u64(0x462)).unwrap());
+        assert!(
+            !app.verify_uncompressed(&blinded, StdRng::seed_from_u64(0x462))
+                .unwrap()
+        );
         // Rebuild all reductions and opening messages after changing the
         // instance; this is not replay of an old proof or transcript.
         let compressed = app.compress(&blinded, &mut rng).unwrap();
@@ -53,7 +56,10 @@ fn rejects_recompressed_blinded_trace_commitments() {
             + (base * Fq::from(0x462)))
         .to_affine();
         let blinded = proof.carry::<()>(());
-        assert!(!app.verify(&blinded, StdRng::seed_from_u64(0x462)).unwrap());
+        assert!(
+            !app.verify_uncompressed(&blinded, StdRng::seed_from_u64(0x462))
+                .unwrap()
+        );
         let compressed = app.compress(&blinded, &mut rng).unwrap();
         assert!(!app.verify_compressed(&compressed).unwrap());
     }

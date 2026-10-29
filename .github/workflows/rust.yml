@@ -86,6 +86,13 @@ jobs:
           components: clippy
       - name: Run clippy
         run: cargo clippy --workspace --lib --tests --benches --locked --all-features -- -D warnings
+      # Workspace builds turn on `test-utils` through `ragu_pcd`'s dev-dependency
+      # on itself, so only a library-only pass sees the production configuration
+      # and flags code that only the uncompressed test oracle still uses.
+      - name: Run clippy (ragu_pcd without test-utils)
+        run: |
+          cargo clippy -p ragu_pcd --lib --locked -- -D warnings
+          cargo clippy -p ragu_pcd --lib --locked --features baked,multicore -- -D warnings
 
   # The `mock` feature is off by default and is the root crate's only API. It
   # gets its own job to exercise the no-default-features configuration used by

@@ -55,7 +55,11 @@ fn check_both_verifiers<C>(
 where
     C: IpaCycle + ProfiledCycle,
 {
-    assert_eq!(app.verify(pcd, &mut *rng)?, accepted, "ordinary verifier");
+    assert_eq!(
+        app.verify_uncompressed(pcd, &mut *rng)?,
+        accepted,
+        "ordinary verifier"
+    );
     // Compression does not validate the input proof. In particular, invoking
     // the receiving setup's compressor must not repair a foreign setup's proof.
     let compressed = app.compress(pcd, rng)?;

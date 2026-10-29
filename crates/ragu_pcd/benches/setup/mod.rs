@@ -4,7 +4,7 @@ use ragu_core::{
     Cycle,
     pasta::{Fp, Pasta},
 };
-use ragu_pcd::{Application, ApplicationBuilder, Pcd};
+use ragu_pcd::{Application, ApplicationBuilder, CompressedPcd, Pcd};
 use ragu_testing::pcd::nontrivial;
 use rand::{SeedableRng, rngs::StdRng};
 
@@ -171,4 +171,25 @@ pub fn setup_verify_node() -> (
         .unwrap();
 
     (app, node, rng)
+}
+
+/// Mirrors [`setup_verify_leaf`], with the leaf compressed, so the tracked
+/// baseline isolates compressed verification from compression.
+pub fn setup_verify_compressed_leaf() -> (
+    Application<'static, Pasta, ProductionRank, 4>,
+    CompressedPcd<Pasta, nontrivial::LeafNode>,
+) {
+    let (app, leaf, mut rng) = setup_verify_leaf();
+    let compressed = app.compress(&leaf, &mut rng).unwrap();
+    (app, compressed)
+}
+
+/// Mirrors [`setup_verify_node`], with the node compressed.
+pub fn setup_verify_compressed_node() -> (
+    Application<'static, Pasta, ProductionRank, 4>,
+    CompressedPcd<Pasta, nontrivial::InternalNode>,
+) {
+    let (app, node, mut rng) = setup_verify_node();
+    let compressed = app.compress(&node, &mut rng).unwrap();
+    (app, compressed)
 }

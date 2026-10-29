@@ -2,9 +2,12 @@
 //!
 //! `qa/fuzz`'s `fuzz_verify_reject`, `fuzz_verify_reject_full` and
 //! `fuzz_pcd_lifecycle` all rest on one contract: when
-//! [`Proof::corrupt`](ragu_pcd::Proof::corrupt) reports
-//! [`Binding::MustReject`], `verify` must not accept. A wrong classification
-//! can either skip a required rejection check or report a false positive.
+//! [`Proof::corrupt`](ragu_pcd::Proof::corrupt) reports a [`Binding`], the
+//! verifiers it names must not accept — `verify_uncompressed` for
+//! [`Binding::MustRejectUncompressed`], and `compress` followed by
+//! `verify_compressed` as well for [`Binding::MustReject`]. A wrong
+//! classification can either skip a required rejection check or report a false
+//! positive.
 //!
 //! So the contract is pinned here instead, over the whole vocabulary and over
 //! proofs of two shapes: a `WitnessLeaf` seed, and a `Merge2` fuse of two
@@ -14,23 +17,27 @@
 //! dedicated Linux PR job with `--test corruption -- --include-ignored`.
 //!
 //! What is deliberately *not* a fixture is
-//! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof): `verify`
-//! rejects it outright, so asserting that a corrupted copy is rejected asserts
-//! nothing. [`the_dummy_proof_does_not_verify`] pins that, because a fuzz
-//! target that starts from it passes vacuously.
+//! [`dummy_proof`](ragu_pcd::Application::test_dummy_proof):
+//! `verify_uncompressed` rejects it outright, so asserting that a corrupted
+//! copy is rejected asserts nothing. [`the_dummy_proof_does_not_verify`] pins
+//! that, because a fuzz target that starts from it passes vacuously.
 
 mod nontrivial_support;
 
 use std::sync::OnceLock;
 
 use nontrivial_support::{C, HEADER_SIZE, R, app};
-use ragu_core::pasta::{Fp, Fq};
+use ragu_core::{
+    Error,
+    pasta::{Fp, Fq},
+};
 use ragu_pcd::{
-    Application, ApplicationBuilder, Proof,
+    Application, ApplicationBuilder, Pcd, Proof,
     fuzzing::corrupt::{
         Binding, BridgeCommitment, Challenge, Corruption, NativeCommitment, NativeRx,
         NestedAccumulator, NestedCommitment, NestedRx, RxComponent, Side,
     },
+    header::Header,
 };
 use ragu_testing::pcd::nontrivial::{InternalNode, LeafNode};
 use rand::{SeedableRng, rngs::StdRng};
@@ -58,10 +65,34 @@ impl Fixture {
         let proof = self.proof;
         let rng = StdRng::seed_from_u64(seed);
         match self.shape {
-            Shape::Leaf => app.verify(&proof.carry::<LeafNode>(self.data), rng),
-            Shape::Deep => app.verify(&proof.carry::<InternalNode>(self.data), rng),
+            Shape::Leaf => app.verify_uncompressed(&proof.carry::<LeafNode>(self.data), rng),
+            Shape::Deep => app.verify_uncompressed(&proof.carry::<InternalNode>(self.data), rng),
         }
         .expect("verify must not error")
+    }
+
+    /// The compressed verifier's verdict: compress, then verify. Compression
+    /// refusing the proof's shape is a rejection; any other error fails the
+    /// test, as for the decider.
+    fn verify_compressed(self, app: &Application<'_, C, R, HEADER_SIZE>, seed: u64) -> bool {
+        fn judge<H: Header<Fp>>(
+            app: &Application<'_, C, R, HEADER_SIZE>,
+            pcd: &Pcd<C, R, H>,
+            seed: u64,
+        ) -> bool {
+            match app.compress(pcd, &mut StdRng::seed_from_u64(seed)) {
+                Err(Error::InvalidWitness(_)) => false,
+                Err(error) => panic!("compress must not fail: {error:?}"),
+                Ok(compressed) => app
+                    .verify_compressed(&compressed)
+                    .expect("verify_compressed must not error"),
+            }
+        }
+        let proof = self.proof;
+        match self.shape {
+            Shape::Leaf => judge(app, &proof.carry::<LeafNode>(self.data), seed),
+            Shape::Deep => judge(app, &proof.carry::<InternalNode>(self.data), seed),
+        }
     }
 }
 
@@ -229,7 +260,8 @@ impl CorruptionGroup {
 }
 
 /// Effective coefficient edits must be classified `MustReject`, and every
-/// `MustReject` edit must be rejected, with an honest control in each group.
+/// binding edit must be rejected by each verifier its binding names, with an
+/// honest control in each group.
 fn check_corruptions(shape: Shape, group: CorruptionGroup) {
     let app = app();
     let fixture = fixture(&app, shape);
@@ -238,6 +270,10 @@ fn check_corruptions(shape: Shape, group: CorruptionGroup) {
     assert!(
         fixture.clone().verify(&app, 1234),
         "the {shape:?} fixture must verify before anything is corrupted",
+    );
+    assert!(
+        fixture.clone().verify_compressed(&app, 1234),
+        "the {shape:?} fixture must verify compressed before anything is corrupted",
     );
 
     let mut bound = 0usize;
@@ -253,8 +289,9 @@ fn check_corruptions(shape: Shape, group: CorruptionGroup) {
         let described = format!("{corruption:?}");
         let binding = corrupted.proof.corrupt(clone_corruption(corruption));
         // These coefficient edits all have nonzero deltas and in-range
-        // indices. Require rejection even if the classifier says they
-        // are unbound, then check the classification itself.
+        // indices, and each leaves a stale commitment, so they must be
+        // classified as binding both verifiers. Other edits are swept as
+        // classified.
         let coefficient_edit = matches!(
             corruption,
             Corruption::NativeCoeff { .. }
@@ -265,20 +302,28 @@ fn check_corruptions(shape: Shape, group: CorruptionGroup) {
                 | Corruption::NestedRegistryXyCoeff { .. }
                 | Corruption::NestedPCoeff { .. }
         );
-        if !coefficient_edit && binding != Binding::MustReject {
+        if coefficient_edit {
+            assert_eq!(
+                binding,
+                Binding::MustReject,
+                "a coefficient edit with a stale commitment was classified {binding:?}: {described}",
+            );
+        } else if !binding.binds_uncompressed() {
             continue;
         }
         bound += 1;
         assert!(
-            !corrupted.verify(&app, 1234),
+            !corrupted.clone().verify(&app, 1234),
             "the verifier accepted a corrupted {:?} proof: {described}",
             fixture.shape,
         );
-        assert_eq!(
-            binding,
-            Binding::MustReject,
-            "a coefficient edit with a stale commitment was classified Unbound: {described}",
-        );
+        if binding.binds_compressed() {
+            assert!(
+                !corrupted.verify_compressed(&app, 1234),
+                "the compressed verifier accepted a corrupted {:?} proof: {described}",
+                fixture.shape,
+            );
+        }
     }
 
     // Retain the sweep's non-vacuity check in each polynomial group and
@@ -298,6 +343,7 @@ fn check_no_op_edits(shape: Shape) {
     let app = app();
     let fixture = fixture(&app, shape);
     assert!(fixture.clone().verify(&app, 1234));
+    assert!(fixture.clone().verify_compressed(&app, 1234));
 
     for (coeff, delta) in [(0, 0u64), (Proof::<C, R>::num_coeffs(), 7), (usize::MAX, 7)] {
         for corruption in [
@@ -318,7 +364,8 @@ fn check_no_op_edits(shape: Shape) {
                 data: fixture.data,
             };
             assert_eq!(unchanged.proof.corrupt(corruption), Binding::Unbound);
-            assert!(unchanged.verify(&app, 1234));
+            assert!(unchanged.clone().verify(&app, 1234));
+            assert!(unchanged.verify_compressed(&app, 1234));
         }
     }
 }
@@ -364,8 +411,46 @@ macro_rules! corruption_tests {
 corruption_tests!(leaf, Shape::Leaf);
 corruption_tests!(deep, Shape::Deep);
 
+/// Stored challenges bind the decider alone. The compressed statement does not
+/// carry them, so the compressed verifier judges a proof with a stale stored
+/// challenge by what the compressor made of it: the compressor reads the stored
+/// `w`, `x`, `y` and `u`, so those four compress into proofs it rejects, and
+/// the other seven into proofs of the honest instance, which it accepts.
+#[test]
+#[ignore = "corruption suite: run by the Linux corruption job"]
+fn stored_challenge_edits_bind_the_decider_alone() {
+    let app = app();
+    for shape in [Shape::Leaf, Shape::Deep] {
+        let fixture = fixture(&app, shape);
+        for which in Challenge::ALL {
+            let mut corrupted = fixture.clone();
+            let binding = corrupted
+                .proof
+                .corrupt(Corruption::Challenge(which, Fp::from(0xc0ffee_u64)));
+            assert_eq!(
+                binding,
+                Binding::MustRejectUncompressed,
+                "{shape:?}: {which:?}"
+            );
+            assert!(
+                !corrupted.clone().verify(&app, 1234),
+                "the decider accepted a {shape:?} proof with a stale stored {which:?}",
+            );
+            let consumed = matches!(
+                which,
+                Challenge::W | Challenge::X | Challenge::Y | Challenge::U
+            );
+            assert_eq!(
+                corrupted.verify_compressed(&app, 1234),
+                !consumed,
+                "{shape:?}: the compressed verifier's verdict on a stale stored {which:?}",
+            );
+        }
+    }
+}
+
 /// The synthesized dummy the Bootstrap base case consumes is not a proof
-/// `verify` accepts — in the empty application or any other.
+/// either verifier accepts — in the empty application or any other.
 ///
 /// A corruption harness that starts from it proves nothing: the rejection it
 /// asserts holds before the corruption. `qa/fuzz`'s proof-level targets build
@@ -378,10 +463,17 @@ fn the_dummy_proof_does_not_verify() {
         let proof = verifier.test_dummy_proof();
         assert!(
             !verifier
-                .verify(&proof.carry::<()>(()), StdRng::seed_from_u64(1234))
+                .verify_uncompressed(&proof.clone().carry::<()>(()), StdRng::seed_from_u64(1234))
                 .expect("verify must not error"),
             "the dummy proof verified — corrupting it would then be a meaningful test, \
              and the fuzz targets should be pointed back at it",
+        );
+        let compressed = verifier
+            .compress(&proof.carry::<()>(()), &mut StdRng::seed_from_u64(1234))
+            .and_then(|compressed| verifier.verify_compressed(&compressed));
+        assert!(
+            !matches!(compressed, Ok(true)),
+            "the dummy proof verified compressed: {compressed:?}",
         );
     }
 }
@@ -409,11 +501,18 @@ fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
     let second = both
         .proof
         .corrupt(Corruption::Challenge(Challenge::Mu, Fp::from(0xbadu64)));
+    // The header edit binds both verifiers; the stored challenge binds the
+    // decider alone. The composed edit binds both, since the header edit does.
     assert_eq!(first, Binding::MustReject);
-    assert_eq!(second, Binding::MustReject);
+    assert_eq!(second, Binding::MustRejectUncompressed);
+    assert_eq!(first.max(second), Binding::MustReject);
     assert!(
-        !both.verify(&app, 99),
+        !both.clone().verify(&app, 99),
         "the verifier accepted a proof with two independent corruptions",
+    );
+    assert!(
+        !both.verify_compressed(&app, 99),
+        "the compressed verifier accepted a proof with two independent corruptions",
     );
 
     let mut cancelled = Fixture {
@@ -432,9 +531,13 @@ fn coordinated_corruptions_reject_and_cancelling_ones_do_not() {
         delta: -Fp::from(3u64),
     });
     assert!(
-        cancelled.verify(&app, 99),
+        cancelled.clone().verify(&app, 99),
         "two cancelling edits leave an honest proof, which must still verify — this is \
          why the fuzz harnesses deduplicate corruptions by target",
+    );
+    assert!(
+        cancelled.verify_compressed(&app, 99),
+        "two cancelling edits leave an honest proof, which must still verify compressed",
     );
 }
 

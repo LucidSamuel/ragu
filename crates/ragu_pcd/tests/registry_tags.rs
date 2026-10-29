@@ -34,14 +34,14 @@ fn beacon_tags_support_recursive_proofs() -> Result<()> {
     let (leaf, _) = app.seed(&mut rng, WitnessLeaf { poseidon_params }, Fp::from(42))?;
     let (node, _) = app.fuse(&mut rng, Hash2 { poseidon_params }, (), leaf.clone(), leaf)?;
     let proof = app.rerandomize(node, &mut rng)?;
-    assert!(app.verify(&proof, &mut rng)?);
+    assert!(app.verify_uncompressed(&proof, &mut rng)?);
 
     // An independently initialized verifier agrees on the same beacon tags.
-    assert!(application(tags())?.verify(&proof, &mut rng)?);
+    assert!(application(tags())?.verify_uncompressed(&proof, &mut rng)?);
 
     // A different beacon must reject this proof even for the expected manifest.
     let wrong_beacon = RegistryTags::<Pasta>::from_beacon(&[0x43; 32], &[0x24; 20]);
-    assert!(!application(wrong_beacon)?.verify(&proof, &mut rng)?);
+    assert!(!application(wrong_beacon)?.verify_uncompressed(&proof, &mut rng)?);
     Ok(())
 }
 

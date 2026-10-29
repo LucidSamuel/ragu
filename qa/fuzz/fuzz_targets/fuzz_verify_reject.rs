@@ -1,24 +1,28 @@
-//! Fuzz the verifier with corrupted proofs.
+//! Fuzz the verifiers with corrupted proofs.
 //!
-//! Applies fuzzer-chosen corruptions to a valid leaf proof, one or several at
-//! a time. A leaf is the cheapest proof `verify` actually accepts, so the
-//! per-input cost is a clone, a corruption and a verify — this is the target
-//! that explores the corruption vocabulary at speed.
-//! `fuzz_verify_reject_full` runs the same vocabulary against fused proofs,
-//! whose accumulators are not degenerate.
+//! Applies fuzzer-chosen corruptions to a valid leaf proof, one or several at a
+//! time, and checks the result with both verifiers: the uncompressed decider,
+//! and `compress` followed by `verify_compressed`. A leaf is the cheapest proof
+//! that actually verifies, so the per-input cost is a clone, a corruption, a
+//! verify and a compression — this is the target that explores the corruption
+//! vocabulary fastest. `fuzz_verify_reject_full` runs the same vocabulary
+//! against fused proofs, whose accumulators are not degenerate.
 //!
-//! Invariant: `verify()` never panics, and never accepts a corruption that
-//! bound it (`Ok(false)` or `Err` are both rejections). No-op edits are still
-//! exercised, but their verdict is not asserted. Every effective coefficient
-//! edit leaves a stale commitment and requires rejection; see
+//! Invariant: neither verifier panics. `verify_uncompressed` never accepts a
+//! corruption that bound it, and the compressed verifier never accepts one
+//! that bound the compressed statement (`Ok(false)` or `Err` are both
+//! rejections). A stored challenge binds the decider alone, since the
+//! compressed proof does not carry it. No-op edits are still exercised, but
+//! their verdict is not asserted. Every effective coefficient edit leaves a
+//! stale commitment and requires rejection by both; see
 //! [`ragu_pcd::fuzzing::corrupt`] for the classification.
 //!
 //! This target used to corrupt Ragu's synthesized dummy proof. That fixture is
-//! the placeholder the internal Bootstrap step consumes, and `verify` rejects
-//! it outright — so "the verifier did not accept the corrupted proof" held
-//! before the corruption too, and every assertion passed vacuously.
-//! [`ragu_testing_fuzz::pcd`] now checks each fixture verifies before handing
-//! it over.
+//! the placeholder the internal Bootstrap step consumes, and
+//! `verify_uncompressed` rejects it outright — so "the verifier did not accept
+//! the corrupted proof" held before the corruption too, and every assertion
+//! passed vacuously. [`ragu_testing_fuzz::pcd`] now checks each fixture
+//! verifies before handing it over.
 
 #![no_main]
 

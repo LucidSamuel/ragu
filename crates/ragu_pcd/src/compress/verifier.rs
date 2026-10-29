@@ -13,7 +13,7 @@ use crate::{
 };
 
 /// The backend whose kernels [`Application::verify_compressed`] consults for
-/// the selected backend `B`, as [`Application::verify`] does.
+/// the selected backend `B`, as `Application::verify_uncompressed` does.
 type Verifier<B> = <B as SelectableBackend>::Verifier;
 
 impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
@@ -26,14 +26,14 @@ impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectab
     /// opening), or `Err` if an internal computation error occurs.
     ///
     /// Uses this application's fixed profile, registries and public
-    /// parameters, as [`verify`](Self::verify) does. Proof data cannot select
+    /// parameters, as `verify_uncompressed` does. Proof data cannot select
     /// another profile or setup; its circuit ID selects only within this
     /// application's registry.
     ///
     /// The registry and polynomial evaluations and the recomputed stage
     /// commitments go through the sealed [`SelectableBackend::Verifier`] of
-    /// the selected backend, as in [`verify`](Self::verify). This also applies
-    /// to transcript bridges, batch commitment combinations, and IPA MSMs.
+    /// the selected backend, as in `verify_uncompressed`. This also applies to
+    /// transcript bridges, batch commitment combinations, and IPA MSMs.
     pub fn verify_compressed<H: Header<C::CircuitField>>(
         &self,
         pcd: &CompressedPcd<C, H>,
@@ -56,8 +56,8 @@ impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: Selectab
         let instance = &proof.instance;
 
         // The proof's circuit_id must be in the registry's domain, for the
-        // reason `verify` gives, and the headers must have the declared
-        // size; and the messages must have the shape read below.
+        // reason `verify_uncompressed` gives, and the headers must have the
+        // declared size; and the messages must have the shape read below.
         if !self.native_registry.circuit_in_domain(instance.circuit_id)
             || instance.left_header.len() != HEADER_SIZE
             || instance.right_header.len() != HEADER_SIZE

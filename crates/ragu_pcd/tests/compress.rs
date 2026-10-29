@@ -107,7 +107,7 @@ fn app() -> App {
 }
 
 fn decides<H: Header<Fp>>(app: &App, pcd: &Pcd<Pasta, TestR, H>, seed: u64) -> bool {
-    app.verify(pcd, StdRng::seed_from_u64(seed))
+    app.verify_uncompressed(pcd, StdRng::seed_from_u64(seed))
         .expect("verify should not error")
 }
 

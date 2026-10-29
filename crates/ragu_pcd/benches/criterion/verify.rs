@@ -1,4 +1,7 @@
 //! Reference verification at the production rank, excluding proof construction.
+//!
+//! `verify_*` times the uncompressed test oracle, `verify_compressed_*` the
+//! production verifier over the same proofs, compressed outside the timed loop.
 
 use std::hint::black_box;
 
@@ -89,9 +92,39 @@ fn verify_bench(c: &mut Criterion) {
         c.bench_function(name, |b| {
             b.iter_batched(
                 || StdRng::seed_from_u64(5678),
-                |rng| assert_eq!(app.verify(black_box(proof), rng).unwrap(), *expected),
+                |rng| {
+                    assert_eq!(
+                        app.verify_uncompressed(black_box(proof), rng).unwrap(),
+                        *expected
+                    )
+                },
                 criterion::BatchSize::PerIteration,
             );
+        });
+    }
+
+    // The same proofs through the production path. A corrupted coefficient
+    // leaves its commitment stale, which compression carries into the
+    // instance for the verifier to reject.
+    let compressed: Vec<_> = proofs
+        .iter()
+        .map(|(name, proof, expected)| {
+            let compressed = app.compress(proof, &mut StdRng::seed_from_u64(91)).unwrap();
+            let name = format!(
+                "verify_compressed_{}",
+                name.strip_prefix("verify_").unwrap()
+            );
+            (name, compressed, *expected)
+        })
+        .collect();
+    for (name, compressed, expected) in &compressed {
+        c.bench_function(name, |b| {
+            b.iter(|| {
+                assert_eq!(
+                    app.verify_compressed(black_box(compressed)).unwrap(),
+                    *expected
+                )
+            });
         });
     }
 }

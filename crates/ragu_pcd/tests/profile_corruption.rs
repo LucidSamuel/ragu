@@ -113,7 +113,7 @@ where
     let (left, ()) = app.seed(&mut rng, UnitStep, ())?;
     let (right, ()) = app.seed(&mut rng, UnitStep, ())?;
     let (parent, ()) = app.fuse(&mut rng, UnitStep, (), left, right)?;
-    assert!(app.verify(&parent, &mut rng)?);
+    assert!(app.verify_uncompressed(&parent, &mut rng)?);
     let honest = parent.proof().clone();
 
     let (native, nested) = extension_components::<P>();
@@ -158,7 +158,7 @@ where
             P::NAME
         );
         assert!(
-            !app.verify(&proof.carry::<()>(()), &mut rng)?,
+            !app.verify_uncompressed(&proof.carry::<()>(()), &mut rng)?,
             "the verifier accepted a corrupted {} proof: {described}",
             P::NAME
         );

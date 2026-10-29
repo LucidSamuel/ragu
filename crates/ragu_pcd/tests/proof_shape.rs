@@ -25,14 +25,14 @@ const HEADER_SIZE: usize = 4;
 fn check_shapes<C: IpaCycle + ProfiledCycle, R: Rank>(app: &Application<'_, C, R, HEADER_SIZE>) {
     let honest = app.bootstrap_pcd();
     let mut rng = StdRng::seed_from_u64(0x908_5a9e);
-    assert!(app.verify(&honest, &mut rng).unwrap());
+    assert!(app.verify_uncompressed(&honest, &mut rng).unwrap());
     let compressed = app.compress(&honest, &mut rng).unwrap();
     assert!(app.verify_compressed(&compressed).unwrap());
 
     let mut reject = |proof: Proof<C, R>, label: &str| {
         let malformed = proof.carry::<()>(());
         assert!(
-            !app.verify(&malformed, &mut rng).unwrap(),
+            !app.verify_uncompressed(&malformed, &mut rng).unwrap(),
             "ordinary verification accepted {label}"
         );
         assert!(
