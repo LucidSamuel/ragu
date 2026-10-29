@@ -308,7 +308,7 @@ impl<C: Affine, R: Rank, N: Len, E: Len> MultiStageCircuit<C::Base, R>
         let (points_guard, dr) = dr.add_stage::<PointsStage<C, N, E>>()?;
         let dr = dr.finish();
 
-        // Stages are loaded unenforced here: the export circuit enforces the
+        // Stages are loaded unenforced here: the collapse circuit enforces the
         // points' curve membership and the endoscalar's booleanity once for
         // the whole nested section. This only constrains the Horner
         // accumulation relationship between inputs and interstitials.

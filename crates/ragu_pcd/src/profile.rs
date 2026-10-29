@@ -1202,7 +1202,8 @@ pub(crate) mod testing {
             Base: IpaCycle + ProfiledCycle<Profile = Standard>,
         {
             assert_eq!(circuit, 0);
-            let circuit = nested::circuits::export::Circuit::<Base::HostCurve, R, Standard>::new();
+            let circuit =
+                nested::circuits::collapse::Circuit::<Base::HostCurve, R, Standard>::new();
             slot.register(MultiStage::new(circuit))
         }
 
@@ -2351,15 +2352,15 @@ mod tests {
         assert_eq!(
             shape,
             Shape {
-                native_rx: 47,
-                nested_points: 109,
-                nested_steps: 27,
-                nested_rx: 41,
-                native_points: 97,
-                native_steps: 24,
+                native_rx: 45,
+                nested_points: 105,
+                nested_steps: 26,
+                nested_rx: 39,
+                native_points: 93,
+                native_steps: 23,
             }
         );
-        assert_eq!(shape.polynomials(), 96);
+        assert_eq!(shape.polynomials(), 92);
     }
 
     #[test]
