@@ -51,7 +51,8 @@ class GitHub:
             method=method,
             headers={"Authorization": "Bearer " + os.environ[self.token_name], "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"},
         )
-        return json.loads(runner.github_response(request, timeout=45))
+        response = runner.github_response(request, timeout=45)
+        return json.loads(response) if response else None  # A deletion answers 204 with no body.
 
     def pages(self, path, key=None):
         for page in range(1, 21):
@@ -253,6 +254,25 @@ def diff_lines(files):
     return result
 
 
+def anchor(locations, available):
+    """Choose where a finding's inline comment goes, as `(path, line, cited)`.
+
+    An exact cited line in the diff wins, and `cited` is then None. GitHub
+    accepts comments only on lines in a diff hunk, so a finding citing a
+    changed file outside its hunks moves to that file's nearest diff line and
+    `cited` keeps the location its comment links. A finding citing only files
+    outside the diff has no anchor and returns None.
+    """
+    for loc in locations:
+        if (loc["path"], loc["line"]) in available:
+            return loc["path"], loc["line"], None
+    for loc in locations:
+        lines = [line for path, line in available if path == loc["path"]]
+        if lines:
+            return loc["path"], min(lines, key=lambda line: (abs(line - loc["line"]), line)), loc
+    return None
+
+
 def owns_inline(review, app):
     if not review.get("body", "").startswith(INLINE_MARKER) or review.get("user", {}).get("type") != "Bot":
         return False
@@ -274,12 +294,13 @@ def publish_inline(api, run, check, out):
     available = diff_lines(api.pages(path + "/files"))
     comments = []
     for item in active:
-        location = next((loc for loc in item["locations"] if (loc["path"], loc["line"]) in available), None)
-        if location is None:
+        target = anchor(item["locations"], available)
+        if target is None:
             publication["fallback"].append(item)
         else:
-            comments.append({"path": location["path"], "line": location["line"], "side": "RIGHT",
-                             "body": findings.inline_body(bundle, item)})
+            file, line, cited = target
+            comments.append({"path": file, "line": line, "side": "RIGHT",
+                             "body": findings.inline_body(bundle, item, cited)})
     if not comments:
         return publication
     reviews = list(api.pages(path + "/reviews"))
@@ -377,15 +398,17 @@ def summary(run, state, out=None, *, inline=None):
                     links = ", ".join(f"[review {index}]({url})" for index, url in enumerate(inline["urls"], 1))
                     noun = "finding" if inline["count"] == 1 else "findings"
                     counts += f" · {inline['count']} {noun} posted inline: {links}"
-                lines += [counts, ""]
+                lines += ["### For humans", "", counts, ""]
                 shown = inline["fallback"]
                 if shown:
-                    lines += ["### For humans", "", "These findings have no cited line in the current diff, so they are kept here.", ""]
+                    lines += ["These findings cite only files outside this PR's diff, so they are kept here.", ""]
             else:
                 lines += ["### For humans", ""]
-            short = findings.shortlist(bundle, shown, heading_level=4) if inline is None or shown else []
+            # Beside the counts line, the few unanchored findings need no counted headings of their own.
+            headings = inline is None
+            short = findings.shortlist(bundle, shown, heading_level=4, headings=headings) if inline is None or shown else []
             if len("\n".join(short).encode()) > 54000:
-                short = findings.shortlist(bundle, shown, compact=True, heading_level=4)
+                short = findings.shortlist(bundle, shown, compact=True, heading_level=4, headings=headings)
             lines += short
             if any(runner.read_json(out / f"{skill}.json").get("permission_denials") for skill in names):
                 details += ["Some tool requests were blocked; see the individual reports' limitations.", ""]
@@ -416,24 +439,44 @@ def summary(run, state, out=None, *, inline=None):
     return "\n".join(lines)
 
 
-def upsert(api, run, check, state, *, out=None, only_current=False, inline=None):
-    comments = api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
-    existing = next((comment for comment in comments if owns_comment(comment, check["app"])), None)
-    if only_current and (existing is None or invocation_marker(run) not in existing["body"].splitlines()):
-        return  # An older invocation must never replace a newer summary.
+def upsert(api, run, check, state, *, out=None, only_current=False, inline=None, new=False):
+    """Publish this invocation's status comment.
+
+    A `new` invocation posts its comment below the command, where GitHub shows
+    it without a reload, then deletes earlier invocations' comments so that
+    one remains. Later states edit only the comment carrying this invocation's
+    marker, so an older invocation never replaces or deletes a newer summary.
+    """
+    listing = f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
+    owned = [comment for comment in api.pages(listing) if owns_comment(comment, check["app"])]
+    existing = next((comment for comment in owned if invocation_marker(run) in comment["body"].splitlines()), None)
+    if existing is None and not new:
+        if only_current:
+            return  # An older invocation must never replace a newer summary.
+        if owned:
+            raise ValueError("a newer invocation replaced this summary")
     body = summary(run, state, out, inline=inline)
-    path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else f"/repos/{REPOSITORY}/issues/{run['pr']}/comments"
+    path = f"/repos/{REPOSITORY}/issues/comments/{existing['id']}" if existing else listing
     try:
         result = api.call(path, {"body": body}, "PATCH" if existing else "POST")
     except (OSError, ValueError):
         # A creation may have succeeded before its response was lost. Confirm
         # the exact App-owned body instead of creating a duplicate comment.
-        result = next((comment for comment in api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
+        result = next((comment for comment in api.pages(listing)
                        if owns_comment(comment, check["app"]) and comment["body"] == body), None)
         if result is None:
             raise
     if not owns_comment(result, check["app"]) or result["body"] != body:
         raise ValueError("summary publication was not confirmed")
+    if new:
+        for comment in owned:
+            if comment["id"] == result["id"]:
+                continue
+            try:
+                api.call(f"/repos/{REPOSITORY}/issues/comments/{comment['id']}", method="DELETE")
+            except (OSError, ValueError):
+                # A leftover summary is harmless: later states edit only this invocation's comment.
+                print("Could not delete an earlier summary; leaving it in place", flush=True)
 
 
 def queue(api, value, expected_head=None, comment_id=None, *, read_api=None):
@@ -478,7 +521,7 @@ def queue(api, value, expected_head=None, comment_id=None, *, read_api=None):
     run["check_id"] = check["id"]
     run["app_id"] = check["app"]["id"]
     try:
-        upsert(api, run, check, "running")
+        upsert(api, run, check, "running", new=True)
     except (OSError, ValueError):
         publication_failure(api, run, check)
         raise

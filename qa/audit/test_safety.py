@@ -171,7 +171,7 @@ class SafetyTests(unittest.TestCase):
             github.publish(fixture.api, run, fixture.out, "failure")
         body = fixture.api.comments[0]["body"]
         self.assertIn("3/4 reviews completed", body)
-        self.assertIn("#### Must-fix (3)", body)
+        self.assertIn("**Must-fix: 3 · Suggestions: 0**", body)
         for role in ("code-review", "sean-review", "alex-review"):
             self.assertIn(f"**Preserved {role} finding**", body)
             self.assertIn(f"<summary>{findings.REVIEWER_NAMES[role]}</summary>", body)

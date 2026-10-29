@@ -395,24 +395,24 @@ fn expected(name: &str, point: &str) -> Census {
         ("bind_challenges_3", "bootstrap") => (16, 704),
         (bind, _) if bind.starts_with("bind_challenges_") => (14, 704),
         ("bind_beta", _) => (13, 612),
-        ("bind_endoscalar", "bootstrap") => (49, 390),
-        ("bind_endoscalar", "leaves") => (51, 388),
-        ("bind_endoscalar", "nodes") => (48, 391),
-        (step, "bootstrap") if step.starts_with("native_endoscaling_step_") => (48, 136),
-        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (50, 134),
-        (step, "nodes") if step.starts_with("native_endoscaling_step_") => (47, 137),
-        ("nested_export", "bootstrap") => (61, 436),
-        ("nested_export", "leaves") => (63, 434),
-        ("nested_export", "nodes") => (60, 437),
-        ("nested_collapse", "bootstrap") => (62, 446),
-        ("nested_collapse", "leaves") => (63, 444),
-        ("nested_collapse", "nodes") => (60, 447),
-        ("nested_compute_v", "bootstrap") => (60, 437),
-        ("nested_compute_v", "leaves") => (62, 435),
-        ("nested_compute_v", "nodes") => (59, 438),
-        (_, "bootstrap") => (48, 151),
-        (_, "leaves") => (50, 149),
-        (_, "nodes") => (47, 152),
+        ("bind_endoscalar", "bootstrap") => (53, 386),
+        ("bind_endoscalar", "leaves") => (44, 395),
+        ("bind_endoscalar", "nodes") => (52, 387),
+        (step, "bootstrap") if step.starts_with("native_endoscaling_step_") => (52, 132),
+        (step, "leaves") if step.starts_with("native_endoscaling_step_") => (43, 141),
+        (step, "nodes") if step.starts_with("native_endoscaling_step_") => (51, 133),
+        ("nested_export", "bootstrap") => (65, 432),
+        ("nested_export", "leaves") => (56, 441),
+        ("nested_export", "nodes") => (64, 433),
+        ("nested_collapse", "bootstrap") => (66, 442),
+        ("nested_collapse", "leaves") => (56, 451),
+        ("nested_collapse", "nodes") => (64, 443),
+        ("nested_compute_v", "bootstrap") => (64, 433),
+        ("nested_compute_v", "leaves") => (55, 442),
+        ("nested_compute_v", "nodes") => (63, 434),
+        (_, "bootstrap") => (52, 147),
+        (_, "leaves") => (43, 156),
+        (_, "nodes") => (51, 148),
         other => panic!("no sweep tallies pinned for {other:?}"),
     };
     Census {
@@ -579,9 +579,10 @@ fn patcher_captures_internal_circuits() -> Result<()> {
 
     // Only hashes_2 has a demoted slot (mu, from the resumed sponge state);
     // every output is forced by the inputs alone; and the pinned census.
-    // The sweep tallies follow the captured witness values, so a circuit
-    // change upstream moves several pins at once: report every drift
-    // together rather than one per run.
+    // The sweep tallies follow the captured witness values, so a circuit or
+    // transcript change upstream (the challenges derive from the transcript
+    // tag) moves several pins at once: report every drift together rather
+    // than one per run.
     let mut drifted = Vec::new();
     for checker in [&bootstrap, &leaves, &nodes] {
         for census in &checker.census {

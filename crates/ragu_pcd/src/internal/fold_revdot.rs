@@ -1,28 +1,38 @@
 //! Two-layer Lagrange folding of revdot claims.
 //!
-//! For m claims interpolate A, B, and their scalar targets at 0..m.
-//! Correct inputs make revdot(A, B) - K vanish at those m points, so its
-//! correction is Z(T) Q(T), with only m-1 coefficients for Q. Each Q stage
-//! must be committed before its corresponding challenge. Both vector sides
-//! use the same interpolation weights, with one challenge per layer.
+//! For $m$ claims, interpolate $A(T)$, $B(T)$ and their scalar targets $K(T)$
+//! at the nodes $0, 1, \ldots, m - 1$. Correct inputs make
+//! $\operatorname{revdot}(A, B) - K$ vanish at those $m$ nodes, so it equals
+//! $Z(T) \cdot Q(T)$, where $Z$ vanishes on the nodes and $Q$ has only $m - 1$
+//! coefficients. Each $Q$ stage must be committed before its corresponding
+//! challenge. Both vector sides use the same interpolation weights, with one
+//! challenge per layer.
 //!
 //! This specializes the Lagrange/vanishing-polynomial identity used by
 //! [ProtoGalaxy](https://eprint.iacr.org/2023/1106) to scalar revdot claims.
 //!
-//! The saving is in what is carried and checked: a reduction of m claims
-//! commits m-1 quotient coefficients, and the collapse circuits fold those
+//! The saving is in what is carried and checked: a reduction of $m$ claims
+//! commits $m - 1$ quotient coefficients, and the collapse circuits fold those
 //! with the claims' targets. The prover still forms every revdot product of
-//! each group, the diagonal included, to assemble revdot(A, B) - K before
-//! dividing by Z, so its product count grows with the square of the group
-//! size while the carried count depends only on the slot budget.
+//! each group, the diagonal included, to assemble
+//! $\operatorname{revdot}(A, B) - K$ before dividing by $Z$, so its product
+//! count grows with the square of the group size while the carried count
+//! depends only on the slot budget.
 //!
-//! A challenge equal to one of the nodes 0..m makes Z vanish and the weights
-//! select that node's claim alone, so the fold then checks one claim.
-//! For a challenge uniform on a support S, the node-hit probability is
-//! |S intersect {0, ..., m-1}| / |S|, at most m/|S|. Pasta nested challenges
-//! are injective lifts of 128-bit endoscalars, so their support has size 2^128,
-//! rather than the full nested field size. The dummy proof's all-one
-//! challenges sit on node 1 by construction; see `dummy_proof` in `proof/mod.rs`.
+//! If any claim is false, then for the committed $Q$ the residual
+//! $\operatorname{revdot}(A, B) - K - Z \cdot Q$ is nonzero at that claim's
+//! node, so it is a nonzero polynomial of degree at most $2m - 2$. A challenge
+//! uniform on a support $S$ is one of its roots with probability at most
+//! $(2m - 2) / |S|$, which bounds each layer's soundness error.
+//!
+//! A challenge equal to a node makes $Z$ vanish and the weights select that
+//! node's claim alone, so the fold then checks one claim. A challenge uniform
+//! on $S$ hits a node with probability at most $m / |S|$. Pasta nested
+//! challenges are injective lifts of 128-bit endoscalars, so their support has
+//! size $2^{128}$ rather than the full nested field size. The dummy proof that
+//! stands in for absent predecessors uses all-one challenges, which sit on
+//! node $1$ by construction. That is harmless: a dummy is never verified on its
+//! own, and the bootstrap step that consumes it leaves its claim unconstrained.
 
 use alloc::{vec, vec::Vec};
 use core::{borrow::Borrow, cell::RefCell, marker::PhantomData};
@@ -64,20 +74,22 @@ pub(crate) fn fold<T: Foldable<F>, F: Field>(
 
 /// The group count and group size for two-layer revdot folding.
 ///
-/// The first layer reduces `NumGroups` groups of up to `GroupSize` claims;
-/// the second layer reduces the resulting group claims to one. Each reduction
-/// uses one quotient coefficient fewer than its input count.
+/// The first layer reduces $n$ = `NumGroups` groups of up to $m$ = `GroupSize`
+/// claims; the second layer reduces the resulting group claims to one. Each
+/// reduction uses one quotient coefficient fewer than its input count.
 ///
-/// For a fixed slot budget `NumGroups * GroupSize`, the carried coefficient
-/// count `NumGroups * (GroupSize - 1) + NumGroups - 1` is the budget less one
-/// whatever the split, while the prover's revdot product count
-/// `NumGroups * GroupSize^2 + NumGroups^2` favours small groups.
+/// For a fixed slot budget $b = n \cdot m$, the carried coefficient count
+/// $n \cdot (m - 1) + n - 1 = b - 1$ is the same whatever the split. The
+/// prover's revdot product count $n \cdot m^2 + n^2 = b \cdot m + (b / m)^2$
+/// is not monotonic in $m$: it is smallest near $m = (2b)^{1/3}$ and grows
+/// on either side. The native split of fourteen groups of seven ($b = 98$)
+/// sits near that minimum.
 pub trait Parameters: 'static + Send + Sync + Copy + Default {
     type NumGroups: Len;
     type GroupSize: Len;
 }
 
-/// Number of quotient coefficients for a reduction of L claims.
+/// Number of quotient coefficients for a reduction of $L$ claims.
 pub struct NumErrorTerms<L: Len>(PhantomData<L>);
 impl<L: Len> Len for NumErrorTerms<L> {
     fn len() -> usize {
@@ -172,7 +184,8 @@ fn bases<F: Field>(m: usize) -> (Vec<Vec<F>>, Vec<F>) {
     (basis, z)
 }
 
-/// Divides each group's revdot(A, B) - K by Z, one quotient per group.
+/// Divides each group's $\operatorname{revdot}(A, B) - K$ by $Z$, one quotient
+/// per group.
 ///
 /// Every revdot product of a group is formed, the diagonal included, so the
 /// prover's product count is quadratic in the group size; only the quotient

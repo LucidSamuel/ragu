@@ -63,7 +63,7 @@ fn various_merging_operations() -> Result<()> {
         node1.clone(),
         node1,
     )?;
-    assert!(app.verify(&node2, &mut rng)?);
+    assert!(app.verify_uncompressed(&node2, &mut rng)?);
     let compressed = app.compress(&node2, &mut rng)?;
     assert!(app.verify_compressed(&compressed)?);
 

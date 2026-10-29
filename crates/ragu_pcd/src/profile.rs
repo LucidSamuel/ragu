@@ -274,9 +274,7 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
         if Self::native_extension().is_empty() {
             Ok(ExtensionRxs::default())
         } else {
-            Err(Error::Initialization(
-                "the profile's native extension has no prover".into(),
-            ))
+            Err(Error::Initialization(NO_NATIVE_EXTENSION_PROVER.into()))
         }
     }
 
@@ -301,9 +299,7 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
         if Self::nested_extension().is_empty() {
             Ok(ExtensionRxs::default())
         } else {
-            Err(Error::Initialization(
-                "the profile's nested extension has no prover".into(),
-            ))
+            Err(Error::Initialization(NO_NESTED_EXTENSION_PROVER.into()))
         }
     }
 
@@ -499,6 +495,12 @@ impl<F: Field, C: Circuit<F>> Circuit<F> for Suffixed<C> {
         ))
     }
 }
+
+/// The default native extension prover's error: the profile declares a native
+/// extension without overriding the prover.
+pub(crate) const NO_NATIVE_EXTENSION_PROVER: &str = "the profile's native extension has no prover";
+/// The nested counterpart of [`NO_NATIVE_EXTENSION_PROVER`].
+pub(crate) const NO_NESTED_EXTENSION_PROVER: &str = "the profile's nested extension has no prover";
 
 /// An extension's polynomials for one proof: its circuits' rx polynomials
 /// in circuit order, then its stages' in stage order.
@@ -1133,14 +1135,15 @@ pub(crate) mod testing {
             B: SelectableBackend;
     }
 
-    /// One circuit over one stage under one final mask on each side, with
-    /// hooks that register the fuse's own circuits and stages as stand-ins.
+    /// `CIRCUITS` native circuits and one nested circuit, each side's over
+    /// one stage under one final mask, with hooks that register the fuse's
+    /// own circuits and stages as stand-ins.
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub(crate) struct Hooked;
+    pub(crate) struct Hooked<const CIRCUITS: usize = 1>;
 
-    impl Profile for Hooked {
+    impl<const CIRCUITS: usize> Profile for Hooked<CIRCUITS> {
         const NAME: &'static str = "hooked";
-        const NATIVE_EXTENSION: usize = 2;
+        const NATIVE_EXTENSION: usize = CIRCUITS + 1;
         const NESTED_EXTENSION: usize = 2;
 
         type Context<'params, Base, R, B>
@@ -1152,16 +1155,22 @@ pub(crate) mod testing {
 
         fn native_extension() -> Extension {
             Extension {
-                circuits: vec![vec![0]],
+                circuits: vec![vec![0]; CIRCUITS],
                 stages: 1,
-                final_masks: vec![vec![0]],
+                final_masks: vec![(0..CIRCUITS as u32).collect()],
                 statement: None,
                 binding: None,
             }
         }
 
         fn nested_extension() -> Extension {
-            Self::native_extension()
+            Extension {
+                circuits: vec![vec![0]],
+                stages: 1,
+                final_masks: vec![vec![0]],
+                statement: None,
+                binding: None,
+            }
         }
 
         fn register_native_circuit<'params, Base, R: Rank, const HEADER_SIZE: usize>(
@@ -1172,7 +1181,7 @@ pub(crate) mod testing {
         where
             Base: IpaCycle + ProfiledCycle<Profile = Standard>,
         {
-            assert_eq!(circuit, 0);
+            assert!(circuit < CIRCUITS);
             slot.register(native::circuits::bind_endoscalar::Circuit::<Base, R>::new())
         }
 

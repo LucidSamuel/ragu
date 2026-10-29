@@ -1142,8 +1142,8 @@ mod timing {
         for (point, count) in [
             (proof.bridge_preamble_commitment(), 1),
             (proof.bridge_s_prime_commitment(), 2),
-            (proof.bridge_inner_error_commitment(), 2),
-            (proof.bridge_outer_error_commitment(), 2),
+            (proof.bridge_inner_error_commitment(), 1),
+            (proof.bridge_outer_error_commitment(), 1),
             (proof.bridge_ab_commitment(), 1),
             (proof.bridge_query_commitment(), 1),
             (proof.bridge_f_commitment(), 1),
@@ -1235,8 +1235,8 @@ mod timing {
                     );
                     changed.bridge_ab_rx.0 = Arc::new(bridge);
                     let replayed = challenges(app, &changed)?;
-                    assert_eq!(replayed[..7], original[..7]);
-                    assert_ne!(replayed[7], changed.x(), "the replacement must change x");
+                    assert_eq!(replayed[..5], original[..5]);
+                    assert_ne!(replayed[5], changed.x(), "the replacement must change x");
                 }
                 "registry_after_u" | "registry_after_all_openings" => {
                     // registry_xy is committed after alpha but before u. Preserve its
@@ -1315,11 +1315,11 @@ mod timing {
                     );
                     let replayed = challenges(app, &changed)?;
                     assert_eq!(
-                        replayed[..9],
-                        original[..9],
+                        replayed[..7],
+                        original[..7],
                         "the commitment is later than alpha"
                     );
-                    assert_ne!(replayed[9], changed.u(), "the replacement must change u");
+                    assert_ne!(replayed[7], changed.u(), "the replacement must change u");
                 }
                 "honest" => {}
                 _ => unreachable!(),

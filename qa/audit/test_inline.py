@@ -55,7 +55,8 @@ class InlineTests(unittest.TestCase):
         summary = self.api.comments[0]["body"]
         self.assertIn("**Must-fix: 1 · Suggestions: 0** · 1 finding posted inline", summary)
         self.assertIn("#pullrequestreview-200", summary)
-        for text in ("**Incorrect result**", "#### Must-fix", "### For humans"):
+        self.assertIn("### For humans\n\n**Must-fix: 1 · Suggestions: 0**", summary)
+        for text in ("**Incorrect result**", "#### Must-fix", "#### Suggestions"):
             self.assertNotIn(text, summary)
         self.assertIn("### For agents", summary)
         self.assertEqual(self.api.checks[0]["conclusion"], "success")
@@ -81,19 +82,45 @@ class InlineTests(unittest.TestCase):
         self.publish()
         self.assertEqual(self.api.reviews, [])
         body = self.api.comments[0]["body"]
-        self.assertIn("**Must-fix: 0 · Suggestions: 0**", body)
+        self.assertIn("### For humans\n\n**Must-fix: 0 · Suggestions: 0**", body)
         self.assertIn("1 finding group dismissed", body)
-        self.assertNotIn("### For humans", body)
+        self.assertNotIn("#### Must-fix", body)
 
-    def test_findings_outside_diff_are_retained_without_moving_their_anchor(self):
+    def test_anchor_prefers_exact_lines_then_the_nearest_line_of_a_cited_file(self):
+        available = {("a.rs", 10), ("a.rs", 20), ("b.rs", 5)}
+        outside, near, exact = {"path": "c.rs", "line": 1}, {"path": "a.rs", "line": 16}, {"path": "b.rs", "line": 5}
+        self.assertEqual(github.anchor([outside, near, exact], available), ("b.rs", 5, None))
+        self.assertEqual(github.anchor([outside, near], available), ("a.rs", 20, near))
+        self.assertEqual(github.anchor([{"path": "a.rs", "line": 15}], available), ("a.rs", 10, {"path": "a.rs", "line": 15}))
+        self.assertIsNone(github.anchor([outside], available))
+
+    def test_findings_outside_hunks_anchor_to_the_nearest_line_and_link_the_cited_line(self):
         self.reports(candidate(), candidate(title="Outside hunk", cause="Different cause",
                                            locations=[{"path": "src/lib.rs", "line": 90}]))
         self.publish()
+        self.assertEqual(len(self.api.review_comments), 2)
+        moved = next(item for item in self.api.review_comments if "Outside hunk" in item["body"])
+        self.assertEqual((moved["path"], moved["line"]), ("src/lib.rs", 1))
+        self.assertIn(f"[lib.rs:90](https://github.com/tachyon-zcash/ragu/blob/{HEAD}/src/lib.rs#L90)", moved["body"])
+        exact = next(item for item in self.api.review_comments if "Incorrect result" in item["body"])
+        self.assertNotIn("lib.rs:", exact["body"])
+        summary = self.api.comments[0]["body"]
+        self.assertIn("2 findings posted inline", summary)
+        for text in ("**Outside hunk**", "**Incorrect result**", "outside this PR's diff", "#### Must-fix"):
+            self.assertNotIn(text, summary)
+
+    def test_findings_citing_only_files_outside_the_diff_stay_in_the_summary(self):
+        self.reports(candidate(), candidate(title="Untouched file", cause="Different cause",
+                                           locations=[{"path": "src/other.rs", "line": 3}]))
+        self.publish()
         self.assertEqual(len(self.api.review_comments), 1)
         summary = self.api.comments[0]["body"]
-        self.assertIn("no cited line in the current diff", summary)
-        self.assertIn("**Outside hunk**", summary)
+        self.assertIn("### For humans\n\n**Must-fix: 2 · Suggestions: 0** · 1 finding posted inline", summary)
+        self.assertIn("cite only files outside this PR's diff", summary)
+        self.assertIn("**Untouched file**", summary)
         self.assertNotIn("**Incorrect result**", summary)
+        for text in ("#### Must-fix", "#### Suggestions", "None after reconciliation", "None reported"):
+            self.assertNotIn(text, summary)
 
     def test_republication_and_reused_reports_do_not_duplicate_inline_threads(self):
         self.reports()
