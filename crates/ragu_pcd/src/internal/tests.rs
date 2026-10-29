@@ -1099,13 +1099,13 @@ fn test_extension_hooks_register_without_a_prover() {
     );
 }
 
-/// A second native extension circuit overflows the gate budget, since the
+/// A third native extension circuit overflows the gate budget, since the
 /// fuse's own circuits grow with every polynomial a proof carries.
 #[test]
 fn test_extension_overflowing_the_fuse_is_rejected() {
     use crate::profile::{Profiled, testing::Hooked};
 
-    type C = Profiled<Pasta, Hooked<2>>;
+    type C = Profiled<Pasta, Hooked<3>>;
     let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(crate::pasta::baked());
     assert!(
         matches!(result, Err(Error::GateBoundExceeded { .. })),

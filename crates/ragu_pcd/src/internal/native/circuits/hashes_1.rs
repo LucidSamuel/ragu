@@ -23,7 +23,7 @@
 //! the [`outer_error`][super::super::stages::outer_error] stage and verified here to
 //! enable resumption in `hashes_2`.
 //!
-//! This circuit also checks the children's unified $k(y)$ values against
+//! This circuit also enforces the children's unified $k(y)$ values against
 //! the [`outer_error`][super::super::stages::outer_error] stage, using the
 //! $y$ it just derived. The application $k(y)$ checks remain in
 //! [`collapse`][super::collapse]; splitting the checks keeps

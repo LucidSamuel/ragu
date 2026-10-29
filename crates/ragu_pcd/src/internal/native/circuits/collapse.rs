@@ -1,10 +1,10 @@
 //! Verifies both layers of the native quotient fold.
 //!
-//! The circuit loads the preamble and both error stages once. It checks
-//! the children's application k(y) values against their headers, checks each
-//! first-layer corrected target against its collapsed value, and checks the
-//! second-layer result against the unified instance's c. The unified k(y)
-//! values are checked by [`super::hashes_1`].
+//! The circuit loads the preamble and both error stages once. It enforces
+//! the children's application k(y) values against their headers, enforces
+//! each first-layer corrected target equal to its collapsed value, and
+//! enforces the second-layer result equal to the unified instance's c. The
+//! unified k(y) values are enforced by [`super::hashes_1`].
 //!
 //! A profile's statement targets come from its headers; its binding targets
 //! come from the extension commitments in the points binding stage. That
