@@ -26,9 +26,9 @@
 //! # Invariants
 //!
 //! * Seeding and fusing an honest tree never fails.
-//! * Every honest proof verifies, at every level, and still verifies after
-//!   rerandomization.
-//! * The root, once corrupted in a way that binds the verifier, does not.
+//! * Every honest proof verifies under both verifiers, at every level, and
+//!   still verifies after rerandomization.
+//! * The root, once corrupted in a way that binds a verifier, does not.
 //!
 //! An iteration here costs seconds, not microseconds: it is a randomized
 //! integration test that libFuzzer steers, and the corpus it accumulates is
@@ -166,7 +166,8 @@ fn merge(
     pcd
 }
 
-/// Every honest proof must verify, at every level of the tree.
+/// Every honest proof must verify, at every level of the tree, under both
+/// verifiers: `verify_differential` holds them to one verdict.
 fn assert_honest<H: ragu_pcd::header::Header<NativeField>>(
     app: &App,
     pcd: &Pcd<C, R, H>,
@@ -175,10 +176,10 @@ fn assert_honest<H: ragu_pcd::header::Header<NativeField>>(
 ) {
     assert!(
         matches!(
-            app.verify_uncompressed(pcd, StdRng::seed_from_u64(verify_seed)),
+            app.verify_differential(pcd, StdRng::seed_from_u64(verify_seed)),
             Ok(true)
         ),
-        "the verifier rejected an honest {} proof",
+        "the verifiers rejected an honest {} proof",
         shape.name(),
     );
 }

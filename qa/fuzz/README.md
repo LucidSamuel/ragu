@@ -201,16 +201,18 @@ constraint system reject it. The no-execution front end is described in
 
 | Target | What it catches |
 |---|---|
-| `fuzz_verify_reject` | Corrupts an honest **leaf** proof through the `fuzzing::corrupt::Corruption` vocabulary — any challenge, any bridge commitment, any header element or length, the circuit id, or an individual coefficient of any native or nested polynomial — and asserts the verifier never accepts a corruption that bound it. The cheap, high-throughput half. |
+| `fuzz_verify_reject` | Corrupts an honest **leaf** proof through the `fuzzing::corrupt::Corruption` vocabulary — any challenge, any bridge commitment, any header element or length, the circuit id, or an individual coefficient of any native or nested polynomial — and asserts neither verifier accepts a corruption that bound it: the uncompressed decider, and `compress` followed by `verify_compressed`. The cheaper half; compression is most of each iteration. |
 | `fuzz_verify_reject_full` | The same vocabulary against **fused** proofs: a `Hash2` over two leaves and a `Merge2` over two of those, whose accumulators the leaf case leaves degenerate. |
-| `fuzz_pcd_lifecycle` | The whole lifecycle per input: a fuzzer-chosen registry size and tree shape, seeded from fuzzer-chosen witnesses, verified at every level, optionally rerandomized, then corrupted and required to be rejected. Seconds per iteration — a randomized integration test libFuzzer steers. |
+| `fuzz_pcd_lifecycle` | The whole lifecycle per input: a fuzzer-chosen registry size and tree shape, seeded from fuzzer-chosen witnesses, verified under both verifiers at every level, optionally rerandomized, then corrupted and required to be rejected. Seconds per iteration — a randomized integration test libFuzzer steers. |
 
 `Proof::corrupt` returns `Binding::Unbound` for no-op edits, such as setting a
 challenge to its existing value. Every effective coefficient edit requires
 rejection because it leaves a stale cached commitment, even if the coefficient
 is a blinding term or the derived `c` or `v` is unchanged. The harness asserts
-rejection for `MustReject` edits. `crates/ragu_pcd/tests/corruption.rs` checks both
-the classification and the verifier's response against real proofs.
+rejection by each verifier a binding names: `MustReject` binds both,
+`MustRejectUncompressed` — a stored challenge, which the compressed proof does
+not carry — the decider alone. `crates/ragu_pcd/tests/corruption.rs` checks both
+the classification and the verifiers' responses against real proofs.
 
 These targets used to corrupt Ragu's synthesized dummy proof. That fixture is
 the placeholder the internal Bootstrap step consumes, and `verify_uncompressed`

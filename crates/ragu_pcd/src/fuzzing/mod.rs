@@ -9,7 +9,7 @@
 //! rendered documentation. It may change or disappear in any release.
 //!
 //! * [`corrupt`] — proof corruption: a vocabulary of edits to a finished
-//!   proof, each reporting whether the verifier is obliged to reject.
+//!   proof, each reporting which verifiers are obliged to reject.
 //! * [`patcher`] — the patcher seam: hands the internal recursion circuits,
 //!   their honest witnesses and their oracle specifications to a visitor
 //!   mid-fuse. Its source is `patcher.rs` in this directory, but the module

@@ -1,8 +1,8 @@
 //! Check proof bindings with the production prover and verifier through two generations.
 //!
 //! These tests edit proof fields and repair commitments locally, then use
-//! `Application::fuse` and `Application::verify_uncompressed` to check
-//! rejection in descendants.
+//! `Application::fuse` and `Application::verify_differential`, which holds
+//! both verifiers to one verdict, to check rejection in descendants.
 
 pub(crate) mod support {
     //! Shared inputs, proof fixtures built with `Application::seed` and
@@ -254,7 +254,7 @@ pub(crate) mod support {
         assert!(
             lease
                 .app()
-                .verify_uncompressed(&second, StdRng::seed_from_u64(874))
+                .verify_differential(&second, StdRng::seed_from_u64(874))
                 .unwrap()
         );
 
@@ -887,9 +887,9 @@ mod accumulator {
         let (unit, _, _) = support::unit_fused(app, inputs)?;
         let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(1));
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&honest, inputs.verifier_rng())?);
-        assert!(app.verify_uncompressed(&unit, inputs.verifier_rng())?);
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&honest, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&unit, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         for (native, nested) in [(false, false), (true, false), (false, true), (true, true)] {
             let should_accept = !native && !nested;
             let scales = (
@@ -898,19 +898,19 @@ mod accumulator {
             );
             let changed_unit = rescaled(app, &unit, scales.0, scales.1);
             assert_eq!(
-                app.verify_uncompressed(&changed_unit, inputs.verifier_rng())?,
+                app.verify_differential(&changed_unit, inputs.verifier_rng())?,
                 should_accept,
                 "unit headers: native={native}, nested={nested}"
             );
             let child = rescaled(app, &honest, scales.0, scales.1);
             assert_eq!(
-                app.verify_uncompressed(&child, inputs.verifier_rng())?,
+                app.verify_differential(&child, inputs.verifier_rng())?,
                 should_accept,
                 "application headers: native={native}, nested={nested}"
             );
             for (position, descendant) in support::descendants(app, &child, &sibling, &mut rng)? {
                 assert_eq!(
-                    app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
+                    app.verify_differential(&descendant, inputs.verifier_rng())?,
                     should_accept,
                     "{position}: native={native}, nested={nested}"
                 );
@@ -966,8 +966,8 @@ mod endpoints {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(1));
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&honest, inputs.verifier_rng())?);
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&honest, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
 
         let native_endpoint =
             stage_wire_indices::<_, R, nested::PointsStage<EqAffine, crate::profile::Standard>>(
@@ -1055,13 +1055,13 @@ mod endpoints {
             let child = changed.carry::<Value>(data);
             let expected = !native && !nested;
             assert_eq!(
-                app.verify_uncompressed(&child, inputs.verifier_rng())?,
+                app.verify_differential(&child, inputs.verifier_rng())?,
                 expected,
                 "child: native={native}, nested={nested}"
             );
             for (position, descendant) in support::descendants(app, &child, &sibling, &mut rng)? {
                 assert_eq!(
-                    app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
+                    app.verify_differential(&descendant, inputs.verifier_rng())?,
                     expected,
                     "{position}: native={native}, nested={nested}"
                 );
@@ -1167,8 +1167,8 @@ mod timing {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(1));
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&honest, inputs.verifier_rng())?);
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&honest, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         let original = challenges(app, honest.proof())?;
         let proof = honest.proof();
         assert_eq!(
@@ -1332,13 +1332,13 @@ mod timing {
             let child = changed.carry::<Value>(data);
             let expected = case == "honest";
             assert_eq!(
-                app.verify_uncompressed(&child, inputs.verifier_rng())?,
+                app.verify_differential(&child, inputs.verifier_rng())?,
                 expected,
                 "{case}: child"
             );
             for (position, descendant) in support::descendants(app, &child, &sibling, &mut rng)? {
                 assert_eq!(
-                    app.verify_uncompressed(&descendant, inputs.verifier_rng())?,
+                    app.verify_differential(&descendant, inputs.verifier_rng())?,
                     expected,
                     "{case}: {position}"
                 );
@@ -1402,7 +1402,7 @@ mod commitments {
 
         let parent = pcd.proof();
         let verify = |proof: Proof<C, R>| {
-            app.verify_uncompressed(&proof.carry::<H>(pcd.data().clone()), inputs.verifier_rng())
+            app.verify_differential(&proof.carry::<H>(pcd.data().clone()), inputs.verifier_rng())
         };
         assert!(verify(parent.clone())?, "the honest parent must verify");
 
@@ -1621,7 +1621,7 @@ mod commitments {
 
         for pcd in [parent_pcd, left_pcd, right_pcd] {
             assert!(crate::verify::nested_points_match(pcd.proof())?);
-            assert!(app.verify_uncompressed(pcd, inputs.verifier_rng())?);
+            assert!(app.verify_differential(pcd, inputs.verifier_rng())?);
         }
 
         // Exercise the decider's point comparison in isolation: a valid point

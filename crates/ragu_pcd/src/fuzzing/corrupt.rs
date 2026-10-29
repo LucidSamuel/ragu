@@ -12,10 +12,13 @@
 //!
 //! Some requested edits make no change: a zero delta, an out-of-range
 //! coefficient index, or an assignment of the value already present. These
-//! return [`Binding::Unbound`]; a harness asserts rejection only for
-//! [`Binding::MustReject`]. Classification describes one edit to an otherwise
-//! valid proof. Composed edits can cancel, so their final effect must be
-//! considered separately.
+//! return [`Binding::Unbound`]. An edit to a stored challenge binds the
+//! uncompressed verifier alone, since the compressed statement does not carry
+//! stored challenges; it returns [`Binding::MustRejectUncompressed`]. Every
+//! other effective edit returns [`Binding::MustReject`], and a harness asserts
+//! rejection by each verifier the binding names. Classification describes one
+//! edit to an otherwise valid proof. Composed edits can cancel, so their final
+//! effect must be considered separately.
 //!
 //! The classification is derived, not guessed:
 //!
@@ -28,6 +31,15 @@
 //!   challenge or bridge commitment is caught earlier still: the verifier
 //!   rederives every challenge from the transcript over the bridge
 //!   commitments.
+//! * **A stored challenge** is an instance edit for the uncompressed verifier
+//!   only. A compressed proof carries no stored challenges: the compressed
+//!   verifier rederives every challenge from the bridge commitments, so a
+//!   proof whose polynomials were built under the transcript's challenges
+//!   compresses into a proof of the honest instance. The compressor itself
+//!   reads the stored $w$, $x$, $y$ and $u$ for the wire bindings, the
+//!   openings and $v$, so a stale one of those four compresses into a proof
+//!   the compressed verifier rejects; a stale one of the other seven
+//!   compresses into one it accepts.
 //! * **A polynomial coefficient or cached commitment** — native or nested,
 //!   the walked $P$ and $P_n$ included — is bound by the verifier's
 //!   commitment checks. Every effective coefficient edit leaves its cache
@@ -303,20 +315,44 @@ impl NestedAccumulator {
     pub const ALL: [Self; 2] = [Self::A, Self::B];
 }
 
-/// Whether [`verify_uncompressed`](crate::Application::verify_uncompressed)
-/// is obliged to reject a corrupted proof.
+/// Which verifiers are obliged to reject a corrupted proof.
 ///
 /// See the [module documentation](self) for how each [`Corruption`] is
-/// classified.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// classified. The variants are ordered by obligation, so the binding of
+/// composed edits is the maximum of their bindings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Binding {
-    /// The corruption moved a value some verifier check binds, so
-    /// `verify_uncompressed` must not accept — except with negligible
-    /// probability over the randomness the verifier samples for itself.
-    MustReject,
     /// The edit made no change, such as a zero delta or an out-of-range
     /// coefficient index. It creates no obligation to reject.
     Unbound,
+    /// The corruption moved a stored challenge, which the uncompressed proof
+    /// carries and the compressed statement does not.
+    /// [`verify_uncompressed`](crate::Application::verify_uncompressed) holds
+    /// the stored challenges to the transcript and must not accept;
+    /// [`verify_compressed`](crate::Application::verify_compressed) rederives
+    /// the challenges from the bridge commitments and is under no obligation.
+    /// Whether the compressed proof verifies depends on which stored
+    /// challenges the compressor consumed.
+    MustRejectUncompressed,
+    /// The corruption moved a value some check of both verifiers binds, so
+    /// neither [`verify_uncompressed`](crate::Application::verify_uncompressed)
+    /// nor [`compress`](crate::Application::compress) followed by
+    /// [`verify_compressed`](crate::Application::verify_compressed) may accept
+    /// — except with negligible probability over the randomness the verifiers
+    /// sample for themselves.
+    MustReject,
+}
+
+impl Binding {
+    /// Whether `verify_uncompressed` is obliged to reject.
+    pub fn binds_uncompressed(self) -> bool {
+        self != Self::Unbound
+    }
+
+    /// Whether `verify_compressed`, after `compress`, is obliged to reject.
+    pub fn binds_compressed(self) -> bool {
+        self == Self::MustReject
+    }
 }
 
 /// One of the eleven verifier challenges the unified instance carries.
@@ -670,9 +706,8 @@ fn monomial<F: Field, R: Rank>(coeff: usize, delta: F) -> Option<sparse::Polynom
 }
 
 impl<C: Cycle, R: Rank> Proof<C, R> {
-    /// Apply a [`Corruption`] to this proof, reporting whether
-    /// [`verify_uncompressed`](crate::Application::verify_uncompressed) is obliged
-    /// to reject afterwards.
+    /// Apply a [`Corruption`] to this proof, reporting which verifiers are
+    /// obliged to reject afterwards.
     #[doc(hidden)]
     pub fn corrupt(&mut self, corruption: Corruption<C>) -> Binding {
         match corruption {
@@ -737,7 +772,7 @@ impl<C: Cycle, R: Rank> Proof<C, R> {
                     return Binding::Unbound;
                 }
                 *slot = value;
-                Binding::MustReject
+                Binding::MustRejectUncompressed
             }
 
             Corruption::NegateBridgeCommitment(which) => {

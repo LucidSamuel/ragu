@@ -55,19 +55,40 @@ fn check_descendants(
     child: &support::TestPcd,
     sibling: &support::TestPcd,
     expected: bool,
+    child_compressed: Option<bool>,
     reblind_first: bool,
     label: &str,
 ) -> Result<()> {
     let mut rng = StdRng::seed_from_u64(inputs.proof_seed.wrapping_add(0x873));
     let verify = |pcd: &support::TestPcd, seed, position: &str| -> Result<()> {
         assert_eq!(
-            app.verify_uncompressed(pcd, StdRng::seed_from_u64(seed))?,
+            app.verify_differential(pcd, StdRng::seed_from_u64(seed))?,
             expected,
             "{label}: {position}"
         );
         Ok(())
     };
-    verify(child, inputs.verifier_seed, "child")?;
+    // A child whose stored challenges were edited is the one proof the two
+    // verifiers judge apart: the compressed statement does not carry them, so
+    // `child_compressed` names the compressed verdict and the child is checked
+    // with each verifier separately. Its descendants, which the prover built
+    // from the stale value, are rejected by both.
+    match child_compressed {
+        None => verify(child, inputs.verifier_seed, "child")?,
+        Some(compressed) => {
+            let rng = || StdRng::seed_from_u64(inputs.verifier_seed);
+            assert_eq!(
+                app.verify_uncompressed(child, rng())?,
+                expected,
+                "{label}: child"
+            );
+            assert_eq!(
+                app.verify_compressed(&app.compress(child, &mut rng())?)?,
+                compressed,
+                "{label}: compressed child"
+            );
+        }
+    }
     let reblinded = app.rerandomize(child.clone(), &mut rng)?;
     assert_eq!(reblinded.data(), child.data());
     verify(
@@ -187,7 +208,7 @@ mod challenge_binding {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         let (mut control, data) = honest.clone().into_parts();
         install_lifts(app, &mut control, &witness(honest.proof())?)?;
         assert!(stage_matches(&control)?);
@@ -197,6 +218,7 @@ mod challenge_binding {
             &control.carry::<Value>(data),
             &sibling,
             true,
+            None,
             reblind_first,
             "unchanged lifts with repaired caches",
         )?;
@@ -226,6 +248,7 @@ mod challenge_binding {
             &proof.carry::<Value>(data),
             &sibling,
             false,
+            None,
             reblind_first,
             &alloc::format!("lift {slot}"),
         )
@@ -241,13 +264,14 @@ mod challenge_binding {
         let (honest, _, _) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         check_descendants(
             app,
             inputs,
             &honest,
             &sibling,
             true,
+            None,
             reblind_first,
             "honest",
         )?;
@@ -303,7 +327,23 @@ mod challenge_binding {
             mutations.push((case, proof.carry::<Value>(data)));
         }
         support::for_each_case(app, mutations, |app, (case, proof)| {
-            check_descendants(app, inputs, &proof, &sibling, false, reblind_first, case)
+            // The compressed statement carries no stored challenges, and the
+            // compressor does not read `pre_beta`: a child that differs from the
+            // honest proof in its stored `pre_beta` alone compresses into a
+            // proof of the honest instance, which the compressed verifier
+            // accepts. The decider rejects it, and so do both verifiers once a
+            // parent has built on the stale value.
+            let compressed_child = (case == "pre_beta").then_some(true);
+            check_descendants(
+                app,
+                inputs,
+                &proof,
+                &sibling,
+                false,
+                compressed_child,
+                reblind_first,
+                case,
+            )
         })
     }
 
@@ -543,7 +583,7 @@ mod walk_binding {
         let (honest, left, right) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         let original_inputs = walk_inputs(honest.proof(), left.proof(), right.proof())?;
         let (mut control, data) = honest.clone().into_parts();
         install_walk(app, &mut control, &original_inputs, &mut rng)?;
@@ -553,6 +593,7 @@ mod walk_binding {
             &control.carry::<Value>(data),
             &sibling,
             true,
+            None,
             reblind_first,
             "unchanged walk with rebuilt traces",
         )?;
@@ -600,7 +641,16 @@ mod walk_binding {
             mutations.push((name, proof.carry::<Value>(data)));
         }
         support::for_each_case(app, mutations, |app, (name, proof)| {
-            check_descendants(app, inputs, &proof, &sibling, false, reblind_first, name)
+            check_descendants(
+                app,
+                inputs,
+                &proof,
+                &sibling,
+                false,
+                None,
+                reblind_first,
+                name,
+            )
         })
     }
 
@@ -614,7 +664,7 @@ mod walk_binding {
         let (honest, left, right) = support::fused(app, inputs)?;
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         let original_inputs = walk_inputs(honest.proof(), left.proof(), right.proof())?;
         let (mut control, data) = honest.clone().into_parts();
         install_walk(app, &mut control, &original_inputs, &mut rng)?;
@@ -624,6 +674,7 @@ mod walk_binding {
             &control.carry::<Value>(data),
             &sibling,
             true,
+            None,
             reblind_first,
             "unchanged registry with rebuilt traces",
         )?;
@@ -695,6 +746,7 @@ mod walk_binding {
             &proof.carry::<Value>(data),
             &sibling,
             false,
+            None,
             reblind_first,
             "late registry with compensated F_n",
         )
@@ -828,13 +880,13 @@ mod claim_values {
     ) -> Result<()> {
         let mut rng = inputs.prover_rng();
         assert_eq!(
-            app.verify_uncompressed(&child, inputs.verifier_rng())?,
+            app.verify_differential(&child, inputs.verifier_rng())?,
             expected,
             "{label}: bootstrap"
         );
         let reblinded = app.rerandomize(child.clone(), &mut rng)?;
         assert_eq!(
-            app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
+            app.verify_differential(&reblinded, inputs.verifier_rng())?,
             expected,
             "{label}: rerandomized bootstrap"
         );
@@ -864,13 +916,13 @@ mod claim_values {
             };
             support::assert_copied_endpoints(parent.proof(), child.proof(), side)?;
             assert_eq!(
-                app.verify_uncompressed(&parent, inputs.verifier_rng())?,
+                app.verify_differential(&parent, inputs.verifier_rng())?,
                 expected,
                 "{label}: bootstrap parent {side:?}"
             );
             let reblinded = app.rerandomize(parent.clone(), &mut rng)?;
             assert_eq!(
-                app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
+                app.verify_differential(&reblinded, inputs.verifier_rng())?,
                 expected,
                 "{label}: rerandomized bootstrap parent {side:?}"
             );
@@ -888,13 +940,13 @@ mod claim_values {
                     grandparent_side,
                 )?;
                 assert_eq!(
-                    app.verify_uncompressed(&grandparent, inputs.verifier_rng())?,
+                    app.verify_differential(&grandparent, inputs.verifier_rng())?,
                     expected,
                     "{label}: bootstrap grandparent {grandparent_side:?} / parent {side:?}"
                 );
                 let reblinded = app.rerandomize(grandparent, &mut rng)?;
                 assert_eq!(
-                    app.verify_uncompressed(&reblinded, inputs.verifier_rng())?,
+                    app.verify_differential(&reblinded, inputs.verifier_rng())?,
                     expected,
                     "{label}: rerandomized bootstrap grandparent {grandparent_side:?} / parent {side:?}"
                 );
@@ -915,7 +967,7 @@ mod claim_values {
         let bootstrap = app.bootstrap_pcd();
         let mut rng = inputs.prover_rng();
         let sibling = support::sibling(app, &honest, &mut rng)?;
-        assert!(app.verify_uncompressed(&sibling, inputs.verifier_rng())?);
+        assert!(app.verify_differential(&sibling, inputs.verifier_rng())?);
         let sign =
             stage_wire_indices::<_, R, challenges::Stage<EqAffine, R, crate::profile::Standard>>(
                 |stage| wires_of(&stage.base_case.lift),
@@ -934,6 +986,7 @@ mod claim_values {
             &honest,
             &sibling,
             true,
+            None,
             reblind_first,
             "honest",
         )?;
@@ -968,6 +1021,7 @@ mod claim_values {
                         &proof.carry::<Value>(*honest.data()),
                         &sibling,
                         false,
+                        None,
                         reblind_first,
                         label,
                     )

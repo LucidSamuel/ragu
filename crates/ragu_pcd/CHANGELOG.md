@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `RegistryTags::from_beacon` and `ApplicationBuilder::with_registry_tags`
   to supply both registry tags before finalization. Production callers must
   choose the values after fixing and publicly committing the complete application.
+- Added `Application::verify_differential` under `test-utils`: checks a proof
+  with both verifiers and asserts they agree, returning the uncompressed
+  verdict. The adversarial test suites and the fuzz harness check every proof
+  with both verifiers.
 
 ### Changed
 

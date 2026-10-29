@@ -69,6 +69,7 @@ use crate::{
         },
         transcript::Transcript,
     },
+    ipa::IpaCycle,
     profile::ProfiledCycle,
 };
 
@@ -591,6 +592,47 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
             ];
 
         Ok(fixed_registry_claim && query_claim && eval_claim)
+    }
+}
+
+impl<C: IpaCycle + ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: SelectableBackend>
+    Application<'_, C, R, HEADER_SIZE, B>
+{
+    /// Verifies `pcd` with both verifiers and checks that they agree.
+    ///
+    /// Runs [`verify_uncompressed`](Self::verify_uncompressed), then
+    /// [`compress`](Self::compress) followed by
+    /// [`verify_compressed`](Self::verify_compressed), and returns the
+    /// uncompressed verdict. The two must agree on acceptance: a proof one
+    /// verifier accepts and the other rejects is a defect in a verifier, not
+    /// in the proof. `Ok(false)` and an error are both rejections, as is
+    /// compression refusing the proof's shape.
+    ///
+    /// Agreement is expected of every proof but one whose stored challenges
+    /// were edited: the compressed statement does not carry them, so only the
+    /// uncompressed verifier holds them to the transcript (the fuzzing
+    /// module's `Binding::MustRejectUncompressed`). Check such a proof with
+    /// each verifier separately.
+    ///
+    /// # Panics
+    ///
+    /// If the verifiers disagree.
+    #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
+    pub fn verify_differential<RNG: CryptoRng, H: Header<C::CircuitField>>(
+        &self,
+        pcd: &Pcd<C, R, H>,
+        mut rng: RNG,
+    ) -> Result<bool> {
+        let uncompressed = self.verify_uncompressed(pcd, &mut rng);
+        let compressed = self
+            .compress(pcd, &mut rng)
+            .and_then(|compressed| self.verify_compressed(&compressed));
+        assert_eq!(
+            matches!(uncompressed, Ok(true)),
+            matches!(compressed, Ok(true)),
+            "the verifiers disagree: uncompressed {uncompressed:?}, compressed {compressed:?}",
+        );
+        uncompressed
     }
 }
 
