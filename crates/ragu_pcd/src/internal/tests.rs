@@ -1084,60 +1084,63 @@ fn test_extension_claims_follow_the_declaration() {
 /// reports that this registration-only fixture has no extension prover.
 #[test]
 fn test_extension_hooks_register_without_a_prover() {
-    use alloc::string::ToString;
-
     use ragu_circuits::registry::RegistryBuilder;
 
-    use crate::profile::{BondingSlot, CircuitSlot, Profile, Profiled, testing::Hooked};
+    use crate::profile::{
+        BondingSlot, CircuitSlot, MissingExtensionProver, Profile, Profiled, testing::Hooked,
+    };
 
-    type C = Profiled<Pasta, Hooked>;
+    type H = Hooked;
+    type C = Profiled<Pasta, H>;
     let params = crate::pasta::baked();
 
     let registry = RegistryBuilder::<Fp, R>::new();
-    let registry = Hooked::register_native_circuit::<Pasta, R, HEADER_SIZE>(
-        0,
-        CircuitSlot::new(registry),
-        params,
-    )
-    .unwrap()
-    .into_registry();
+    let registry =
+        H::register_native_circuit::<Pasta, R, HEADER_SIZE>(0, CircuitSlot::new(registry), params)
+            .unwrap()
+            .into_registry();
     assert_eq!(registry.num_internal_circuits(), 1);
-    let registry = Hooked::register_native_bonding::<Pasta, R, HEADER_SIZE>(
-        0,
-        BondingSlot::new(registry),
-        params,
-    )
-    .unwrap()
-    .into_registry();
-    let registry = Hooked::register_native_bonding::<Pasta, R, HEADER_SIZE>(
-        1,
-        BondingSlot::new(registry),
-        params,
-    )
-    .unwrap()
-    .into_registry();
+    let registry =
+        H::register_native_bonding::<Pasta, R, HEADER_SIZE>(0, BondingSlot::new(registry), params)
+            .unwrap()
+            .into_registry();
+    let registry =
+        H::register_native_bonding::<Pasta, R, HEADER_SIZE>(1, BondingSlot::new(registry), params)
+            .unwrap()
+            .into_registry();
     assert_eq!(registry.num_internal_circuits(), 3);
 
     let registry = RegistryBuilder::<Fq, R>::new();
-    let registry =
-        Hooked::register_nested_circuit::<Pasta, R>(0, CircuitSlot::new(registry), params)
-            .unwrap()
-            .into_registry();
-    let registry =
-        Hooked::register_nested_bonding::<Pasta, R>(0, BondingSlot::new(registry), params)
-            .unwrap()
-            .into_registry();
-    let registry =
-        Hooked::register_nested_bonding::<Pasta, R>(1, BondingSlot::new(registry), params)
-            .unwrap()
-            .into_registry();
+    let registry = H::register_nested_circuit::<Pasta, R>(0, CircuitSlot::new(registry), params)
+        .unwrap()
+        .into_registry();
+    let registry = H::register_nested_bonding::<Pasta, R>(0, BondingSlot::new(registry), params)
+        .unwrap()
+        .into_registry();
+    let registry = H::register_nested_bonding::<Pasta, R>(1, BondingSlot::new(registry), params)
+        .unwrap()
+        .into_registry();
     assert_eq!(registry.num_internal_circuits(), 3);
 
     let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(params);
     assert!(
         matches!(result, Err(Error::Initialization(source))
-            if source.to_string() == "the profile's native extension has no prover"),
+            if source.downcast_ref() == Some(&MissingExtensionProver::Native)),
         "registration should fit before the fixture's missing prover is reported"
+    );
+}
+
+/// A second native extension circuit overflows the gate budget, since the
+/// fuse's own circuits grow with every polynomial a proof carries.
+#[test]
+fn test_extension_overflowing_the_fuse_is_rejected() {
+    use crate::profile::{Profiled, testing::Hooked};
+
+    type C = Profiled<Pasta, Hooked<2>>;
+    let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(crate::pasta::baked());
+    assert!(
+        matches!(result, Err(Error::GateBoundExceeded { .. })),
+        "the fuse should exceed its gate budget before any prover runs"
     );
 }
 
