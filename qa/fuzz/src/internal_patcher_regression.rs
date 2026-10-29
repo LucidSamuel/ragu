@@ -580,9 +580,10 @@ fn patcher_captures_internal_circuits() -> Result<()> {
 
     // Only hashes_2 has a demoted slot (mu, from the resumed sponge state);
     // every output is forced by the inputs alone; and the pinned census.
-    // The sweep tallies follow the captured witness values, so a circuit
-    // change upstream moves several pins at once: report every drift
-    // together rather than one per run.
+    // The sweep tallies follow the captured witness values, so a circuit or
+    // transcript change upstream (the challenges derive from the transcript
+    // tag) moves several pins at once: report every drift together rather
+    // than one per run.
     let mut drifted = Vec::new();
     for checker in [&bootstrap, &leaves, &nodes] {
         for census in &checker.census {

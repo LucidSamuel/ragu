@@ -31,12 +31,16 @@ After this workflow lands on `main`:
 The App posts retained findings as inline review comments after duplicate
 merging and source adjudication, preserving evidence, corrections, reviewer
 attribution, and disagreements. Comments attach to exact cited head-side lines
-in the reviewed diff; there is no suggestion-count cutoff. If none of a
-finding's cited lines appears in a diff hunk, it remains in the status comment
-with its source link rather than being moved to an unrelated line.
+in the reviewed diff; there is no suggestion-count cutoff. GitHub accepts
+comments only on lines in a diff hunk, so a finding whose cited lines all fall
+outside the hunks of a changed file attaches to that file's nearest diff line
+and links the cited line. Only a finding citing no file in the diff remains in
+the status comment, with its source link.
 One App-owned status comment shows **For humans** counts and links to the
-inline reviews. Reviewed revisions, model settings, and extra notes are
-collapsed under Run details.
+inline reviews. Each invocation posts its status comment below the command,
+where it appears without a page reload, and deletes the previous one; later
+states of that invocation edit its own comment. Reviewed revisions, model
+settings, and extra notes are collapsed under Run details.
 Under **For agents**, the four original Markdown reviewer reports remain
 collapsed below the summary, with full artifact links when the comment budget requires truncation.
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
