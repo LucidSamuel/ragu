@@ -30,6 +30,10 @@ mock = [
 # Kept for compatibility: the mock has no parallel stage of its own.
 multicore = []
 std = []
+# Exposes the mock's `Application::verify_uncompressed`, as the feature of the
+# same name on `ragu_pcd` exposes the real one. Production verification is
+# `compress` followed by `verify_compressed`.
+test-utils = []
 
 [lib]
 bench = false

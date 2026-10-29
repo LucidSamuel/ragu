@@ -10,7 +10,7 @@ use super::{
     ctx::StepCtx,
     header::{Header, Suffix},
     hooks::FrameworkHooks,
-    proof::{self, PROOF_SIZE_COMPRESSED, Pcd, Proof},
+    proof::{self, CompressedPcd, CompressedProof, PROOF_SIZE_COMPRESSED, Pcd, Proof},
     step::Step,
 };
 
@@ -117,8 +117,51 @@ impl Application {
         Ok((proof_value.carry::<S::Output>(output_data), aux))
     }
 
-    pub fn verify<RNG: CryptoRng, H: Header>(&self, pcd: &Pcd<H>, _rng: RNG) -> Result<bool> {
-        let Some(application_index) = pcd.proof.step_index.application() else {
+    /// Mirrors `ragu_pcd::Application::compress`.
+    ///
+    /// Compression does not judge the proof; [`verify_compressed`] does. Like
+    /// the real one, it encodes the output header, so data that cannot be
+    /// encoded fails here as it would in verification.
+    ///
+    /// [`verify_compressed`]: Self::verify_compressed
+    pub fn compress<RNG: CryptoRng, H: Header>(
+        &self,
+        pcd: &Pcd<H>,
+        _rng: &mut RNG,
+    ) -> Result<CompressedPcd<H>> {
+        proof::compute_header_hash(H::SUFFIX, &H::encode(&pcd.data))?;
+        Ok(CompressedPcd {
+            proof: CompressedProof {
+                proof: pcd.proof.clone(),
+            },
+            data: pcd.data.clone(),
+        })
+    }
+
+    /// Mirrors `ragu_pcd::Application::verify_compressed`, the production
+    /// verifier.
+    pub fn verify_compressed<H: Header>(&self, pcd: &CompressedPcd<H>) -> Result<bool> {
+        self.check::<H>(&pcd.proof.proof, &pcd.data)
+    }
+
+    /// Mirrors `ragu_pcd::Application::verify_uncompressed`: the uncompressed
+    /// verifier, a test oracle behind the `test-utils` feature. Production
+    /// verification is [`compress`](Self::compress) followed by
+    /// [`verify_compressed`](Self::verify_compressed).
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn verify_uncompressed<RNG: CryptoRng, H: Header>(
+        &self,
+        pcd: &Pcd<H>,
+        _rng: RNG,
+    ) -> Result<bool> {
+        self.check::<H>(&pcd.proof, &pcd.data)
+    }
+
+    /// The checks both verifiers share: the proof's step must have `H`
+    /// registered as its output, and the proof must bind the header the data
+    /// encodes to.
+    fn check<H: Header>(&self, proof: &Proof, data: &H::Data) -> Result<bool> {
+        let Some(application_index) = proof.step_index.application() else {
             return Ok(false);
         };
         // The header must match the output registered for the proof's step.
@@ -126,18 +169,15 @@ impl Application {
             return Ok(false);
         }
 
-        let encoded = H::encode(&pcd.data);
+        let encoded = H::encode(data);
         let expected_header_hash = proof::compute_header_hash(H::SUFFIX, &encoded)?;
-        if expected_header_hash != pcd.proof.header_hash {
+        if expected_header_hash != proof.header_hash {
             return Ok(false);
         }
 
-        let expected_binding = proof::compute_binding(
-            pcd.proof.step_index,
-            &pcd.proof.header_hash,
-            &pcd.proof.witness_hash,
-        );
-        Ok(expected_binding == pcd.proof.binding)
+        let expected_binding =
+            proof::compute_binding(proof.step_index, &proof.header_hash, &proof.witness_hash);
+        Ok(expected_binding == proof.binding)
     }
 
     pub fn rerandomize<RNG: CryptoRng, H: Header>(

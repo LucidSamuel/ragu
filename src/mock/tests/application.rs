@@ -12,6 +12,22 @@ use crate::{
     StepCtx, Suffix,
 };
 
+/// Verifies `pcd` both ways and checks that the verdicts agree:
+/// `verify_uncompressed` is the test oracle, `compress` followed by
+/// `verify_compressed` the production path. Returns the oracle's verdict.
+fn verify<H: Header>(app: &Application, pcd: &Pcd<H>, rng: &mut StdRng) -> Result<bool> {
+    let uncompressed = app.verify_uncompressed(pcd, &mut *rng);
+    let compressed = app
+        .compress(pcd, rng)
+        .and_then(|compressed| app.verify_compressed(&compressed));
+    assert_eq!(
+        matches!(uncompressed, Ok(true)),
+        matches!(compressed, Ok(true)),
+        "the verifiers disagree: uncompressed {uncompressed:?}, compressed {compressed:?}",
+    );
+    uncompressed
+}
+
 struct TestHeader;
 
 #[derive(Clone, Debug)]
@@ -96,7 +112,7 @@ fn seed_then_verify() {
         .seed(&mut rng, SeedStep, 42u64)
         .expect("seed should succeed");
 
-    let valid = app.verify(&pcd, &mut rng).expect("verify should succeed");
+    let valid = verify(&app, &pcd, &mut rng).expect("verify should succeed");
     assert!(valid, "proof should verify against matching header data");
 }
 
@@ -114,9 +130,7 @@ fn verify_rejects_wrong_data() {
         .expect("seed should succeed");
     let bad_pcd = pcd.proof.carry::<TestHeader>(TestHeaderData { value: 999 });
 
-    let valid = app
-        .verify(&bad_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &bad_pcd, &mut rng).expect("verify should succeed");
     assert!(!valid, "proof should reject mismatched header data");
 }
 
@@ -138,9 +152,7 @@ fn fuse_then_verify() {
         .fuse(&mut rng, MergeStep, (), pcd_a, pcd_b)
         .expect("fuse should succeed");
 
-    let valid = app
-        .verify(&merged_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &merged_pcd, &mut rng).expect("verify should succeed");
     assert!(valid, "merged proof should verify");
 }
 
@@ -165,7 +177,7 @@ fn fuse_rejects_wrong_sum() {
         .proof
         .carry::<TestHeader>(TestHeaderData { value: 31 });
 
-    let valid = app.verify(&bad_pcd, &mut rng).expect("verify");
+    let valid = verify(&app, &bad_pcd, &mut rng).expect("verify");
     assert!(!valid, "fused proof must reject wrong header data");
 }
 
@@ -203,7 +215,7 @@ fn deep_fuse_chain() {
         .expect("fuse final");
 
     assert!(
-        app.verify(&final_pcd, &mut rng).expect("verify"),
+        verify(&app, &final_pcd, &mut rng).expect("verify"),
         "depth-2 fuse tree must verify"
     );
 
@@ -211,7 +223,7 @@ fn deep_fuse_chain() {
         .proof
         .carry::<TestHeader>(TestHeaderData { value: 11 });
     assert!(
-        !app.verify(&bad_pcd, &mut rng).expect("verify"),
+        !verify(&app, &bad_pcd, &mut rng).expect("verify"),
         "wrong total must fail"
     );
 }
@@ -245,8 +257,8 @@ fn different_merge_trees_same_header() {
         .fuse(&mut rng, MergeStep, (), pa, bc)
         .expect("fuse a(bc)");
 
-    assert!(app.verify(&left_leaning, &mut rng).expect("verify"));
-    assert!(app.verify(&right_leaning, &mut rng).expect("verify"));
+    assert!(verify(&app, &left_leaning, &mut rng).expect("verify"));
+    assert!(verify(&app, &right_leaning, &mut rng).expect("verify"));
     assert_ne!(
         left_leaning.proof.serialize(),
         right_leaning.proof.serialize(),
@@ -332,7 +344,7 @@ fn aux_data_flows_through_seed_and_fuse() {
     assert_eq!(merged_aux, alloc::vec![9, 16]);
     let reconstructed_value: u64 = merged_aux.iter().sum();
     assert_eq!(reconstructed_value, 25);
-    let valid = app.verify(&merged_pcd, &mut rng).expect("verify");
+    let valid = verify(&app, &merged_pcd, &mut rng).expect("verify");
     assert!(valid, "fused proof must verify");
 }
 
@@ -354,9 +366,7 @@ fn serialized_proof_still_verifies() {
     let recovered_proof = Proof::try_from(&bytes).expect("recovered proof should deserialize");
 
     let recovered_pcd = recovered_proof.carry::<TestHeader>(saved_data);
-    let valid = app
-        .verify(&recovered_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &recovered_pcd, &mut rng).expect("verify should succeed");
     assert!(valid, "round-tripped proof should still verify");
 }
 
@@ -377,9 +387,7 @@ fn serialized_proof_rejects_mismatched_header_data() {
     let recovered_proof = Proof::try_from(&bytes).expect("recovered proof should deserialize");
 
     let bad_pcd = recovered_proof.carry::<TestHeader>(TestHeaderData { value: 999 });
-    let valid = app
-        .verify(&bad_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &bad_pcd, &mut rng).expect("verify should succeed");
     assert!(
         !valid,
         "round-tripped proof must still reject mismatched header data"
@@ -424,9 +432,7 @@ fn rerandomize_preserves_validity() {
     let rerand_pcd = app
         .rerandomize(pcd, &mut rng)
         .expect("rerandomize should succeed");
-    let valid = app
-        .verify(&rerand_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &rerand_pcd, &mut rng).expect("verify should succeed");
     assert!(valid, "rerandomized proof should still verify");
     assert_ne!(
         rerand_pcd.proof.serialize(),
@@ -592,9 +598,7 @@ fn verify_rejects_unregistered_step_index() {
     let forged_pcd: Pcd<TestHeader> =
         forged_proof.carry::<TestHeader>(TestHeaderData { value: 42 });
 
-    let valid = app
-        .verify(&forged_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &forged_pcd, &mut rng).expect("verify should succeed");
     assert!(
         !valid,
         "proof whose step_index is outside the registered range must fail verify"
@@ -634,9 +638,7 @@ fn verify_rejects_swapped_header_type() {
         .proof
         .carry::<SwappedHeader>(TestHeaderData { value: 42 });
 
-    let valid = app
-        .verify(&swapped_pcd, &mut rng)
-        .expect("verify should succeed");
+    let valid = verify(&app, &swapped_pcd, &mut rng).expect("verify should succeed");
     assert!(
         !valid,
         "proof bound to a different Header SUFFIX must fail verify"
@@ -734,7 +736,7 @@ fn header_with_point_round_trips() {
     let (pcd, ()) = app
         .seed(&mut rng, PointSeedStep, Eq::generator())
         .expect("seed with a non-identity point");
-    assert!(app.verify(&pcd, &mut rng).expect("verify"));
+    assert!(verify(&app, &pcd, &mut rng).expect("verify"));
 }
 
 #[test]
@@ -791,7 +793,7 @@ fn identity_point_in_carried_data_errors_verify() {
     // Errs rather than returning `Ok(false)`: re-encoding such a header
     // fails synthesis in real ragu, it does not merely mismatch.
     assert!(matches!(
-        app.verify(&bad_pcd, &mut rng),
+        verify(&app, &bad_pcd, &mut rng),
         Err(Error::InvalidWitness(_))
     ));
 }
@@ -810,10 +812,7 @@ fn verify_rejects_unregistered_output_header() {
         b"forged-witness",
     )
     .expect("proof");
-    assert!(
-        !app.verify(&proof.carry::<TestHeader>(data), &mut rng)
-            .expect("verify")
-    );
+    assert!(!verify(&app, &proof.carry::<TestHeader>(data), &mut rng).expect("verify"));
 }
 
 #[test]
@@ -829,7 +828,7 @@ fn verify_rejects_header_registered_for_another_step() {
     let (point, ()) = app
         .seed(&mut rng, PointSeedStep, Eq::generator())
         .expect("seed");
-    assert!(app.verify(&point, &mut rng).expect("verify point output"));
+    assert!(verify(&app, &point, &mut rng).expect("verify point output"));
     let (scalar, ()) = app
         .fuse(
             &mut rng,
@@ -839,7 +838,7 @@ fn verify_rejects_header_registered_for_another_step() {
             Proof::bootstrap().carry::<()>(()),
         )
         .expect("fuse");
-    assert!(app.verify(&scalar, &mut rng).expect("verify scalar output"));
+    assert!(verify(&app, &scalar, &mut rng).expect("verify scalar output"));
 
     let data = TestHeaderData { value: 1 };
     let proof = Proof::new(
@@ -849,10 +848,7 @@ fn verify_rejects_header_registered_for_another_step() {
         b"forged-witness",
     )
     .expect("proof");
-    assert!(
-        !app.verify(&proof.carry::<TestHeader>(data), &mut rng)
-            .expect("verify")
-    );
+    assert!(!verify(&app, &proof.carry::<TestHeader>(data), &mut rng).expect("verify"));
 }
 
 #[test]
@@ -867,8 +863,5 @@ fn verify_rejects_input_only_header_as_output() {
         b"forged-witness",
     )
     .expect("proof");
-    assert!(
-        !app.verify(&proof.carry::<()>(()), &mut rng)
-            .expect("verify")
-    );
+    assert!(!verify(&app, &proof.carry::<()>(()), &mut rng).expect("verify"));
 }

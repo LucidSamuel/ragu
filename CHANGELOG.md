@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Common (`zakura-udon`); baked Pasta parameters from `zakura-bento`.
 - The `legacy-deps`, `modern-deps` and `native-msm` features.
 
+- The mock's `Application::verify` is `Application::verify_uncompressed`,
+  behind the new `test-utils` feature as in `ragu_pcd`. The mock gains
+  `Application::compress`, `Application::verify_compressed`, `CompressedProof`
+  and `CompressedPcd`, the production verification path.
+
 ### Fixed
 
 - The mock verifier rejects proofs whose header suffix does not match the
