@@ -274,7 +274,7 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
         if Self::native_extension().is_empty() {
             Ok(ExtensionRxs::default())
         } else {
-            Err(Error::Initialization(MissingExtensionProver::Native.into()))
+            Err(Error::Initialization(NO_NATIVE_EXTENSION_PROVER.into()))
         }
     }
 
@@ -299,7 +299,7 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
         if Self::nested_extension().is_empty() {
             Ok(ExtensionRxs::default())
         } else {
-            Err(Error::Initialization(MissingExtensionProver::Nested.into()))
+            Err(Error::Initialization(NO_NESTED_EXTENSION_PROVER.into()))
         }
     }
 
@@ -496,25 +496,11 @@ impl<F: Field, C: Circuit<F>> Circuit<F> for Suffixed<C> {
     }
 }
 
-/// The side whose extension a profile declares without overriding its
-/// prover, as the default extension provers report it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum MissingExtensionProver {
-    Native,
-    Nested,
-}
-
-impl fmt::Display for MissingExtensionProver {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let side = match self {
-            MissingExtensionProver::Native => "native",
-            MissingExtensionProver::Nested => "nested",
-        };
-        write!(f, "the profile's {side} extension has no prover")
-    }
-}
-
-impl core::error::Error for MissingExtensionProver {}
+/// The default native extension prover's error: the profile declares a native
+/// extension without overriding the prover.
+pub(crate) const NO_NATIVE_EXTENSION_PROVER: &str = "the profile's native extension has no prover";
+/// The nested counterpart of [`NO_NATIVE_EXTENSION_PROVER`].
+pub(crate) const NO_NESTED_EXTENSION_PROVER: &str = "the profile's nested extension has no prover";
 
 /// An extension's polynomials for one proof: its circuits' rx polynomials
 /// in circuit order, then its stages' in stage order.

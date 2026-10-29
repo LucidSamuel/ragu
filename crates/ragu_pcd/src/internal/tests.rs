@@ -1084,10 +1084,12 @@ fn test_extension_claims_follow_the_declaration() {
 /// reports that this registration-only fixture has no extension prover.
 #[test]
 fn test_extension_hooks_register_without_a_prover() {
+    use alloc::string::ToString;
+
     use ragu_circuits::registry::RegistryBuilder;
 
     use crate::profile::{
-        BondingSlot, CircuitSlot, MissingExtensionProver, Profile, Profiled, testing::Hooked,
+        BondingSlot, CircuitSlot, NO_NATIVE_EXTENSION_PROVER, Profile, Profiled, testing::Hooked,
     };
 
     type H = Hooked;
@@ -1125,7 +1127,7 @@ fn test_extension_hooks_register_without_a_prover() {
     let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(params);
     assert!(
         matches!(result, Err(Error::Initialization(source))
-            if source.downcast_ref() == Some(&MissingExtensionProver::Native)),
+            if source.to_string() == NO_NATIVE_EXTENSION_PROVER),
         "registration should fit before the fixture's missing prover is reported"
     );
 }

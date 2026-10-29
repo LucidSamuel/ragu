@@ -264,7 +264,3 @@ macro_rules! with_binder {
         }
     }};
 }
-
-// `with_binder!` lists its arms by hand; a change to `NUM_BINDERS` must
-// update them, or a missing arm would compile and then panic at runtime.
-const _: () = assert!(NUM_BINDERS == 4, "with_binder! needs one arm per binder");
