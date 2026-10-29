@@ -257,15 +257,16 @@ def attribution(candidates, item):
                      if any(originals[ref]["reviewer"] == name for ref in item["finding_ids"]))
 
 
-def entry(candidates, item, *, located=True):
+def entry(candidates, item, *, located=True, location=None):
     """One retained finding for a reader: kind and reviewers, title, cause, fix, and any disagreement.
 
+    A located entry links `location`, or the finding's first location by default.
     Validation notes and the priority stay in the reports; the priority only orders the list.
     """
     label = "Must-fix" if item["disposition"] == "must-fix" else "Suggestion"
     kind = f"**{label}** · {attribution(candidates, item)}"
     if located:
-        loc = item["locations"][0]
+        loc = location or item["locations"][0]
         path = safe(PurePosixPath(loc["path"]).name).replace("[", "&#91;").replace("]", "&#93;")
         url = f"https://github.com/tachyon-zcash/ragu/blob/{candidates['run']['head']}/{quote(loc['path'], safe='/')}#L{loc['line']}"
         kind += f" · [{path}:{loc['line']}]({url})"
@@ -275,13 +276,21 @@ def entry(candidates, item, *, located=True):
     return lines
 
 
-def inline_body(candidates, item):
-    """The summary's entry as paragraphs, anchored to the finding's line instead of linking it."""
-    return "\n\n".join(entry(candidates, item, located=False))
+def inline_body(candidates, item, cited=None):
+    """The summary's entry as paragraphs, anchored to the finding's line instead of linking it.
+
+    A comment anchored near its finding, because the cited line is outside the
+    diff, links the `cited` location instead.
+    """
+    return "\n\n".join(entry(candidates, item, located=cited is not None, location=cited))
 
 
-def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
-    """Show every retained finding, with merged attribution and bounded detail."""
+def shortlist(candidates, groups=None, *, compact=False, heading_level=3, headings=True):
+    """Show every retained finding, with merged attribution and bounded detail.
+
+    Without `headings`, the must-fix and suggestion entries follow one another
+    without their counted section headings, each still labelled by kind.
+    """
     reconciled = groups is not None
     if not reconciled:
         groups = combined(candidates)
@@ -291,12 +300,14 @@ def shortlist(candidates, groups=None, *, compact=False, heading_level=3):
     suggestions = sorted((item for item in active if item["disposition"] == "suggestion"), key=key)
     lines = []
     for label, items in (("Must-fix", sorted(fixes, key=key)), ("Suggestions", suggestions)):
-        lines += [f"{'#' * heading_level} {label} ({len(items)})", ""]
-        if not items:
-            lines += ["None reported." if not reconciled else "None after reconciliation.", ""]
+        if headings:
+            lines += [f"{'#' * heading_level} {label} ({len(items)})", ""]
+            if not items:
+                lines += ["None reported." if not reconciled else "None after reconciliation.", ""]
         for item in items:
             if compact:
-                lines += [f"- **{safe(item['title'], 120)}** — {attribution(candidates, item)}", ""]
+                kind = "" if headings else ("Must-fix: " if label == "Must-fix" else "Suggestion: ")
+                lines += [f"- {kind}**{safe(item['title'], 120)}** — {attribution(candidates, item)}", ""]
             else:
                 first, *rest = entry(candidates, item)
                 lines += [f"- {first}  ", *(f"  {line}  " for line in rest), ""]

@@ -14,8 +14,10 @@ trigger the bot. The bot posts merged **Must-fix** findings and **Suggestions**
 as inline review comments, with evidence and reviewer attribution. A short
 source-checking pass refines the findings; if it cannot finish, verified
 reviewer findings are still published. One status comment links to the inline
-reviews and preserves the collapsed original reports. Findings with no cited
-line in the diff remain in that comment.
+reviews, counts the findings, and preserves the collapsed original reports. A
+finding cited outside the diff hunks attaches to the nearest diff line of its
+file and links the cited line; only findings citing no file in the diff remain
+in that comment.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.

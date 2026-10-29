@@ -48,6 +48,7 @@ class API:
                         "issue_url": f"https://api.github.com/repos/{github.REPOSITORY}/issues/9"}
         self.checks, self.comments, self.mutations = [], [], []
         self.files, self.reviews, self.review_comments = [], [], []
+        self.next_comment_id = 100  # GitHub never reuses the id of a deleted comment.
 
     @property
     def target(self):
@@ -58,6 +59,13 @@ class API:
         self.targets[9] = value
 
     def call(self, path, data=None, method=None):
+        if method == "DELETE":
+            self.mutations.append((path, None, method))
+            comment_id = path.split("/")[-1]
+            if not any(str(comment["id"]) == comment_id for comment in self.comments):
+                raise HTTPError(path, 404, "Not Found", {}, None)
+            self.comments = [comment for comment in self.comments if str(comment["id"]) != comment_id]
+            return None
         if data is None:
             if path == f"/repos/{github.REPOSITORY}/git/ref/heads/main":
                 return {"object": {"sha": self.main_sha}}
@@ -90,7 +98,8 @@ class API:
             return copy.deepcopy(check)
         if "/comments" in path:
             if method == "POST":
-                result = {"id": len(self.comments) + 100, "user": {"type": "Bot", "login": APP["slug"] + "[bot]"},
+                self.next_comment_id += 1
+                result = {"id": self.next_comment_id - 1, "user": {"type": "Bot", "login": APP["slug"] + "[bot]"},
                           "issue_url": "https://api.github.com" + path.removesuffix("/comments"), **data}
                 self.comments.append(result)
             else:
@@ -292,17 +301,52 @@ class AuditTests(unittest.TestCase):
         self.assertIn("audit: running", self.api.comments[0]["body"])
         self.assertEqual(run["configuration"], BASE)
 
-    def test_reruns_update_one_app_owned_comment(self):
+    def test_reruns_post_a_new_comment_and_remove_the_old_one(self):
         old = github.queue(self.api, 9)
+        old_id = self.api.comments[0]["id"]
         os.environ["GITHUB_RUN_ID"] = "40027821676"
         new = github.queue(self.api, 9)
         self.assertEqual(len(self.api.comments), 1)
         self.assertEqual(len(self.api.checks), 2)
+        # The new summary is posted below the command rather than edited into the old one.
+        self.assertNotEqual(self.api.comments[0]["id"], old_id)
+        self.assertIn(github.invocation_marker(new), self.api.comments[0]["body"])
+        self.assertIn(("/repos/" + github.REPOSITORY + f"/issues/comments/{old_id}", None, "DELETE"), self.api.mutations)
         os.environ["GITHUB_RUN_ID"] = str(old["run_id"])
         with self.assertRaises(ValueError):
             github.guard(self.api, old)
         os.environ["GITHUB_RUN_ID"] = str(new["run_id"])
         self.assertEqual(github.guard(self.api, new)["id"], new["check_id"])
+
+    def test_superseded_invocation_cannot_touch_the_newer_summary(self):
+        old = github.queue(self.api, 9)
+        os.environ["GITHUB_RUN_ID"] = "40027821676"
+        new = github.queue(self.api, 9)
+        body = self.api.comments[0]["body"]
+        os.environ["GITHUB_RUN_ID"] = str(old["run_id"])
+        self.reports(old)
+        with self.assertRaises(github.StaleReview):
+            github.publish(self.api, old, self.out, "success")
+        self.assertEqual([comment["body"] for comment in self.api.comments], [body])
+        self.assertIn(github.invocation_marker(new), body)
+
+    def test_failed_deletion_keeps_editing_the_new_invocations_comment(self):
+        github.queue(self.api, 9)
+        call = self.api.call
+
+        def refuse_deletion(path, data=None, method=None):
+            if method == "DELETE":
+                raise HTTPError(path, 403, "Forbidden", {}, None)
+            return call(path, data, method)
+
+        os.environ["GITHUB_RUN_ID"] = "40027821676"
+        with patch.object(self.api, "call", side_effect=refuse_deletion):
+            new = github.queue(self.api, 9)
+        self.assertEqual(len(self.api.comments), 2)
+        self.reports(new)
+        github.publish(self.api, new, self.out, "success")
+        self.assertIn("audit: running", self.api.comments[0]["body"])
+        self.assertIn("audit: completed", self.api.comments[1]["body"])
 
     def duplicate_pr(self):
         self.api.targets[10] = {**copy.deepcopy(self.api.target), "number": 10}
