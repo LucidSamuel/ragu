@@ -48,6 +48,7 @@ class API:
                         "issue_url": f"https://api.github.com/repos/{github.REPOSITORY}/issues/9"}
         self.checks, self.comments, self.mutations = [], [], []
         self.files, self.reviews, self.review_comments = [], [], []
+        self.comparisons = {}
         self.next_comment_id = 100  # GitHub never reuses the id of a deleted comment.
 
     @property
@@ -67,6 +68,9 @@ class API:
             self.comments = [comment for comment in self.comments if str(comment["id"]) != comment_id]
             return None
         if data is None:
+            if "/compare/" in path:
+                revisions = path.split("/compare/", 1)[1].split("?", 1)[0]
+                return {"files": copy.deepcopy(self.comparisons.get(revisions, self.files))}
             if path == f"/repos/{github.REPOSITORY}/git/ref/heads/main":
                 return {"object": {"sha": self.main_sha}}
             if "/pulls/" in path:
@@ -325,7 +329,7 @@ class AuditTests(unittest.TestCase):
         body = self.api.comments[0]["body"]
         os.environ["GITHUB_RUN_ID"] = str(old["run_id"])
         self.reports(old)
-        with self.assertRaises(github.StaleReview):
+        with self.assertRaises(github.SupersededReview):
             github.publish(self.api, old, self.out, "success")
         self.assertEqual([comment["body"] for comment in self.api.comments], [body])
         self.assertIn(github.invocation_marker(new), body)
@@ -389,11 +393,11 @@ class AuditTests(unittest.TestCase):
         unscoped.update(id=run["check_id"] + 1, external_id=None)
         self.api.checks.append(unscoped)
         self.reports(run)
-        with self.assertRaises(github.StaleReview):
+        with self.assertRaises(github.SupersededReview):
             github.publish(self.api, run, self.out, "success")
         self.assertEqual(self.api.checks[0]["conclusion"], "failure")
         self.assertEqual(self.api.checks[1]["status"], "in_progress")
-        self.assertIn("audit: stale", self.api.comments[0]["body"])
+        self.assertIn("audit: superseded", self.api.comments[0]["body"])
 
     def test_audit_workflow_is_comment_only_and_serializes_publishers(self):
         workflow = (Path(__file__).parents[2] / ".github/workflows/audit.yml").read_text()
@@ -438,15 +442,15 @@ class AuditTests(unittest.TestCase):
             github.queue(self.api, 9, HEAD)
         self.assertEqual(self.api.mutations, [])
 
-    def test_main_moving_during_review_is_detected_with_stale_pr_metadata(self):
+    def test_main_moving_during_review_preserves_frozen_completion(self):
         run = github.queue(self.api, 9, HEAD)
         self.reports(run)
         self.api.main_sha = "c" * 40
-        with self.assertRaisesRegex(ValueError, "head or base moved"):
-            github.publish(self.api, run, self.out, "success")
-        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        github.publish(self.api, run, self.out, "success")
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+        self.assertIn(f"Base: `{BASE}`", self.api.comments[0]["body"])
 
-    def test_moved_head_or_base_cannot_publish_success(self):
+    def test_moved_head_or_base_does_not_change_snapshot_results(self):
         run = github.queue(self.api, 9)
         self.reports(run)
         for side in ("head", "base"):
@@ -455,32 +459,36 @@ class AuditTests(unittest.TestCase):
                 self.api.target["head"]["sha"] = "d" * 40
             else:
                 self.api.main_sha = "d" * 40
-            with self.assertRaises(ValueError):
-                github.publish(self.api, run, self.out, "success")
-            self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+            github.publish(self.api, run, self.out, "success")
+            self.assertEqual(self.api.checks[0]["conclusion"], "success")
+            body = self.api.comments[0]["body"]
+            self.assertIn("audit: completed", body)
+            self.assertIn(f"Head: `{HEAD}` · Base: `{BASE}`", body)
+            self.assertNotIn("stale", body)
+            self.assertEqual(self.api.checks[0]["head_sha"], HEAD)
             self.api.target = target
             self.api.main_sha = BASE
 
-    def test_stale_review_terminates_its_check_and_keeps_snapshot_findings(self):
+    def test_branch_update_keeps_the_completed_snapshot_summary(self):
         run = github.queue(self.api, 9)
         self.reports(run)
         self.api.target["head"]["sha"] = "d" * 40
-        with self.assertRaises(github.StaleReview):
-            github.publish(self.api, run, self.out, "success")
+        github.publish(self.api, run, self.out, "success")
         body = self.api.comments[0]["body"]
-        self.assertIn("audit: stale", body)
+        self.assertIn("audit: completed", body)
         self.assertIn("4/4 reviews completed", body)
-        self.assertIn("None reported.", body)
+        self.assertIn("Must-fix: 0 · Suggestions: 0", body)
+        self.assertNotIn("stale", body)
         self.assertEqual(self.api.checks[0]["status"], "completed")
-        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
-    def test_closed_pr_does_not_leave_a_running_summary(self):
+    def test_closed_pr_still_publishes_its_completed_snapshot(self):
         run = github.queue(self.api, 9)
+        self.reports(run)
         self.api.target["state"] = "closed"
-        with self.assertRaises(github.StaleReview):
-            github.publish(self.api, run, self.out, "cancelled")
-        self.assertIn("audit: stale", self.api.comments[0]["body"])
-        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        github.publish(self.api, run, self.out, "success")
+        self.assertIn("audit: completed", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
     def test_deleted_command_cannot_start_a_new_review(self):
         self.api.comment = None
@@ -559,14 +567,14 @@ class AuditTests(unittest.TestCase):
                     new = github.queue(api, 9)
                 body = api.comments[0]["body"]
                 check = copy.deepcopy(api.checks[-1])
-                with self.assertRaises(github.StaleReview):
+                with self.assertRaises(github.SupersededReview):
                     github.publish(api, old, self.out, "success")
                 self.assertEqual(api.comments[0]["body"], body)
                 self.assertEqual(api.checks[-1], check)
                 self.assertEqual(api.checks[0]["conclusion"], "failure")
                 self.assertEqual(api.checks[-1]["id"], new["check_id"])
 
-    def test_movement_during_publication_corrects_own_summary(self):
+    def test_movement_during_publication_keeps_the_completed_snapshot(self):
         run = github.queue(self.api, 9)
         self.reports(run)
         upsert = github.upsert
@@ -575,10 +583,11 @@ class AuditTests(unittest.TestCase):
             upsert(*args, **kwargs)
             self.api.target["head"]["sha"] = "d" * 40
 
-        with patch.object(github, "upsert", side_effect=move), self.assertRaises(github.StaleReview):
+        with patch.object(github, "upsert", side_effect=move):
             github.publish(self.api, run, self.out, "success")
-        self.assertIn("audit: stale", self.api.comments[0]["body"])
-        self.assertEqual(self.api.checks[0]["conclusion"], "failure")
+        self.assertIn("audit: completed", self.api.comments[0]["body"])
+        self.assertNotIn("stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
 
     def test_summary_publication_failure_terminates_check_without_success(self):
         run = github.queue(self.api, 9)

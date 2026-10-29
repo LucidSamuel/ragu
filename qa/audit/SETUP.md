@@ -34,8 +34,10 @@ attribution, and disagreements. Comments attach to exact cited head-side lines
 in the reviewed diff; there is no suggestion-count cutoff. GitHub accepts
 comments only on lines in a diff hunk, so a finding whose cited lines all fall
 outside the hunks of a changed file attaches to that file's nearest diff line
-and links the cited line. Only a finding citing no file in the diff remains in
-the status comment, with its source link.
+and links the cited line. A finding without an inline anchor remains in the
+status comment, with its source link. The diff and comments use the invocation's
+pinned base and head commits. New pushes, updates to main, or closing the PR
+do not invalidate that snapshot or change how its findings are published.
 One App-owned status comment shows **For humans** counts and links to the
 inline reviews. Each invocation posts its status comment below the command,
 where it appears without a page reload, and deletes the previous one; later
@@ -46,8 +48,10 @@ collapsed below the summary, with full artifact links when the comment budget re
 The workflow's complete bundle also includes structured findings, native results, and reconciliation decisions.
 Artifacts are retained for 30 days; individual report links require GitHub login
 and fall back to the workflow when an auxiliary upload fails. Missing or
-failed native runs, missing reports, modified source, and moved revisions fail
-the completion check. Checks attach to commits; identical snapshots across PRs
+failed native runs, missing reports, and modified review worktrees fail the
+completion check. A deleted command cancels its invocation, and a newer invocation
+can supersede it without allowing it to overwrite the newer summary or check.
+Checks attach to the reviewed commits; identical snapshots across PRs
 can share a result, while each invocation updates its own PR comment. Findings
 do not automatically block this check; maintainers resolve them through normal
 review.
