@@ -19,11 +19,11 @@ MARKER = "<!-- ragu-audit-summary:v2 -->"
 INLINE_MARKER = "<!-- ragu-audit-inline:v1:"
 
 
-class StaleReview(ValueError):
-    """A valid invocation whose snapshot or place in the queue has changed."""
+class SupersededReview(ValueError):
+    """A newer invocation replaced this review."""
 
 
-class CancelledReview(StaleReview):
+class CancelledReview(ValueError):
     """The maintainer removed the comment that invoked this review."""
 
 
@@ -87,7 +87,7 @@ def pr(api, value):
     if result["state"] != "open" or result["base"]["repo"]["full_name"] != REPOSITORY or result["base"]["ref"] != "main":
         raise ValueError("review requires an open Ragu PR targeting main")
     # PR metadata can retain an older base.sha after main advances. Bind the
-    # review and freshness checks to the live branch tip, not that snapshot.
+    # requested review to the live branch tip, not that snapshot.
     result["base"]["sha"] = sha(api.call(f"/repos/{REPOSITORY}/git/ref/heads/main")["object"]["sha"])
     sha(result["head"]["sha"])
     return result
@@ -291,7 +291,10 @@ def publish_inline(api, run, check, out):
     if not active:
         return publication
     path = f"/repos/{REPOSITORY}/pulls/{run['pr']}"
-    available = diff_lines(api.pages(path + "/files"))
+    # PR files track the live branch. Anchor findings to the same frozen diff
+    # the reviewers read, even after new commits or changes to main.
+    comparison = api.call(f"/repos/{REPOSITORY}/compare/{run['base']}...{run['head']}?per_page=1")
+    available = diff_lines(comparison["files"])
     comments = []
     for item in active:
         target = anchor(item["locations"], available)
@@ -340,8 +343,10 @@ def publish_inline(api, run, check, out):
         actual = [item for item in api.pages(path + "/comments")
                   if item.get("pull_request_review_id") == review["id"] and not item.get("in_reply_to_id")]
         expected = {(item["path"], item["line"], item["side"], item["body"]) for item in batch}
-        received = {(item.get("path"), item.get("line"), item.get("side"), item.get("body")) for item in actual
-                    if item.get("commit_id") == run["head"] and item.get("user", {}).get("type") == "Bot"
+        # GitHub can move a comment's current line and commit, or set line to
+        # None for an outdated thread. Its original location stays pinned.
+        received = {(item.get("path"), item.get("original_line", item.get("line")), item.get("side"), item.get("body")) for item in actual
+                    if item.get("original_commit_id", item.get("commit_id")) == run["head"] and item.get("user", {}).get("type") == "Bot"
                     and item["user"].get("login") == check["app"]["slug"] + "[bot]"}
         if len(actual) != len(batch) or received != expected:
             raise ValueError("inline review comments were not confirmed")
@@ -372,8 +377,8 @@ def summary(run, state, out=None, *, inline=None):
                 pass
         revision = f"https://github.com/{REPOSITORY}/commit/{run['head']}"
         lines += [f"**{len(names)}/4 reviews completed** · [{run['head'][:8]}]({revision})", ""]
-        if state == "stale":
-            lines += ["This invocation is stale: the PR changed, closed, or a newer review replaced it. Findings apply only to the snapshot in Run details. Post `/ragu-audit` on the current PR revision to review again.", ""]
+        if state == "superseded":
+            lines += ["A newer audit invocation replaced this one.", ""]
         elif state == "cancelled":
             lines += ["The command comment was deleted, so this review was cancelled. Post a new `/ragu-audit` comment to start again.", ""]
         elif state == "publication failed":
@@ -401,7 +406,7 @@ def summary(run, state, out=None, *, inline=None):
                 lines += ["### For humans", "", counts, ""]
                 shown = inline["fallback"]
                 if shown:
-                    lines += ["These findings cite only files outside this PR's diff, so they are kept here.", ""]
+                    lines += ["These findings have no inline anchor in the reviewed diff, so they are kept here.", ""]
             else:
                 lines += ["### For humans", ""]
             # Beside the counts line, the few unanchored findings need no counted headings of their own.
@@ -557,18 +562,18 @@ def own_check(api, run):
 def guard(api, run):
     own, values = own_check(api, run)
     command_present(api, run)
-    try:
-        target = pr(api, run["pr"])
-    except ValueError as error:
-        raise StaleReview("PR is no longer eligible for this review") from error
-    if (target["head"]["sha"], target["base"]["sha"]) != (run["head"], run["base"]):
-        raise StaleReview("PR head or base moved during review")
+    # Branch updates do not invalidate a frozen review. A newer invocation
+    # can replace its summary even when the new check belongs to another head.
+    owned = [comment for comment in api.pages(f"/repos/{REPOSITORY}/issues/{run['pr']}/comments")
+             if owns_comment(comment, own["app"])]
+    if owned and invocation_marker(run) not in max(owned, key=lambda comment: comment["id"])["body"].splitlines():
+        raise SupersededReview("a newer review superseded this invocation")
     prefix = scope(run)
     if not values or not (values[0].get("external_id") or "").startswith(prefix):
-        raise StaleReview("a newer review uses a different configuration")
+        raise SupersededReview("a newer review uses a different configuration")
     latest = next((check for check in values if (check.get("external_id") or "").startswith(prefix + f"{run['pr']}:")), None)
     if latest is None or latest["id"] != run["check_id"]:
-        raise StaleReview("a newer review superseded this invocation")
+        raise SupersededReview("a newer review superseded this invocation")
     return own
 
 
@@ -591,7 +596,7 @@ def publication_failure(api, run, check, out=None):
 
 
 def publish(api, run, out, review_result):
-    # Validate ownership independently of freshness so stale invocations can
+    # Validate ownership independently of supersession so old invocations can
     # terminate their own check without gaining access to a newer invocation.
     check, _ = own_check(api, run)
     success = False
@@ -614,11 +619,11 @@ def publish(api, run, out, review_result):
         finally:
             finish_check(api, run, False, "Review cancelled: command comment deleted", cancelled=True)
         raise
-    except StaleReview:
+    except SupersededReview:
         try:
-            upsert(api, run, check, "stale", out=out, only_current=True)
+            upsert(api, run, check, "superseded", out=out, only_current=True)
         finally:
-            finish_check(api, run, False, "Review stale; invoke again on the current revision")
+            finish_check(api, run, False, "Review superseded by a newer invocation")
         raise
     except (OSError, ValueError, KeyError, TypeError):
         publication_failure(api, run, check, out)

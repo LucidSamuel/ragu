@@ -16,8 +16,10 @@ source-checking pass refines the findings; if it cannot finish, verified
 reviewer findings are still published. One status comment links to the inline
 reviews, counts the findings, and preserves the collapsed original reports. A
 finding cited outside the diff hunks attaches to the nearest diff line of its
-file and links the cited line; only findings citing no file in the diff remain
-in that comment.
+file and links the cited line; findings without an inline anchor remain in
+that comment. Each invocation freezes its head and base commits. Later pushes
+or updates to main do not change its findings, inline locations, or completion;
+all results remain attached to the reviewed commit.
 Delete the original command comment to stop its review.
 
 Identical reviews reuse verified results; retries resume unfinished passes.

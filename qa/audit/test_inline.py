@@ -10,7 +10,7 @@ import findings
 import github
 import runner
 import test_audit
-from test_audit import APP, HEAD, candidate, native
+from test_audit import APP, BASE, HEAD, candidate, native
 from test_findings import group
 
 
@@ -116,7 +116,7 @@ class InlineTests(unittest.TestCase):
         self.assertEqual(len(self.api.review_comments), 1)
         summary = self.api.comments[0]["body"]
         self.assertIn("### For humans\n\n**Must-fix: 2 · Suggestions: 0** · 1 finding posted inline", summary)
-        self.assertIn("cite only files outside this PR's diff", summary)
+        self.assertIn("no inline anchor in the reviewed diff", summary)
         self.assertIn("**Untouched file**", summary)
         self.assertNotIn("**Incorrect result**", summary)
         for text in ("#### Must-fix", "#### Suggestions", "None after reconciliation", "None reported"):
@@ -200,20 +200,59 @@ class InlineTests(unittest.TestCase):
         self.publish()
         self.assertEqual(len(self.api.reviews), 2)
 
-    def test_head_movement_before_review_creation_cannot_post_inline_comments(self):
+    def test_branch_updates_publish_the_same_findings_on_the_frozen_diff(self):
         self.reports()
-        pages = self.api.pages
+        self.api.comparisons[f"{BASE}...{HEAD}"] = copy.deepcopy(self.api.files)
+        self.api.target["head"]["sha"] = "c" * 40
+        self.api.main_sha = "d" * 40
+        self.api.files = [{"filename": "src/lib.rs", "status": "modified", "patch": "@@ -90 +90 @@\n-old\n+new"}]
+        call = self.api.call
 
-        def move_head(path, key=None):
-            result = pages(path, key)
-            if path.endswith("/files"):
+        def frozen_only(path, data=None, method=None):
+            if data is None and ("/compare/" in path or "/pulls/" in path):
+                self.assertEqual(path, f"/repos/{github.REPOSITORY}/compare/{BASE}...{HEAD}?per_page=1")
+            return call(path, data, method)
+
+        with patch.object(self.api, "call", side_effect=frozen_only):
+            self.publish()
+        comment = self.api.review_comments[0]
+        self.assertEqual((comment["path"], comment["line"], comment["commit_id"]), ("src/lib.rs", 1, HEAD))
+        self.assertIn("1 finding posted inline", self.api.comments[0]["body"])
+        self.assertNotIn("**Incorrect result**", self.api.comments[0]["body"])
+        self.assertNotIn("stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_head_movement_before_review_creation_preserves_inline_publication(self):
+        self.reports()
+        call = self.api.call
+
+        def move_head(path, data=None, method=None):
+            result = call(path, data, method)
+            if "/compare/" in path:
                 self.api.target["head"]["sha"] = "c" * 40
             return result
 
-        with patch.object(self.api, "pages", side_effect=move_head), self.assertRaises(github.StaleReview):
+        with patch.object(self.api, "call", side_effect=move_head):
             self.publish()
-        self.assertEqual(self.api.reviews, [])
-        self.assertIn("audit: stale", self.api.comments[0]["body"])
+        self.assertEqual(self.api.review_comments[0]["commit_id"], HEAD)
+        self.assertIn("audit: completed", self.api.comments[0]["body"])
+        self.assertEqual(self.api.checks[0]["conclusion"], "success")
+
+    def test_outdated_or_moved_threads_are_verified_at_their_original_location(self):
+        self.reports()
+        self.publish()
+        comment = self.api.review_comments[0]
+        comment.update(original_commit_id=HEAD, original_line=1, commit_id="c" * 40)
+        self.api.target["head"]["sha"] = "c" * 40
+        for line in (None, 90):
+            with self.subTest(line=line):
+                comment["line"] = line
+                self.publish()
+                self.assertEqual(len(self.api.reviews), 1)
+                self.assertEqual(self.api.checks[0]["conclusion"], "success")
+        comment["original_line"] = 2
+        with self.assertRaisesRegex(ValueError, "inline review comments were not confirmed"):
+            self.publish()
 
     def test_cancelled_command_does_not_create_inline_comments(self):
         self.reports()
