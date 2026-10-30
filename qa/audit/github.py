@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import html
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -261,7 +261,10 @@ def anchor(locations, available):
     accepts comments only on lines in a diff hunk, so a finding citing a
     changed file outside its hunks moves to that file's nearest diff line and
     `cited` keeps the location its comment links. A finding citing only files
-    outside the diff has no anchor and returns None.
+    outside the diff attaches to the first diff line of the changed file
+    nearest a cited file: the longest shared directory prefix, then the
+    fewest further directories, then path order. Only a diff without
+    commentable lines leaves a finding unanchored, returning None.
     """
     for loc in locations:
         if (loc["path"], loc["line"]) in available:
@@ -270,7 +273,18 @@ def anchor(locations, available):
         lines = [line for path, line in available if path == loc["path"]]
         if lines:
             return loc["path"], min(lines, key=lambda line: (abs(line - loc["line"]), line)), loc
-    return None
+    if not available:
+        return None
+
+    def closeness(pair):
+        loc, path = pair
+        cited, changed = PurePosixPath(loc["path"]).parent.parts, PurePosixPath(path).parent.parts
+        shared = next((index for index, (a, b) in enumerate(zip(cited, changed)) if a != b), min(len(cited), len(changed)))
+        return shared, shared - len(changed)
+
+    # `max` keeps the first of equals: the earliest cited location, then path order.
+    loc, path = max(((loc, path) for loc in locations for path in sorted({path for path, _ in available})), key=closeness)
+    return path, min(line for changed, line in available if changed == path), loc
 
 
 def owns_inline(review, app):
@@ -406,10 +420,10 @@ def summary(run, state, out=None, *, inline=None):
                 lines += ["### For humans", "", counts, ""]
                 shown = inline["fallback"]
                 if shown:
-                    lines += ["These findings have no inline anchor in the reviewed diff, so they are kept here.", ""]
+                    lines += ["The reviewed diff has no commentable lines, so these findings are kept here.", ""]
             else:
                 lines += ["### For humans", ""]
-            # Beside the counts line, the few unanchored findings need no counted headings of their own.
+            # Beside the counts line, findings a diff without commentable lines leaves here need no counted headings.
             headings = inline is None
             short = findings.shortlist(bundle, shown, heading_level=4, headings=headings) if inline is None or shown else []
             if len("\n".join(short).encode()) > 54000:

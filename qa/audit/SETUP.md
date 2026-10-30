@@ -34,8 +34,10 @@ attribution, and disagreements. Comments attach to exact cited head-side lines
 in the reviewed diff; there is no suggestion-count cutoff. GitHub accepts
 comments only on lines in a diff hunk, so a finding whose cited lines all fall
 outside the hunks of a changed file attaches to that file's nearest diff line
-and links the cited line. A finding without an inline anchor remains in the
-status comment, with its source link. The diff and comments use the invocation's
+and links the cited line. A finding citing only files outside the diff attaches
+to the first diff line of the changed file sharing the longest directory prefix
+with a cited file, and links the cited line. Only a diff without commentable
+lines leaves findings in the status comment. The diff and comments use the invocation's
 pinned base and head commits. New pushes, updates to main, or closing the PR
 do not invalidate that snapshot or change how its findings are published.
 Each invocation keeps an App-owned status comment with **For humans** counts
