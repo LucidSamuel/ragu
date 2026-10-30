@@ -4,7 +4,7 @@ use native::{
 };
 use ragu_circuits::{
     Circuit,
-    staging::{Stage, StageExt},
+    staging::{MultiStage, MultiStageCircuit, Stage, StageExt},
 };
 use ragu_core::pasta::{Fp, Fq, Pasta};
 
@@ -19,6 +19,10 @@ use ragu_core::{
     maybe::Empty,
 };
 use udon::field::Field;
+
+#[cfg(feature = "unstable-fuzzing")]
+#[path = "../../tests/hoisted_products.rs"]
+mod hoisted_products;
 
 pub fn assert_stage_values<F, R, S>(stage: &S)
 where
@@ -107,12 +111,9 @@ fn try_internal_circuit_counts(variant: InternalCircuitIndex) -> Result<(usize, 
         InternalCircuitIndex::BindChallengesCircuit(k) => {
             crate::with_binder!(k, Pasta, R, HEADER_SIZE, pasta, |circuit| counts(circuit))
         }
-        InternalCircuitIndex::BindBetaCircuit => counts(native::circuits::bind_beta::Circuit::<
-            Pasta,
-            R,
-            HEADER_SIZE,
-            RevdotParameters<crate::profile::Standard>,
-        >::new(pasta)),
+        InternalCircuitIndex::BindBetaCircuit => {
+            counts(native::circuits::bind_beta::Circuit::<Pasta, R, HEADER_SIZE>::new(pasta))
+        }
         InternalCircuitIndex::BindEndoscalarCircuit => {
             counts(native::circuits::bind_endoscalar::Circuit::<Pasta, R>::new())
         }
@@ -161,14 +162,11 @@ fn internal_circuit_counts(variant: InternalCircuitIndex) -> (usize, usize) {
                 synthesis_counts(circuit)
             })
         }
-        InternalCircuitIndex::BindBetaCircuit => {
-            synthesis_counts(native::circuits::bind_beta::Circuit::<
-                Pasta,
-                R,
-                HEADER_SIZE,
-                RevdotParameters<crate::profile::Standard>,
-            >::new(crate::pasta::baked()))
-        }
+        InternalCircuitIndex::BindBetaCircuit => synthesis_counts(
+            native::circuits::bind_beta::Circuit::<Pasta, R, HEADER_SIZE>::new(
+                crate::pasta::baked(),
+            ),
+        ),
         InternalCircuitIndex::BindEndoscalarCircuit => {
             synthesis_counts(native::circuits::bind_endoscalar::Circuit::<Pasta, R>::new())
         }
@@ -227,20 +225,19 @@ fn test_internal_circuit_constraint_counts() {
         }};
     }
 
-    check_constraints!(Hashes1Circuit, mul = 1818, lin = 3085);
-    check_constraints!(Hashes2Circuit, mul = 1875, lin = 2984);
-    check_constraints!(CollapseCircuit, mul = 1364, lin = 1893);
-    check_constraints!(ComputeVCircuit, mul = 1818, lin = 2679);
-    check_constraints!(BindBetaCircuit, mul = 1860, lin = 3014);
-
-    check_constraints!(BindChallengesCircuit(0), mul = 1967, lin = 2954);
-    check_constraints!(BindChallengesCircuit(1), mul = 1972, lin = 2964);
-    check_constraints!(BindChallengesCircuit(2), mul = 1972, lin = 2964);
-    check_constraints!(BindChallengesCircuit(3), mul = 1983, lin = 2986);
-    check_constraints!(BindEndoscalarCircuit, mul = 754, lin = 1400);
-    // Every native endoscaling step walks four points.
+    check_constraints!(Hashes1Circuit,              mul = 1818, lin = 3085);
+    check_constraints!(Hashes2Circuit,              mul = 1875, lin = 2984);
+    check_constraints!(CollapseCircuit,             mul = 1364, lin = 1893);
+    check_constraints!(ComputeVCircuit,             mul = 1853, lin = 2749);
+    check_constraints!(BindChallengesCircuit(0),    mul = 2017, lin = 3054);
+    check_constraints!(BindChallengesCircuit(1),    mul = 2022, lin = 3064);
+    check_constraints!(BindChallengesCircuit(2),    mul = 2022, lin = 3064);
+    check_constraints!(BindChallengesCircuit(3),    mul = 2033, lin = 3086);
+    check_constraints!(BindBetaCircuit,             mul = 1891, lin = 3114);
+    check_constraints!(BindEndoscalarCircuit,       mul = 903,  lin = 1697);
+    // Every native endoscaling step walks four points and lays out the same.
     for step in 0..native::NUM_ENDOSCALING_STEPS as u32 {
-        check_constraints!(EndoscalingStep(step), mul = 2018, lin = 3678);
+        check_constraints!(EndoscalingStep(step),   mul = 1985, lin = 3502);
     }
 }
 
@@ -264,7 +261,249 @@ fn test_internal_stage_parameters() {
     check_stage!(PointsRegistryWx, skip = 87, num = 2);
     check_stage!(PointsAb, skip = 89, num = 3);
     check_stage!(PointsF, skip = 92, num = 2);
-    check_stage!(PointsWalk, skip = 94, num = 87);
+    check_stage!(PointsWalk, skip = 94, num = 142);
+}
+
+/// Every native internal circuit's claim in [`native::claims`] composes its
+/// trace with the stages it reads, listed by hand, and those stages must
+/// lie on the chain the circuit's `Last` stage closes: a stage off that
+/// chain lands its coefficients on gates the circuit uses for its own
+/// constraints, and every honest proof fails to verify. This derives each
+/// circuit's chain from the stages' declared parents, checked against their
+/// gate layout, and holds the claim entries to it.
+#[test]
+fn claimed_stages_lie_on_each_circuits_chain() {
+    use alloc::{vec, vec::Vec};
+    use core::iter::once;
+
+    use InternalCircuitIndex::*;
+    use native::{RxComponent, circuits, claims::Processor};
+
+    use crate::internal::claims::Source;
+
+    /// Yields one marker per component, as a single proof would.
+    struct Marks;
+
+    impl Source for Marks {
+        type RxComponent = RxComponent;
+        type Rx = RxComponent;
+        type AppCircuitId = ();
+
+        fn rx(&self, component: RxComponent) -> impl Iterator<Item = RxComponent> {
+            once(component)
+        }
+
+        fn app_circuits(&self) -> impl Iterator<Item = ()> {
+            once(())
+        }
+    }
+
+    /// Records every internal circuit claim's components.
+    #[derive(Default)]
+    struct Record(Vec<(InternalCircuitIndex, Vec<RxComponent>)>);
+
+    impl<P: crate::profile::Profile> Processor<P, RxComponent, ()> for Record {
+        fn raw_claim(&mut self, _: RxComponent, _: RxComponent) {}
+
+        fn circuit_claim(&mut self, _: (), _: RxComponent) {}
+
+        fn internal_circuit_claim(
+            &mut self,
+            id: InternalCircuitIndex,
+            rxs: impl Iterator<Item = RxComponent>,
+        ) {
+            self.0.push((id, rxs.collect()));
+        }
+
+        fn grouped_bonding_claim(
+            &mut self,
+            _: InternalCircuitIndex,
+            _: impl Iterator<Item = impl Iterator<Item = RxComponent>>,
+        ) -> ragu_core::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn range<S: Stage<Fp, R>>() -> (usize, usize) {
+        (
+            <S as Stage<Fp, R>>::skip_gates(),
+            <S as StageExt<Fp, R>>::num_gates(),
+        )
+    }
+
+    /// The gate a circuit's own gates start at: every stage on the chain its
+    /// `Last` stage closes occupies gates below it.
+    fn staged_gates<S: MultiStageCircuit<Fp, R>>(_: &MultiStage<Fp, R, S>) -> usize {
+        <S::Last as Stage<Fp, R>>::skip_gates() + <S::Last as StageExt<Fp, R>>::num_gates()
+    }
+
+    /// A stage's gate range, or `None` for a circuit's own polynomial.
+    fn stage_range(index: RxIndex) -> Option<(usize, usize)> {
+        Some(match index {
+            RxIndex::Preamble => range::<Preamble>(),
+            RxIndex::InnerError => range::<InnerError>(),
+            RxIndex::OuterError => range::<OuterError>(),
+            RxIndex::Query => range::<Query>(),
+            RxIndex::Eval => range::<Eval>(),
+            RxIndex::PointsBinding => range::<PointsBinding>(),
+            RxIndex::PointsChildren => range::<PointsChildren>(),
+            RxIndex::PointsRegistryWx => range::<PointsRegistryWx>(),
+            RxIndex::PointsAb => range::<PointsAb>(),
+            RxIndex::PointsF => range::<PointsF>(),
+            RxIndex::PointsWalk => range::<PointsWalk>(),
+            _ => return None,
+        })
+    }
+
+    // The native stage tree, as each stage's declared parent; a stage
+    // starts where its parent ends, which pins the declaration to the real
+    // layout.
+    let parents = [
+        (RxIndex::PointsBinding, None),
+        (RxIndex::Preamble, Some(RxIndex::PointsBinding)),
+        (RxIndex::OuterError, Some(RxIndex::Preamble)),
+        (RxIndex::InnerError, Some(RxIndex::OuterError)),
+        (RxIndex::Query, Some(RxIndex::Preamble)),
+        (RxIndex::Eval, Some(RxIndex::Query)),
+        (RxIndex::PointsChildren, Some(RxIndex::PointsBinding)),
+        (RxIndex::PointsRegistryWx, Some(RxIndex::PointsChildren)),
+        (RxIndex::PointsAb, Some(RxIndex::PointsRegistryWx)),
+        (RxIndex::PointsF, Some(RxIndex::PointsAb)),
+        (RxIndex::PointsWalk, Some(RxIndex::PointsF)),
+    ];
+    for (stage, parent) in parents {
+        let starts_at = parent.map_or(1, |parent| {
+            let (skip, num) = stage_range(parent).unwrap();
+            skip + num
+        });
+        assert_eq!(
+            stage_range(stage).unwrap().0,
+            starts_at,
+            "{stage:?} does not extend {parent:?}"
+        );
+    }
+    let chain_of = |last: RxIndex| -> Vec<RxIndex> {
+        let mut chain = vec![last];
+        let mut stage = last;
+        while let Some((_, Some(parent))) = parents.iter().find(|(s, _)| *s == stage) {
+            chain.push(*parent);
+            stage = *parent;
+        }
+        chain.reverse();
+        chain
+    };
+
+    // Each circuit's last stage, held to the circuit's own account of where
+    // its stages end.
+    let pasta = crate::pasta::baked();
+    let (_, log2_circuits) =
+        native::total_circuit_counts::<crate::profile::Standard>(NUM_APP_STEPS);
+    let last_stage = |variant: InternalCircuitIndex| -> RxIndex {
+        let (last, staged_gates) = match variant {
+            Hashes1Circuit => (
+                RxIndex::OuterError,
+                staged_gates(&circuits::hashes_1::Circuit::<
+                    Pasta,
+                    R,
+                    HEADER_SIZE,
+                    RevdotParameters<crate::profile::Standard>,
+                >::new(pasta, log2_circuits)),
+            ),
+            Hashes2Circuit => (
+                RxIndex::OuterError,
+                staged_gates(&circuits::hashes_2::Circuit::<
+                    Pasta,
+                    R,
+                    HEADER_SIZE,
+                    RevdotParameters<crate::profile::Standard>,
+                >::new(pasta)),
+            ),
+            CollapseCircuit => (
+                RxIndex::InnerError,
+                staged_gates(&circuits::collapse::Circuit::<
+                    Pasta,
+                    R,
+                    HEADER_SIZE,
+                    RevdotParameters<crate::profile::Standard>,
+                >::new()),
+            ),
+            ComputeVCircuit => (
+                RxIndex::Eval,
+                staged_gates(&circuits::compute_v::Circuit::<Pasta, R, HEADER_SIZE>::new()),
+            ),
+            BindChallengesCircuit(k) => (
+                RxIndex::Eval,
+                crate::with_binder!(k, Pasta, R, HEADER_SIZE, pasta, |circuit| staged_gates(
+                    &circuit
+                )),
+            ),
+            BindBetaCircuit => (
+                RxIndex::Preamble,
+                staged_gates(&circuits::bind_beta::Circuit::<Pasta, R, HEADER_SIZE>::new(
+                    pasta,
+                )),
+            ),
+            BindEndoscalarCircuit => (
+                RxIndex::PointsWalk,
+                staged_gates(&circuits::bind_endoscalar::Circuit::<Pasta, R>::new()),
+            ),
+            EndoscalingStep(step) => (
+                RxIndex::PointsWalk,
+                staged_gates(&circuits::endoscaling_step::Circuit::<Pasta, R>::new(
+                    step as usize,
+                )),
+            ),
+            other => panic!("{other:?} is not a circuit"),
+        };
+        let (skip, num) = stage_range(last).unwrap();
+        assert_eq!(
+            skip + num,
+            staged_gates,
+            "{variant:?}: {last:?} is not the circuit's last stage"
+        );
+        last
+    };
+
+    let mut record = Record::default();
+    native::claims::build::<crate::profile::Standard, _, _>(&Marks, &mut record).unwrap();
+
+    let claimed: Vec<_> = record.0.iter().map(|(id, _)| *id).collect();
+    let circuits: Vec<_> = InternalCircuitIndex::ALL
+        .into_iter()
+        .filter(|id| {
+            matches!(
+                id,
+                Hashes1Circuit
+                    | Hashes2Circuit
+                    | CollapseCircuit
+                    | ComputeVCircuit
+                    | BindChallengesCircuit(_)
+                    | BindBetaCircuit
+                    | BindEndoscalarCircuit
+                    | EndoscalingStep(_)
+            )
+        })
+        .collect();
+    assert_eq!(claimed, circuits, "every circuit claims once, in order");
+
+    for (id, components) in &record.0 {
+        let chain = chain_of(last_stage(*id));
+        let mut seen = vec![];
+        for component in components {
+            let RxComponent::Rx(index) = component else {
+                panic!("{id:?}: claim adds the raw {component:?}");
+            };
+            if stage_range(*index).is_none() {
+                continue;
+            }
+            assert!(
+                chain.contains(index),
+                "{id:?}: claim adds stage {index:?}, which is not on the chain {chain:?} its last stage closes"
+            );
+            assert!(!seen.contains(index), "{id:?}: claim adds {index:?} twice");
+            seen.push(*index);
+        }
+    }
 }
 
 /// Helper test to print current constraint counts in copy-pasteable format.
@@ -292,6 +531,7 @@ fn print_internal_circuit_constraint_counts() {
                 | InternalCircuitIndex::OuterErrorFinalStaged
                 | InternalCircuitIndex::EvalFinalStaged
                 | InternalCircuitIndex::PointsWalkFinalStaged
+                | InternalCircuitIndex::PreambleFinalStaged
         )
     });
 
@@ -307,6 +547,51 @@ fn print_internal_circuit_constraint_counts() {
             Err(err) => println!("        // {variant:?}: synthesis failed: {err}"),
         }
     }
+}
+
+/// Helper test to print the parameters the book's local degree ledger in
+/// `book/src/protocol/extensions/endoscalar.md` is derived from.
+/// Both point counts include the initial F point, so the fold's degree is
+/// one less than the printed count.
+/// Run with: `cargo test -p ragu_pcd --release print_ledger -- --nocapture`
+#[test]
+fn print_ledger_parameters() {
+    use std::println;
+
+    use ragu_primitives::vec::Len;
+
+    use crate::profile::Standard;
+
+    println!("\n// Ledger parameters for book/src/protocol/extensions/endoscalar.md:");
+    println!(
+        "native revdot: M = {}, N = {}",
+        native::FOLD_GROUP_SIZE,
+        native::NUM_FOLD_GROUPS
+    );
+    println!(
+        "nested revdot: M = {}, N = {}",
+        nested::FOLD_GROUP_SIZE,
+        nested::NUM_FOLD_GROUPS
+    );
+    println!("nested rx polynomials: {}", nested::RxIndex::NUM);
+    println!(
+        "nested internal circuits: {}",
+        nested::InternalCircuitIndex::NUM
+    );
+    println!(
+        "nested PCS queries T: {}",
+        nested::pcs::STATIC_F_QUERIES.len()
+            + 2 * nested::RxIndex::NUM
+            + nested::InternalCircuitIndex::NUM
+    );
+    println!(
+        "native walk points: {}",
+        native::NumPoints::<Standard>::len()
+    );
+    println!(
+        "nested walk points: {}",
+        nested::NumPoints::<Standard>::len()
+    );
 }
 
 /// Helper test to print current stage parameters in copy-pasteable format.
@@ -415,12 +700,11 @@ fn test_nested_circuit_constraint_counts() {
     );
     let mut expected = alloc::vec::Vec::new();
     for step in 0..steps {
-        let counts = (2033, 3677);
-        expected.push((nested::InternalCircuitIndex::EndoscalingStep(step as u32), counts));
+        expected.push((nested::InternalCircuitIndex::EndoscalingStep(step as u32), (2000, 3501)));
     }
-    expected.push((nested::InternalCircuitIndex::Collapse, (1329, 2011)));
-    expected.push((nested::InternalCircuitIndex::ComputeV, (1358, 1769)));
-    expected.push((nested::InternalCircuitIndex::Loading, (472, 211)));
+    expected.push((nested::InternalCircuitIndex::Collapse, (1493, 2338)));
+    expected.push((nested::InternalCircuitIndex::ComputeV, (1397, 1737)));
+    expected.push((nested::InternalCircuitIndex::Loading,  (527,  211)));
 
     let actual: alloc::vec::Vec<_> = nested_circuits()
         .map(|variant| (variant, nested_circuit_counts(variant)))
@@ -441,17 +725,17 @@ fn test_nested_stage_parameters() {
         }};
     }
 
-    check_stage!(endoscalar::EndoscalarStage, skip = 1, num = 64);
-    check_stage!(nested::PointsStage<EqAffine, crate::profile::Standard>, skip = 65, num = 131);
-    check_stage!(stages::preamble::Stage<EqAffine, R, crate::profile::Standard>, skip = 196, num = 106);
-    check_stage!(stages::s_prime::Stage<EqAffine, R, crate::profile::Standard>, skip = 302, num = 3);
-    check_stage!(stages::inner_error::Stage<EqAffine, R, crate::profile::Standard>, skip = 305, num = 37);
-    check_stage!(stages::outer_error::Stage<EqAffine, R, crate::profile::Standard>, skip = 342, num = 11);
-    check_stage!(stages::ab::Stage<EqAffine, R, crate::profile::Standard>, skip = 353, num = 3);
-    check_stage!(stages::query::Stage<EqAffine, R, crate::profile::Standard>, skip = 356, num = 67);
-    check_stage!(stages::f::Stage<EqAffine, R, crate::profile::Standard>, skip = 423, num = 2);
-    check_stage!(stages::eval::Stage<EqAffine, R, crate::profile::Standard>, skip = 425, num = 47);
-    check_stage!(stages::challenges::Stage<EqAffine, R, crate::profile::Standard>, skip = 472, num = 10);
+    check_stage!(endoscalar::EndoscalarStage, skip = 1, num = 119);
+    check_stage!(nested::PointsStage<EqAffine, crate::profile::Standard>, skip = 120, num = 131);
+    check_stage!(stages::preamble::Stage<EqAffine, R, crate::profile::Standard>, skip = 251, num = 106);
+    check_stage!(stages::s_prime::Stage<EqAffine, R, crate::profile::Standard>, skip = 357, num = 3);
+    check_stage!(stages::inner_error::Stage<EqAffine, R, crate::profile::Standard>, skip = 360, num = 37);
+    check_stage!(stages::outer_error::Stage<EqAffine, R, crate::profile::Standard>, skip = 397, num = 11);
+    check_stage!(stages::ab::Stage<EqAffine, R, crate::profile::Standard>, skip = 408, num = 3);
+    check_stage!(stages::query::Stage<EqAffine, R, crate::profile::Standard>, skip = 411, num = 67);
+    check_stage!(stages::f::Stage<EqAffine, R, crate::profile::Standard>, skip = 478, num = 2);
+    check_stage!(stages::eval::Stage<EqAffine, R, crate::profile::Standard>, skip = 480, num = 47);
+    check_stage!(stages::challenges::Stage<EqAffine, R, crate::profile::Standard>, skip = 527, num = 10);
 }
 
 /// Helper test to print the nested circuits' current counts and the nested
@@ -1091,7 +1375,12 @@ fn test_extension_hooks_register_without_a_prover() {
         .into_registry();
     assert_eq!(registry.num_internal_circuits(), 3);
 
-    let result = ApplicationBuilder::<C, R, HEADER_SIZE>::new().finalize(params);
+    // The 143-bit challenge binders leave the last binder fifteen gates under
+    // the bound at the standard header, and the fixture's extension stage
+    // costs it thirteen more; a smaller header makes room to reach the
+    // missing-prover check this test is about.
+    const FITTING_HEADER_SIZE: usize = HEADER_SIZE - 8;
+    let result = ApplicationBuilder::<C, R, FITTING_HEADER_SIZE>::new().finalize(params);
     assert!(
         matches!(result, Err(Error::Initialization(source))
             if source.to_string() == NO_NATIVE_EXTENSION_PROVER),
@@ -1124,7 +1413,7 @@ fn test_fold_groups_follow_the_profile() {
         profile::{Standard, testing::Wider},
     };
 
-    assert_eq!(native::num_claims::<Standard>(), 85);
+    assert_eq!(native::num_claims::<Standard>(), 86);
     assert_eq!(nested::num_claims::<Standard>(), 72);
     assert_eq!(
         native::NumFoldGroups::<Standard>::len(),

@@ -242,15 +242,14 @@ where
                 }
             }
 
-            // bind_beta: BindBeta + PointsBinding + Preamble + OuterError
+            // bind_beta: BindBeta + PointsBinding + Preamble
             BindBetaCircuit => {
-                for (((bb, pb), pre), en) in source
+                for ((bb, pb), pre) in source
                     .rx(Rx(BindBeta))
                     .zip(source.rx(Rx(PointsBinding)))
                     .zip(source.rx(Rx(Preamble)))
-                    .zip(source.rx(Rx(OuterError)))
                 {
-                    processor.internal_circuit_claim(id, [bb, pb, pre, en].into_iter());
+                    processor.internal_circuit_claim(id, [bb, pb, pre].into_iter());
                 }
             }
 
@@ -376,13 +375,11 @@ where
                 processor.bonding_claim(id, source.rx(Rx(Collapse)))?;
             }
             OuterErrorFinalStaged => {
-                processor.bonding_claim(
-                    id,
-                    source
-                        .rx(Rx(Hashes1))
-                        .chain(source.rx(Rx(Hashes2)))
-                        .chain(source.rx(Rx(BindBeta))),
-                )?;
+                processor
+                    .bonding_claim(id, source.rx(Rx(Hashes1)).chain(source.rx(Rx(Hashes2))))?;
+            }
+            PreambleFinalStaged => {
+                processor.bonding_claim(id, source.rx(Rx(BindBeta)))?;
             }
             EvalFinalStaged => {
                 processor.bonding_claim(

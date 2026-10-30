@@ -2,10 +2,13 @@
 //! two-layer revdot fold of the children's nested claims.
 //!
 //! It also pins the nested unified instance's lifted x, y and u to the
-//! challenge stage and its exported commitments to their stage copies.
-//! It enforces the points stage's curve contracts and the endoscalar stage's
-//! bit contracts. Loading remains a separate bonding claim; compute_v binds
-//! the endoscalar lift and computes v_n.
+//! challenge stage and its exported commitments to their stage copies, and
+//! re-emits the stage contracts the endoscaling walk rests on, which the
+//! loading circuit, a bonding claim, cannot: every point of the points stage
+//! lies on the curve, and the endoscalar stage's
+//! [`HoistedEndoscalar`](ragu_primitives::HoistedEndoscalar) holds boolean
+//! bits and the products of those bits. `compute_v` ties that endoscalar's
+//! lift to the challenge stage's beta lift and computes v_n.
 //!
 //! ## Operations
 //!
@@ -66,7 +69,7 @@ use ragu_core::{
     maybe::Maybe,
 };
 use ragu_primitives::{
-    Element, Endoscalar, GadgetExt as _, allocator::Standard, consistent::Consistent, vec::FixedVec,
+    Element, GadgetExt as _, allocator::Standard, consistent::Consistent, vec::FixedVec,
 };
 use udon::curve::EndomorphismAffine as Affine;
 
@@ -119,14 +122,11 @@ impl<C: Affine, R: Rank, P: Profile> MultiStageCircuit<C::Base, R> for Circuit<C
     ) -> Result<WithAux<Bound<'dr, D, Self::Output>, DriverValue<D, Self::Aux<'source>>>> {
         let (dr, stages) = common::load_all(dr, &witness)?;
 
-        // The walk's contracts: points on the curve, endoscalar wires bits.
-        // The bits are constrained fresh from the witness endoscalar and
-        // the stage's wires enforced equal to them.
+        // The walk's contracts: points on the curve, and the endoscalar
+        // stage's bit wires bits with its product wires the products of those
+        // bits, each gadget re-emitted on the stage's wires.
         stages.points.enforce_consistent(dr)?;
-        let bits = Endoscalar::alloc(dr, witness.as_ref().map(|w| w.endoscalar))?;
-        for (staged, fresh) in stages.endoscalar.bits().zip(bits.bits()) {
-            staged.element().enforce_equal(dr, &fresh.element())?;
-        }
+        stages.endoscalar.enforce_consistent(dr)?;
 
         let allocator = &mut Standard::new();
         let mut unified = unified::OutputBuilder::new(witness.map(|w| w.instance));

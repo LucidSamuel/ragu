@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::MultiStage};
 use ragu_core::{Error, Result};
+use ragu_primitives::Uendo;
 use rand::CryptoRng;
 
 use super::_10_p::{NativeInputs, NativeWalk};
@@ -178,19 +179,14 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         builder.set_native_collapse_rx(collapse_rx);
 
         // Native circuit binding the children's nested beta commitments.
-        let (bind_beta_trace, unified) = native::circuits::bind_beta::Circuit::<
-            C,
-            R,
-            HEADER_SIZE,
-            native::RevdotParameters<C::Profile>,
-        >::new(self.params)
-        .trace(native::circuits::bind_beta::Witness {
-            unified,
-            binding: &native_points.binding,
-            preamble_witness,
-            outer_error_witness: native_outer_error_witness,
-        })?
-        .into_parts();
+        let (bind_beta_trace, unified) =
+            native::circuits::bind_beta::Circuit::<C, R, HEADER_SIZE>::new(self.params)
+                .trace(native::circuits::bind_beta::Witness {
+                    unified,
+                    binding: &native_points.binding,
+                    preamble_witness,
+                })?
+                .into_parts();
         let bind_beta_rx = self.native_registry.assemble(
             &bind_beta_trace,
             native::InternalCircuitIndex::BindBetaCircuit.circuit_index::<C::Profile>(),
@@ -253,7 +249,7 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
     pub(super) fn compute_nested_internal_circuits<RNG: CryptoRng>(
         &self,
         rng: &mut RNG,
-        nested_endoscalar: u128,
+        nested_endoscalar: Uendo,
         nested_points: &nested::PointsWitness<C::HostCurve, C::Profile>,
         nested_preamble_witness: &nested::stages::preamble::Witness<C::HostCurve, C::Profile>,
         nested_s_prime_witness: &nested::stages::s_prime::Witness<C::HostCurve>,
