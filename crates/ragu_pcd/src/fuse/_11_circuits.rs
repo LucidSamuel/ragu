@@ -1,9 +1,16 @@
+//! Trace the internal circuits.
+//!
+//! This traces the native and nested internal circuits over the stage
+//! witnesses the earlier phases saved, assembles their rx polynomials, and
+//! sets them on the [`ProofBuilder`] together with the profile's extension.
+
 use alloc::vec::Vec;
 
 use ragu_circuits::{CircuitExt, polynomials::Rank, staging::MultiStage};
 use ragu_core::{Error, Result};
 use rand::CryptoRng;
 
+use super::_10_p::{NativeInputs, NativeWalk};
 use crate::{
     Application,
     internal::{native, native::total_circuit_counts, nested},
@@ -35,8 +42,8 @@ impl<C: ProfiledCycle, R: Rank, const HEADER_SIZE: usize, B: crate::SelectableBa
         >,
         query_witness: &native::stages::query::Witness<C>,
         eval_witness: &native::stages::eval::Witness<C>,
-        native_points: &super::NativeInputs<C>,
-        native_walk: &super::_10_p::NativeWalk<C>,
+        native_points: &NativeInputs<C>,
+        native_walk: &NativeWalk<C>,
         builder: &mut ProofBuilder<'_, C, R, B>,
     ) -> Result<()> {
         let unified = native::unified::Instance {
