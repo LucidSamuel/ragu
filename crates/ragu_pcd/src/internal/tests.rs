@@ -554,8 +554,9 @@ fn print_internal_circuit_constraint_counts() {
 /// Run with: `cargo test -p ragu_pcd --release print_ledger -- --nocapture`
 #[test]
 fn print_ledger_parameters() {
-    use ragu_primitives::vec::Len;
     use std::println;
+
+    use ragu_primitives::vec::Len;
 
     use crate::profile::Standard;
 
