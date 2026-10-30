@@ -117,7 +117,7 @@ impl<C: ProfiledCycle> InternalCircuitVisitor<C> for ProductOwners {
         stage_values: &[C::ScalarField],
         make_witness: impl Fn() -> Result<Cir::Witness<'w>>,
     ) -> Result<()> {
-        if spec.name == "nested_export" {
+        if spec.name == "nested_collapse" {
             let indices =
                 stage_wire_indices::<C::ScalarField, ProductionRank, EndoscalarStage>(|endo| {
                     wires_of(&endo)

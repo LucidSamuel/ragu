@@ -114,7 +114,7 @@ computed once rather than once per endoscaling: the walk stages carry, for
 every digit, the products $e_1 e_2$ and $e_1 e_2 s$ beside the bits. The
 hoisted gadget derives them from the bits as it is allocated, two gates per
 digit, so they are part of its wire contract, and the circuit that owns the
-stage's contracts (`bind_endoscalar` natively, the nested `export`) re-emits
+stage's contracts (`bind_endoscalar` natively, the nested `collapse`) re-emits
 that contract once next to the bits' booleanity. With those wires in hand
 both coordinates of the digit point are
 $r$ times a linear form plus a linear form, so a step selects in two gates
@@ -128,14 +128,14 @@ The hoisted lift still multiplies each unsigned digit by its sign. Its
 $e_1 e_2$ and $e_1 e_2 s$ wires do not supply $s e_1$ or $s e_2$, so the
 lift costs $n + 1 = 48$ gates including initialization. The nested
 `EndoscalarStage` grows from 64 to 119 gates, and the nested `compute_v`
-circuit grows from 1404 to 1443 gates. Hoisting saves work in the walk;
+circuit grows from 1358 to 1397 gates. Hoisting saves work in the walk;
 it does not make the lift linear in the stage wires.
 
-Nested `export` grows from 1077 to 1241 gates: 94 product gates,
+Nested `collapse` grows from 1329 to 1493 gates: 94 product gates,
 15 additional fresh Boolean gates, and 55 additional stage gates. The
 native `bind_endoscalar` instead hoists the canonical extraction of
 `pre_beta` and compares the staged bits and products to it. On the nested
-side, `export` re-emits the stage gadget's contract, Booleanity and
+side, `collapse` re-emits the stage gadget's contract, Booleanity and
 products, while `compute_v` equates their lift with the challenge stage's
 $\beta$. Lift injectivity is what makes
 that equality determine the bits. Stage sharing, the parent challenge
@@ -147,13 +147,13 @@ instead of chaining through the `outer_error` stage, whose wires it never
 read. Its claim contains `BindBeta`, `PointsBinding`, and `Preamble`; the
 new `PreambleFinalStaged` mask bonds `BindBeta`, which is removed from the
 `OuterErrorFinalStaged` bonding claim. Registration includes the new mask.
-The internal registry therefore has 51 native and 44 nested entries,
-including masks, one more than before. The 24 native and 27 nested walk
-steps are unchanged.
+The internal registry therefore has 49 native and 42 nested entries,
+including masks, one native entry more than before. The 23 native and 26
+nested walk steps are unchanged.
 
 The constraint census uses production rank `R<13>`, a 103-element header,
 and 6000 placeholder application circuits. In that fixture the largest
-`bind_challenges` variant uses 2038 of 2048 gates, leaving ten gates of
+`bind_challenges` variant uses 2033 of 2048 gates, leaving fifteen gates of
 headroom. The census tests pin that count; extending the binder requires
 rechecking its capacity.
 

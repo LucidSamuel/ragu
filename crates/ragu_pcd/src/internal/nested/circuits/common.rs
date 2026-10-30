@@ -2,13 +2,14 @@
 //! fuse step commits, and the loading of all of them.
 //!
 //! The nested stages form one chain, from the endoscalar stage to the
-//! challenge stage, and the [`export`](super::export),
-//! [`collapse`](super::collapse) and [`compute_v`](super::compute_v)
-//! circuits all end on its last stage, so each reserves the whole chain and
+//! challenge stage. The [`collapse`](super::collapse) and
+//! [`compute_v`](super::compute_v) circuits both end on its last stage,
+//! so each reserves the whole chain and
 //! loads it here. Every stage is loaded unenforced: output contracts are not
 //! emitted here, though each wire still holds a coefficient of its committed
-//! stage polynomial. The export circuit enforces curve membership of the
-//! points stage and booleanity of the endoscalar stage once for all consuming
+//! stage polynomial. The collapse circuit enforces curve membership of the
+//! points stage and the hoisted endoscalar stage's contract, boolean bits
+//! with product wires the products of those bits, once for all consuming
 //! circuits.
 
 use ragu_circuits::{polynomials::Rank, staging::StageBuilder};

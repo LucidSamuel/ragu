@@ -91,7 +91,8 @@ impl<N: Len, E: Len> Len for NumStepsLen<N, E> {
 
 /// Stage for allocating the endoscalar witness: its bits and, hoisted so
 /// that every step selects its digit points in two gates, its per-digit bit
-/// products. The export circuit re-emits the gadget's contracts once.
+/// products. The nested collapse circuit re-emits the gadget's contracts
+/// once.
 #[derive(Default)]
 pub struct EndoscalarStage;
 
@@ -310,10 +311,11 @@ impl<C: Affine, R: Rank, N: Len, E: Len> MultiStageCircuit<C::Base, R>
         let (points_guard, dr) = dr.add_stage::<PointsStage<C, N, E>>()?;
         let dr = dr.finish();
 
-        // Stages are loaded unenforced here: the export circuit enforces the
-        // points' curve membership and the endoscalar's booleanity once for
-        // the whole nested section. This only constrains the Horner
-        // accumulation relationship between inputs and interstitials.
+        // Stages are loaded unenforced here: the collapse circuit re-emits
+        // the walk's contracts once for the whole nested section, the points'
+        // curve membership and the hoisted endoscalar's, boolean bits with
+        // product wires the products of those bits. This only constrains the
+        // Horner accumulation relationship between inputs and interstitials.
         let endoscalar = endoscalar_guard.unenforced(dr, witness.as_ref().map(|w| w.endoscalar))?;
         let points = points_guard.unenforced(dr, witness.as_ref().map(|w| w.points))?;
 

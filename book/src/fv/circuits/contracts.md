@@ -218,7 +218,7 @@ The implementation responsibilities to connect are:
 | --- | --- | --- |
 | Native `hashes_2` | Transcript-derived `pre_beta` in the unified instance | Native `compute_v`, native `bind_endoscalar`, and the parent's `bind_beta` |
 | Native `bind_endoscalar` | Walk bits and products equal the hoisted extraction of `pre_beta`, input points are on curve, and the walked result is exported | Native walk steps and the parent's checks of the walked commitments |
-| Nested `export` | The endoscalar stage's wires satisfy the hoisted gadget's contract: Boolean bits and both products per digit pinned | Nested walk steps and nested `compute_v` |
+| Nested `collapse` | The endoscalar stage's wires satisfy the hoisted gadget's contract: Boolean bits and both products per digit pinned | Nested walk steps and nested `compute_v` |
 | Nested `compute_v` | The staged bits' lift equals the challenge stage's beta | Nested evaluation folding and the walk's scalar interpretation |
 | Native `bind_challenges`, then the parent's `bind_beta` | The nested challenge-stage commitment matches the transcript-derived lifts, sign, and beta term | Nested stage openings and all consumers of those challenges |
 | Stage commitments, native/nested claims, and bonding masks | Owner and consumer constraints refer to the same staged values and exported commitments | The recursive accumulation and terminal verification checks |
@@ -252,7 +252,7 @@ The recursive substitution tests currently exercise stage-bit, product,
 and challenge substitutions through two generations, with honest controls.
 PR CI replays the saved cases and a fresh case for the selected properties.
 Separate owner-circuit regressions change every hoisted product at native
-`bind_endoscalar` and nested `export`, at bootstrap and at an ordinary fuse.
+`bind_endoscalar` and nested `collapse`, at bootstrap and at an ordinary fuse.
 They isolate each product equation and reject malformed stage values without
 depending on the walk's constraints. These are finite checks. They do not
 establish this contract, and passing them does not discharge any of the proof

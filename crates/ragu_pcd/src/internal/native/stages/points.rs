@@ -30,7 +30,7 @@
 //! walks against what the children exported through their unified
 //! instances: their bridge commitments, completed challenge bindings and
 //! persistent polynomial commitments; and what lets
-//! [`inner_collapse`](super::super::circuits::inner_collapse) take the
+//! [`collapse`](super::super::circuits::collapse) take the
 //! children's nested extension stage commitments, which it holds the
 //! children's binding circuits to through their claims' $k(y)$ (see
 //! [`Binding`](crate::profile::Binding)). [`WalkStage`], committed after
