@@ -1,3 +1,4 @@
+import Batteries.Data.BitVec
 import Clean.Circuit
 import Clean.Circuit.Loops
 import Ragu.Circuits.Endoscalar.Hoist
@@ -20,15 +21,12 @@ gadget's own witness. Here it is read off the bit wires, as
 `Boolean.Consistent` reads its hint: bit `i` is whether wire `i` holds `1`. -/
 def hint (env : ProverEnvironment (F p)) (bits : Vector (Expression (F p)) numBits) :
     BitVec numBits :=
-  (BitVec.ofBoolListLE (bits.toList.map fun b => decide (env b = 1))).cast (by simp)
+  BitVec.ofFnLE fun (i : Fin numBits) => decide (env bits[i] = 1)
 
 lemma hint_getElem (env : ProverEnvironment (F p)) (bits : Vector (Expression (F p)) numBits)
     (i : ℕ) (h : i < numBits) :
     (hint env bits)[i] = decide (Expression.eval env.toEnvironment bits[i] = 1) := by
-  simp only [hint, BitVec.getElem_cast]
-  rw [← BitVec.getLsbD_eq_getElem (by simpa using h)]
-  simp [BitVec.getLsbD_ofBoolListLE, List.getD_eq_getElem, h]
-  first | rfl | simp
+  simp [hint]
 
 /-- `HoistedEndoscalar::enforce_consistent` (`endoscalar.rs`):
 
@@ -39,7 +37,13 @@ Self::alloc(dr, self.endoscalar.value.clone())?.enforce_conservative_equal(dr, s
 A fresh `HoistedEndoscalar::alloc` seeded from the existing gadget's own
 witness, linked to it wire by wire in the gadget's wire order: the bits, then
 per digit the two products. This is what the staging machinery re-emits when
-it substitutes the gadget's wires into a context where `alloc` never ran. -/
+it substitutes the gadget's wires into a context where `alloc` never ran.
+
+`@[irreducible]` is a defeq seal only: it stops the unifier from
+whnf-unrolling the `numBits` and `numDigits` link iterations during
+structure type checks, which exceeds the default heartbeat budget. Proofs
+still unfold `main` via its equation lemma. -/
+@[irreducible]
 def main (input : Var Input (F p)) : Circuit (F p) (Var unit (F p)) := do
   let fresh ← HoistedAlloc.circuit fun env => hint env input.bits
   Circuit.forEach (Vector.finRange numBits) fun (i : Fin numBits) =>
@@ -104,6 +108,9 @@ theorem completeness : FormalAssertion.Completeness (F p) (Input := Input) main 
     HoistedAlloc.ProverSpec, Hoist.Spec]
   obtain ⟨h_bits_eval, h_products_eval⟩ := h_input
   obtain ⟨h_bool, h_products⟩ := h_spec
+  -- The last conjunct is the links' witness usage; they allocate nothing, so
+  -- it stays unexamined: destructuring it would unroll the loop.
+  obtain ⟨⟨_, h_fresh_bits, h_fresh_products⟩, _⟩ := h_env
   have h_bits_eq : ∀ (j : ℕ) (h : j < numBits),
       Expression.eval env.toEnvironment (input_var_bits[j]'h) = (input_bits[j]'h) := by
     intro j h
@@ -114,20 +121,20 @@ theorem completeness : FormalAssertion.Completeness (F p) (Input := Input) main 
     intro j h
     have := congrArg (fun v => v[j]'h) h_products_eval
     simpa [Vector.getElem_map] using this
-  obtain ⟨_, h_fresh_bits, h_fresh_products⟩ := h_env
-  have h_hint : ∀ i : Fin numBits,
-      (if (hint env input_var_bits)[i.val] then (1 : F p) else 0) = input_bits[i.val] := by
-    intro i
-    rw [hint_getElem, h_bits_eq]
-    rcases h_bool i with h | h <;> simp [h]
-  simp only [h_hint] at h_fresh_bits
-  simp only [h_bits_eq, h_prod_eq]
+  -- Seeded from the wires, the hint reproduces each bit, so the fresh bits are
+  -- the existing ones.
+  have h_fresh_bits' : ∀ (j : ℕ) (h : j < numBits),
+      Expression.eval env.toEnvironment ((Alloc.output i₀)[j]'h) = (input_bits[j]'h) := by
+    intro j h
+    rw [h_fresh_bits ⟨j, h⟩, hint_getElem, h_bits_eq]
+    rcases h_bool ⟨j, h⟩ with h0 | h0 <;> simp [h0]
   refine ⟨fun i => ?_, fun i => ?_⟩
-  · rw [h_fresh_bits i, sub_self]
+  · rw [h_fresh_bits', h_bits_eq, sub_self]
   · obtain ⟨hp', hq'⟩ := h_fresh_products i
     obtain ⟨hp, hq⟩ := h_products i
-    rw [hq', hp', hq, hp, h_fresh_bits, h_fresh_bits, h_fresh_bits]
-    exact ⟨sub_self _, sub_self _⟩
+    constructor
+    · rw [hp', h_fresh_bits', h_fresh_bits', h_prod_eq, hp, sub_self]
+    · rw [hq', hp', h_fresh_bits', h_fresh_bits', h_fresh_bits', h_prod_eq, hq, hp, sub_self]
 
 /-- `HoistedEndoscalar::enforce_consistent`. -/
 def circuit : FormalAssertion (F p) Input :=

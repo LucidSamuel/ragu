@@ -94,6 +94,15 @@ structure Input (F : Type) where
   bits : Vector F numBits
 deriving ProvableStruct
 
+/-- The digits' product pairs flattened into the `numProducts` product wires:
+wire `k` is digit `k / 2`'s `e₁ e₂` for even `k` and its `e₁ e₂ s` for odd
+`k`. A definition rather than an inline `Vector.ofFn`, so normalizing `main`
+never unrolls the `numProducts` entries. -/
+def flatten (digits : Vector (Var (fields 2) (F p)) numDigits) :
+    Var (fields numProducts) (F p) :=
+  Vector.ofFn fun (k : Fin numProducts) =>
+    (digits[k.val / 2]'(product_digit_lt k))[k.val % 2]'(Nat.mod_lt _ (by decide))
+
 /-- Per digit in digit order, the `Digit` subcircuit on its three bits; the
 output flattens the digits' pairs into the `numProducts` product wires. -/
 def main (input : Var Input (F p)) : Circuit (F p) (Var (fields numProducts) (F p)) := do
@@ -102,8 +111,7 @@ def main (input : Var Input (F p)) : Circuit (F p) (Var (fields numProducts) (F 
       ⟨input.bits[2 + 3 * i.val]'(bit_index_lt i (by norm_num)),
        input.bits[3 + 3 * i.val]'(bit_index_lt i (by norm_num)),
        input.bits[4 + 3 * i.val]'(bit_index_lt i (by norm_num))⟩
-  return Vector.ofFn fun (k : Fin numProducts) =>
-    (digits[k.val / 2]'(product_digit_lt k))[k.val % 2]'(Nat.mod_lt _ (by decide))
+  return flatten digits
 
 def Assumptions (input : Input (F p)) :=
   ∀ i : Fin numBits, IsBool input.bits[i]
@@ -119,18 +127,28 @@ def Spec (input : Input (F p)) (products : Vector (F p) numProducts) :=
       products[2 * i.val]'(product_index_lt i) *
         input.bits[2 + 3 * i.val]'(bit_index_lt i (by norm_num))
 
+/-- The output wires: digit `i`'s two `And` product wires start at
+`offset + 6 i`, flattened in digit order. -/
+def output (offset : ℕ) : Var (fields numProducts) (F p) :=
+  flatten (Vector.mapFinRange numDigits fun (i : Fin numDigits) =>
+    Digit.output (offset + i.val * 6))
+
 instance elaborated : ElaboratedCircuit (F p) Input (fields numProducts) main where
   localLength _ := numDigits * 6
   localLength_eq input offset := by
     simp +arith [main, circuit_norm, Digit.circuit, Digit.elaborated]
+  output _ offset := output offset
+  output_eq input offset := by
+    simp [main, output, circuit_norm, Digit.circuit, Digit.elaborated]
   subcircuitsConsistent input offset := by
+    simp +arith [main, circuit_norm, Digit.circuit, Digit.elaborated]
+  channelsLawful := by
     simp +arith [main, circuit_norm, Digit.circuit, Digit.elaborated]
 
 /-- Given boolean bits, every digit's gates pin its two product wires. -/
 theorem soundness : Soundness (F p) (Input := Input) (Output := (fields numProducts)) main
     Assumptions Spec := by
-  circuit_proof_start [main, Digit.circuit, Digit.Assumptions, Digit.Spec, Digit.elaborated,
-    Digit.output]
+  circuit_proof_start [main, Digit.circuit, Digit.Assumptions, Digit.Spec, Digit.elaborated]
   have h_bits_eq : ∀ (j : ℕ) (h : j < numBits),
       Expression.eval env (input_var_bits[j]'h) = (input_bits[j]'h) := by
     intro j h
@@ -146,8 +164,8 @@ theorem soundness : Soundness (F p) (Input := Input) (Output := (fields numProdu
   have hm1 : 2 * i.val % 2 = 0 := by omega
   have hd2 : (2 * i.val + 1) / 2 = i.val := by omega
   have hm2 : (2 * i.val + 1) % 2 = 1 := by omega
-  simp only [Vector.getElem_map, Vector.getElem_ofFn, hd1, hm1, hd2, hm2]
-  exact ⟨hp, hq⟩
+  simp only [output, flatten, Vector.getElem_ofFn, Vector.getElem_mapFinRange, hd1, hm1, hd2, hm2]
+  simpa [Digit.output, Boolean.And.output, circuit_norm] using And.intro hp hq
 
 /-- Boolean bits satisfy every digit's precondition. -/
 theorem completeness : Completeness (F p) (Input := Input) (Output := (fields numProducts)) main

@@ -36,11 +36,19 @@ the allocated endoscalar's value through composed completeness proofs. -/
 def ProverSpec (input : BitVec 143) (out : Vector (F p) 143) (_hint : ProverHint (F p)) :=
   ∀ i : Fin 143, out[i] = if input[i.val] then 1 else 0
 
+/-- The output wires: bit `i`'s `Boolean::alloc` output, three wires per bit.
+Named so callers can use the bits without unfolding the 143 allocations. -/
+def output (offset : ℕ) : Var (fields 143) (F p) :=
+  Vector.mapFinRange 143 fun (i : Fin 143) => Boolean.Alloc.output (offset + i.val * 3)
+
 instance elaborated
     : ElaboratedCircuit (F p) (UnconstrainedNative (BitVec 143)) (fields 143) main where
   localLength _ := 143 * 3
   localLength_eq _ _ := by
     simp [main, circuit_norm, Boolean.Alloc.circuit]
+  output _ offset := output offset
+  output_eq _ offset := by
+    simp [main, output, circuit_norm, Boolean.Alloc.circuit, Boolean.Alloc.elaborated]
   subcircuitsConsistent _ _ := by
     simp [main, circuit_norm, Boolean.Alloc.circuit]
 
@@ -49,7 +57,8 @@ them as endoscalar bits without an additional range constraint. -/
 theorem soundness
     : GeneralFormalCircuit.WithHint.Soundness (F p) (Input := (UnconstrainedNative (BitVec 143))) (Output := (fields 143)) main Assumptions Spec := by
   circuit_proof_start [Boolean.Alloc.circuit, Boolean.Alloc.Assumptions, Boolean.Alloc.Spec]
-  exact h_holds
+  intro i
+  simpa [output, circuit_norm] using h_holds i
 
 /-- For any 143-bit hint, honest allocation satisfies the constraints and
 places its bits on the output wires in Rust serialization order. -/
@@ -59,7 +68,7 @@ theorem completeness
   circuit_proof_start [Boolean.Alloc.circuit, Boolean.Alloc.Assumptions, Boolean.Alloc.Spec,
     Boolean.Alloc.ProverAssumptions, Boolean.Alloc.ProverSpec]
   intro i
-  exact (h_env i).2
+  simpa [output, circuit_norm] using (h_env i).2
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedNative (BitVec 143)) (fields 143) :=
   { main := main,

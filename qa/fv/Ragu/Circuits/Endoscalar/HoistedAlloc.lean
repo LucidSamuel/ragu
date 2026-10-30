@@ -44,7 +44,11 @@ instance elaborated
   localLength _ := numBits * 3 + numDigits * 6
   localLength_eq _ _ := by
     simp +arith [main, circuit_norm, Alloc.circuit, Alloc.elaborated, Hoist.circuit,
-      Hoist.elaborated]
+      Hoist.elaborated, numBits]
+  output _ offset := ⟨Alloc.output offset, Hoist.output (offset + numBits * 3)⟩
+  output_eq _ offset := by
+    simp +arith [main, circuit_norm, Alloc.circuit, Alloc.elaborated, Hoist.circuit,
+      Hoist.elaborated, numBits]
   subcircuitsConsistent _ _ := by
     simp +arith [main, circuit_norm, Alloc.circuit, Alloc.elaborated, Hoist.circuit,
       Hoist.elaborated]
@@ -71,7 +75,7 @@ theorem completeness
     intro i
     by_cases h : input[i.val] <;> simp [h, IsBool]
   have h_bits_bool := fun i : Fin numBits => (h_bits i) ▸ h_bool i
-  exact ⟨⟨trivial, h_bits_bool⟩, h_bits, h_products h_bits_bool⟩
+  exact ⟨h_bits_bool, h_bits, h_products h_bits_bool⟩
 
 def circuit : GeneralFormalCircuit.WithHint (F p) (UnconstrainedNative (BitVec numBits)) Output :=
   { main := main,
