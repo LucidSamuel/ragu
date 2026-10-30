@@ -162,11 +162,11 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
   have h_bool : ∀ (j : ℕ) (h : j < numBits), IsBool (input_bits[j]'h) :=
     fun j h => h_bool_all ⟨j, h⟩
   obtain ⟨h_and, h_digits⟩ := h_holds
-  obtain ⟨h_val, h_isbool⟩ := h_and ⟨by rw [h_bits_eq 0 (by decide)]; exact h_bool 0 (by decide),
+  obtain ⟨h_val, _⟩ := h_and ⟨by rw [h_bits_eq 0 (by decide)]; exact h_bool 0 (by decide),
     by rw [h_bits_eq 1 (by decide)]; exact h_bool 1 (by decide)⟩
   rw [h_bits_eq 0 (by decide), h_bits_eq 1 (by decide)] at h_val
-  have h_s0e0 := Lift.Digit.and_eq_mul_of_isBool _ _ _ (h_bool 0 (by decide))
-    (h_bool 1 (by decide)) h_isbool h_val
+  have h_s0e0 := ZMod.val_injective p
+    (h_val.trans (IsBool.and_eq_val_and (h_bool 0 (by decide)) (h_bool 1 (by decide))).symm)
   have h_digit : ∀ i : Fin numDigits,
       env.get (i₀ + 3 + i.val * 3 + 2) =
         Lift.digitValue curveParams.ζ (input_bits[2 + 3 * i.val]'(bit_index_lt i (by norm_num)))

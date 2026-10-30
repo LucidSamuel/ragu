@@ -368,6 +368,11 @@ lemma accAfter_twist (curveParams : CurveParams p) (c r : F p) (bits : Vector (F
 
 /-! ## The symbolic accumulator of the `foldlRange`
 
+The triple-and-add returns coordinates containing the input accumulator
+(`x₃` includes `-x`, and `y₃` includes `-y`). Its symbolic output therefore
+depends on the input and does not satisfy `Circuit.foldl`'s `ConstantOutput`
+requirement. The walks use `Circuit.foldlRange` to preserve those expressions.
+
 `Circuit.foldlRange` has no `ConstantOutput`, so its `circuit_norm` lemmas
 leave the accumulator entering iteration `i` as Clean's
 `Circuit.FoldlM.foldlAcc … i`: a `Fin.foldl` of the body's symbolic outputs.

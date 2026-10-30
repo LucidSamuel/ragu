@@ -2,7 +2,6 @@ import Clean.Circuit
 import Clean.Circuit.Loops
 import Clean.Gadgets.Boolean
 import Ragu.Circuits.Boolean.And
-import Ragu.Circuits.Endoscalar.Lift
 import Ragu.Circuits.Endoscalar.Walk
 
 /-!
@@ -12,8 +11,9 @@ The product wires of a `HoistedEndoscalar`, derived from its bits: per digit
 `(s, e₁, e₂)`, the wire `e₁ e₂` is `Boolean::and(e₁, e₂)` and the wire
 `e₁ e₂ s` is `Boolean::and(e₁ e₂, s)`, two gates. `HoistedEndoscalar::alloc`
 is `Endoscalar::alloc` followed by this, so the products' relation to the
-bits is part of the gadget's wire contract rather than an obligation on the
-circuit that owns the stage. Mirrors
+bits is part of the gadget's wire contract. A stage owner re-establishes
+that contract through `HoistedConsistent` when it substitutes stage wires.
+Mirrors
 `crates/ragu_primitives/src/endoscalar.rs::HoistedEndoscalar::hoist`.
 -/
 
@@ -68,10 +68,10 @@ theorem soundness : Soundness (F p) (Input := Input) (Output := (fields 2)) main
   obtain ⟨h_and1, h_and2⟩ := h_holds
   obtain ⟨h_val1, h_bool1⟩ := h_and1 ⟨he1, he2⟩
   have hp : env.get (i₀ + 2) = input_e1 * input_e2 :=
-    Lift.Digit.and_eq_mul_of_isBool _ _ _ he1 he2 h_bool1 h_val1
-  obtain ⟨h_val2, h_bool2⟩ := h_and2 ⟨h_bool1, hs⟩
+    ZMod.val_injective p (h_val1.trans (IsBool.and_eq_val_and he1 he2).symm)
+  obtain ⟨h_val2, _⟩ := h_and2 ⟨h_bool1, hs⟩
   have hq : env.get (i₀ + 3 + 2) = env.get (i₀ + 2) * input_s :=
-    Lift.Digit.and_eq_mul_of_isBool _ _ _ h_bool1 hs h_bool2 h_val2
+    ZMod.val_injective p (h_val2.trans (IsBool.and_eq_val_and h_bool1 hs).symm)
   exact ⟨hp, hq⟩
 
 /-- Boolean digit bits admit the honest AND witnesses: the first product is
@@ -148,7 +148,7 @@ instance elaborated : ElaboratedCircuit (F p) Input (fields numProducts) main wh
 /-- Given boolean bits, every digit's gates pin its two product wires. -/
 theorem soundness : Soundness (F p) (Input := Input) (Output := (fields numProducts)) main
     Assumptions Spec := by
-  circuit_proof_start [main, Digit.circuit, Digit.Assumptions, Digit.Spec, Digit.elaborated]
+  circuit_proof_start [Digit.circuit, Digit.Assumptions, Digit.Spec, Digit.elaborated]
   have h_bits_eq : ∀ (j : ℕ) (h : j < numBits),
       Expression.eval env (input_var_bits[j]'h) = (input_bits[j]'h) := by
     intro j h
@@ -170,7 +170,7 @@ theorem soundness : Soundness (F p) (Input := Input) (Output := (fields numProdu
 /-- Boolean bits satisfy every digit's precondition. -/
 theorem completeness : Completeness (F p) (Input := Input) (Output := (fields numProducts)) main
     Assumptions := by
-  circuit_proof_start [main, Digit.circuit, Digit.Assumptions, Digit.elaborated]
+  circuit_proof_start [Digit.circuit, Digit.Assumptions, Digit.elaborated]
   have h_bits_eq : ∀ (j : ℕ) (h : j < numBits),
       Expression.eval env.toEnvironment (input_var_bits[j]'h) = (input_bits[j]'h) := by
     intro j h

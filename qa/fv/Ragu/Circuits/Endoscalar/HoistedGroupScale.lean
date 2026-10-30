@@ -268,13 +268,7 @@ def Assumptions (curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :
   curveParams.ζ ≠ 1 ∧
   (3 : F p) ≠ 0 ∧
   (∀ i : Fin numBits, IsBool input.bits[i]) ∧
-  (∀ i : Fin numDigits,
-    input.products[2 * i.val]'(product_index_lt i) =
-      input.bits[3 + 3 * i.val]'(bit_index_lt i (by norm_num)) *
-        input.bits[4 + 3 * i.val]'(bit_index_lt i (by norm_num)) ∧
-    input.products[2 * i.val + 1]'(product_index_succ_lt i) =
-      input.products[2 * i.val]'(product_index_lt i) *
-        input.bits[2 + 3 * i.val]'(bit_index_lt i (by norm_num))) ∧
+  Hoist.Spec ⟨input.bits⟩ input.products ∧
   groupScaleNative curveParams input.pt input.bits ≠ none
 
 def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p))

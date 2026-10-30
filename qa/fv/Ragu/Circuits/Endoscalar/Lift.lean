@@ -91,14 +91,6 @@ instance elaborated (curveParams : Point.Spec.CurveParams p)
     rcases input with ⟨s, e1, e2⟩
     simp [main, output, circuit_norm, Boolean.And.circuit, Element.Mul.circuit]
 
-/-- For boolean `a, b, out`, `out.val = a.val &&& b.val` forces `out = a * b`. -/
-lemma and_eq_mul_of_isBool (a b out : F p) (ha : IsBool a) (hb : IsBool b)
-    (h_out : IsBool out) (h : ZMod.val out = ZMod.val a &&& ZMod.val b) :
-    out = a * b := by
-  rcases ha with ha | ha <;> rcases hb with hb | hb <;>
-    rcases h_out with h_out | h_out <;>
-    simp_all [ZMod.val_zero, ZMod.val_one]
-
 /-- The unsigned affine form agrees with the table on booleans, given
 `ζ² + ζ + 1 = 0`: its `(1, 1)` value `2 + ζ²` is `1 - ζ`. -/
 lemma unsigned_eq (ζ e1 e2 : F p) (hq : ζ ^ 2 + ζ + 1 = 0) (he1 : IsBool e1) (he2 : IsBool e2) :
@@ -120,8 +112,8 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec, output]
   obtain ⟨hζ, hs, he1, he2⟩ := h_assumptions
   obtain ⟨h_and, h_mul⟩ := h_holds
-  obtain ⟨h_val, h_bool⟩ := h_and ⟨he1, he2⟩
-  have h_e1e2 := and_eq_mul_of_isBool _ _ _ he1 he2 h_bool h_val
+  obtain ⟨h_val, _⟩ := h_and ⟨he1, he2⟩
+  have h_e1e2 := ZMod.val_injective p (h_val.trans (IsBool.and_eq_val_and he1 he2).symm)
   rw [h_mul, h_e1e2, digitValue,
     ← unsigned_eq curveParams.ζ _ _ (zeta_quadratic curveParams hζ) he1 he2]
   rcases hs with hs | hs <;> subst hs <;> simp only [zero_ne_one, if_true, if_false]
@@ -236,11 +228,11 @@ theorem soundness (curveParams : Point.Spec.CurveParams p) :
     fun j h => h_assumptions ⟨j, h⟩
   obtain ⟨h_and, h_digits⟩ := h_holds
   -- The initial product wire.
-  obtain ⟨h_val, h_isbool⟩ := h_and ⟨by rw [h_bits_eq 0 (by decide)]; exact h_bool 0 (by decide),
+  obtain ⟨h_val, _⟩ := h_and ⟨by rw [h_bits_eq 0 (by decide)]; exact h_bool 0 (by decide),
     by rw [h_bits_eq 1 (by decide)]; exact h_bool 1 (by decide)⟩
   rw [h_bits_eq 0 (by decide), h_bits_eq 1 (by decide)] at h_val
-  have h_s0e0 := Digit.and_eq_mul_of_isBool _ _ _ (h_bool 0 (by decide)) (h_bool 1 (by decide))
-    h_isbool h_val
+  have h_s0e0 := ZMod.val_injective p
+    (h_val.trans (IsBool.and_eq_val_and (h_bool 0 (by decide)) (h_bool 1 (by decide))).symm)
   -- Each digit wire.
   have h_digit : ∀ i : Fin numDigits,
       env.get (i₀ + 3 + i.val * 6 + 3 + 2) =

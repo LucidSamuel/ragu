@@ -46,7 +46,7 @@ def initNative (curveParams : Point.Spec.CurveParams p) (r s0 e0 : F p)
     let d := if e0 = 1 then d.endo curveParams else d
     some (if s0 = 1 then d.negate else d)
 
-def Assumptions (_curveParams : Point.Spec.CurveParams p) (input : Input (F p)) :=
+def Assumptions (input : Input (F p)) :=
   IsBool input.s0 ∧ IsBool input.e0 ∧ input.r ≠ 0
 
 def Spec (curveParams : Point.Spec.CurveParams p) (input : Input (F p))
@@ -85,7 +85,7 @@ private lemma double_rr (r : F p) (hr : r ≠ 0) :
 gates produce the doubled, signed endomorphism image that starts the walk. -/
 theorem soundness (curveParams : Point.Spec.CurveParams p) :
     Soundness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams)
-      (Assumptions curveParams) (Spec curveParams) := by
+      Assumptions (Spec curveParams) := by
   circuit_proof_start [Element.Square.circuit, Element.Square.Assumptions, Element.Square.Spec,
     Element.Mul.circuit, Element.Mul.Assumptions, Element.Mul.Spec, output]
   obtain ⟨h_s0, h_e0, h_r⟩ := h_assumptions
@@ -103,7 +103,7 @@ omit [NeZero (2 : F p)] in
 caller's bit and normalization preconditions, seeding the walk proof. -/
 theorem completeness (curveParams : Point.Spec.CurveParams p) :
     Completeness (F p) (Input := Input) (Output := Point.Spec.Point) (main curveParams)
-      (Assumptions curveParams) := by
+      Assumptions := by
   circuit_proof_start [Element.Square.circuit, Element.Square.Assumptions,
     Element.Mul.circuit, Element.Mul.Assumptions]
 
@@ -111,7 +111,7 @@ def circuit (curveParams : Point.Spec.CurveParams p) :
     FormalCircuit (F p) Input Point.Spec.Point :=
   { main := main curveParams,
     elaborated := elaborated curveParams,
-    Assumptions := Assumptions curveParams
+    Assumptions := Assumptions
     Spec := Spec curveParams
     soundness := soundness curveParams
     completeness := completeness curveParams }
