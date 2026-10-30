@@ -110,11 +110,6 @@ impl Uendo {
         (self.0[i / 64] >> (i % 64)) & 1 == 1
     }
 
-    /// The bits, least significant first.
-    pub fn bits(&self) -> impl Iterator<Item = bool> + '_ {
-        (0..Self::BITS).map(move |i| self.bit(i))
-    }
-
     /// Builds an endoscalar from its bits, least significant first.
     ///
     /// # Panics
@@ -134,11 +129,13 @@ impl Uendo {
         Self(limbs)
     }
 
-    /// Returns this endoscalar with bit `i` flipped.
+    /// Returns this endoscalar with bit `i` flipped. A test helper, for
+    /// constructing malformed witnesses.
     ///
     /// # Panics
     ///
     /// Panics if `i` is not below [`Self::BITS`].
+    #[doc(hidden)]
     pub fn flip_bit(mut self, i: usize) -> Self {
         assert!(i < Self::BITS, "bit {i} exceeds the endoscalar width");
         self.0[i / 64] ^= 1 << (i % 64);
@@ -146,7 +143,9 @@ impl Uendo {
     }
 
     /// Draws an endoscalar from the limbs `fill` produces, discarding the
-    /// bits beyond the width.
+    /// bits beyond the width. A test and benchmark helper: production
+    /// endoscalars are extracted from transcript challenges.
+    #[doc(hidden)]
     pub fn random(mut fill: impl FnMut() -> u64) -> Self {
         let mut limbs = [0u64; Self::LIMBS];
         for limb in &mut limbs {
@@ -584,7 +583,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             let yd = sign.mul(dr, &yd_unsigned)?;
             Ok((xd, yd))
         })?;
-        debug_assert!(bits.next().is_none());
+        assert!(bits.next().is_none());
 
         Ok(point)
     }
@@ -613,7 +612,7 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
             let e1e2 = e1.and(dr, &e2)?;
             Ok((s, e1, e2, e1e2))
         })?;
-        debug_assert!(bits.next().is_none());
+        assert!(bits.next().is_none());
 
         Ok(acc)
     }
@@ -687,7 +686,7 @@ impl<'dr, D: Driver<'dr>> HoistedEndoscalar<'dr, D> {
                 products.push(Demoted::new(&p)?);
                 products.push(Demoted::new(&q)?);
             }
-            debug_assert!(bits.next().is_none());
+            assert!(bits.next().is_none());
             products.into_iter().collect_fixed()?
         };
 
@@ -790,8 +789,8 @@ impl<'dr, D: Driver<'dr>> HoistedEndoscalar<'dr, D> {
                 .add_coeff(dr, &p_minus_2q, Coeff::Arbitrary(yq0));
             Ok((xd, yd))
         })?;
-        debug_assert!(bits.next().is_none());
-        debug_assert!(products.next().is_none());
+        assert!(bits.next().is_none());
+        assert!(products.next().is_none());
 
         Ok(point)
     }
@@ -820,8 +819,8 @@ impl<'dr, D: Driver<'dr>> HoistedEndoscalar<'dr, D> {
             let (e1e2, _) = products.next().unwrap();
             Ok((s, e1, e2, e1e2))
         })?;
-        debug_assert!(bits.next().is_none());
-        debug_assert!(products.next().is_none());
+        assert!(bits.next().is_none());
+        assert!(products.next().is_none());
 
         Ok(acc)
     }
