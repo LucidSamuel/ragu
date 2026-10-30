@@ -551,6 +551,8 @@ fn print_internal_circuit_constraint_counts() {
 
 /// Helper test to print the parameters the book's local degree ledger in
 /// `book/src/protocol/extensions/endoscalar.md` is derived from.
+/// Both point counts include the initial F point, so the fold's degree is
+/// one less than the printed count.
 /// Run with: `cargo test -p ragu_pcd --release print_ledger -- --nocapture`
 #[test]
 fn print_ledger_parameters() {
@@ -584,7 +586,7 @@ fn print_ledger_parameters() {
     );
     println!(
         "native walk points: {}",
-        native::stages::points::NumInputs::<Standard>::len()
+        native::NumPoints::<Standard>::len()
     );
     println!(
         "nested walk points: {}",

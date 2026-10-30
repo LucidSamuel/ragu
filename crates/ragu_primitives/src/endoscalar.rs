@@ -484,9 +484,10 @@ impl<'dr, D: Driver<'dr>> Endoscalar<'dr, D> {
     /// $\lambda$ with $\lambda^2 + \lambda + 1 = 0$, the walk starts from
     /// $A_0 = \[2\] (-1)^{s_0} \phi^{e_0}(P)$ and performs
     /// $A_{i+1} = \[3\] A_i + \[d_i\] P$ with the digit
-    /// $d_i = (-1)^{s_i} \cdot \{1, \lambda, \lambda^2, 1 - \lambda\}[e_{1,i},
-    /// e_{2,i}]$, so with $n = \mathtt{ENDOSCALAR\_DIGITS}$ the result is
-    /// $\[k\] P$ for
+    /// $d_i = (-1)^{s_i} v_i$. The pair $(e_{1,i}, e_{2,i})$ selects $v_i$
+    /// as $(0,0) \mapsto 1$, $(1,0) \mapsto \lambda$,
+    /// $(0,1) \mapsto \lambda^2$, and $(1,1) \mapsto 1-\lambda$.
+    /// With $n = \mathtt{ENDOSCALAR\_DIGITS}$ the result is $\[k\] P$ for
     ///
     /// $$k = 2 \cdot 3^{n} (-1)^{s_0} \lambda^{e_0} + \sum_{i} 3^{n - 1 - i} d_i,$$
     ///
@@ -1496,5 +1497,69 @@ mod tests {
         })?;
 
         Ok(())
+    }
+
+    /// Pin the encoding independently of the implementation's Horner walk:
+    /// changing one digit adds `(digit - 1) * 3^(n - 1 - i)` to the all-zero
+    /// encoding. Check every position and selector on both Pasta fields,
+    /// including the joint selector that uses the hoisted product.
+    #[test]
+    fn test_endoscalar_lift_encoding() -> Result<()> {
+        fn check<F: Field>() -> Result<()> {
+            let n = super::ENDOSCALAR_DIGITS;
+            let mut powers = [F::ONE; super::ENDOSCALAR_DIGITS + 1];
+            for i in 1..=n {
+                powers[i] = powers[i - 1] * F::from(3);
+            }
+            let tail = (powers[n] - F::ONE) * F::TWO_INVERSE;
+            let baseline = powers[n].double() + tail;
+            let check_lifts = |value: Uendo, expected: F| -> Result<()> {
+                assert_eq!(super::lift_endoscalar::<F>(value), expected);
+                Simulator::<F>::simulate(value, |dr, witness| {
+                    let plain = Endoscalar::alloc(dr, witness)?;
+                    assert_eq!(*plain.lift(dr)?.value().take(), expected);
+                    let hoisted = HoistedEndoscalar::hoist(dr, plain)?;
+                    assert_eq!(*hoisted.lift(dr)?.value().take(), expected);
+                    Ok(())
+                })?;
+                Ok(())
+            };
+
+            for (e0, initial) in [(false, F::ONE), (true, F::ZETA)] {
+                for s0 in [false, true] {
+                    let mut bits = [false; Uendo::BITS];
+                    bits[0] = s0;
+                    bits[1] = e0;
+                    let signed = if s0 { -initial } else { initial };
+                    check_lifts(
+                        Uendo::from_le_bits(bits),
+                        signed.double() * powers[n] + tail,
+                    )?;
+                }
+            }
+
+            for i in 0..n {
+                for (e1, e2, digit) in [
+                    (false, false, F::ONE),
+                    (true, false, F::ZETA),
+                    (false, true, F::ZETA.square()),
+                    (true, true, F::ONE - F::ZETA),
+                ] {
+                    for sign in [false, true] {
+                        let mut bits = [false; Uendo::BITS];
+                        bits[2 + 3 * i] = sign;
+                        bits[3 + 3 * i] = e1;
+                        bits[4 + 3 * i] = e2;
+                        let signed = if sign { -digit } else { digit };
+                        let expected = baseline + (signed - F::ONE) * powers[n - 1 - i];
+                        check_lifts(Uendo::from_le_bits(bits), expected)?;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        check::<Fp>()?;
+        check::<ragu_core::pasta::Fq>()
     }
 }

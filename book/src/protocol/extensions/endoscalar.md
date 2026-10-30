@@ -55,18 +55,20 @@ $\mathbb{Z}[\lambda]$, but a doubling walk cannot use all six: adding
 $\pm \lambda^2$ to the radix-2 alphabet makes two bit strings map to the same
 scalar, as $2 \cdot 1 + \lambda = 2 \cdot (-\lambda^2) + (-\lambda)$.
 
-`ragu` instead walks the endoscalar in radix 3. After two initial bits
-$(s_0, e_0)$, every three bits $(s, e_1, e_2)$ select one of the eight digits
+`ragu` instead walks the endoscalar in radix 3. Read the extracted bits least
+significant first: bits 0 and 1 are $(s_0, e_0)$, and bits
+$(2+3i, 3+3i, 4+3i)$ are digit $i$'s $(s, e_1, e_2)$.
+Each triple selects a signed digit $d_i$ from
 
 $$
-\mathcal{D} = \{\pm 1, \pm \lambda, \pm \lambda^2, \pm (1 - \lambda)\},
-\qquad
-d = (-1)^s \cdot \{1, \lambda, \lambda^2, 1 - \lambda\}[e_1, e_2],
+\mathcal{D} = \{\pm 1, \pm \lambda, \pm \lambda^2, \pm (1 - \lambda)\}.
 $$
 
-and the walk is $A_0 = [2] (-1)^{s_0} \phi^{e_0}(G)$, $A_{i+1} = [3] A_i +
-[d_i] G$ over $n = 47$ digits. The eight digits are exactly the nonzero
-residues of $\mathbb{Z}[\lambda]$ modulo $3$, so an expansion decodes uniquely
+The pair $(e_1,e_2) = (0,0), (1,0), (0,1), (1,1)$ selects
+$1, \lambda, \lambda^2, 1-\lambda$, respectively, and $s$ negates that
+value when set. The walk is $A_0 = [2] (-1)^{s_0} \phi^{e_0}(G)$,
+$A_{i+1} = [3] A_i + [d_i] G$ over $n = 47$ digits. The eight digits are
+exactly the nonzero residues of $\mathbb{Z}[\lambda]$ modulo $3$, so an expansion decodes uniquely
 digit by digit and the map from bit strings to scalars is injective. Any two
 distinct encodings differ by an element whose norm is at most
 $3 (5 \cdot 3^{n} - 1)^2 < 75 \cdot 9^{n}$, the sufficient bound used by
@@ -205,13 +207,19 @@ is charged for both sides. The entries bound the number of roots charged to
 a challenge, conditional on the relevant discrepancy being a nonzero
 polynomial fixed before that challenge is sampled.
 
+For an $m$-claim revdot fold, $A$, $B$, and $K$ interpolate the claims at
+$m$ nodes, whose monic vanishing polynomial is $Z$. The residual
+$\operatorname{revdot}(A,B)-K-ZQ$ has degree at
+most $2(m-1)$ and is nonzero at any false claim's node. The quotient $Q$
+has $m-1$ coefficients and must be committed before the folding challenge.
+
 | Challenge | Comparisons charged | Degree contribution |
 | --- | --- | ---: |
 | $w_n$ | Two child registry restrictions | $2(K-1)=126$ |
 | $y_n$ | Constraint check and two registry restrictions | $3(D-1)=24573$ |
 | $z_n$ | Gate check | $D-1=8191$ |
-| $\mu_n$ | Inner revdot folds on both sides, clearing negative powers | $2N(M-1)$ each: $168+140=308$ |
-| $\mu'_n$ | Outer revdot folds on both sides, clearing negative powers | $2(N-1)$ each: $26+18=44$ |
+| $\mu_n$ | Inner revdot quotient folds on both sides | $2N(M-1)$ each: $168+140=308$ |
+| $\mu'_n$ | Outer revdot quotient folds on both sides | $2(N-1)$ each: $26+18=44$ |
 | $x_n$ | Two folded-polynomial checks and registry restriction | $3(D-1)=24573$ |
 | $\alpha_n$ | Batching the $T$ opening claims | $T-1=137$ |
 | $u_n$ | Quotient identity, clearing at most $T$ denominators | $D+T-1=8329$ |
