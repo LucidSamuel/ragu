@@ -109,22 +109,20 @@ lift in the opposite field.
 
 ### Hoisted digit products
 
-The selector's three gates are two products of $r$ with bit-linear forms
-and one product of bits, $(u + v - 1) h$. Every endoscaling step of a fuse
-scales by the same $\beta$, so the bit-only part of the selection can be
-computed once rather than once per endoscaling: the walk stages carry, for
-every digit, the products $e_1 e_2$ and $e_1 e_2 s$ beside the bits. The
-hoisted gadget derives them from the bits as it is allocated, two gates per
-digit, so they are part of its wire contract, and the circuit that owns the
-stage's contracts (`bind_endoscalar` natively, the nested `collapse`) re-emits
-that contract once next to the bits' booleanity. With those wires in hand
-both coordinates of the digit point are
-$r$ times a linear form plus a linear form, so a step selects in two gates
-per digit, $9 n + 10$ per endoscaling, and the lift in the nested
-`compute_v` costs one gate per digit. That is what lets $\ell = 143$ fit
-the same steps that held $128$ bits of the radix-2 walk: $433$ gates per
-endoscaling in a step against $455$ before, with the eight binder challenges
-widened to the same $143$ bits on the plain three-gate selector.
+The plain selector spends three gates per digit. Hoisting the bit products
+$e_1 e_2$ and $e_1 e_2 s$ lets each selected coordinate be written as $r$
+times a linear form in the bits and products, plus a linear form. Each
+hoisted selector then needs two gates.
+
+Every endoscaling step of a fuse scales by the same $\beta$. The walk stages
+therefore carry these two products beside each digit's bits, sharing them
+across walks. The hoisted gadget derives them in two gates per digit, and
+the stage's contract owner (`bind_endoscalar` natively, `collapse` on the
+nested side) re-establishes their relation to the Boolean bits.
+
+A hoisted walk costs $9 n + 10 = 433$ gates, fitting $143$ bits into the
+same steps that held $128$ bits at $455$ gates with radix 2. The eight
+binder challenges also use $143$ bits, with the plain three-gate selector.
 
 The hoisted lift still multiplies each unsigned digit by its sign. Its
 $e_1 e_2$ and $e_1 e_2 s$ wires do not supply $s e_1$ or $s e_2$, so the

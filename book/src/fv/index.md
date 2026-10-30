@@ -50,18 +50,13 @@ parameters made concrete.
   conditional endomorphism application and negation.
 - **Booleans** — allocation, conjunction, conditional selection, conditional
   equality enforcement, and contract re-establishment.
-- **Endoscalars** — allocation, extraction, lifting, and radix-3 group
-  scaling, in both the plain form and the hoisted form that reads its digit
-  products from stage wires, plus the hoisting that derives those product
-  wires from the bits and the hoisted gadget's contract re-establishment.
-  All nine extraction instances are enrolled over both Pasta fields.
-  The integer non-collision bounds are connected to the complete curve group
-  and the affine walk. Concrete soundness and completeness endpoints on both
-  Pasta curves derive walk success from the certified prime group orders.
-  Lift injectivity is connected to the verified circuit outputs, with the
-  bounds instantiated for both fields. The deployed endomorphism roots are
-  matched to their scalar-field eigenvalues, and the plain and hoisted
-  walks are proved to compute multiplication by the corresponding lift.
+- **Endoscalars** — allocation, extraction, lifting, radix-3 group scaling,
+  hoisting, and contract re-establishment. Nine gadget variants are enrolled
+  over both Pasta fields. Concrete endpoints establish successful affine
+  walks, injective lifts, and multiplication by those lifts on both Pasta
+  curves. The [gadget contracts](circuits/contracts.md#assumption-discharge)
+  state the caller obligations and group-order certificates these results
+  require.
 - **Poseidon** — the permutation at the deployed Pasta parameters on both
   fields, and the sponge in several distinct control-flow shapes:
   single-block hashing on each field, uniform blocks across a rate boundary,
@@ -104,11 +99,11 @@ would change what every other theorem is about.
 
 The `Consistent` implementations are the one place this boundary is easy to
 misread. `Boolean`, `Point`, `Invertible`, and `HoistedEndoscalar` each
-re-establish their wire contracts by allocating a fresh gadget and constraining it equal to the
-existing wires — real constraints, emitted where the staging machinery
-substitutes wires — and the re-establishment instances above cover exactly
-that trace. `Nonzero`'s implementation is `Element::enforce_invertible`, which
-is covered under that name.
+re-establish their wire contracts by allocating a fresh gadget and constraining
+it equal to the existing wires. The re-establishment instances above cover
+these constraints, emitted where the staging machinery substitutes wires.
+`Nonzero`'s implementation is `Element::enforce_invertible`, which is covered
+under that name.
 
 Neither is any Rust code verified: the proofs are about
 circuits extracted from Rust, not about the Rust implementation that extracted
