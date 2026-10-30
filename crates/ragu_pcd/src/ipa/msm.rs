@@ -177,6 +177,16 @@ impl<'a, C: Affine> MSM<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        multiexp::<C, B>(&scalars, &bases).is_identity()
+        let identity = multiexp::<C, B>(&scalars, &bases).is_identity();
+        #[cfg(test)]
+        super::fingerprint::record(|| super::fingerprint::Event::Msm {
+            scalars: scalars.iter().map(super::fingerprint::field).collect(),
+            bases: bases[..self.other.len()]
+                .iter()
+                .map(super::fingerprint::point)
+                .collect(),
+            identity,
+        });
+        identity
     }
 }

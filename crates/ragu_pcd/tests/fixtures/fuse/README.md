@@ -3,13 +3,15 @@
 Golden fixtures for the fuse pipeline and the compressed verifier, checked by
 `tests/fuse_fixtures.rs` and by the `fuse fixtures` CI job. They pin what
 `Application::fuse` produces and what `Application::verify_compressed`
-accepts, so a change to either fails CI instead of passing silently.
+accepts and computes, so a change to either fails CI instead of passing
+silently.
 
 The prover side follows the golden-proof harness of zakura-common's `sensei`
 crate: the prover replays a committed randomness tape and must reproduce the
-committed proof byte for byte, consuming exactly the tape. Sensei exposes only
-a prover, so its goldens stop there; the verifier fixtures here are the
-extension ragu's verifier allows.
+committed proof byte for byte, consuming exactly the tape. The verifier side
+follows zakura-common's Halo2 and Orchard verifier fingerprints: the verifier
+runs on each committed proof under a recorder, and its transcript schedule and
+final MSMs must match the committed record.
 
 ## Profiles
 
@@ -45,7 +47,7 @@ first use.
 
 ## Files
 
-Each scenario has three files.
+Each scenario has four files.
 
 - `<scenario>.rng-u64s-le`: the randomness the fuse drew, as little-endian
   `u64` words. Checking replays it and fails if the prover asks for more or
@@ -65,23 +67,40 @@ Each scenario has three files.
   uncompressed proof is over ten megabytes at production rank, so this stands
   in for committing it. A mismatch names the fields that drifted, and the
   file's diff in a pull request reads as the list of stages a change touched.
+- `<scenario>.fingerprint`: `key = value` lines recording the verifier's run
+  on the `.proof`. `verifier.transcript` digests every point and scalar the
+  transcript absorbed and every challenge it squeezed, in order;
+  `verifier.absorbed` and `verifier.squeezed` split that stream, with counts,
+  so a mismatch says whether the verifier read the proof differently or
+  derived different challenges from the same reads. `verifier.msm.native` and
+  `verifier.msm.nested` digest each curve's final IPA MSM, every scalar in
+  evaluation order and every proof-dependent base, so they pin the
+  coefficient structure the check assembles, not only that it vanished.
 
-The verifier test also checks three tampered copies of each proof: a wrong
-IPA scalar on either curve, and a wrong claimed `v`. Each must be rejected.
-These are checked, not committed.
+Alongside each fingerprint, the verifier test checks three tampered copies of
+the proof, after the rejected captures beside zakura-common's Orchard
+fingerprints: a wrong host-curve IPA scalar must fail the host MSM, a wrong
+nested IPA scalar must pass the host MSM and fail the nested one, and a wrong
+claimed `v` must be rejected. These are checked, not committed.
+
+The recorder lives in `src/ipa/fingerprint.rs` and is compiled only for
+tests: it hooks the cycle transcript's absorb, scalar and squeeze, and the
+IPA MSM's evaluation, so the fingerprint is of the verifier's own code path.
 
 ## Regenerating
 
-After an intended change to the prover, run
+After an intended change to the prover or the verifier, run
 
 ```console
 RAGU_FIXTURES=write cargo test --release -p ragu_pcd --all-features --lib proof::fuse_fixture_tests
 ```
 
 and review the diff before committing it. The `.digests` diff should name
-exactly the stages the change was meant to touch; a change to
-`rng.fuse.words` means the randomness schedule moved. Fresh tapes come from
-the harness's
+exactly the stages a prover change was meant to touch, and the
+`.fingerprint` diff the part of the verifier a verifier change was; a change
+to `rng.fuse.words` means the randomness schedule moved. The prover test
+writes all four files, fingerprints included, since the verifier test cannot
+read a proof that is still being written. Fresh tapes come from the harness's
 SplitMix64 generator, which is not cryptographically secure and exists only to
 make synthetic test data reproducible; it must never produce a real proof.
 

@@ -7,7 +7,14 @@
 //! crate: the prover replays a committed randomness tape and must reproduce
 //! the committed proof byte for byte, consuming exactly the tape.
 //!
-//! Each scenario is one proof in a fixed tree of fuses, with three files:
+//! The verifier side follows zakura-common's Halo2 and Orchard verifier
+//! fingerprints: the verifier runs on each committed proof under a recorder
+//! (see [`crate::ipa::fingerprint`]), and its transcript schedule and final
+//! MSMs must match the committed record, so a change to how it reads a proof
+//! shows even when its verdict does not. Tampered copies must be rejected,
+//! and at the check they should fail.
+//!
+//! Each scenario is one proof in a fixed tree of fuses, with four files:
 //!
 //! - `<scenario>.rng-u64s-le`: the randomness the fuse drew, as little-endian
 //!   `u64` words. Checking replays it and fails if the prover asks for more
@@ -27,6 +34,9 @@
 //!   rank, so this stands in for committing it: a mismatch names the fields
 //!   that drifted, and the file's diff in a pull request reads as the list
 //!   of stages the change touched.
+//! - `<scenario>.fingerprint`: the verifier's run on the `.proof`: digests of
+//!   what its transcript absorbed and squeezed, with counts, and of each
+//!   curve's final IPA MSM, every scalar and proof-dependent base.
 //!
 //! After an intended change, regenerate with
 //!
@@ -89,7 +99,10 @@ use crate::{
         revdot::{Reduction, fold::Fold},
     },
     header::{Header, Suffix},
-    ipa::{IpaCycle, IpaProof},
+    ipa::{
+        IpaCycle, IpaProof,
+        fingerprint::{self, Event},
+    },
     profile::{Aggregator, Profile, Profiled, ProfiledCycle},
     step::{Encoded, Index, Step, internal::bootstrap::Bootstrap},
 };
@@ -382,6 +395,16 @@ impl Digest {
         for coeff in poly.iter_coeffs() {
             self.field(&coeff);
         }
+    }
+
+    fn bytes(&mut self, bytes: &[u8]) {
+        self.u64(bytes.len() as u64);
+        self.0.update(bytes);
+    }
+
+    fn tagged(&mut self, tag: u8, bytes: &[u8]) {
+        self.0.update(&[tag]);
+        self.bytes(bytes);
     }
 
     fn hex(self) -> String {
@@ -1097,6 +1120,8 @@ fn check<C: FixtureCycle, H: FixtureHeader>(
         fixtures.write(name, "rng-u64s-le", &tape.bytes());
         fixtures.write(name, "proof", &proof.0);
         fixtures.write(name, "digests", lines.render().as_bytes());
+        let fingerprint = accepted_fingerprint::<C, H>(app, &label, &proof.0);
+        fixtures.write(name, "fingerprint", fingerprint.render().as_bytes());
         return;
     }
 
@@ -1269,9 +1294,122 @@ fn decode_fixture<C: Cycle, H: FixtureHeader>(
     cursor.finished().then_some((data, proof))
 }
 
-/// A committed `.proof` decodes and re-encodes to the same bytes, the
-/// verifier accepts it without re-proving, and each tampered copy is
-/// rejected.
+/// Runs the compressed verifier under the fingerprint recorder.
+fn verifier_run<C: FixtureCycle, H: FixtureHeader>(
+    app: &App<C>,
+    data: H::Data,
+    proof: CompressedProof<C>,
+) -> (Result<bool>, Vec<Event>) {
+    fingerprint::capture(|| app.verify_compressed(&proof.carry::<H>(data)))
+}
+
+/// Whether each final IPA MSM a run evaluated was the identity, in order:
+/// the host curve's, then the nested curve's.
+fn msm_verdicts(events: &[Event]) -> Vec<bool> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Msm { identity, .. } => Some(*identity),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A verifier run as `.fingerprint` lines: what its transcript absorbed and
+/// squeezed, and the final MSM of each curve's IPA.
+///
+/// `verifier.transcript` digests the whole interleaved schedule;
+/// `verifier.absorbed` and `verifier.squeezed` split it, so a mismatch says
+/// whether the verifier read the proof differently or derived different
+/// challenges from the same reads. Each MSM's digest covers every scalar in
+/// evaluation order and every proof-dependent base, so it pins the
+/// coefficient structure the check assembles, not only that it vanished.
+fn fingerprint_lines(events: &[Event]) -> Lines {
+    let mut transcript = Digest::new();
+    let mut absorbed = Digest::new();
+    let mut squeezed = Digest::new();
+    let (mut points, mut scalars, mut challenges) = (0u64, 0u64, 0u64);
+    let mut msms = Vec::new();
+    for event in events {
+        match event {
+            Event::Point(bytes) => {
+                points += 1;
+                transcript.tagged(0, bytes);
+                absorbed.tagged(0, bytes);
+            }
+            Event::Scalar(bytes) => {
+                scalars += 1;
+                transcript.tagged(1, bytes);
+                absorbed.tagged(1, bytes);
+            }
+            Event::Challenge(bytes) => {
+                challenges += 1;
+                transcript.tagged(2, bytes);
+                squeezed.tagged(2, bytes);
+            }
+            Event::Msm {
+                scalars,
+                bases,
+                identity,
+            } => msms.push((scalars, bases, *identity)),
+        }
+    }
+
+    let mut lines = Lines::default();
+    lines.push("verifier.transcript", transcript.hex());
+    lines.push("verifier.absorbed", absorbed.hex());
+    lines.push("verifier.absorbed.points", points);
+    lines.push("verifier.absorbed.scalars", scalars);
+    lines.push("verifier.squeezed", squeezed.hex());
+    lines.push("verifier.squeezed.challenges", challenges);
+    lines.push("verifier.msms", msms.len());
+    for ((scalars, bases, identity), side) in msms.into_iter().zip(["native", "nested"]) {
+        lines.push(
+            format!("verifier.msm.{side}"),
+            digest(|d| {
+                d.u64(scalars.len() as u64);
+                for scalar in scalars {
+                    d.bytes(scalar);
+                }
+                d.u64(bases.len() as u64);
+                for base in bases {
+                    d.bytes(base);
+                }
+            }),
+        );
+        lines.push(format!("verifier.msm.{side}.scalars"), scalars.len());
+        lines.push(format!("verifier.msm.{side}.bases"), bases.len());
+        lines.push(format!("verifier.msm.{side}.identity"), identity);
+    }
+    lines
+}
+
+/// The fingerprint of the verifier accepting a `.proof` file, for writing
+/// it. The prover test writes it beside the proof it just encoded, since the
+/// verifier test cannot read a proof that is still being written.
+fn accepted_fingerprint<C: FixtureCycle, H: FixtureHeader>(
+    app: &App<C>,
+    label: &str,
+    bytes: &[u8],
+) -> Lines {
+    let (data, proof) = decode_fixture::<C, H>(bytes).expect("the encoded proof decodes");
+    let (verdict, events) = verifier_run::<C, H>(app, data, proof);
+    assert!(
+        matches!(verdict, Ok(true)),
+        "{label}: the verifier rejected the proof just produced"
+    );
+    assert_eq!(
+        msm_verdicts(&events),
+        [true, true],
+        "{label}: the capture did not see both final MSMs"
+    );
+    fingerprint_lines(&events)
+}
+
+/// A committed `.proof` decodes and re-encodes to the same bytes; the
+/// verifier accepts it without re-proving, and its run matches the
+/// committed `.fingerprint`; and each tampered copy is rejected where it
+/// should be, as zakura-common's rejected Orchard captures are.
 fn verify_fixture<C: FixtureCycle, H: FixtureHeader>(
     app: &App<C>,
     fixtures: &Fixtures,
@@ -1292,40 +1430,53 @@ fn verify_fixture<C: FixtureCycle, H: FixtureHeader>(
         failures.push(format!("{label}: re-encoding changed the bytes"));
     }
 
-    let verdict = app.verify_compressed(&proof.clone().carry::<H>(data.clone()));
+    let (verdict, events) = verifier_run::<C, H>(app, data.clone(), proof.clone());
     if !matches!(verdict, Ok(true)) {
         failures.push(format!(
             "{label}: the verifier rejected the committed compressed proof"
         ));
     }
+    let committed = Lines::parse(&String::from_utf8(fixtures.read(name, "fingerprint")).unwrap());
+    failures.extend(compare_lines(
+        &label,
+        &fingerprint_lines(&events),
+        &committed,
+    ));
 
-    // Tampered copies: a wrong IPA scalar on either curve, and a wrong
-    // claimed v.
-    let mut rejected = |what: &str, proof: CompressedProof<C>| {
-        let verdict = app.verify_compressed(&proof.carry::<H>(data.clone()));
+    // Tampered copies. Each is rejected, and those that reach the final
+    // MSMs are rejected there: a wrong host-curve IPA scalar fails the host
+    // MSM, and a wrong nested one passes the host MSM and fails the nested.
+    let mut rejected = |what: &str, proof: CompressedProof<C>, expected: Option<&[bool]>| {
+        let (verdict, events) = verifier_run::<C, H>(app, data.clone(), proof);
         if !matches!(verdict, Ok(false)) {
             failures.push(format!("{label}: a proof with {what} was not rejected"));
+        } else if let Some(expected) = expected
+            && msm_verdicts(&events) != expected
+        {
+            failures.push(format!(
+                "{label}: a proof with {what} was rejected at the wrong check"
+            ));
         }
     };
 
     let mut tampered = proof.clone();
     tampered.native.opening.c += Fp::ONE;
-    rejected("a wrong host IPA scalar", tampered);
+    rejected("a wrong host IPA scalar", tampered, Some(&[false]));
 
     let mut tampered = proof.clone();
     tampered.nested.opening.c += C::ScalarField::ONE;
-    rejected("a wrong nested IPA scalar", tampered);
+    rejected("a wrong nested IPA scalar", tampered, Some(&[true, false]));
 
     let mut tampered = proof;
     tampered.instance.v += Fp::ONE;
-    rejected("a wrong claimed v", tampered);
+    rejected("a wrong claimed v", tampered, None);
 }
 
-/// The verifier accepts every committed compressed proof of `C`'s profile
-/// and rejects tampered copies.
+/// The verifier accepts every committed compressed proof of `C`'s profile,
+/// as its committed fingerprint records, and rejects tampered copies.
 fn verifier_fixtures<C: FixtureCycle>() {
     if writing() {
-        // The prover test is rewriting the files.
+        // The prover test is rewriting the files, fingerprints included.
         return;
     }
     let fixtures = Fixtures::of::<C>();

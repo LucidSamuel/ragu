@@ -22,6 +22,8 @@ use udon::curve::Affine;
 
 use crate::SelectableBackend;
 
+#[cfg(test)]
+pub(crate) mod fingerprint;
 mod msm;
 mod prover;
 mod transcript;
