@@ -13,7 +13,7 @@ incomplete additions in each radix-3 step.
 namespace Ragu.Circuits.Endoscalar.WalkGroup
 
 open Point.Spec Walk Ragu.Lemmas.EndoscalarProof
-open Ragu.Lemmas Ragu.Foundation.Pasta
+open Ragu.Lemmas
 open CompElliptic.CurveForms.ShortWeierstrass
 
 variable {p : ℕ} [Fact p.Prime]

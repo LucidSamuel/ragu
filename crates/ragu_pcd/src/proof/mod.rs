@@ -13,7 +13,7 @@ pub(crate) mod builder;
 // These regression suites edit proof fields directly. Keep their sources
 // grouped by subject in tests/ and their access confined to the test build.
 // Their properties prove tens of production-rank proofs each, so they are
-// `#[ignore]`d in the platform matrix. Rust CI explicitly replays the two
+// `#[ignore]`d in the platform matrix. Rust CI explicitly replays the
 // properties with saved recursion failures, and the scheduled heavy-tests
 // run picks up the full suites with `cargo test -- --ignored`.
 #[cfg(test)]

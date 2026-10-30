@@ -103,11 +103,11 @@ impl<F: Field> Poly<F> {
 
 /// Memo of already-normalized shared sub-expressions, keyed by node address.
 ///
-/// Expressions are DAGs (see [`Expr`]); memoizing by pointer makes
-/// normalization linear in the number of distinct nodes, so a gadget that
-/// feeds its symbolic output back into itself 47 times (`Endoscalar::lift`)
-/// normalizes in 47 steps rather than 2⁴⁷. Every [`Arc`] stays alive for the
-/// duration of the memo's use (the trace owns them), so addresses are stable.
+/// Expressions are DAGs (see [`Expr`]). Memoizing by pointer normalizes each
+/// shared node once, avoiding repeated traversal of its subexpressions.
+/// Polynomial arithmetic still depends on the number of terms. Every [`Arc`]
+/// stays alive for the duration of the memo's use (the trace owns them), so
+/// addresses are stable.
 type Memo<F> = HashMap<*const Expr<F>, Arc<Poly<F>>>;
 
 /// Normalizes an expression into its canonical polynomial.

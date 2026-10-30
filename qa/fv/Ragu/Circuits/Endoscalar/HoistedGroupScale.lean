@@ -476,11 +476,17 @@ def PastaAssumptions {p : ℕ} [Fact p.Prime] (cp : CurveParams p) (input : Inpu
   input.pt.isOnCurve cp ∧ (∀ i : Fin numBits, IsBool input.bits[i]) ∧
     Hoist.Spec ⟨input.bits⟩ input.products
 
+/-- An on-curve Pallas input with Boolean bits and the `Hoist` product
+contract satisfies the generic walk preconditions. This discharges the
+coordinate and collision conditions for concrete soundness and completeness. -/
 theorem ep_assumptions (input : Input (F p)) (h : PastaAssumptions EpAffineParams input) :
     Assumptions EpAffineParams input :=
   ⟨h.1, epAffineParams_nonzeroCoordinates, by decide, by decide, h.2.1, h.2.2,
     WalkPasta.ep_groupScaleNative_ne_none input.pt h.1 input.bits⟩
 
+/-- An on-curve Vesta input with Boolean bits and the `Hoist` product
+contract satisfies the generic walk preconditions. This discharges the
+coordinate and collision conditions for concrete soundness and completeness. -/
 theorem eq_assumptions (input : Input (F q)) (h : PastaAssumptions EqAffineParams input) :
     Assumptions EqAffineParams input :=
   ⟨h.1, eqAffineParams_nonzeroCoordinates, by decide, by decide, h.2.1, h.2.2,

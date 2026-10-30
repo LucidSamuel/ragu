@@ -1,6 +1,6 @@
 import Ragu.Circuits.Point.Spec
 import Ragu.Circuits.Point.TripleAndAddIncompleteUnchecked
-import Ragu.Foundation.Pasta.CoordinateMap
+import Ragu.Lemmas.CoordinateMap
 import Mathlib.Tactic.Module
 
 /-!
@@ -14,7 +14,7 @@ success from group inequalities, rather than assuming it.
 namespace Ragu.Circuits.Point.Group
 
 open Spec CompElliptic.CurveForms.ShortWeierstrass
-open Ragu.Foundation.Pasta
+open Ragu.Lemmas
 
 variable {p : ℕ} [Fact p.Prime]
 variable (E : SWCurve (F p)) (hA : E.A = 0) (cp : CurveParams p) (hB : E.B = cp.b)

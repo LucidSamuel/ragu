@@ -23,6 +23,8 @@ def hint (env : ProverEnvironment (F p)) (bits : Vector (Expression (F p)) numBi
     BitVec numBits :=
   BitVec.ofFnLE fun (i : Fin numBits) => decide (env bits[i] = 1)
 
+/-- Expose each hint bit through the circuit environment so completeness can
+show that reallocating a consistent gadget reproduces its existing bit wires. -/
 lemma hint_getElem (env : ProverEnvironment (F p)) (bits : Vector (Expression (F p)) numBits)
     (i : ℕ) (h : i < numBits) :
     (hint env bits)[i] = decide (Expression.eval env.toEnvironment bits[i] = 1) := by

@@ -74,7 +74,7 @@ import Ragu.Circuits.Poseidon.Sbox
 import Ragu.Circuits.Poseidon.Sponge
 import Ragu.Lemmas.EndoscalarProof
 import Ragu.Lemmas.EndoscalarGroup
-import Ragu.Foundation.Pasta.CoordinateMap
+import Ragu.Lemmas.CoordinateMap
 
 /-!
 # Ragu formal-verification trust boundary
@@ -340,7 +340,7 @@ census_axioms Ragu.Circuits.Endoscalar.Lift.eq_injective_soundness
 census_axioms Ragu.Circuits.Endoscalar.HoistedLift.ep_injective_soundness
 census_axioms Ragu.Circuits.Endoscalar.HoistedLift.eq_injective_soundness
 
-census_axioms Ragu.Circuits.Point.Endomorphism.eq_nsmul_of_generator
+census_axioms Ragu.Lemmas.EndoscalarGroup.eq_nsmul_of_generator
 census_axioms Ragu.Circuits.Point.Endomorphism.pallas_generator
 census_axioms Ragu.Circuits.Point.Endomorphism.vesta_generator
 census_axioms Ragu.Circuits.Point.Endomorphism.pallas_endo +native(
@@ -354,9 +354,9 @@ The abstract group and affine proofs use only the standard theorem tier.
 The concrete Pasta results reuse the two group-order certificates already
 listed above; no new native certificate is introduced by this bridge. -/
 
-census_axioms Ragu.Foundation.Pasta.CoordinateMap.coords_add
-census_axioms Ragu.Foundation.Pasta.CoordinateMap.card_curve
-census_axioms Ragu.Foundation.Pasta.CoordinateMap.endo_quadratic
+census_axioms Ragu.Lemmas.CoordinateMap.coords_add
+census_axioms Ragu.Lemmas.CoordinateMap.card_curve
+census_axioms Ragu.Lemmas.CoordinateMap.endo_quadratic
 census_axioms Ragu.Lemmas.EndoscalarGroup.zsmul_ne_zero_of_prime_card
 census_axioms Ragu.Lemmas.EndoscalarGroup.norm_zsmul_eq_zero
 census_axioms Ragu.Lemmas.EndoscalarGroup.eval_ne_zero

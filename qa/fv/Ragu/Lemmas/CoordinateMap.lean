@@ -10,7 +10,7 @@ coordinate change, with `c = ζ²`, gives the cube-root endomorphism.
 These lemmas cover the complete addition law, including infinity and doubling.
 -/
 
-namespace Ragu.Foundation.Pasta.CoordinateMap
+namespace Ragu.Lemmas.CoordinateMap
 
 open CompElliptic.CurveForms.ShortWeierstrass
 
@@ -172,4 +172,4 @@ theorem endo_quadratic [DecidableEq K] (E : SWCurve K) (hA : E.A = 0)
   rw [_root_.add_comm P] at hsum
   rw [_root_.add_assoc, hsum, add_neg_cancel]
 
-end Ragu.Foundation.Pasta.CoordinateMap
+end Ragu.Lemmas.CoordinateMap

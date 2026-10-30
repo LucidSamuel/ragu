@@ -1,4 +1,5 @@
 import Ragu.Lemmas.EndoscalarProof
+import Mathlib.GroupTheory.SpecificGroups.Cyclic.Basic
 import Mathlib.Tactic.Module
 
 /-!
@@ -16,6 +17,15 @@ namespace Ragu.Lemmas.EndoscalarGroup
 open EndoscalarProof
 
 variable {G : Type*} [AddCommGroup G]
+
+/-- An additive map on a prime-order group is determined by any nonzero
+point, so checking one generator pins the scalar action everywhere. -/
+theorem eq_nsmul_of_generator {q : ℕ} [Fact q.Prime]
+    (hcard : Nat.card G = q) (φ : G →+ G) (k : ℕ) (g : G) (hg : g ≠ 0)
+    (hgen : φ g = k • g) (P : G) : φ P = k • P := by
+  have hmem : P ∈ AddSubgroup.zmultiples g := mem_zmultiples_of_prime_card hcard hg
+  obtain ⟨n, hn⟩ := AddSubgroup.mem_zmultiples_iff.mp hmem
+  rw [← hn, map_zsmul, hgen, smul_comm]
 
 /-- The action of an Eisenstein index on the chosen base point. -/
 def eval (φ : G →+ G) (P : G) (i : Index) : G := i.a • φ P + i.b • P

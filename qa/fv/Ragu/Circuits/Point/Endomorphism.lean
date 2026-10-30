@@ -1,7 +1,7 @@
 import Ragu.Foundation.Pasta.Basic
-import Ragu.Foundation.Pasta.CoordinateMap
 import Ragu.Circuits.Point.Spec
-import Mathlib.GroupTheory.SpecificGroups.Cyclic.Basic
+import Ragu.Lemmas.CoordinateMap
+import Ragu.Lemmas.EndoscalarGroup
 
 /-!
 # Matching coordinate roots with scalar-field eigenvalues
@@ -18,16 +18,7 @@ certificates and introduces no new axiom or native certificate.
 
 namespace Ragu.Circuits.Point.Endomorphism
 
-open Spec Ragu.Foundation.Pasta CompElliptic.Curves.Pasta
-
-/-- An additive map on a prime-order group is determined by any nonzero
-point, so checking one generator pins the scalar action everywhere. -/
-theorem eq_nsmul_of_generator {G : Type*} [AddCommGroup G] {q : ℕ} [Fact q.Prime]
-    (hcard : Nat.card G = q) (φ : G →+ G) (k : ℕ) (g : G) (hg : g ≠ 0)
-    (hgen : φ g = k • g) (P : G) : φ P = k • P := by
-  have hmem : P ∈ AddSubgroup.zmultiples g := mem_zmultiples_of_prime_card hcard hg
-  obtain ⟨n, hn⟩ := AddSubgroup.mem_zmultiples_iff.mp hmem
-  rw [← hn, map_zsmul, hgen, smul_comm]
+open Spec Ragu.Lemmas Ragu.Foundation.Pasta CompElliptic.Curves.Pasta
 
 /-- Kernel-checked orientation of Pallas's coordinate endomorphism. -/
 theorem pallas_generator :
@@ -45,12 +36,14 @@ theorem vesta_generator :
 theorem pallas_endo (P : PallasPoint) :
     CoordinateMap.endo Pallas.curve rfl EpAffineParams.ζ EpAffineParams.h_small_order P =
       EqAffineParams.ζ.val • P :=
-  eq_nsmul_of_generator pallas_group_order _ _ Pallas.Gpt Pallas.Gpt_ne_zero pallas_generator P
+  EndoscalarGroup.eq_nsmul_of_generator
+    pallas_group_order _ _ Pallas.Gpt Pallas.Gpt_ne_zero pallas_generator P
 
 /-- Vesta's coordinate map is multiplication by the deployed Fp root. -/
 theorem vesta_endo (P : VestaPoint) :
     CoordinateMap.endo Vesta.curve rfl EqAffineParams.ζ EqAffineParams.h_small_order P =
       EpAffineParams.ζ.val • P :=
-  eq_nsmul_of_generator vesta_group_order _ _ Vesta.Gpt Vesta.Gpt_ne_zero vesta_generator P
+  EndoscalarGroup.eq_nsmul_of_generator
+    vesta_group_order _ _ Vesta.Gpt Vesta.Gpt_ne_zero vesta_generator P
 
 end Ragu.Circuits.Point.Endomorphism

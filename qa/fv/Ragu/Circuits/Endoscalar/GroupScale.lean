@@ -498,11 +498,17 @@ Walk success and curve certificates are derived by the concrete endpoints. -/
 def PastaAssumptions {p : ℕ} [Fact p.Prime] (cp : CurveParams p) (input : Input (F p)) :=
   input.pt.isOnCurve cp ∧ ∀ i : Fin numBits, IsBool input.bits[i]
 
+/-- Derive the generic Pallas walk preconditions from an on-curve input and
+Boolean bits, supplying concrete soundness and completeness with the
+curve's coordinate and collision bounds. -/
 theorem ep_assumptions (input : Input (F p)) (h : PastaAssumptions EpAffineParams input) :
     Assumptions EpAffineParams input :=
   ⟨h.1, epAffineParams_nonzeroCoordinates, by decide, by decide, h.2,
     WalkPasta.ep_groupScaleNative_ne_none input.pt h.1 input.bits⟩
 
+/-- Derive the generic Vesta walk preconditions from an on-curve input and
+Boolean bits, supplying concrete soundness and completeness with the
+curve's coordinate and collision bounds. -/
 theorem eq_assumptions (input : Input (F q)) (h : PastaAssumptions EqAffineParams input) :
     Assumptions EqAffineParams input :=
   ⟨h.1, eqAffineParams_nonzeroCoordinates, by decide, by decide, h.2,
