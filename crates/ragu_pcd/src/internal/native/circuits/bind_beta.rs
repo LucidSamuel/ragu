@@ -42,8 +42,8 @@
 //!
 //! ## Staging
 //!
-//! Chained through [`outer_error`] to share the final mask of the hash and
-//! outer collapse circuits; the binding stage is loaded unenforced, its
+//! Chained through [`outer_error`] to share the final mask of the hash
+//! circuits; the binding stage is loaded unenforced, its
 //! curve membership being `bind_endoscalar`'s, and the preamble's contracts
 //! `compute_v`'s.
 //!

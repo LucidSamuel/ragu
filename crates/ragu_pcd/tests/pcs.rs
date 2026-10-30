@@ -41,7 +41,6 @@ fn expected_rx_order() -> Vec<RxIndex> {
     (0..nested::NumSteps::<crate::profile::Standard>::len())
         .map(|step| EndoscalingStep(step.try_into().unwrap()))
         .chain([
-            Export,
             Collapse,
             ComputeV,
             EndoscalarStage,
@@ -65,7 +64,6 @@ fn expected_circuit_order() -> Vec<InternalCircuitIndex> {
     (0..nested::NumSteps::<crate::profile::Standard>::len())
         .map(|step| EndoscalingStep(step.try_into().unwrap()))
         .chain([
-            Export,
             Collapse,
             ComputeV,
             EndoscalarStage,
