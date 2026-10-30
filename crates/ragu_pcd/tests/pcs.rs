@@ -348,7 +348,7 @@ mod folding {
     use udon::field::Field;
 
     use super::{
-        super::{NestedFuseEmulator, claims::NestedFuseProofSource},
+        super::{_05_outer_error::NestedFuseEmulator, claims::NestedFuseProofSource},
         stage_values, support,
     };
     use crate::{
