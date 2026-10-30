@@ -48,9 +48,9 @@
 //! meant to touch.
 //!
 //! Every scenario runs once per profile, the wallet's [`Standard`] and the
-//! [`Aggregator`], each with its own directory of fixtures. Both use the same
-//! seeds, so a diff between the two directories is exactly what the profile
-//! changes.
+//! [`Aggregator`]. Both currently produce identical proofs, so they check
+//! the same fixtures in `standard/`. Only the standard prover writes them
+//! when regenerating.
 //!
 //! [`Standard`]: crate::profile::Standard
 //!
@@ -224,8 +224,7 @@ const REGENERATE: &str = "RAGU_FIXTURES=write cargo test --release -p ragu_pcd -
 /// The first bytes of every `.proof` file.
 const MAGIC: &[u8; 8] = b"ragufx01";
 
-/// The scenarios: a fixed tree of fuses over the fixtures' steps, each node
-/// a fixture.
+/// The scenarios: a fixed tree of fuses over the fixtures' steps.
 ///
 /// ```text
 ///                     rerandomize
@@ -240,20 +239,18 @@ const MAGIC: &[u8; 8] = b"ragufx01";
 ///
 /// The `bootstrap` fixture is the base case every seed fuses as both
 /// children; `unit_left` fuses it beside a seed as a `()`-header child.
+/// Only `seed_a` and `merge_ab` have snapshots at their respective depths;
+/// their siblings are deterministic inputs to the retained parent fixtures.
 const BOOTSTRAP: &str = "bootstrap";
 const SEED_A: &str = "seed_a";
-const SEED_B: &str = "seed_b";
-const SEED_C: &str = "seed_c";
-const SEED_D: &str = "seed_d";
 const MERGE_AB: &str = "merge_ab";
-const MERGE_CD: &str = "merge_cd";
 const MERGE_ABCD: &str = "merge_abcd";
 const UNIT_LEFT: &str = "unit_left";
 const RERANDOMIZE: &str = "rerandomize";
 
 /// The seed a scenario's tape is recorded from: a fixed prefix over a small
-/// tag, so the seeds are recognizable and never collide. Checking replays
-/// the recorded tape and does not use the seed.
+/// tag, so the seeds are recognizable and never collide. Retained fixtures
+/// replay their committed tapes; their sibling inputs use this seed directly.
 const fn seed(tag: u64) -> u64 {
     0x5241_4755_4658_0000 | tag
 }
@@ -261,9 +258,10 @@ const fn seed(tag: u64) -> u64 {
 /// A prover's randomness as a tape of `u64` words, in the manner of sensei's
 /// `.rng-u64s-le` goldens.
 ///
-/// Checking replays the committed tape and fails when the prover asks for a
-/// word it does not hold; regenerating appends words from SplitMix64 as they
-/// are drawn and writes the result. Either way `fill_bytes` takes whole
+/// Checking a snapshot replays the committed tape and fails when the prover
+/// asks for a word it does not hold; regenerating appends words from SplitMix64
+/// as they are drawn and writes the result. Sibling inputs also use this
+/// generator, without writing a tape. Either way `fill_bytes` takes whole
 /// words, so a request's word count is fixed by its length, and the number
 /// of words consumed pins the randomness schedule.
 ///
@@ -272,7 +270,7 @@ const fn seed(tag: u64) -> u64 {
 /// data whose one requirement is a reproducible, platform-independent
 /// stream that no dependency version can change: `StdRng` is pinned by
 /// `Cargo.lock` but not by `rand`'s API. Changing it changes every tape
-/// regenerated afterwards, not the committed ones.
+/// regenerated afterwards, and the sibling inputs to the retained parents.
 struct Tape {
     words: Vec<u64>,
     cursor: usize,
@@ -1006,8 +1004,7 @@ fn writing() -> bool {
     std::env::var_os("RAGU_FIXTURES").is_some_and(|mode| mode == "write")
 }
 
-/// One profile's fixtures: the directory they live in, and the label their
-/// failures carry.
+/// The shared fixture directory and the profile label failures carry.
 struct Fixtures {
     dir: PathBuf,
     profile: &'static str,
@@ -1016,9 +1013,9 @@ struct Fixtures {
 impl Fixtures {
     fn of<C: ProfiledCycle>() -> Self {
         let profile = <C::Profile as Profile>::NAME;
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/fuse")
-            .join(profile);
+        // Aggregator currently has the standard layout. Checking the same
+        // snapshots guards that agreement without storing duplicate files.
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/fuse/standard");
         if writing() {
             fs::create_dir_all(&dir).expect("the fixture directory can be created");
         }
@@ -1138,38 +1135,23 @@ fn check<C: FixtureCycle, H: FixtureHeader>(
     failures.extend(compare_lines(&label, &lines, &committed));
 }
 
-fn seed_scenario<C: FixtureCycle>(
-    app: &App<C>,
-    fixtures: &Fixtures,
-    name: &str,
-    tag: u64,
-    salt: u64,
-    failures: &mut Vec<String>,
-) -> TestPcd<C> {
-    let mut tape = fixtures.tape(name, tag);
+fn seed_scenario<C: FixtureCycle>(app: &App<C>, tape: &mut Tape, salt: u64) -> TestPcd<C> {
     let (pcd, ()) = app
-        .seed(&mut tape, Seed::new(), Fp::from(salt))
+        .seed(tape, Seed::new(), Fp::from(salt))
         .expect("seeding must succeed");
-    check(app, fixtures, name, tag, &pcd, &tape, failures);
     pcd
 }
 
-#[allow(clippy::too_many_arguments)]
 fn merge_scenario<C: FixtureCycle>(
     app: &App<C>,
-    fixtures: &Fixtures,
-    name: &str,
-    tag: u64,
+    tape: &mut Tape,
     salt: u64,
     left: TestPcd<C>,
     right: TestPcd<C>,
-    failures: &mut Vec<String>,
 ) -> TestPcd<C> {
-    let mut tape = fixtures.tape(name, tag);
     let (pcd, ()) = app
-        .fuse(&mut tape, Merge::new(), Fp::from(salt), left, right)
+        .fuse(tape, Merge::new(), Fp::from(salt), left, right)
         .expect("fusing two nodes must succeed");
-    check(app, fixtures, name, tag, &pcd, &tape, failures);
     pcd
 }
 
@@ -1204,10 +1186,23 @@ fn prover_fixtures<C: FixtureCycle>() {
         &mut failures,
     );
 
-    let seed_a = seed_scenario(&app, &fixtures, SEED_A, 2, 13, &mut failures);
-    let seed_b = seed_scenario(&app, &fixtures, SEED_B, 3, 17, &mut failures);
-    let seed_c = seed_scenario(&app, &fixtures, SEED_C, 4, 19, &mut failures);
-    let seed_d = seed_scenario(&app, &fixtures, SEED_D, 5, 23, &mut failures);
+    let mut seed_tape = fixtures.tape(SEED_A, 2);
+    let seed_a = seed_scenario(&app, &mut seed_tape, 13);
+    check(
+        &app,
+        &fixtures,
+        SEED_A,
+        2,
+        &seed_a,
+        &seed_tape,
+        &mut failures,
+    );
+
+    // Keep distinct children and the original tree, but only snapshot one
+    // seed and one merge at this depth. Their parents pin these inputs too.
+    let seed_b = seed_scenario(&app, &mut Tape::record(seed(3)), 17);
+    let seed_c = seed_scenario(&app, &mut Tape::record(seed(4)), 19);
+    let seed_d = seed_scenario(&app, &mut Tape::record(seed(5)), 23);
 
     let mut unit_tape = fixtures.tape(UNIT_LEFT, 6);
     let (unit_left, ()) = app
@@ -1229,34 +1224,28 @@ fn prover_fixtures<C: FixtureCycle>() {
         &mut failures,
     );
 
-    let merge_ab = merge_scenario(
+    let mut merge_tape = fixtures.tape(MERGE_AB, 7);
+    let merge_ab = merge_scenario(&app, &mut merge_tape, 31, seed_a, seed_b);
+    check(
         &app,
         &fixtures,
         MERGE_AB,
         7,
-        31,
-        seed_a,
-        seed_b,
+        &merge_ab,
+        &merge_tape,
         &mut failures,
     );
-    let merge_cd = merge_scenario(
-        &app,
-        &fixtures,
-        MERGE_CD,
-        8,
-        37,
-        seed_c,
-        seed_d,
-        &mut failures,
-    );
-    let merge_abcd = merge_scenario(
+    let merge_cd = merge_scenario(&app, &mut Tape::record(seed(8)), 37, seed_c, seed_d);
+
+    let mut merge_tape = fixtures.tape(MERGE_ABCD, 9);
+    let merge_abcd = merge_scenario(&app, &mut merge_tape, 41, merge_ab, merge_cd);
+    check(
         &app,
         &fixtures,
         MERGE_ABCD,
         9,
-        41,
-        merge_ab,
-        merge_cd,
+        &merge_abcd,
+        &merge_tape,
         &mut failures,
     );
 
@@ -1483,10 +1472,7 @@ fn verifier_fixtures<C: FixtureCycle>() {
     let app = C::app();
     let mut failures = Vec::new();
     verify_fixture::<C, ()>(&app, &fixtures, BOOTSTRAP, &mut failures);
-    for name in [SEED_A, SEED_B, SEED_C, SEED_D, UNIT_LEFT] {
-        verify_fixture::<C, Value>(&app, &fixtures, name, &mut failures);
-    }
-    for name in [MERGE_AB, MERGE_CD, MERGE_ABCD, RERANDOMIZE] {
+    for name in [SEED_A, UNIT_LEFT, MERGE_AB, MERGE_ABCD, RERANDOMIZE] {
         verify_fixture::<C, Value>(&app, &fixtures, name, &mut failures);
     }
     assert!(
@@ -1531,7 +1517,11 @@ mod aggregator {
     )]
     #[test]
     fn prover() {
-        prover_fixtures::<C>();
+        // Standard is the only writer of the shared fixtures. In check
+        // mode, both profiles must independently reproduce them.
+        if !writing() {
+            prover_fixtures::<C>();
+        }
     }
 
     #[cfg_attr(

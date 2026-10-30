@@ -15,28 +15,32 @@ final MSMs must match the committed record.
 
 ## Profiles
 
-Each profile has its own directory: `standard/` for the wallet's profile and
-`aggregator/` for the aggregator's. Both prove the same scenarios from the
-same seeds, so a diff between the directories is exactly what the profile
-changes. Until the aggregator's decompression circuits land, the profile
-declares nothing and its proofs are the standard ones, so the two directories
-are identical; they diverge when it does.
+The wallet's standard profile and the aggregator profile both check the same
+fixtures in `standard/`. Until the aggregator's decompression circuits land,
+the profile declares nothing and produces identical proofs, so storing a
+second copy adds no coverage. Both profiles independently reproduce the
+snapshots and check the verifier fingerprints and tampered proofs. When the
+profiles diverge, the aggregator will need its own expected outputs.
 
 ## Scenarios
 
-One fixture per node of a fixed tree of fuses over the harness's own steps
+Six fixtures from a fixed tree of fuses over the harness's own steps
 (`Seed`, `Merge`, `UnitLeft`, and `UnitRight`, which is registered but never
 fused), at production rank with header size 4, on the baked Pasta parameters:
 
-| Scenario      | Header  | Fuses                                              |
-| ------------- | ------- | -------------------------------------------------- |
-| `bootstrap`   | `()`    | the bootstrap step over two dummy proofs           |
-| `seed_a`..`d` | `Value` | a seed with salt 13, 17, 19, 23 over `bootstrap`   |
-| `unit_left`   | `Value` | `UnitLeft` over `bootstrap` and `seed_a`           |
-| `merge_ab`    | `Value` | `Merge` over `seed_a` and `seed_b`                 |
-| `merge_cd`    | `Value` | `Merge` over `seed_c` and `seed_d`                 |
-| `merge_abcd`  | `Value` | `Merge` over `merge_ab` and `merge_cd`             |
-| `rerandomize` | `Value` | the rerandomize step over `merge_abcd`             |
+| Scenario      | Header  | Fuses                                   |
+| ------------- | ------- | --------------------------------------- |
+| `bootstrap`   | `()`    | the bootstrap step over two dummy proofs |
+| `seed_a`      | `Value` | a seed with salt 13 over `bootstrap`      |
+| `unit_left`   | `Value` | `UnitLeft` over `bootstrap` and `seed_a`   |
+| `merge_ab`    | `Value` | `Merge` over `seed_a` and `seed_b`         |
+| `merge_abcd`  | `Value` | `Merge` over `merge_ab` and `merge_cd`     |
+| `rerandomize` | `Value` | the rerandomize step over `merge_abcd`     |
+
+The sibling inputs `seed_b`, `seed_c`, `seed_d`, and `merge_cd` are still
+proved from fixed seeds, preserving distinct children and the original tree.
+They repeat the seed and first-level merge cases, so they have no separate
+snapshots; the retained parent fixtures pin their effect on the proof.
 
 The `bootstrap` scenario re-proves the bootstrap proof under the fixture
 randomness and installs it in the application, since `finalize` proves it
@@ -98,11 +102,13 @@ RAGU_FIXTURES=write cargo test --release -p ragu_pcd --all-features --lib proof:
 and review the diff before committing it. The `.digests` diff should name
 exactly the stages a prover change was meant to touch, and the
 `.fingerprint` diff the part of the verifier a verifier change was; a change
-to `rng.fuse.words` means the randomness schedule moved. The prover test
-writes all four files, fingerprints included, since the verifier test cannot
-read a proof that is still being written. Fresh tapes come from the harness's
-SplitMix64 generator, which is not cryptographically secure and exists only to
-make synthetic test data reproducible; it must never produce a real proof.
+to `rng.fuse.words` means the randomness schedule moved. Only the standard
+prover test writes the shared files, fingerprints included, since the verifier
+test cannot read a proof that is still being written. Run the same command
+without `RAGU_FIXTURES=write` afterwards to check both profiles. Fresh tapes and
+sibling inputs come from the harness's SplitMix64 generator, which is not
+cryptographically secure and exists only to make synthetic test data
+reproducible; it must never produce a real proof.
 
 The tests are ignored without `--release`: production-rank proving is
 impractically slow in debug builds.
