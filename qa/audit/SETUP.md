@@ -238,8 +238,8 @@ the configured model's resistance to misleading text. Review coverage and
 findings remain model-reported and need human assessment.
 
 A new command can cancel an older review on that PR; stale results cannot
-pass the gate. The publisher terminates the old invocation's check and updates
-its summary only if a newer invocation has not replaced it. Failed or stale
+pass the gate. The publisher terminates the old invocation's check and edits
+only that invocation's own summary, leaving newer summaries untouched. Failed or stale
 reviews still show verified summaries and findings from completed passes,
 clearly tied to the reviewed revisions. Brief App writes are serialized across
 PRs; model reviews remain concurrent. GitHub labels jobs that use an environment as deployments. Regression

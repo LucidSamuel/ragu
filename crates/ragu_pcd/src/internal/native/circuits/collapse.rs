@@ -1,20 +1,31 @@
 //! Verifies both layers of the native quotient fold.
 //!
-//! The circuit loads the preamble and both error stages once. It enforces
-//! the children's application k(y) values against their headers, enforces
-//! each first-layer corrected target equal to its collapsed value, and
-//! enforces the second-layer result equal to the unified instance's c. The
-//! unified k(y) values are enforced by [`super::hashes_1`].
+//! The circuit enforces the children's application k(y) values against their
+//! headers. For each group of the children's claims, it enforces that folding
+//! the group's k(y) targets with the [`inner_error`] stage's quotient under mu
+//! gives the collapsed value the [`outer_error`] stage witnessed. Outside the
+//! base case, it enforces that folding the collapsed values with the outer
+//! quotient under mu' gives the unified instance's c. The unified k(y) values
+//! are enforced by [`super::hashes_1`].
 //!
 //! A profile's statement targets come from its headers; its binding targets
 //! come from the extension commitments in the points binding stage. That
 //! stage is loaded only when the profile declares a native binding circuit.
 //! Its point contracts remain the responsibility of [`super::bind_endoscalar`].
 //!
-//! The inner and outer error stages and their commitment order are unchanged:
-//! the inner quotient is fixed before mu, and the outer quotient before mu'.
-//! Both stages are enforced here. The preamble is loaded unenforced because
-//! its contracts are enforced by the circuits that own those fields.
+//! The inner quotient is fixed before mu is derived, and the outer quotient
+//! before mu'.
+//!
+//! ## Staging
+//!
+//! This circuit uses [`inner_error`] as its final stage, which inherits in the
+//! following chain:
+//! - [`points::BindingStage`] (unenforced, and loaded only for a profile whose
+//!   native extension binds; its curve membership is `bind_endoscalar`'s)
+//! - [`preamble`] (unenforced; the circuits that own its fields enforce its
+//!   contracts)
+//! - [`outer_error`] (enforced)
+//! - [`inner_error`] (enforced)
 //!
 //! ## Base case
 //!
@@ -41,6 +52,10 @@
 //! [`is_dummy_input`]: super::super::stages::preamble::ProofInputs::is_dummy_input
 //!
 //! [`is_base_case`]: super::super::stages::preamble::Output::is_base_case
+//! [`inner_error`]: super::super::stages::inner_error
+//! [`outer_error`]: super::super::stages::outer_error
+//! [`preamble`]: super::super::stages::preamble
+//! [`points::BindingStage`]: super::super::stages::points::BindingStage
 
 use core::marker::PhantomData;
 
