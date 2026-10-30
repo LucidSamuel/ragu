@@ -86,7 +86,9 @@ curve on which it has coordinates $(r, r)$, by $(x, y) \mapsto (c^2 x, c^3 y)$
 with $c = x / y$; there every digit multiple of the base point has coordinates
 affine in $r$. With the three gates of that normalization, four for the
 initial doubling and three to move the result back, an endoscaling costs
-$10 n + 10$ gates: $430$ against $455$ for the radix-2 walk at 128 bits.
+$10 n + 10$ gates, $480$ at $n = 47$: more than the $455$ of the radix-2 walk
+at 128 bits. Hoisting the digit products out of the walk, described below,
+brings an endoscaling inside a step down to $433$.
 
 The input must be a valid nonidentity point. Normalization divides by $y$,
 denormalization divides by $c^2$ and $c^3$, and the initial tangent uses
@@ -186,34 +188,39 @@ obligations for that broader formalization.
 
 ### Challenge accounting
 
-All ten nested challenges, in stage order, are 143-bit lifts:
-$w_n, y_n, z_n, \mu_n, \nu_n, \mu'_n, \nu'_n, x_n, \alpha_n, u_n$.
+All eight nested challenges, in stage order, are 143-bit lifts:
+$w_n, y_n, z_n, \mu_n, \mu'_n, x_n, \alpha_n, u_n$.
 The two fields also use the same 143-bit endoscalar for their $\beta$ folds.
 Injectivity gives a sample space of size $2^{143}$ in each field; it does
 not by itself prove the protocol's soundness reduction.
 
-The following conservative local degree ledger uses $D=8192$, nested
-registry domain size $K=64$, revdot group size $M=7$, number of groups
-$N=12$, and $T=147$ nested PCS queries. Its entries bound the number of
-roots charged to a challenge, conditional on the relevant discrepancy
-being a nonzero polynomial fixed before that challenge is sampled.
+The following conservative local degree ledger is derived from the
+implementation's constants, which the `print_ledger_parameters` test in
+`crates/ragu_pcd/src/internal/tests.rs` prints: $D=8192$, nested registry
+domain size $K=64$, revdot group size and group count $M=7$, $N=14$ on the
+native side and $M=8$, $N=10$ on the nested side, $T=138$ nested PCS
+queries (the 18 static openings, each child's 39 rx polynomials at
+$x_n z_n$, and the registry restriction at each of the 42 nested internal
+circuits' $\omega^j$), and point folds of 93 native and 105 nested terms.
+One challenge set drives both fields' revdot folds, so each fold challenge
+is charged for both sides. The entries bound the number of roots charged to
+a challenge, conditional on the relevant discrepancy being a nonzero
+polynomial fixed before that challenge is sampled.
 
 | Challenge | Comparisons charged | Degree contribution |
 | --- | --- | ---: |
 | $w_n$ | Two child registry restrictions | $2(K-1)=126$ |
 | $y_n$ | Constraint check and two registry restrictions | $3(D-1)=24573$ |
 | $z_n$ | Gate check | $D-1=8191$ |
-| $\mu_n$ | Inner revdot folds, clearing negative powers | $2N(M-1)=144$ |
-| $\nu_n$ | Inner revdot folds | $N(M-1)=72$ |
-| $\mu'_n$ | Outer revdot fold, clearing negative powers | $2(N-1)=22$ |
-| $\nu'_n$ | Outer revdot fold | $N-1=11$ |
+| $\mu_n$ | Inner revdot folds on both sides, clearing negative powers | $2N(M-1)$ each: $168+140=308$ |
+| $\mu'_n$ | Outer revdot folds on both sides, clearing negative powers | $2(N-1)$ each: $26+18=44$ |
 | $x_n$ | Two folded-polynomial checks and registry restriction | $3(D-1)=24573$ |
-| $\alpha_n$ | Batching the $T$ opening claims | $T-1=146$ |
-| $u_n$ | Quotient identity, clearing at most $T$ denominators | $D+T-1=8338$ |
-| $\beta$ | Both point folds, with 99 and 113 terms | $98+112=210$ |
+| $\alpha_n$ | Batching the $T$ opening claims | $T-1=137$ |
+| $u_n$ | Quotient identity, clearing at most $T$ denominators | $D+T-1=8329$ |
+| $\beta$ | Both point folds, with 93 and 105 terms | $92+104=196$ |
 
 Counting the comparisons separately, rather than relying on the gist's
-six-check shorthand, gives $66406/2^{143} \approx 2^{-126.98}$ for this
+six-check shorthand, gives $66477/2^{143} \approx 2^{-126.98}$ for this
 local ledger. In particular, the lower-degree challenges must not be
 omitted, even though they do not change the rounded estimate of about
 127 bits. The $u_n$ entry conservatively clears the quotient denominators;

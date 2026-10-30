@@ -160,6 +160,12 @@ pub trait Profile: Copy + Default + Eq + fmt::Debug + Send + Sync + 'static {
         B: SelectableBackend;
 
     /// The circuits and stages the profile adds on the native side.
+    ///
+    /// The challenge binders load a native extension's stages, and at the
+    /// production rank their largest variant sits fifteen gates under the
+    /// gate budget with the standard header: an extension stage costing more
+    /// needs a smaller header or a cheaper binder. The internal census tests
+    /// pin that count.
     fn native_extension() -> Extension {
         Extension::EMPTY
     }

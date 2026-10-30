@@ -549,6 +549,48 @@ fn print_internal_circuit_constraint_counts() {
     }
 }
 
+/// Helper test to print the parameters the book's local degree ledger in
+/// `book/src/protocol/extensions/endoscalar.md` is derived from.
+/// Run with: `cargo test -p ragu_pcd --release print_ledger -- --nocapture`
+#[test]
+fn print_ledger_parameters() {
+    use ragu_primitives::vec::Len;
+    use std::println;
+
+    use crate::profile::Standard;
+
+    println!("\n// Ledger parameters for book/src/protocol/extensions/endoscalar.md:");
+    println!(
+        "native revdot: M = {}, N = {}",
+        native::FOLD_GROUP_SIZE,
+        native::NUM_FOLD_GROUPS
+    );
+    println!(
+        "nested revdot: M = {}, N = {}",
+        nested::FOLD_GROUP_SIZE,
+        nested::NUM_FOLD_GROUPS
+    );
+    println!("nested rx polynomials: {}", nested::RxIndex::NUM);
+    println!(
+        "nested internal circuits: {}",
+        nested::InternalCircuitIndex::NUM
+    );
+    println!(
+        "nested PCS queries T: {}",
+        nested::pcs::STATIC_F_QUERIES.len()
+            + 2 * nested::RxIndex::NUM
+            + nested::InternalCircuitIndex::NUM
+    );
+    println!(
+        "native walk points: {}",
+        native::stages::points::NumInputs::<Standard>::len()
+    );
+    println!(
+        "nested walk points: {}",
+        nested::NumPoints::<Standard>::len()
+    );
+}
+
 /// Helper test to print current stage parameters in copy-pasteable format.
 /// Run with: `cargo test -p ragu_pcd --release print_internal_stage -- --nocapture`
 #[test]
