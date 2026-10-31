@@ -66,9 +66,10 @@ jobs:
       - name: Check the fuse and verifier fixtures
         env:
           RAGU_FIXTURES: check
+        # Release profiles can enable debug assertions, marking these tests ignored.
         run: >-
           cargo test --release -p ragu_pcd --locked --all-features
-          --lib proof::fuse_fixture_tests
+          --lib proof::fuse_fixture_tests -- --include-ignored
 
   result:
     name: fixture result
