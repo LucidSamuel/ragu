@@ -1,9 +1,9 @@
 //! Golden fixtures for the fuse pipeline and the compressed verifier.
 //!
-//! The fixtures under `tests/fixtures/fuse/` pin what [`Application::fuse`]
-//! produces and what [`Application::verify_compressed`] accepts, so that a
-//! change to either fails the `fuse fixtures` CI job instead of passing
-//! silently. They follow the golden-proof harness of zakura-common's `sensei`
+//! The fixtures under `tests/fixtures/fuse/` pin selected executions of
+//! [`Application::fuse`] and [`Application::verify_compressed`]. Changes to
+//! those executions fail the `fuse fixtures` CI job. They follow the
+//! golden-proof harness of zakura-common's `sensei`
 //! crate: the prover replays a committed randomness tape and must reproduce
 //! the committed proof byte for byte, consuming exactly the tape.
 //!
@@ -503,8 +503,7 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
         native_p_poly,
         native_hashes_1_rx,
         native_hashes_2_rx,
-        native_inner_collapse_rx,
-        native_outer_collapse_rx,
+        native_collapse_rx,
         native_compute_v_rx,
         native_bind_challenges_rxs,
         native_bind_beta_rx,
@@ -537,7 +536,6 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
         nested_p_poly,
         nested_challenges_rx,
         nested_challenges_partial,
-        nested_export_rx,
         nested_collapse_rx,
         nested_compute_v_rx,
         nested_endoscaling_step_commitments: _,
@@ -550,7 +548,6 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
         nested_registry_xy_commitment: _,
         nested_p_commitment: _,
         nested_challenges_commitment: _,
-        nested_export_commitment: _,
         nested_collapse_commitment: _,
         nested_compute_v_commitment: _,
         w,
@@ -574,8 +571,7 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
         native_p_commitment: _,
         native_hashes_1_commitment: _,
         native_hashes_2_commitment: _,
-        native_inner_collapse_commitment: _,
-        native_outer_collapse_commitment: _,
+        native_collapse_commitment: _,
         native_compute_v_commitment: _,
         native_bind_challenges_commitments: _,
         native_bind_beta_commitment: _,
@@ -616,8 +612,7 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
     lines.poly("native_p_poly", native_p_poly);
     lines.poly("native_hashes_1_rx", native_hashes_1_rx);
     lines.poly("native_hashes_2_rx", native_hashes_2_rx);
-    lines.poly("native_inner_collapse_rx", native_inner_collapse_rx);
-    lines.poly("native_outer_collapse_rx", native_outer_collapse_rx);
+    lines.poly("native_collapse_rx", native_collapse_rx);
     lines.poly("native_compute_v_rx", native_compute_v_rx);
     lines.polys("native_bind_challenges_rxs", native_bind_challenges_rxs);
     lines.poly("native_bind_beta_rx", native_bind_beta_rx);
@@ -651,7 +646,6 @@ fn proof_lines<C: Cycle>(proof: &Proof<C, R>, lines: &mut Lines) {
     lines.poly("nested_p_poly", nested_p_poly);
     lines.poly("nested_challenges_rx", nested_challenges_rx);
     lines.point("nested_challenges_partial", nested_challenges_partial);
-    lines.poly("nested_export_rx", nested_export_rx);
     lines.poly("nested_collapse_rx", nested_collapse_rx);
     lines.poly("nested_compute_v_rx", nested_compute_v_rx);
 
@@ -1455,6 +1449,14 @@ fn verify_fixture<C: FixtureCycle, H: FixtureHeader>(
     let mut tampered = proof.clone();
     tampered.nested.opening.c += C::ScalarField::ONE;
     rejected("a wrong nested IPA scalar", tampered, Some(&[true, false]));
+
+    // Exercise InvalidWitness handling before either IPA MSM. Accepting a
+    // transcript error must fail even when all honest captures still match.
+    let mut tampered = proof.clone();
+    for commitment in &mut tampered.instance.nested {
+        *commitment = C::NestedCurve::identity();
+    }
+    rejected("identity stage commitments", tampered, Some(&[]));
 
     let mut tampered = proof;
     tampered.instance.v += Fp::ONE;

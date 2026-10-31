@@ -1,10 +1,10 @@
 # Fuse fixtures
 
 Golden fixtures for the fuse pipeline and the compressed verifier, checked by
-`tests/fuse_fixtures.rs` and by the `fuse fixtures` CI job. They pin what
-`Application::fuse` produces and what `Application::verify_compressed`
-accepts and computes, so a change to either fails CI instead of passing
-silently.
+`tests/fuse_fixtures.rs` and by the `fuse fixtures` CI job. They pin the
+outputs of selected `Application::fuse` executions and the transcript, MSMs,
+and verdicts of selected `Application::verify_compressed` executions.
+Changes to those executions fail CI.
 
 The prover side follows the golden-proof harness of zakura-common's `sensei`
 crate: the prover replays a committed randomness tape and must reproduce the
@@ -81,16 +81,22 @@ Each scenario has four files.
   evaluation order and every proof-dependent base, so they pin the
   coefficient structure the check assembles, not only that it vanished.
 
-Alongside each fingerprint, the verifier test checks three tampered copies of
+Alongside each fingerprint, the verifier test checks four tampered copies of
 the proof, after the rejected captures beside zakura-common's Orchard
 fingerprints: a wrong host-curve IPA scalar must fail the host MSM, a wrong
-nested IPA scalar must pass the host MSM and fail the nested one, and a wrong
-claimed `v` must be rejected. These are checked, not committed.
+nested IPA scalar must pass the host MSM and fail the nested one, identity
+stage commitments must be rejected before either MSM, and a wrong claimed
+`v` must be rejected. These are checked, not committed.
 
 The recorder lives in `src/ipa/fingerprint.rs`. Recording and event encoding
 compile only for tests; production observation helpers are inline no-ops.
 The helpers observe the cycle transcript's absorb, scalar and squeeze, and
 the IPA MSM's evaluation, so the fingerprint is of the verifier's own code path.
+
+The fixture workflow is called by Backend CI. Its result feeds the existing
+required `backend-required` check, so a failed or cancelled fixture run blocks
+merging. Other correctness and adversarial tests cover executions beyond this
+fixed workload; matching these snapshots does not establish protocol soundness.
 
 ## Regenerating
 

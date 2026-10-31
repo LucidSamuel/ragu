@@ -8,18 +8,12 @@ name: Fixtures
 # `crates/ragu_pcd/tests/fixtures/fuse/README.md` for how to regenerate the
 # fixtures when that is intended.
 #
-# The same tests also run inside the Rust CI matrix on every platform, which
-# is what proves the fixtures platform-independent. This job is the named
-# signal.
+# Backend CI calls this workflow and includes its result in the required
+# `backend-required` gate. The Rust CI matrix also runs these tests on every
+# platform.
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,11 +40,13 @@ jobs:
         with:
           filters: |
             fixtures:
+              - '.cargo/**'
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/fixtures.yml'
+              - '.github/workflows/backend.yml'
               - '.github/actions/**'
 
   fuse:
@@ -68,6 +64,36 @@ jobs:
         with:
           cache-suffix: fixtures
       - name: Check the fuse and verifier fixtures
+        env:
+          RAGU_FIXTURES: check
         run: >-
           cargo test --release -p ragu_pcd --locked --all-features
           --lib proof::fuse_fixture_tests
+
+  result:
+    name: fixture result
+    if: always()
+    needs: [changes, fuse]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate fixture jobs
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          FIXTURES_RESULT: ${{ needs.fuse.result }}
+          FIXTURES_CHANGED: ${{ needs.changes.outputs.fixtures }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [[ "$CHANGES_RESULT" != "success" ]]; then
+            echo "Fixture change detection: $CHANGES_RESULT"
+            exit 1
+          fi
+          if [[ "$FIXTURES_RESULT" == "success" ]]; then
+            exit 0
+          fi
+          if [[ "$FIXTURES_RESULT" == "skipped" &&
+                "$FIXTURES_CHANGED" == "false" &&
+                "$EVENT_NAME" != "push" ]]; then
+            exit 0
+          fi
+          echo "Fuse fixtures: $FIXTURES_RESULT"
+          exit 1
